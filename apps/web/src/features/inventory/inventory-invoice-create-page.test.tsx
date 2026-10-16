@@ -944,3 +944,58 @@ describe("InventoryInvoiceCreatePage date pickers submit canonical days (#428)",
     expect(getAlgeriaDateInputValue(new Date(purchaseDate as string))).toBe(pickedDay)
   })
 })
+
+describe("InventoryInvoiceCreatePage seeds the Algeria business day (#440)", () => {
+  // 23:30 UTC on Oct 11 is already Oct 12 in Africa/Algiers (UTC+1). The old
+  // UTC-slice seeding produced Oct 11 and submitted 2026-10-11T00:00:00.000Z;
+  // the Algeria-day seeding produces Oct 12 and 2026-10-11T23:00:00.000Z.
+  // The exact-day and exact-instant assertions below fail on the old behavior,
+  // which is what distinguishes this regression test from the existing
+  // convention-agnostic ones (#428/#440).
+  const CLOCK_ISO = "2026-10-11T23:30:00.000Z"
+  const ALGERIA_DAY_DISPLAY = "12/10/2026"
+  const ALGERIA_DAY_START_ISO = "2026-10-11T23:00:00.000Z"
+
+  beforeEach(() => {
+    mockQueries()
+    // Fake only Date: `new Date()` must be the pinned instant, but the Base UI
+    // popover and waitFor need real timers to settle.
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date(CLOCK_ISO))
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+  })
+
+  /** The nth date picker trigger, in DOM order (picker #0 is the invoice date). */
+  function datePickerTrigger(index = 0): HTMLElement {
+    const trigger = document.querySelectorAll<HTMLElement>('[data-slot="popover-trigger"]')[index]
+    if (!trigger) throw new Error(`no date picker trigger #${index}`)
+    return trigger
+  }
+
+  it("seeds and submits the invoice and asset days on the Algeria day, not UTC", async () => {
+    renderPage()
+
+    // The invoice date seeds from the Algeria day, not the UTC day.
+    expect(datePickerTrigger(0).textContent).toContain(ALGERIA_DAY_DISPLAY)
+
+    fillLine(0, "CONSUMABLE", "def-1")
+    addLine()
+    fillLine(1, "ASSET", "def-asset")
+
+    // The asset row is created with the same Algeria-day default.
+    expect(datePickerTrigger(1).textContent).toContain(ALGERIA_DAY_DISPLAY)
+
+    const payload = await submitInvoice()
+
+    // The exact instants: the Algeria day boundary (UTC+1), not UTC midnight.
+    expect(payload.invoiceDate).toBe(ALGERIA_DAY_START_ISO)
+    const assetLine = (
+      payload.entries as Array<{ kind: string; assets?: Array<{ purchaseDate: string | null }> }>
+    ).find((entry) => entry.kind === "ASSET")
+    expect(assetLine?.assets?.[0]?.purchaseDate).toBe(ALGERIA_DAY_START_ISO)
+  }, BASE_UI_TIMEOUT)
+})

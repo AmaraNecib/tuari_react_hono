@@ -30,6 +30,7 @@ import {
   useCreateProjectMutation,
   useCreateExternalCounterpartyMutation,
 } from "@/features/app-shell/workspace-mutations"
+import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 
 type LineKind = "" | "CONSUMABLE" | "ASSET"
 
@@ -76,10 +77,6 @@ function FieldLabel({ label, required = false }: { label: string; required?: boo
   )
 }
 
-/** getTodayDateValue - helper function. */
-function getTodayDateValue() {
-  return new Date().toISOString().slice(0, 10)
-}
 
 /** createLine - a new row, untyped until the operator picks its type. */
 function createLine(kind: LineKind = ""): LineState {
@@ -97,7 +94,7 @@ function createLine(kind: LineKind = ""): LineState {
 }
 
 /** createAssetRow - helper function. */
-function createAssetRow(defaultName = "", purchaseDate = getTodayDateValue()): AssetRow {
+function createAssetRow(defaultName = "", purchaseDate = getAlgeriaDateInputValue()): AssetRow {
   return { assetName: defaultName, assetTag: "", serialNumber: "", condition: "NEW", purchaseDate, purchasePriceDzd: "0", note: "" }
 }
 
@@ -116,7 +113,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   const { t } = useTranslation()
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [supplierName, setSupplierName] = useState("")
-  const [invoiceDate, setInvoiceDate] = useState(getTodayDateValue())
+  const [invoiceDate, setInvoiceDate] = useState(getAlgeriaDateInputValue())
   const [warehouseId, setWarehouseId] = useState<string>("")
   const [projectId, setProjectId] = useState<string>("")
   const [externalCounterpartyId, setExternalCounterpartyId] = useState<string>("")
@@ -298,7 +295,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       const result = await createMutation.mutateAsync({
         invoiceNumber: invoiceNumber || null,
         supplierName: (selectedCounterparty?.fullName ?? supplierName) || null,
-        invoiceDate: invoiceDate ? new Date(invoiceDate).toISOString() : null,
+        invoiceDate: invoiceDate ? toAlgeriaDayBoundaryIso(invoiceDate, "start") ?? null : null,
         warehouseId: warehouseId || null,
         projectId: projectId || null,
         externalCounterpartyId: externalCounterpartyId || null,
@@ -337,7 +334,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
               assetTag: asset.assetTag || null,
               serialNumber: asset.serialNumber || null,
               condition: asset.condition,
-              purchaseDate: asset.purchaseDate ? new Date(asset.purchaseDate).toISOString() : null,
+              purchaseDate: asset.purchaseDate ? toAlgeriaDayBoundaryIso(asset.purchaseDate, "start") ?? null : null,
               purchasePriceDzd: Number(asset.purchasePriceDzd),
               note: asset.note || null,
             })),
@@ -697,7 +694,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                       </label>
                     </div>
                   ))}
-                  <Button variant="outline" size="sm" onClick={() => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: [...currentLine.assets, createAssetRow(currentLine.itemOption?.name ?? "", invoiceDate || getTodayDateValue())] }))}>إضافة أصل آخر</Button>
+                  <Button variant="outline" size="sm" onClick={() => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: [...currentLine.assets, createAssetRow(currentLine.itemOption?.name ?? "", invoiceDate || getAlgeriaDateInputValue())] }))}>إضافة أصل آخر</Button>
                 </div>
               ) : null}
             </PageSurfaceContent>

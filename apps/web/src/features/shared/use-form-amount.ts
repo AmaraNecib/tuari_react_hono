@@ -2,6 +2,7 @@
  * Hook for managing form amount values with formatting.
  */
 import { useState } from "react"
+import { getAlgeriaDateInputValue } from "@/lib/algeria-time"
 
 /**
  * useFormAmount(initialValue = "") component.
@@ -26,7 +27,7 @@ export function useFormAmount(initialValue = "") {
   }
 }
 
-export function useDateField(initialValue = "") {
+export function useDateField(initialValue = getAlgeriaDateInputValue()) {
   const [date, setDate] = useState(initialValue)
 
   return {

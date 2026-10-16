@@ -172,11 +172,9 @@ describe("ExpensesPage", () => {
 
     expect(useExpensesListQuery).toHaveBeenCalled()
     const [filters] = useExpensesListQuery.mock.calls.at(-1)!
-    expect(filters).toEqual({
-      fromDate: expect.any(String),
-      toDate: expect.any(String),
-    })
-    expect(filters.fromDate).toMatch(/T23:00:00\.000Z$/)
+    // A filter opens EMPTY — empty means "everything". A seeded range silently
+    // hid every expense older than it, which is the opposite of a filter's job.
+    expect(filters).toEqual({})
   })
 
   it("switches the same list into project-grouped cards", () => {

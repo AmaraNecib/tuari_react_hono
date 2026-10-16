@@ -1,15 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { buildExpenseFilters, getDefaultExpenseDateRange } from "./expenses-filters"
-
-describe("getDefaultExpenseDateRange", () => {
-  it("defaults to the current month to date", () => {
-    expect(getDefaultExpenseDateRange("2026-10-11")).toEqual({
-      fromDate: "2026-10-01",
-      toDate: "2026-10-11",
-    })
-  })
-})
+import { buildExpenseFilters } from "./expenses-filters"
 
 describe("buildExpenseFilters", () => {
   it("expands the date inputs to inclusive Algeria day boundaries", () => {
