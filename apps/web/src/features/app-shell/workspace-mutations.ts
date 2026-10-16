@@ -707,13 +707,15 @@ export function useCreateDebtEntryMutation() {
     mutationFn: async (input: {
       debtAccountId: string
       signedAmountDzd: number
+      /** Defaults to ADJUSTMENT; the cases form posts a PAYMENT. */
+      entryType?: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE"
       entryDate?: string
       note?: string | null
     }) => {
       const result = await rpcClient.debtEntriesCreate({
         debtAccountId: input.debtAccountId,
         entryDate: input.entryDate,
-        entryType: "ADJUSTMENT",
+        entryType: input.entryType ?? "ADJUSTMENT",
         note: input.note,
         signedAmountDzd: input.signedAmountDzd,
       })

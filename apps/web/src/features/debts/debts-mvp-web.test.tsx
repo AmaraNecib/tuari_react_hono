@@ -25,7 +25,9 @@ const {
   createCounterpartyMutateAsync,
   settleDebtAccountMutate,
   createSalaryPaymentMutate,
+  mutationPending,
 } = vi.hoisted(() => ({
+  mutationPending: { createDebtAccount: false, createDebtEntry: false },
   createDebtAccountMutateAsync: vi.fn(async () => ({
     item: {
       actorLabel: null,
@@ -59,8 +61,8 @@ vi.mock("@tanstack/react-router", async () => {
 })
 
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
-  useCreateDebtAccountMutation: () => ({ isPending: false, mutateAsync: createDebtAccountMutateAsync }),
-  useCreateDebtEntryMutation: () => ({ isPending: false, mutate: createDebtEntryMutate }),
+  useCreateDebtAccountMutation: () => ({ isPending: mutationPending.createDebtAccount, mutateAsync: createDebtAccountMutateAsync }),
+  useCreateDebtEntryMutation: () => ({ isPending: mutationPending.createDebtEntry, mutate: createDebtEntryMutate, mutateAsync: createDebtEntryMutate }),
   useSettleDebtAccountMutation: () => ({ isPending: false, mutate: settleDebtAccountMutate }),
   useCreateExternalCounterpartyMutation: () => ({
     isPending: false,
@@ -85,6 +87,9 @@ function renderWithProviders(ui: ReactNode) {
 describe("debts MVP web UI", () => {
   afterEach(() => {
     cleanup()
+    vi.clearAllMocks()
+    mutationPending.createDebtAccount = false
+    mutationPending.createDebtEntry = false
   })
 
   it("renders hub balances with correct sign semantics", () => {
@@ -203,20 +208,24 @@ describe("debts MVP web UI", () => {
     fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), { target: { value: "دفعة شراء جديدة" } })
     fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
 
+    // #459: the account exists on the chosen ledger, so the form must post a
+    // payment entry on it — not open a second account.
     await waitFor(() => {
-      expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
+      expect(createDebtEntryMutate).toHaveBeenCalledWith(
         expect.objectContaining({
-          externalCounterpartyId: "external-1",
-          direction: "PAYABLE",
-          openingBalanceDzd: 1200,
+          debtAccountId: "debt-2",
+          entryType: "PAYMENT",
+          signedAmountDzd: -1200,
         }),
       )
     })
+    expect(createDebtAccountMutateAsync).not.toHaveBeenCalled()
   })
 
   describe("DebtCasesPanel sends the chosen direction with a positive opening", () => {
     const renderCasesPanel = () => {
       createDebtAccountMutateAsync.mockClear()
+      createDebtEntryMutate.mockClear()
       return renderWithProviders(
         <DebtCasesPanel
           accounts={[]}
@@ -236,6 +245,8 @@ describe("debts MVP web UI", () => {
       await waitFor(() =>
         expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(expect.objectContaining(expected)),
       )
+      // No account exists on the ledger, so the form opens one and posts nothing.
+      expect(createDebtEntryMutate).not.toHaveBeenCalled()
     }
 
     it("owed-to-us sends RECEIVABLE with a positive amount", async () => {
@@ -249,6 +260,260 @@ describe("debts MVP web UI", () => {
       renderCasesPanel()
       fireEvent.click(screen.getByRole("button", { name: "مستحقات علينا" }))
       await submitOpening("500", { direction: "PAYABLE", openingBalanceDzd: 500 })
+    })
+  })
+
+  describe("DebtCasesPanel records a payment on the ledger's existing account (#459)", () => {
+    const existingAccount: DebtAccount = {
+      actorLabel: null,
+      actorUserId: null,
+      createdAt: "2026-03-27T10:00:00.000Z",
+      currentBalance: 5000,
+      externalCounterpartyId: "external-1",
+      id: "debt-existing",
+      note: "حساب قائم",
+      direction: "PAYABLE",
+      partyType: "EXTERNAL_COUNTERPARTY",
+      settledAt: null,
+      status: "OPEN",
+      transactionId: null,
+      updatedAt: "2026-03-27T10:00:00.000Z",
+      workerId: null,
+    }
+
+    const renderExistingAccountPanel = () => {
+      createDebtAccountMutateAsync.mockClear()
+      createDebtEntryMutate.mockClear()
+      return renderWithProviders(
+        <DebtCasesPanel
+          accounts={[existingAccount]}
+          debtEntriesByAccountId={{ "debt-existing": [] }}
+          externalCounterpartyId="external-1"
+          title="طرف"
+        />,
+      )
+    }
+
+    it("posts a PAYMENT entry to the existing account and never opens a second one", async () => {
+      renderExistingAccountPanel()
+
+      // The label and the description name the action the submit performs.
+      expect(screen.getByText("تسجيل دفعة على الحساب")).toBeTruthy()
+      expect(screen.getByText(/لا يُنشأ حساب جديد/)).toBeTruthy()
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "1200" } })
+      fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), {
+        target: { value: "دفعة نقدية" },
+      })
+      fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
+
+      await waitFor(() => {
+        expect(createDebtEntryMutate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            debtAccountId: "debt-existing",
+            entryType: "PAYMENT",
+            signedAmountDzd: -1200,
+            entryDate: toAlgeriaDayBoundaryIso(getAlgeriaDateInputValue(), "start"),
+            note: "دفعة نقدية",
+          }),
+        )
+      })
+      expect(createDebtAccountMutateAsync).not.toHaveBeenCalled()
+    })
+
+    it("keeps the payment submit disabled until the amount is non-zero", () => {
+      renderExistingAccountPanel()
+      const paymentButton = screen.getAllByRole("button", { name: "تسجيل دفعة" })[0] as HTMLButtonElement
+
+      // Empty and an explicit zero are both "no action", not a zero payment.
+      expect(paymentButton.disabled).toBe(true)
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "0" } })
+      expect(paymentButton.disabled).toBe(true)
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      expect(paymentButton.disabled).toBe(false)
+    })
+
+    it("says why a zero payment submit is blocked", () => {
+      renderExistingAccountPanel()
+
+      // Empty and an explicit zero block the save, and the reason is on screen.
+      expect(screen.getByRole("status").textContent).toContain("لا يمكن تسجيل دفعة بمبلغ صفر")
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "0" } })
+      expect(screen.getByRole("status").textContent).toContain("لا يمكن تسجيل دفعة بمبلغ صفر")
+
+      // A valid amount clears the reason.
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      expect(screen.queryByRole("status")).toBeNull()
+    })
+
+    it("says a non-numeric payment is invalid, not a zero payment", () => {
+      renderExistingAccountPanel()
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "abc" } })
+
+      expect(screen.getByRole("status").textContent).toContain("أدخل مبلغًا رقميًا صالحًا")
+      expect(screen.getByRole("status").textContent).not.toContain("دفعة بمبلغ صفر")
+    })
+
+    it("stays blocked while the payment save is in flight", () => {
+      // The entry mutation half of the gate: without it a second click on an
+      // in-flight payment would post it again.
+      mutationPending.createDebtEntry = true
+      renderExistingAccountPanel()
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+
+      const paymentButton = screen.getAllByRole("button", { name: "تسجيل دفعة" })[0] as HTMLButtonElement
+      expect(paymentButton.disabled).toBe(true)
+      // The save itself is the reason, named on screen.
+      expect(screen.getByRole("status").textContent).toContain("جارٍ الحفظ")
+    })
+
+    it("stays blocked while the opening save is in flight, so a second click cannot post the opening amount as a payment", async () => {
+      const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } })
+      // The opening save never resolves: the account list refreshes (as the
+      // real query does on success) before the mutation settles.
+      createDebtAccountMutateAsync.mockImplementationOnce(() => new Promise(() => {}))
+      const view = render(
+        <QueryClientProvider client={queryClient}>
+          <DebtCasesPanel accounts={[]} debtEntriesByAccountId={{}} externalCounterpartyId="external-1" title="طرف" />
+        </QueryClientProvider>,
+      )
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
+      await waitFor(() => expect(createDebtAccountMutateAsync).toHaveBeenCalled())
+
+      // The refreshed account arrives while the save is still pending and the
+      // original amount has not been cleared: the form now says "record a
+      // payment", but the submit must stay blocked.
+      mutationPending.createDebtAccount = true
+      view.rerender(
+        <QueryClientProvider client={queryClient}>
+          <DebtCasesPanel accounts={[existingAccount]} debtEntriesByAccountId={{ "debt-existing": [] }} externalCounterpartyId="external-1" title="طرف" />
+        </QueryClientProvider>,
+      )
+
+      const paymentButton = screen.getAllByRole("button", { name: "تسجيل دفعة" })[0] as HTMLButtonElement
+      expect(paymentButton.disabled).toBe(true)
+      // Disabled is the guard: React's event plugin skips onClick on a disabled
+      // button, so the click itself cannot post the opening amount.
+      expect(screen.getByRole("status").textContent).toContain("جارٍ الحفظ")
+    })
+
+    it("treats a typed minus as a magnitude on the payment", async () => {
+      renderExistingAccountPanel()
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "-1200" } })
+      fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
+
+      await waitFor(() => {
+        expect(createDebtEntryMutate).toHaveBeenCalledWith(
+          expect.objectContaining({ signedAmountDzd: -1200 }),
+        )
+      })
+    })
+
+    it("posts a reducing movement even on a credited ledger", async () => {
+      createDebtAccountMutateAsync.mockClear()
+      createDebtEntryMutate.mockClear()
+      renderWithProviders(
+        <DebtCasesPanel
+          accounts={[{ ...existingAccount, currentBalance: -700 }]}
+          debtEntriesByAccountId={{ "debt-existing": [] }}
+          externalCounterpartyId="external-1"
+          title="طرف"
+        />,
+      )
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "200" } })
+      fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
+
+      await waitFor(() => {
+        expect(createDebtEntryMutate).toHaveBeenCalledWith(
+          expect.objectContaining({ signedAmountDzd: -200 }),
+        )
+      })
+    })
+
+    it("posts a reducing movement on a RECEIVABLE ledger too", async () => {
+      // A payment reduces the balance on either ledger; the direction only
+      // selected which account receives it.
+      createDebtEntryMutate.mockClear()
+      renderWithProviders(
+        <DebtCasesPanel
+          accounts={[{ ...existingAccount, direction: "RECEIVABLE", id: "debt-receivable" }]}
+          debtEntriesByAccountId={{ "debt-receivable": [] }}
+          externalCounterpartyId="external-1"
+          title="طرف"
+        />,
+      )
+
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
+
+      await waitFor(() => {
+        expect(createDebtEntryMutate).toHaveBeenCalledWith(
+          expect.objectContaining({ debtAccountId: "debt-receivable", signedAmountDzd: -500 }),
+        )
+      })
+    })
+
+    it("labels a ledger with no account as an account creation, not a payment", () => {
+      renderExistingAccountPanel()
+
+      // owed-to-us has no account, so the honest label is "record a debt".
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
+
+      expect(screen.getByRole("button", { name: "تسجيل دين" })).toBeTruthy()
+      expect(screen.getByText("إنشاء الحساب")).toBeTruthy()
+      // The description names the selected ledger, not the party: this party
+      // already holds a PAYABLE account, so it has not "no account yet".
+      expect(screen.getByText(/لا يوجد حساب على الدفتر المختار بعد/)).toBeTruthy()
+      expect(screen.getByText(/سيُفتح حساب جديد/)).toBeTruthy()
+    })
+
+    it("says when the opening amount is not a number", () => {
+      renderWithProviders(
+        <DebtCasesPanel accounts={[]} debtEntriesByAccountId={{}} externalCounterpartyId="external-1" title="طرف" />,
+      )
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "abc" } })
+
+      expect(screen.getByRole("status").textContent).toContain("أدخل مبلغًا رقميًا صالحًا")
+    })
+
+    it("opens an account with no opening entry when the create amount is left empty", async () => {
+      // The create path's amount is optional by design: an empty one opens the
+      // account without an opening movement.
+      renderWithProviders(
+        <DebtCasesPanel accounts={[]} debtEntriesByAccountId={{}} externalCounterpartyId="external-1" title="طرف" />,
+      )
+
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
+
+      await waitFor(() =>
+        expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ openingBalanceDzd: undefined }),
+        ),
+      )
+    })
+
+    it("opens the chosen ledger's account when only the other ledger exists", async () => {
+      renderExistingAccountPanel()
+
+      // The party has a PAYABLE account only; owed-to-us is a different ledger.
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
+
+      await waitFor(() => {
+        expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ direction: "RECEIVABLE", openingBalanceDzd: 500 }),
+        )
+      })
+      expect(createDebtEntryMutate).not.toHaveBeenCalled()
     })
   })
 

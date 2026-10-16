@@ -154,6 +154,26 @@ export function debtDirectionFromAlias(alias: DebtDirectionAlias): DebtAccount["
 }
 
 /**
+ * What the cases form does for the chosen ledger: a movement on the account
+ * that already exists there, or opening that account. This is the one source
+ * the title, the description, the button label and the submit branch read, so
+ * a label can never promise a payment while the code opens an account.
+ */
+export type DebtCasesFormAction =
+  | { kind: "record-payment"; account: DebtAccount }
+  | { kind: "create-account" }
+
+export function resolveDebtCasesFormAction(
+  accounts: DebtAccount[],
+  direction: DebtAccount["direction"],
+): DebtCasesFormAction {
+  // The server's create path keeps at most one account per (party, direction),
+  // so a direction has one account and `find` is not a choice between two.
+  const account = accounts.find((candidate) => candidate.direction === direction)
+  return account ? { kind: "record-payment", account } : { kind: "create-account" }
+}
+
+/**
  * Direction label (the account's orientation), not a balance phrase.
  */
 export function getDebtDirectionLabel(direction: DebtAccount["direction"]) {
