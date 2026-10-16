@@ -8,32 +8,49 @@
 const ALGERIA_TIME_ZONE = "Africa/Algiers"
 const ALGERIA_OFFSET_HOURS = 1
 
-/**
- * Expand a `yyyy-MM-dd` business day to the inclusive UTC instant range of that
- * day in Africa/Algiers (`start` = 00:00 local, `end` = 23:59:59.999 local).
- * Returns `undefined` when the value is not a real calendar day: a rolling
- * value like `2026-02-30` is rejected, not normalized into March.
- */
-export function toAlgeriaDayBoundaryIso(value: string, boundary: "start" | "end") {
-  const [rawYear, rawMonth, rawDay] = value.split("-").map((part) => Number.parseInt(part, 10))
-  const year = rawYear ?? Number.NaN
-  const month = rawMonth ?? Number.NaN
-  const day = rawDay ?? Number.NaN
+/** Canonical stored business day: zero-padded `yyyy-MM-dd` and nothing else. */
+const CANONICAL_DAY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 
-  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
-    return undefined
+/**
+ * Whether `value` is a canonical `yyyy-MM-dd` day that exists on the calendar.
+ *
+ * The pattern alone is not enough: `2026-02-30` matches it but is not a day,
+ * and `Date.UTC` would roll it over to `2026-03-02`. The round-trip rejects the
+ * rollover. This is the single statement of the canonical-day rule; callers
+ * that must fail loudly (`date-range.ts`) throw on top of it.
+ */
+export function isAlgeriaCalendarDay(value: string): boolean {
+  const match = CANONICAL_DAY_PATTERN.exec(value)
+  if (!match) {
+    return false
   }
 
-  // Date.UTC rolls an impossible day forward (2026-02-30 -> 2026-03-02), so
-  // round-trip the parts to reject an invalid month or day.
+  const year = Number.parseInt(match[1]!, 10)
+  const month = Number.parseInt(match[2]!, 10)
+  const day = Number.parseInt(match[3]!, 10)
   const midnightUtc = new Date(Date.UTC(year, month - 1, day))
-  const isRealCalendarDay =
+  return (
     midnightUtc.getUTCFullYear() === year &&
     midnightUtc.getUTCMonth() === month - 1 &&
     midnightUtc.getUTCDate() === day
-  if (!isRealCalendarDay) {
+  )
+}
+
+/**
+ * Expand a `yyyy-MM-dd` business day to the inclusive UTC instant range of that
+ * day in Africa/Algiers (`start` = 00:00 local, `end` = 23:59:59.999 local).
+ * Returns `undefined` for anything that is not a real calendar day: a
+ * non-canonical string or a rolling value like `2026-02-30`.
+ */
+export function toAlgeriaDayBoundaryIso(value: string, boundary: "start" | "end") {
+  if (!isAlgeriaCalendarDay(value)) {
     return undefined
   }
+
+  const [rawYear, rawMonth, rawDay] = value.split("-")
+  const year = Number.parseInt(rawYear!, 10)
+  const month = Number.parseInt(rawMonth!, 10)
+  const day = Number.parseInt(rawDay!, 10)
 
   return boundary === "start"
     ? new Date(Date.UTC(year, month - 1, day, 0 - ALGERIA_OFFSET_HOURS, 0, 0, 0)).toISOString()

@@ -13,6 +13,7 @@ import {
   formatDateTimeInAlgeria,
   getAlgeriaDateInputValue,
   getAlgeriaTimeZone,
+  isAlgeriaCalendarDay,
   toAlgeriaDayBoundaryIso,
 } from "./algeria-time"
 
@@ -91,5 +92,40 @@ describe("toAlgeriaDayBoundaryIso", () => {
   it("rejects non-finite and malformed parts", () => {
     expect(toAlgeriaDayBoundaryIso("not-a-day", "start")).toBeUndefined()
     expect(toAlgeriaDayBoundaryIso("", "start")).toBeUndefined()
+  })
+
+  it("rejects a non-canonical string instead of coercing its leading digits", () => {
+    // parseInt("15junk") is 15 and parseInt("01T00:00:00.000Z") is 1, so an
+    // unanchored parse would accept these as a different day.
+    expect(toAlgeriaDayBoundaryIso("2026-10-15junk", "start")).toBeUndefined()
+    expect(toAlgeriaDayBoundaryIso("2026-10-01T00:00:00.000Z", "start")).toBeUndefined()
+    expect(toAlgeriaDayBoundaryIso("2026-1a-05", "start")).toBeUndefined()
+  })
+
+  it("rejects a day past the end of its month", () => {
+    expect(toAlgeriaDayBoundaryIso("2026-01-32", "start")).toBeUndefined()
+  })
+})
+
+describe("isAlgeriaCalendarDay", () => {
+  it("accepts canonical real days, including a leap day", () => {
+    expect(isAlgeriaCalendarDay("2026-10-01")).toBe(true)
+    expect(isAlgeriaCalendarDay("2028-02-29")).toBe(true)
+  })
+
+  it("rejects a non-canonical string without coercing it", () => {
+    expect(isAlgeriaCalendarDay("2026-10-15junk")).toBe(false)
+    expect(isAlgeriaCalendarDay("2026-10-01T00:00:00.000Z")).toBe(false)
+    expect(isAlgeriaCalendarDay("2026-1-5")).toBe(false)
+    expect(isAlgeriaCalendarDay("15/10/2026")).toBe(false)
+    expect(isAlgeriaCalendarDay("")).toBe(false)
+  })
+
+  it("rejects an impossible day or out-of-range part", () => {
+    expect(isAlgeriaCalendarDay("2026-02-30")).toBe(false)
+    expect(isAlgeriaCalendarDay("2026-04-31")).toBe(false)
+    expect(isAlgeriaCalendarDay("2026-13-01")).toBe(false)
+    expect(isAlgeriaCalendarDay("2026-00-10")).toBe(false)
+    expect(isAlgeriaCalendarDay("2026-11-00")).toBe(false)
   })
 })

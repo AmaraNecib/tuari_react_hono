@@ -9,12 +9,17 @@ import { ar } from "@/i18n/resources/ar"
 
 // The update-check stamp renders only on the desktop "system" tab, so the
 // runtime and the update hook are mocked; the settings tabs live behind `?tab=`.
-// `t` resolves against the real Arabic resource, so a key missing from the
-// resource fails this suite instead of silently rendering the raw key
-// (wisdom: testing.md).
+// `t` resolves against the real Arabic resource (wisdom: testing.md), so keys
+// the component resolves itself cannot render as raw keys; the last-checked
+// label asserted below is also read from that resource.
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string, options?: Record<string, unknown>) => {
+    t: (key: string, fallbackOrOptions?: unknown, maybeOptions?: Record<string, unknown>) => {
+      const options =
+        typeof fallbackOrOptions === "object"
+          ? (fallbackOrOptions as Record<string, unknown>)
+          : maybeOptions
+      const fallback = typeof fallbackOrOptions === "string" ? fallbackOrOptions : undefined
       let node: unknown = ar.translation
       for (const part of key.split(".")) {
         if (node === null || typeof node !== "object" || !(part in node)) {
