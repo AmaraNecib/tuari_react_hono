@@ -64,7 +64,9 @@ function matchFormatterAt(source, index) {
   let match = /^toLocaleDateString\s*\(/.exec(rest);
   if (match) return { name: 'toLocaleDateString', length: match[0].length };
 
-  match = /^(?:new\s+)?Intl\.DateTimeFormat\s*\(/.exec(rest);
+  // Match at `Intl`, not at `new`: matching the `new ` prefix too would let the
+  // same call be reported twice once the scan no longer skips the whole call.
+  match = /^Intl\.DateTimeFormat\s*\(/.exec(rest);
   if (match) return { name: 'Intl.DateTimeFormat', length: match[0].length };
 
   return null;
@@ -99,14 +101,23 @@ function findMatchingParen(source, openIndex) {
 }
 
 /**
- * Every `toLocaleDateString(...)` / `new Intl.DateTimeFormat(...)` call whose
- * balanced parentheses do not contain a `timeZone`. Mentions in comments or
- * string literals are not calls and are never reported.
+ * A real pin is the `timeZone` option *with a usable value*: the key alone is
+ * not enough (`{ timeZone: undefined }`, `{ timeZone: "" }`), and a comment that
+ * merely mentions the word does not pin the call. Shorthand `{ timeZone }`
+ * counts because the identifier is the option value.
+ */
+const PINNED_TIME_ZONE_PATTERN =
+  /\btimeZone\s*:\s*(?=\S)(?!undefined\b|null\b|["'`])|\btimeZone\s*[,}]/;
+
+/**
+ * Every `toLocaleDateString(...)` / `Intl.DateTimeFormat(...)` call whose
+ * balanced parentheses do not carry a usable `timeZone`. Mentions in comments
+ * or string literals are not calls and are never reported.
  *
  * Text-level heuristic: it does not descend into a template literal's `${…}`
  * interpolation (none in `apps/web/src` today), and a `timeZone` supplied via a
- * spread or a string also counts. The point is to catch a re-added bare call,
- * not to be a type checker.
+ * spread also counts. The point is to catch a re-added bare call, not to be a
+ * type checker.
  */
 export function findUnpinnedDateFormatters(source) {
   const violations = [];
@@ -142,10 +153,12 @@ export function findUnpinnedDateFormatters(source) {
       break;
     }
     const call = source.slice(index, closeParen + 1);
-    if (!/\btimeZone\b/.test(call)) {
+    if (!PINNED_TIME_ZONE_PATTERN.test(call)) {
       violations.push({ line: lineNumberAt(source, index), callee: formatter.name, call });
     }
-    index = closeParen + 1;
+    // Step one character, not a whole call: an unpinned call nested inside this
+    // one is still a call and must be reported.
+    index += 1;
   }
 
   return violations;
@@ -166,9 +179,9 @@ async function listProductionWebSources() {
   }
   return files.filter(
     (file) =>
-      /\.(ts|tsx)$/.test(file) &&
-      !/\.(test|spec)\.(ts|tsx)$/.test(file) &&
-      !/(^|[/\\])(test-utils|__tests__|__mocks__)[/\\]/.test(file),
+      /\.(ts|tsx|mts|cts)$/.test(file) &&
+      !/\.(test|spec)\.(ts|tsx|mts|cts)$/.test(file) &&
+      !/(^|[/\\])(test-utils|__test-utils__|__tests__|__mocks__)[/\\]/.test(file),
   );
 }
 
@@ -234,7 +247,7 @@ test('root package scripts keep web hygiene validation in normal checks', async 
   assert.match(packageJson.scripts.test, /check:web-hygiene/);
 });
 
-test('every production web date formatter is pinned to a timezone', async () => {
+test('production web source never calls toLocaleDateString() or Intl.DateTimeFormat() unpinned', async () => {
   const files = await listProductionWebSources();
   // Guard against a silent filter drift (an empty list would pass vacuously).
   assert.ok(files.length > 0, 'the production web scan must find source files');
@@ -292,6 +305,27 @@ test('date formatter scanner self-test: pinned passes, unpinned flags, comments 
 
   // Unbalanced input is flagged rather than letting a later `timeZone` mask it.
   assert.equal(findUnpinnedDateFormatters('const a = new Intl.DateTimeFormat("ar-DZ"').length, 1);
+
+  // A `timeZone` key with no usable value is not a pin: `undefined`, `null`,
+  // `""` and a comment merely mentioning the word all leave the call unpinned.
+  const valuelessPins = [
+    'const a = new Date(x).toLocaleDateString("ar-DZ", { timeZone: undefined })',
+    'const b = new Intl.DateTimeFormat("ar-DZ", { timeZone: "" }).format(d)',
+    'const c = new Date(x).toLocaleDateString("ar-DZ", opts /* timeZone lives in opts */)',
+  ].join('\n');
+  assert.deepEqual(
+    findUnpinnedDateFormatters(valuelessPins).map((violation) => violation.line),
+    [1, 2, 3],
+  );
+
+  // The pinned not being skipped means an unpinned call nested inside a pinned
+  // call is still reported.
+  const nestedInner =
+    'new Intl.DateTimeFormat("ar-DZ", { timeZone: getAlgeriaTimeZone() }).format(new Date(d.toLocaleDateString("ar-DZ")))';
+  assert.deepEqual(
+    findUnpinnedDateFormatters(nestedInner).map((violation) => violation.callee),
+    ['toLocaleDateString'],
+  );
 });
 
 test('fonts are self-hosted: index.html has no Google Fonts links or preconnects', async () => {

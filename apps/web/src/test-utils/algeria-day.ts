@@ -1,8 +1,8 @@
 /**
  * Shared test fixtures for issue #473: every stored business day must render on
- * its Africa/Algiers calendar day. `MIDNIGHT_CROSSING` is one hour before
- * Algeria midnight, so an unpinned formatter under a non-Algerian zone renders
- * the previous day and the assertion fails.
+ * its Africa/Algiers calendar day. `MIDNIGHT_CROSSING` is exactly Algeria
+ * midnight of the next Algeria day (2026-10-01), so an unpinned formatter under
+ * a non-Algerian zone renders the previous day and the assertion fails.
  */
 // 2026-09-30T23:00Z is 2026-10-01 00:00 in Africa/Algiers (UTC+1).
 export const MIDNIGHT_CROSSING = "2026-09-30T23:00:00.000Z"

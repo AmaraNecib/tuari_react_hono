@@ -83,10 +83,19 @@ export function formatDateTimeInAlgeria(date: Date, locale = "ar-DZ") {
 /**
  * Format a stored business day as the Algeria calendar day it fell on (date
  * only), pinned to Africa/Algiers so a UTC midnight boundary cannot shift the
- * day. Accepts the stored value directly — an instant string or a `Date`.
+ * day. Accepts the stored value directly — an instant string or a `Date` — and
+ * returns `—` for a value that is not a parsable date.
  */
 export function formatAlgeriaDate(value: string | Date, locale = "ar-DZ") {
   const date = typeof value === "string" ? new Date(value) : value
+  // `Intl.DateTimeFormat.format` throws a RangeError on an invalid date, where
+  // the `toLocaleDateString` this replaced rendered the string "Invalid Date".
+  // A truthy-but-unparsable stored value must degrade to a placeholder, not
+  // unmount the screen.
+  if (Number.isNaN(date.getTime())) {
+    return "—"
+  }
+
   return new Intl.DateTimeFormat(locale, {
     dateStyle: "medium",
     timeZone: ALGERIA_TIME_ZONE,

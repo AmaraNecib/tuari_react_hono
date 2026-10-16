@@ -48,6 +48,17 @@ describe("formatAlgeriaDate", () => {
   it("renders a bare yyyy-MM-dd business day on the same Algeria day", () => {
     expect(formatAlgeriaDate("2026-10-01")).toBe(dayIn("Africa/Algiers"))
   })
+
+  it("returns the placeholder for an unparsable value instead of throwing", () => {
+    // The replaced `new Date(x).toLocaleDateString("ar-DZ")` rendered the string
+    // "Invalid Date"; `Intl.DateTimeFormat.format` throws a RangeError, which
+    // would unmount the screen. A truthy-but-unparsable stored value must not
+    // turn a bad row into a blank surface.
+    expect(() => formatAlgeriaDate("not-a-date")).not.toThrow()
+    expect(formatAlgeriaDate("not-a-date")).toBe("—")
+    expect(formatAlgeriaDate("")).toBe("—")
+    expect(formatAlgeriaDate(new Date(Number.NaN))).toBe("—")
+  })
 })
 
 describe("formatDateTimeInAlgeria", () => {
