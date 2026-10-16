@@ -114,3 +114,27 @@ Three findings against `2c852a1f`, all fixed on `fix/459-debt-cases-payment`:
 
 No contract or wire change. `resolveDebtCasesFormAction` remains the single
 source of the action, label, description and submit branch.
+
+### Gate follow-ups (local debate / test-audit / code-review)
+
+- The amount rule is now one expression: a non-finite amount is `amountInvalid`
+  in both modes, and only a genuine zero on the payment path is
+  `paymentAmountRequired`. Before this, typing `abc` on a payment reported a
+  *zero payment*.
+- A save in flight now says so (`debts.cases.saving`) instead of leaving the
+  disabled button unexplained, closing the contradiction with the “say why”
+  rule.
+- New tests: the entry mutation pending blocks the submit (the half the
+  create-pending test did not cover), a non-numeric payment names the numeric
+  reason, a `RECEIVABLE` ledger posts a negative movement, and the create path’s
+  empty amount opens an account with no opening entry (pinning the intentional
+  optional amount). `vi.clearAllMocks()` in `afterEach` removes the mock-call
+  order dependence.
+- The payment/opening request construction is hoisted to one `entryDateIso` /
+  `trimmedNote` / `signedPaymentAmount` so the two branches cannot drift.
+
+Deferred (pre-existing, not introduced by this PR): the ledger panel posts an
+`ADJUSTMENT` for a movement the cases form now records as a `PAYMENT`; the two
+notions of “the account” (`sortedAccounts[0]` vs the resolved ledger) predate
+this change; a rejected `mutateAsync` has no error surface; and the create path
+can still re-fire if the accounts refresh lands after the mutation resolves.

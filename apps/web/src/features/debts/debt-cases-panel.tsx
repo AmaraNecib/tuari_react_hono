@@ -65,7 +65,6 @@ export function DebtCasesPanel({
   const debtAccount = sortedAccounts[0] ?? null
   const normalizedAmount = amount.trim()
   const amountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : 0
-  const hasValidCreateAmount = Number.isFinite(amountValue)
   // The direction carries the meaning; the opening amount is always a positive
   // magnitude (a signed balance is never stored or shown).
   const accountDirection = debtDirectionFromAlias(direction)
@@ -74,8 +73,15 @@ export function DebtCasesPanel({
   // that account. One resolver feeds all four.
   const accountAction = resolveDebtCasesFormAction(sortedAccounts, accountDirection)
   const isRecordingPayment = accountAction.kind === "record-payment"
-  const hasValidPaymentAmount = Number.isFinite(amountValue) && amountValue !== 0
-  const hasValidAmount = isRecordingPayment ? hasValidPaymentAmount : hasValidCreateAmount
+  // One rule names the block, feeds the disabled state and the on-screen reason.
+  // An unparseable amount is invalid in both modes; a payment additionally needs
+  // a non-zero magnitude. An opening amount is optional on the create path, so
+  // an empty one is a legitimate account with no opening entry.
+  const amountBlockedReasonKey = !Number.isFinite(amountValue)
+    ? "debts.cases.amountInvalid"
+    : isRecordingPayment && amountValue === 0
+      ? "debts.cases.paymentAmountRequired"
+      : null
   // Both mutations gate the submit. The account refresh can flip the form to
   // "record-payment" while the opening save is still in flight, and the button
   // then watches the now-idle entry mutation — a second click would post the
@@ -84,15 +90,11 @@ export function DebtCasesPanel({
   const isSubmitDisabled =
     createDebtEntryMutation.isPending ||
     createDebtAccountMutation.isPending ||
-    !hasValidAmount
+    amountBlockedReasonKey !== null
   // A disabled save must say why, on screen. The amount is the only input the
-  // operator can fix; a zero/empty payment and a non-numeric amount are the
-  // two reasons.
-  const amountBlockedReasonKey = !hasValidAmount
-    ? isRecordingPayment
-      ? "debts.cases.paymentAmountRequired"
-      : "debts.cases.amountInvalid"
-    : null
+  // operator can fix; while a save is in flight the reason is the save itself.
+  const saveBlockedReasonKey =
+    amountBlockedReasonKey ?? (isSubmitDisabled ? "debts.cases.saving" : null)
 
   // Aggregate stats across all accounts
   const totalEntryCount = useMemo(
@@ -144,6 +146,11 @@ export function DebtCasesPanel({
   )
 
   const { t } = useTranslation()
+  // One construction of the request, reused by both submit branches so the
+  // payment and the opening cannot drift.
+  const entryDateIso = createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined
+  const trimmedNote = note.trim() || null
+  const signedPaymentAmount = -Math.abs(amountValue)
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
@@ -241,9 +248,9 @@ export function DebtCasesPanel({
         </div>
 
         <PageFooterActions className="mt-4">
-          {amountBlockedReasonKey ? (
+          {saveBlockedReasonKey ? (
             <p aria-live="polite" className="self-center text-sm text-destructive" role="status">
-              {t(amountBlockedReasonKey)}
+              {t(saveBlockedReasonKey)}
             </p>
           ) : null}
           <Button
@@ -259,18 +266,18 @@ export function DebtCasesPanel({
                 await createDebtEntryMutation.mutateAsync({
                   debtAccountId: accountAction.account.id,
                   entryType: "PAYMENT",
-                  signedAmountDzd: -Math.abs(amountValue),
-                  entryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
-                  note: note.trim() || null,
+                  signedAmountDzd: signedPaymentAmount,
+                  entryDate: entryDateIso,
+                  note: trimmedNote,
                 })
               } else {
                 await createDebtAccountMutation.mutateAsync({
                   externalCounterpartyId: externalCounterpartyId ?? null,
-                  note: note.trim() || null,
+                  note: trimmedNote,
                   direction: accountDirection,
                   openingBalanceDzd: amountValue === 0 ? undefined : Math.abs(amountValue),
-                  openingEntryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
-                  openingEntryNote: note.trim() || null,
+                  openingEntryDate: entryDateIso,
+                  openingEntryNote: trimmedNote,
                   partyType: workerId ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY",
                   workerId: workerId ?? null,
                 })
