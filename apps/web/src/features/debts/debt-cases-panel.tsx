@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { Field } from "@/components/ui/field"
-import { useCreateDebtAccountMutation } from "@/features/app-shell/mock-dashboard"
+import { useCreateDebtAccountMutation, useCreateDebtEntryMutation } from "@/features/app-shell/mock-dashboard"
 import { PageFooterActions, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
@@ -20,6 +20,7 @@ import {
   getDebtAccountBalanceDisplay,
   getDebtDirectionLabel,
   getNetDebtBalanceDisplay,
+  resolveDebtCasesFormAction,
   sortDebtAccounts,
   type DebtDirectionAlias,
 } from "./debt-utils"
@@ -54,6 +55,7 @@ export function DebtCasesPanel({
   workerId?: string
 }) {
   const createDebtAccountMutation = useCreateDebtAccountMutation()
+  const createDebtEntryMutation = useCreateDebtEntryMutation()
   const [createDate, setCreateDate] = useState(() => getAlgeriaDateInputValue())
   const [openingBalance, setOpeningBalance] = useState("")
   const [note, setNote] = useState("")
@@ -67,6 +69,15 @@ export function DebtCasesPanel({
   // The direction carries the meaning; the opening amount is always a positive
   // magnitude (a signed balance is never stored or shown).
   const accountDirection = debtDirectionFromAlias(direction)
+  // The label, the description and the submit must agree: an account on the
+  // chosen ledger means this amount is a payment on it, otherwise the form opens
+  // that account. One resolver feeds all four.
+  const accountAction = resolveDebtCasesFormAction(sortedAccounts, accountDirection)
+  const isRecordingPayment = accountAction.kind === "record-payment"
+  const hasValidPaymentAmount = Number.isFinite(openingBalanceValue) && openingBalanceValue !== 0
+  const isSubmitDisabled = isRecordingPayment
+    ? !hasValidPaymentAmount || createDebtEntryMutation.isPending
+    : !hasValidOpeningBalance || createDebtAccountMutation.isPending
 
   // Aggregate stats across all accounts
   const totalEntryCount = useMemo(
@@ -164,8 +175,8 @@ export function DebtCasesPanel({
 
       <Surface className="p-5" variant="card">
         <SurfaceHeader
-          description={t("debts.cases.accountDescription")}
-          title={debtAccount ? t("debts.cases.recordPayment") : t("debts.cases.createAccount")}
+          description={isRecordingPayment ? t("debts.cases.recordPaymentDescription") : t("debts.cases.createAccountDescription")}
+          title={isRecordingPayment ? t("debts.cases.recordPayment") : t("debts.cases.createAccount")}
         />
 
         <div className="mt-5 space-y-2">
@@ -216,25 +227,39 @@ export function DebtCasesPanel({
 
         <PageFooterActions className="mt-4">
           <Button
-            disabled={!hasValidOpeningBalance || createDebtAccountMutation.isPending}
+            disabled={isSubmitDisabled}
             onClick={async () => {
-              await createDebtAccountMutation.mutateAsync({
-                externalCounterpartyId: externalCounterpartyId ?? null,
-                note: note.trim() || null,
-                direction: accountDirection,
-                openingBalanceDzd: openingBalanceValue === 0 ? undefined : Math.abs(openingBalanceValue),
-                openingEntryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
-                openingEntryNote: note.trim() || null,
-                partyType: workerId ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY",
-                workerId: workerId ?? null,
-              })
+              if (accountAction.kind === "record-payment") {
+                // A payment reduces the balance on either ledger, so the typed
+                // magnitude becomes a negative movement; the sign is the
+                // payment's, never inferred from the direction. The direction
+                // selected which ledger's account receives it.
+                await createDebtEntryMutation.mutateAsync({
+                  debtAccountId: accountAction.account.id,
+                  entryType: "PAYMENT",
+                  signedAmountDzd: -Math.abs(openingBalanceValue),
+                  entryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
+                  note: note.trim() || null,
+                })
+              } else {
+                await createDebtAccountMutation.mutateAsync({
+                  externalCounterpartyId: externalCounterpartyId ?? null,
+                  note: note.trim() || null,
+                  direction: accountDirection,
+                  openingBalanceDzd: openingBalanceValue === 0 ? undefined : Math.abs(openingBalanceValue),
+                  openingEntryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
+                  openingEntryNote: note.trim() || null,
+                  partyType: workerId ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY",
+                  workerId: workerId ?? null,
+                })
+              }
 
               setCreateDate(getAlgeriaDateInputValue())
               setOpeningBalance("")
               setNote("")
             }}
           >
-            {debtAccount ? t("debts.cases.recordPaymentButton") : t("debts.cases.createAccountButton")}
+            {isRecordingPayment ? t("debts.cases.recordPaymentButton") : t("debts.cases.createAccountButton")}
           </Button>
         </PageFooterActions>
       </Surface>

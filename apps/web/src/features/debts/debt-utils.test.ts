@@ -11,6 +11,7 @@ import {
   getDebtDirectionLabel,
   getNetDebtBalanceDisplay,
   matchesDebtHubFilter,
+  resolveDebtCasesFormAction,
   sortDebtAccounts,
 } from "./debt-utils"
 
@@ -234,5 +235,36 @@ describe("sortDebtAccounts", () => {
       { id: "c", status: "OPEN", updatedAt: "2024-03-01T00:00:00Z", createdAt: "2024-03-01T00:00:00Z" } as never,
     ])
     expect(sorted.map((s) => s.id)).toEqual(["c", "a", "b"])
+  })
+})
+
+describe("resolveDebtCasesFormAction (the label/action seam for #459)", () => {
+  const account = (direction: "PAYABLE" | "RECEIVABLE", id: string) =>
+    ({ direction, id }) as never
+
+  it("posts a payment when the chosen ledger already has an account", () => {
+    const payable = account("PAYABLE", "debt-payable")
+    expect(resolveDebtCasesFormAction([payable], "PAYABLE")).toEqual({
+      kind: "record-payment",
+      account: payable,
+    })
+  })
+
+  it("opens an account when the party has none", () => {
+    expect(resolveDebtCasesFormAction([], "PAYABLE")).toEqual({ kind: "create-account" })
+  })
+
+  it("does not let a different-direction account satisfy the chosen ledger", () => {
+    const payable = account("PAYABLE", "debt-payable")
+    expect(resolveDebtCasesFormAction([payable], "RECEIVABLE")).toEqual({ kind: "create-account" })
+  })
+
+  it("picks the account on the chosen ledger when both exist", () => {
+    const payable = account("PAYABLE", "debt-payable")
+    const receivable = account("RECEIVABLE", "debt-receivable")
+    expect(resolveDebtCasesFormAction([payable, receivable], "RECEIVABLE")).toEqual({
+      kind: "record-payment",
+      account: receivable,
+    })
   })
 })
