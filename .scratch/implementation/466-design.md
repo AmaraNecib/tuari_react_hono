@@ -33,7 +33,7 @@ One-line change of the extraction contract, plus the tests that pin it:
 
 ```
 scripts/ci/close-linked-issues.sh       # extractor: keyword must be ADJACENT to #N
-scripts/ci/test-close-linked-issues.sh  # regression matrix, 84 assertions
+scripts/ci/test-close-linked-issues.sh  # regression matrix, 91 assertions
 .github/workflows/auto-close-issues.yml # header rule restated (no logic changed)
 ```
 
@@ -71,7 +71,7 @@ affirmative set. The affirmative pass is untouched, so nothing else about
 extraction changes.
 
 ```bash
-NEGATORS='(not|never|no longer|no more|won't|don't|doesn't|didn't|isn't|aren't|cannot|can't|no|hardly)'
+NEGATORS='(not|never|nor|neither|no longer|no more|won't|don't|doesn't|didn't|isn't|aren't|cannot|can't|no |hardly)'
 \b${NEGATORS}([^[:alnum:]#]*word){0,3}[^[:alnum:]#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+
 ```
 
@@ -140,13 +140,17 @@ Existing scenarios keep running; added (each one is a real-world shape):
 | contraction not-only (C2 round 2) | `This doesn't just fix #462, it closes it.` | closed |
 | case-insensitive keyword | `CLOSES #463` | closed |
 | remaining negation spellings | `no longer closes #464` / `won't fix #465` / `cannot resolve #468` / `not going to close #469` | not closed |
+| nor-clause, both references (round 3) | `This does not close #471, nor does it resolve #472.` | both not closed |
+| neither/nor (round 3) | `Neither fixes #473 nor closes #474.` | both not closed |
+| affirmative beside a nor-clause (anti-vacuity) | `This does not close #471, nor does it resolve #472. Closes #480.` | #480 closed, exit 0 |
+| no-space colon separator | `Closes:#481` | closed |
 
 The gap tests and the negated-close tests are the regression pins. With the
 74-assertion suite the pre-fix script reported `PASS=58 FAIL=16` (2 prose-gap
 closes, the negated-close scenarios, the split-line/bold separators, the mixed
 body); the 84-assertion control run against the base script is PENDING A SLOT
 (the machine is CPU-bound and the owner's policy forbids re-running suites for
-it). The fixed script: `PASS=84 FAIL=0`.
+it). The fixed script: `PASS=91 FAIL=0`.
 
 ## Risks and non-goals
 
@@ -162,6 +166,16 @@ it). The fixed script: `PASS=84 FAIL=0`.
   negating it. Deliberate: the alternative drifts into sentence parsing.
 - **Only whole-word negators count.** `Note:` and `Nobody` no longer negate
   (`\bnot\b` / `no[[:space:]]+`), so `Note: this Closes #N` closes.
+- **The negation window is a word count, not a clause.** Two consequences, both
+  accepted for now and both candidates for one follow-up (see below): a negator
+  in an *unrelated* clause within three words can swallow a following close
+  (`Neither reviewer objected. Closes #N`; `Not sure, but Closes #N`), and a
+  negated reference more than three words from its keyword is not negated
+  (`This does not, in any way whatsoever, close #N`). Widening or narrowing the
+  window trades one class for the other; the real fix is to scope the negation
+  to the SENTENCE (split on `.`/`!`/`?`/`;`, require negator and verb to share a
+  sentence). Proposed follow-up, not folded in here: it is a rewrite of the
+  matcher, not a fourth token.
 - **Subtraction is lossy in one direction only.** See the negated-closes section:
   a body that both negates and closes one number does not close it. That is the
   visible-failure direction (a missing close is noticed; a wrong close is not).

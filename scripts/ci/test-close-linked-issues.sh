@@ -400,6 +400,20 @@ run_script "Neither fixes #473 nor closes #474."
 assert_not_closed "'neither fixes #N' never closes (#473)" 473
 assert_not_closed "'nor closes #N' never closes (#474)" 474
 
+# Anti-vacuity control for the nor block (round-3 test-audit finding): an
+# affirmative reference in the same body still closes, and the run exits 0.
+reset_state
+mk_issue 480 open "affirmative beside a nor-clause"
+run_script "This does not close #471, nor does it resolve #472. Closes #480."
+check "nor-clause run exits 0" "0" "$RC"
+assert_closed "the affirmative reference beside a nor-clause still closes (#480)" 480
+
+# The no-space colon separator is a closing form (was unpinned at ac6e55dd).
+reset_state
+mk_issue 481 open "no-space colon separator"
+run_script "Closes:#481"
+assert_closed "'Closes:#N' closes" 481
+
 # Documented conservative tie-break: one number, negated and closed.
 reset_state
 mk_issue 456 open "negated and closed"
