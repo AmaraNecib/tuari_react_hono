@@ -175,6 +175,61 @@ run_script "This PR is unresolved #108 related work"
 check "mid-word match extracts nothing (exit 0)" "0" "$RC"
 assert_not_closed "mid-word match does not close" 108
 
+# ── #466: only a real closing keyword, directly before the reference ─────
+# Before the fix the matcher allowed any gap (`[^#]*`) between keyword and
+# reference, so these mention forms closed issues that were never delivered.
+reset_state
+mk_issue 120 open "announced follow-up"
+run_script "A related finding is filed as #120 — it is not delivered here."
+check "mention-only run exits 0" "0" "$RC"
+assert_not_closed "'filed as #N' never closes" 120
+
+reset_state
+mk_issue 121 open "partial delivery"
+run_script "Part of #121 — the extraction lands in a follow-up PR."
+assert_not_closed "'Part of #N' never closes" 121
+
+reset_state
+mk_issue 122 open "prose gap (#442 regression)"
+run_script "The review found and fixed a shared control, and a separate empty-state issue is filed as #122."
+assert_not_closed "prose keyword far from the reference never closes (#442 regression)" 122
+
+reset_state
+mk_issue 1220 open "short prose gap"
+run_script "This PR documents the fix for #1220 in the changelog."
+assert_not_closed "prose 'the fix for #N' never closes" 1220
+
+reset_state
+mk_issue 123 open "bare mention"
+run_script "Follow-up wiring is tracked in #123."
+assert_not_closed "bare '#N' mention never closes" 123
+
+reset_state
+mk_issue 124 open "real close"
+run_script "Closes #124"
+assert_closed "'Closes #N' closes" 124
+
+reset_state
+mk_issue 125 open "real fix close"
+run_script "Fixes #125"
+assert_closed "'Fixes #N' closes" 125
+
+reset_state
+mk_issue 126 open "colon form"
+run_script "Resolves: #126"
+assert_closed "'Resolves: #N' closes" 126
+
+# Titles are never consulted: the workflow passes the PR BODY only and the API
+# fetch reads `.body`, so a closing keyword in the TITLE must close nothing.
+reset_state
+mk_issue 127 open "title-only close target"
+jq -cn --arg s open --arg b 'No closing keywords in this body.' \
+  --arg t 'Closes #127' \
+  '{state:$s, body:$b, title:$t, merged:true, base:{ref:"develop"}}' >"$TMP/issues/42.json"
+OUT=$(PR_NUMBER=42 bash "$TARGET" 2>&1); RC=$?
+check "title-only run exits 0" "0" "$RC"
+assert_not_closed "a closing keyword in the PR TITLE never closes" 127
+
 reset_state
 run_script "no references at all in this body"
 check "no refs exits 0" "0" "$RC"

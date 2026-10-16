@@ -25,7 +25,9 @@
 # curl + jq are the minimum guaranteed toolchain.
 #
 # Safety rules (preserved from the original workflow):
-#   1. Only "Closes/Fixes/Resolves #N" in the PR BODY counts (never titles).
+#   1. Only "Closes/Fixes/Resolves #N" in the PR BODY counts (never titles),
+#      and the keyword must come IMMEDIATELY before the reference (#466) —
+#      prose that merely mentions #N never closes it.
 #   2. Skips parent/tracker issues that still have open sub-issues.
 #   3. Skips issues whose body marks REMAINING work in a still-open issue
 #      ("remaining"/"todo" — NOT lineage markers like "Part of #N").
@@ -143,11 +145,16 @@ as_num() {
   esac
 }
 
-# 1. Collect "Closes/Fixes/Resolves #N" from the PR BODY only. Word-boundary
-#    anchors (\b) prevent mid-word matches like "unresolved #5".
+# 1. Collect "Closes/Fixes/Resolves #N" from the PR BODY only. The keyword must
+#    sit IMMEDIATELY before the reference — only an optional ":" and whitespace
+#    may separate them (#466). An earlier `[^#]*` gap let prose such as
+#    "the fix for #443" or "is filed as #443" close an issue that the PR only
+#    MENTIONED. Word-boundary anchors (\b) still block mid-word matches like
+#    "unresolved #5"; with the gap closed, a bare `#N`, "part of #N" and
+#    "filed as #N" extract nothing.
 numbers=$(
   printf '%s\n' "$PR_BODY" \
-    | grep -oiE '\b(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)\b[^#]*#([0-9]+)' \
+    | grep -oiE '\b(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)[[:space:]:]+#[0-9]+' \
     | grep -oE '#[0-9]+' \
     | tr -d '#' \
     | sort -un \
