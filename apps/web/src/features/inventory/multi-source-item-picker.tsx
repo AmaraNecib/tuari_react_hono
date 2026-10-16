@@ -12,6 +12,9 @@ import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useInventoryWarehousesQuery, useInventoryProjectsQuery, useInventoryLocationContentsQuery } from "./inventory-hooks"
 
 export type SelectedItem = {
+  /** The concrete row offered (a balance id or an asset-unit id); used to dedupe. */
+  optionId: string
+  /** The DEFINITION id the outbound write gate resolves — never the row id. */
   itemId: string
   itemName: string
   itemType: "CONSUMABLE" | "ASSET"
@@ -47,16 +50,22 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
     projectId: sourceType === "PROJECT" ? sourceId : undefined,
   })
 
-  const availableAssets = (sourceContentsQuery.data?.assets ?? []).map((asset) => ({
-    id: asset.id,
-    name: asset.assetName,
-    type: "ASSET" as const,
-    quantity: 1,
-    locationLabel: asset.currentLocationLabel ?? "",
-  }))
+  const availableAssets = (sourceContentsQuery.data?.assets ?? []).flatMap((asset) =>
+    asset.itemDefinitionId
+      ? [{
+          optionId: asset.id,
+          id: asset.itemDefinitionId,
+          name: asset.assetName,
+          type: "ASSET" as const,
+          quantity: 1,
+          locationLabel: asset.currentLocationLabel ?? "",
+        }]
+      : [],
+  )
 
   const availableConsumables = (sourceContentsQuery.data?.consumables ?? []).map((balance) => ({
-    id: balance.inventoryEntryId,
+    optionId: balance.id,
+    id: balance.itemDefinitionId,
     name: balance.itemName,
     type: "CONSUMABLE" as const,
     quantity: balance.quantity,
@@ -65,13 +74,14 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
 
   const availableItems = [...availableAssets, ...availableConsumables]
 
-  const addItem = (itemId: string) => {
-    const item = availableItems.find((i) => i.id === itemId)
+  const addItem = (optionId: string) => {
+    const item = availableItems.find((i) => i.optionId === optionId)
     if (!item || !sourceId) return
 
-    // Check if already added from this source
+    // The same definition may be picked from two balances/units at one source;
+    // the concrete row (not the definition) is what dedupes.
     const exists = items.find(
-      (i) => i.itemId === item.id && i.sourceId === sourceId && i.sourceType === sourceType
+      (i) => i.optionId === item.optionId && i.sourceId === sourceId && i.sourceType === sourceType
     )
     if (exists) return
 
@@ -80,6 +90,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
     onItemsChange([
       ...items,
       {
+        optionId: item.optionId,
         itemId: item.id,
         itemName: item.name,
         itemType: item.type,
@@ -177,11 +188,11 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
             <div className="space-y-1">
               {availableItems.map((item) => {
                 const isAlreadyAdded = items.some(
-                  (i) => i.itemId === item.id && i.sourceId === sourceId && i.sourceType === sourceType
+                  (i) => i.optionId === item.optionId && i.sourceId === sourceId && i.sourceType === sourceType
                 )
                 return (
                   <div
-                    key={item.id}
+                    key={item.optionId}
                     className="flex items-center justify-between gap-3 rounded-lg border border-line/50 px-3 py-2 text-sm"
                   >
                     <div className="min-w-0">
@@ -196,7 +207,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
                       variant="outline"
                       size="sm"
                       disabled={isAlreadyAdded}
-                      onClick={() => addItem(item.id)}
+                      onClick={() => addItem(item.optionId)}
                     >
                       {isAlreadyAdded ? t("common.added") : t("common.add")}
                     </Button>
@@ -217,7 +228,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
           <div className="space-y-1">
             {items.map((item, index) => (
               <div
-                key={`${item.itemId}-${item.sourceId}-${index}`}
+                key={`${item.optionId}-${item.sourceId}-${index}`}
                 className="flex items-center gap-3 rounded-lg border border-line/50 px-3 py-2 text-sm"
               >
                 <div className="min-w-0 flex-1">

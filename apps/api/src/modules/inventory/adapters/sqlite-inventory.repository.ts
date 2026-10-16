@@ -7,7 +7,7 @@
  * Architecture: Drizzle queries + raw better-sqlite3 handle for transactions
  * (same pattern as CompanyRepository).
  */
-import { eq, and, asc, desc, sql, inArray, count, exists } from "drizzle-orm"
+import { eq, and, asc, desc, sql, inArray, count, exists, getTableColumns } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import type { BetterSqliteDatabase } from "../../../types/sqlite"
 import * as schema from "../../../schema"
@@ -15,6 +15,8 @@ import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzl
 import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock"
 import { decodeCursor as decodeCursorToken, encodeCursor as encodeCursorToken } from "../../shared/cursor"
 import { escapeLikePattern } from "../../shared/sql-search"
+import type { InventoryItemOfferSource } from "@tuari/contracts"
+import { QUANTITY_MIN } from "../inventory.helpers"
 import { normalizeAuditContext } from "../../company/company.repository-mappers"
 import { createAlgeriaTimestamp } from "../../company/company-time"
 import type { MutationAuditContext } from "../../company/company.types"
@@ -41,6 +43,8 @@ import type {
   InventoryItemDefinitionUpdateData,
   InventoryOutboundTransferCreateData,
   InventoryOutboundTransferRecord,
+  InventoryItemStockHolding,
+  InventoryItemStockAtSourceQuery,
 } from "../inventory.types"
 
 // ---------------------------------------------------------------------------
@@ -86,6 +90,7 @@ function mapAssetUnit(row: Record<string, unknown>): InventoryAssetUnitRecord {
   return {
     id: String(row.id),
     inventoryEntryId: String(row.inventoryEntryId),
+    itemDefinitionId: row.itemDefinitionId != null ? String(row.itemDefinitionId) : undefined,
     assetName: String(row.assetName),
     assetTag: row.assetTag != null ? String(row.assetTag) : null,
     serialNumber: row.serialNumber != null ? String(row.serialNumber) : null,
@@ -256,6 +261,23 @@ export class DrizzleInventoryRepository implements InventoryRepository {
   }
 
   /**
+   * The consumption / asset-unit predicates that place a definition's stock at
+   * one source. The paged picker's `inStockAt` EXISTS and
+   * {@link listItemStockAtSource} both build on this, so the two cannot match a
+   * source with different columns.
+   */
+  private stockAtSourceWhere(source: InventoryItemOfferSource) {
+    return {
+      balance: source.locationType === "WAREHOUSE"
+        ? eq(schema.inventoryConsumableBalance.warehouseId, source.warehouseId)
+        : eq(schema.inventoryConsumableBalance.projectId, source.projectId),
+      assetUnit: source.locationType === "WAREHOUSE"
+        ? eq(schema.inventoryAssetUnit.currentWarehouseId, source.warehouseId)
+        : eq(schema.inventoryAssetUnit.currentProjectId, source.projectId),
+    }
+  }
+
+  /**
    * compiles the offer filter to SQL. Its verdict must equal
    * `matchesItemOfferFilter` for the same definition; the SQL/JS equivalence
    * test pins that.
@@ -271,20 +293,14 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     // asset unit physically sits there and its entry references the definition.
     const inStockAt = query.filter.inStockAt
     if (inStockAt) {
-      const balanceAtSource = inStockAt.locationType === "WAREHOUSE"
-        ? eq(schema.inventoryConsumableBalance.warehouseId, inStockAt.warehouseId)
-        : eq(schema.inventoryConsumableBalance.projectId, inStockAt.projectId)
-      const assetAtSource = inStockAt.locationType === "WAREHOUSE"
-        ? eq(schema.inventoryAssetUnit.currentWarehouseId, inStockAt.warehouseId)
-        : eq(schema.inventoryAssetUnit.currentProjectId, inStockAt.projectId)
-
+      const atSource = this.stockAtSourceWhere(inStockAt)
       const consumableStock = this.db
         .select({ one: sql`1` })
         .from(schema.inventoryConsumableBalance)
         .where(and(
           eq(schema.inventoryConsumableBalance.itemDefinitionId, schema.inventoryItemDefinition.id),
-          balanceAtSource,
-          sql`${schema.inventoryConsumableBalance.quantity} > 0`,
+          atSource.balance,
+          sql`${schema.inventoryConsumableBalance.quantity} >= ${QUANTITY_MIN}`,
         ))
       const assetStock = this.db
         .select({ one: sql`1` })
@@ -292,7 +308,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
         .innerJoin(schema.inventoryEntry, eq(schema.inventoryAssetUnit.inventoryEntryId, schema.inventoryEntry.id))
         .where(and(
           eq(schema.inventoryEntry.itemDefinitionId, schema.inventoryItemDefinition.id),
-          assetAtSource,
+          atSource.assetUnit,
         ))
 
       conditions.push(sql`(${exists(consumableStock)} OR ${exists(assetStock)})`)
@@ -602,7 +618,13 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const condition = filters.warehouseId
       ? eq(schema.inventoryAssetUnit.currentWarehouseId, filters.warehouseId)
       : eq(schema.inventoryAssetUnit.currentProjectId, filters.projectId ?? "")
-    return this.db.select().from(schema.inventoryAssetUnit)
+    return this.db.select({
+      ...getTableColumns(schema.inventoryAssetUnit),
+      // The location listing is the outbound picker's source; it must offer a
+      // DEFINITION id, so resolve the unit's entry to its definition here.
+      itemDefinitionId: sql<string>`(SELECT e.item_definition_id FROM inventory_entry e WHERE e.id = ${schema.inventoryAssetUnit.inventoryEntryId})`.as("itemDefinitionId"),
+    })
+      .from(schema.inventoryAssetUnit)
       .where(condition)
       .orderBy(desc(schema.inventoryAssetUnit.updatedAt))
       .all().map(mapAssetUnit)
@@ -636,9 +658,9 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       LEFT JOIN warehouse w ON w.id = b.warehouse_id
       LEFT JOIN project p ON p.id = b.project_id
       WHERE b.inventory_entry_id IN (SELECT id FROM inventory_entry WHERE invoice_group_id = ?)
-        AND b.quantity > 0
+        AND b.quantity >= ?
       ORDER BY b.updated_at DESC
-    `).all(invoiceGroupId) as Record<string, unknown>[]
+    `).all(invoiceGroupId, QUANTITY_MIN) as Record<string, unknown>[]
     return rows.map(mapConsumableBalance)
   }
 
@@ -652,10 +674,42 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       INNER JOIN inventory_entry e ON e.id = b.inventory_entry_id
       LEFT JOIN warehouse w ON w.id = b.warehouse_id
       LEFT JOIN project p ON p.id = b.project_id
-      WHERE ${locationCol} = ? AND b.quantity > 0
+      WHERE ${locationCol} = ? AND b.quantity >= ?
       ORDER BY b.updated_at DESC
-    `).all(filters.warehouseId ?? filters.projectId ?? "") as Record<string, unknown>[]
+    `).all(filters.warehouseId ?? filters.projectId ?? "", QUANTITY_MIN) as Record<string, unknown>[]
     return rows.map(mapConsumableBalance)
+  }
+
+  /** listItemStockAtSource. */
+  listItemStockAtSource(query: InventoryItemStockAtSourceQuery): InventoryItemStockHolding {
+    const atSource = this.stockAtSourceWhere(query.source)
+
+    const consumableBalances = this.db
+      .select()
+      .from(schema.inventoryConsumableBalance)
+      .where(and(
+        eq(schema.inventoryConsumableBalance.itemDefinitionId, query.itemDefinitionId),
+        atSource.balance,
+        sql`${schema.inventoryConsumableBalance.quantity} >= ${QUANTITY_MIN}`,
+      ))
+      // Deterministic depletion order: oldest stock leaves first.
+      .orderBy(asc(schema.inventoryConsumableBalance.createdAt), asc(schema.inventoryConsumableBalance.id))
+      .all()
+      .map(mapConsumableBalance)
+
+    const assetUnits = this.db
+      .select({ unit: schema.inventoryAssetUnit })
+      .from(schema.inventoryAssetUnit)
+      .innerJoin(schema.inventoryEntry, eq(schema.inventoryAssetUnit.inventoryEntryId, schema.inventoryEntry.id))
+      .where(and(
+        eq(schema.inventoryEntry.itemDefinitionId, query.itemDefinitionId),
+        atSource.assetUnit,
+      ))
+      .orderBy(desc(schema.inventoryAssetUnit.updatedAt), asc(schema.inventoryAssetUnit.id))
+      .all()
+      .map((row) => mapAssetUnit(row.unit))
+
+    return { consumableBalances, assetUnits }
   }
 
   /** getConsumableBalanceByEntryAndLocation. */

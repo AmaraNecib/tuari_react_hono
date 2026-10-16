@@ -720,10 +720,10 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     const seed = seedInventory(env);
 
     // One outbound sale movement of 10kg cement @500 — entry-linked, so its
-    // value is real. Seeded at the repository (createMovement) because the
-    // service's createOutboundTransfer has a pre-existing item-id ambiguity
-    // (item.itemId used as both a definition id and an entry id) that is
-    // outside #242's report scope; the movement row is identical either way.
+    // value is real. Seeded at the repository (createMovement) because this
+    // suite is about aggregation, not the writer; the movement row is identical
+    // to the one createOutboundTransfer would write (see
+    // outbound-transfer-availability.test.ts for the writer itself).
     env.inventoryRepo.createMovement({
       movementType: "OUTBOUND_SALE",
       itemType: "CONSUMABLE",

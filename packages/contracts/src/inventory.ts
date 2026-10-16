@@ -57,6 +57,13 @@ export const inventoryInvoiceAttachmentSchema = z.object({
 export const inventoryAssetUnitSchema = z.object({
   id: entityIdSchema,
   inventoryEntryId: entityIdSchema,
+  /**
+   * The definition this unit is an instance of. Present on reads that resolve
+   * the entry's definition (the location-contents listing the outbound picker
+   * consumes), because the outbound write gate takes a definition id, never a
+   * unit id. Optional on reads that return the raw unit row.
+   */
+  itemDefinitionId: entityIdSchema.optional(),
   assetName: z.string().trim().min(1).max(160),
   assetTag: nullableTextSchema,
   serialNumber: nullableTextSchema,
@@ -484,6 +491,11 @@ export const inventoryInvoiceGroupRecordPaymentInputSchema = z.object({
 
 /** outboundTransferItemInputSchema - Outbound transfer item input schema. */
 export const outboundTransferItemInputSchema = z.object({
+  /**
+   * The picked item DEFINITION id (the catalog row), not an inventory entry id.
+   * The write path resolves it to the entry/balance rows that hold its stock at
+   * the transfer's source (#450).
+   */
   itemId: entityIdSchema,
   quantity: z.number().positive(),
   unitPriceDzd: z.number().nonnegative().optional(),

@@ -76,9 +76,11 @@ export type InventoryItemUsage = z.infer<typeof inventoryItemUsageSchema>;
  * picker to filter after paging (unstable page sizes) or the gate to keep its
  * own copy of the rule — the drift this seam exists to remove.
  *
- * The outbound transfer's write path does not consult the rule yet: it lands
- * with #450, so `OUTBOUND_PICK` availability is enforced on the read side only
- * today.
+ * Both evaluators serve the outbound write gate as of #450: it reads the stock
+ * a definition holds at a source (`listItemStockAtSource`), projects the
+ * locations into an {@link ItemOfferCandidate}, and evaluates this rule over it
+ * — the same rule the paged picker compiled to SQL, so the two cannot accept
+ * different sets at a source.
  */
 export type InventoryItemOfferFilter = {
   itemTypes: readonly z.infer<typeof inventoryItemTypeSchema>[];
