@@ -25,10 +25,10 @@ import {
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
-import { formatAlgeriaDate, getAlgeriaDateInputValue } from "@/lib/algeria-time"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 
 import { ExpenseFormDialog, type ExpenseLookupOption } from "./expense-form-dialog"
-import { buildExpenseFilters, getDefaultExpenseDateRange } from "./expenses-filters"
+import { buildExpenseFilters } from "./expenses-filters"
 import { useExpensesListQuery, useVoidExpenseMutation } from "./expenses-queries"
 
 const NO_SELECTION = "ALL"

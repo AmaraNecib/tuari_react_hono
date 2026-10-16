@@ -11,13 +11,6 @@ export type ExpenseFilterState = {
 }
 
 /**
- * Default range for the screen: the current Algeria month to date.
- */
-export function getDefaultExpenseDateRange(today: string) {
-  return { fromDate: `${today.slice(0, 7)}-01`, toDate: today }
-}
-
-/**
  * Turn the screen's filter state into the wire filter object. Null selects are
  * omitted (the API treats an absent filter as "all"), and the date inputs are
  * expanded to Algeria day boundaries so the range is inclusive of the whole
