@@ -25,6 +25,7 @@ import type {
 } from "@tuari/contracts"
 
 import { InventoryError } from "./inventory.errors"
+import { roundQuantity } from "./inventory.helpers"
 import { normalizePageSize } from "../shared/cursor"
 import { StructuredLogger } from "../../infrastructure/observability/logger"
 import { CompanyError } from "../company/company.errors"
@@ -807,13 +808,13 @@ export class InventoryService {
       throw new InventoryError("BUSINESS_RULE", "المصدر والوجهة متطابقان، لا توجد حركة مطلوبة.")
     }
 
-    if (!sourceBalance || sourceBalance.quantity < input.quantity) {
+    if (!sourceBalance || roundQuantity(sourceBalance.quantity) < input.quantity) {
       throw new InventoryError("BUSINESS_RULE", "الكمية المطلوبة غير متوفرة في الموقع الحالي.")
     }
 
     this.repository.withTransaction(() => {
-      const remainingQty = sourceBalance.quantity - input.quantity
-      if (remainingQty === 0) {
+      const remainingQty = roundQuantity(sourceBalance.quantity - input.quantity)
+      if (remainingQty <= 0) {
         // Delete the zero-balance record to satisfy the quantity > 0 DB constraint
         this.repository.deleteConsumableBalance(sourceBalance.id)
       } else {
@@ -827,14 +828,14 @@ export class InventoryService {
       })
 
       if (targetBalance) {
-        this.repository.updateConsumableBalanceQuantity(targetBalance.id, targetBalance.quantity + input.quantity)
+        this.repository.updateConsumableBalanceQuantity(targetBalance.id, roundQuantity(targetBalance.quantity + input.quantity))
       } else {
         this.repository.createConsumableBalance({
           inventoryEntryId: entry.id,
           itemDefinitionId: entry.itemDefinitionId,
           warehouseId: input.toWarehouseId ?? null,
           projectId: input.toProjectId ?? null,
-          quantity: input.quantity,
+          quantity: roundQuantity(input.quantity),
         })
       }
 
@@ -1012,7 +1013,11 @@ export class InventoryService {
     note: string
     occurredAt: string
   }) {
-    const available = input.balances.reduce((total, balance) => total + balance.quantity, 0)
+    // Quantities are fractional, so both the total and every deduction are
+    // rounded through the shared rule: `0.7 + 0.1` must compare equal to `0.8`,
+    // and a balance that reaches the requested total must end at exactly 0
+    // rather than a float epsilon that the picker's `quantity > 0` still offers.
+    const available = roundQuantity(input.balances.reduce((total, balance) => total + balance.quantity, 0))
     if (available < input.quantity) {
       throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${input.definitionName} غير متوفرة.`)
     }
@@ -1021,8 +1026,8 @@ export class InventoryService {
     for (const balance of input.balances) {
       if (remaining <= 0) break
 
-      const consumed = Math.min(balance.quantity, remaining)
-      const left = balance.quantity - consumed
+      const consumed = roundQuantity(Math.min(balance.quantity, remaining))
+      const left = roundQuantity(balance.quantity - consumed)
       if (left > 0) {
         this.repository.updateConsumableBalanceQuantity(balance.id, left)
       } else {
@@ -1039,7 +1044,7 @@ export class InventoryService {
         occurredAt: input.occurredAt,
       })
 
-      remaining -= consumed
+      remaining = roundQuantity(remaining - consumed)
     }
   }
 

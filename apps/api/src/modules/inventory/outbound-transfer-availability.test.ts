@@ -435,3 +435,90 @@ describe("outbound consumption semantics and guards (#450)", () => {
     expect(() => transfer(env, [{ itemId: "entry-not-def", quantity: 1 }])).toThrow(/غير موجود/)
   })
 })
+
+describe("fractional consumable quantities round through one rule (#450 round 4)", () => {
+  function seedBase(env: Env): void {
+    seedWarehouse(env.db, "wh-1")
+    seedCounterparty(env.db, "buyer")
+    seedGroup(env.db, "g")
+  }
+
+  function transfer(env: Env, items: Array<{ itemId: string; quantity: number }>): void {
+    env.service.createOutboundTransfer(
+      { fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE", items },
+      AUDIT,
+    )
+  }
+
+  it("accepts a request equal to the sum of fractional balances (0.7 + 0.1 = 0.8)", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-frac", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-frac-1", invoiceGroupId: "g", itemDefinitionId: "def-frac", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-frac-2", invoiceGroupId: "g", itemDefinitionId: "def-frac", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-frac-1", entryId: "e-frac-1", itemDefinitionId: "def-frac", warehouseId: "wh-1", quantity: 0.7, createdAt: NOW })
+    seedBalance(env.db, { id: "bal-frac-2", entryId: "e-frac-2", itemDefinitionId: "def-frac", warehouseId: "wh-1", quantity: 0.1, createdAt: LATER })
+
+    // 0.7 + 0.1 is 0.7999999999999999 unrounded; the request must still match.
+    transfer(env, [{ itemId: "def-frac", quantity: 0.8 }])
+
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" })).toHaveLength(0)
+    expect(env.repository.listAllMovements({}).map((movement) => movement.quantity).sort((a, b) => a - b)).toEqual([0.1, 0.7])
+  })
+
+  it("leaves no float residual the picker would still offer after a full consume", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-dust", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-dust-1", invoiceGroupId: "g", itemDefinitionId: "def-dust", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-dust-2", invoiceGroupId: "g", itemDefinitionId: "def-dust", itemType: "CONSUMABLE" })
+    // 0.1 + 0.2 is exactly 0.30000000000000004, so the pre-fix total check PASSES
+    // and the residue is left by the subtraction: 0.2 - (0.3 - 0.1) is 2.78e-17.
+    seedBalance(env.db, { id: "bal-dust-1", entryId: "e-dust-1", itemDefinitionId: "def-dust", warehouseId: "wh-1", quantity: 0.1, createdAt: NOW })
+    seedBalance(env.db, { id: "bal-dust-2", entryId: "e-dust-2", itemDefinitionId: "def-dust", warehouseId: "wh-1", quantity: 0.2, createdAt: LATER })
+
+    transfer(env, [{ itemId: "def-dust", quantity: 0.3 }])
+
+    // The whole balance is consumed, so the source holds none of it and the
+    // picker (the SQL `quantity > 0` predicate) must stop offering the definition.
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" })).toHaveLength(0)
+    const offered = env.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer(outboundPickUsage(SOURCE_AT_WAREHOUSE("wh-1"))),
+      limit: 50,
+    }).items
+    expect(offered.map((item) => item.id)).not.toContain("def-dust")
+  })
+
+  it("leaves the exact remainder on a genuine partial consume", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-part", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-part", invoiceGroupId: "g", itemDefinitionId: "def-part", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-part", entryId: "e-part", itemDefinitionId: "def-part", warehouseId: "wh-1", quantity: 0.7 })
+
+    // 0.7 - 0.2 is 0.49999999999999994 unrounded; the stored remainder is 0.5.
+    transfer(env, [{ itemId: "def-part", quantity: 0.2 }])
+
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" }).find((balance) => balance.id === "bal-part")?.quantity).toBe(0.5)
+    expect(env.repository.listAllMovements({})[0]!.quantity).toBe(0.2)
+  })
+
+  it("keeps an inbound consumable transfer's fractional remainder exact", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedProject(env.db, "prj-1")
+    seedDefinition(env.db, { id: "def-inbound", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-inbound", invoiceGroupId: "g", itemDefinitionId: "def-inbound", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-inbound", entryId: "e-inbound", itemDefinitionId: "def-inbound", warehouseId: "wh-1", quantity: 0.7 })
+
+    // The sibling inbound path shares the subtraction rule, so a partial move
+    // must also leave 0.5 rather than 0.49999999999999994.
+    env.service.transferConsumable(
+      { inventoryEntryId: "e-inbound", quantity: 0.2, fromWarehouseId: "wh-1", toProjectId: "prj-1" },
+      AUDIT,
+    )
+
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-inbound", warehouseId: "wh-1" })?.quantity).toBe(0.5)
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-inbound", projectId: "prj-1" })?.quantity).toBe(0.2)
+  })
+})
