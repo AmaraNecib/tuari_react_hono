@@ -388,13 +388,14 @@ jobs:
       - run: pnpm turbo build --filter="!@tuari/desktop"
 
   # ── The encryption proof (#410) ─────────────────────────────────
-  # The only non-Ubuntu job in this workflow, and the only place a real
-  # SQLCipher native build is exercised. `windows-latest` is required: the
-  # addon is a node-gyp build that needs the Windows SDK, and the runtime it is
-  # proven against is the Windows artifact. A green release previously said
-  # nothing about encryption, because the fallback to plain better-sqlite3 was a
-  # warning in the build log — this job is what makes that failure loud before
-  # release day, not on it.
+  # The only place a real SQLCipher native build is exercised. `windows-latest`
+  # is required *when the proof runs*: the addon is a node-gyp build that needs
+  # the Windows SDK, and the runtime it is proven against is the Windows
+  # artifact. When nothing encryption-relevant moved the job still runs (so its
+  # required check reports) but the conditional `runs-on` below keeps it off a
+  # Windows VM. A green release previously said nothing about encryption, because
+  # the fallback to plain better-sqlite3 was a warning in the build log — this
+  # job is what makes that failure loud before release day, not on it.
   prove-encryption:
     name: Prove SQLCipher encryption (built artifact)
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository

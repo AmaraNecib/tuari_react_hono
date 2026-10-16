@@ -517,8 +517,10 @@ export async function runProof(options, { log = console.log } = {}) {
     // This is a schema check, not a data check: it cannot see a backup whose
     // tables exist but are empty, and it does not compare rows.
     //
-    // Subset, not equality: the live database may add a table between the
-    // snapshot and this read, and that is not the backup's fault.
+    // Subset, not equality: `liveTables` is read once, and the snapshot may
+    // include a table created between that read and the backup, so a backup
+    // with *extra* tables is not a failure. A table that is missing from the
+    // backup still is.
     //
     // It is deliberately schema-agnostic, so it cannot drift with a migration.
     const missingTables = liveTables.filter((table) => !snapshotTables.includes(table));

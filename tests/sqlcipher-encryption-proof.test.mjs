@@ -159,6 +159,16 @@ test("the probes apply the key before they touch the database", () => {
   }
   assert.match(WRITE_ROW_PROBE_SOURCE, /INSERT INTO proof/);
   assert.match(READ_ROWS_PROBE_SOURCE, /process\.env\.TUARI_PROOF_SQL/);
+  // Presence is not enough: moving the key pragma after the write would still
+  // match the checks above, so pin the order too.
+  assert.ok(
+    WRITE_ROW_PROBE_SOURCE.indexOf('db.pragma("key = ') < WRITE_ROW_PROBE_SOURCE.indexOf("INSERT INTO proof"),
+    "the write probe must apply the key before it writes",
+  );
+  assert.ok(
+    READ_ROWS_PROBE_SOURCE.indexOf('db.pragma("key = ') < READ_ROWS_PROBE_SOURCE.indexOf("process.env.TUARI_PROOF_SQL"),
+    "the read probe must apply the key before it prepares the query",
+  );
 });
 
 test("requiredRuntimeFiles names the shipped binding, entry point and interpreter", () => {
