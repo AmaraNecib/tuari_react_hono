@@ -70,6 +70,8 @@ export const SQLITE_HEADER_MAGIC = Buffer.from("SQLite format 3\u0000", "latin1"
 export const BACKUP_DIRECTORY_NAME_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const DATABASE_FILE_NAME = "tuari.sqlite";
+/** The marker that makes a folder OURS, per `backup.service.ts`. */
+const BACKUP_MARKER_FILE_NAME = "snapshot.json";
 const SIDECAR_ENTRY = path.join("dist", "index.cjs");
 const SQLCIPHER_PACKAGE_DIR = path.join("node_modules", "better-sqlite3-sqlcipher");
 
@@ -125,9 +127,11 @@ export function requiredRuntimeFiles(runtimeDir, nodeExe) {
 /**
  * Newest daily-backup database under a backups root, or null.
  *
- * Mirrors the layout `backup.service.ts` writes: one `YYYY-MM-DD` folder per
- * run, holding `tuari.sqlite`. A non-dated folder is never a snapshot, so a
- * stray directory cannot satisfy the gate.
+ * Mirrors the layout the API owns: `backup.service.ts` / `backup.policy.ts`
+ * write one `YYYY-MM-DD` folder per run holding `tuari.sqlite` plus the
+ * `snapshot.json` marker, and treat only a marked folder as a snapshot. If that
+ * layout changes, this returns null and the job goes red — the duplication
+ * fails closed, which is the right failure for a gate.
  */
 export function findSnapshotDatabase(backupsRoot, { readdir = readdirSync } = {}) {
   if (!existsSync(backupsRoot)) return null;
@@ -138,8 +142,13 @@ export function findSnapshotDatabase(backupsRoot, { readdir = readdirSync } = {}
     .sort();
 
   for (let index = folders.length - 1; index >= 0; index -= 1) {
-    const candidate = path.join(backupsRoot, folders[index], DATABASE_FILE_NAME);
-    if (existsSync(candidate)) return candidate;
+    const folder = path.join(backupsRoot, folders[index]);
+    const candidate = path.join(folder, DATABASE_FILE_NAME);
+    if (!existsSync(candidate)) continue;
+    // A dated folder with a database file in it is not a backup. The marker is
+    // what the app itself requires before it will call a folder ours.
+    if (!existsSync(path.join(folder, BACKUP_MARKER_FILE_NAME))) continue;
+    return candidate;
   }
 
   return null;
@@ -154,6 +163,25 @@ export function parseArgs(argv) {
     backupTimeoutMs: DEFAULT_BACKUP_TIMEOUT_MS,
   };
 
+  // A flag whose value is missing (`--runtime` last, or followed by another
+  // flag) would otherwise resolve to `undefined` or swallow the next flag; a
+  // non-numeric timeout would become `NaN`, and `Date.now() < NaN` is false, so
+  // the wait would fail instantly with a message about `NaNms`.
+  const valueFor = (flag, value) => {
+    if (value === undefined || value.startsWith("--")) {
+      throw new Error(`${flag} needs a value`);
+    }
+    return value;
+  };
+  const timeoutFor = (flag, value) => {
+    const raw = valueFor(flag, value);
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      throw new Error(`${flag} needs a positive number of milliseconds, got "${raw}"`);
+    }
+    return parsed;
+  };
+
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--keep") {
@@ -163,19 +191,19 @@ export function parseArgs(argv) {
     const value = argv[index + 1];
     switch (arg) {
       case "--runtime":
-        options.runtimeDir = path.resolve(value);
+        options.runtimeDir = path.resolve(valueFor(arg, value));
         index += 1;
         break;
       case "--node":
-        options.nodeExe = path.resolve(value);
+        options.nodeExe = path.resolve(valueFor(arg, value));
         index += 1;
         break;
       case "--health-timeout-ms":
-        options.healthTimeoutMs = Number.parseInt(value, 10);
+        options.healthTimeoutMs = timeoutFor(arg, value);
         index += 1;
         break;
       case "--backup-timeout-ms":
-        options.backupTimeoutMs = Number.parseInt(value, 10);
+        options.backupTimeoutMs = timeoutFor(arg, value);
         index += 1;
         break;
       case "--help":
@@ -313,7 +341,14 @@ async function waitForSnapshot(backupsRoot, { timeoutMs, child, transcript }) {
   );
 }
 
-function assertEncryptedDatabase(filePath, label) {
+/**
+ * A database file that exists, is large enough to hold a header, and does NOT
+ * start with the plaintext magic. Returns its size.
+ *
+ * Exported so the three rejection paths (missing, too small, plaintext) are
+ * unit-tested: this is the enforcement point for steps 3 to 5.
+ */
+export function assertEncryptedDatabase(filePath, label) {
   if (!existsSync(filePath)) {
     throw new Error(`${label}: expected a database at ${filePath}, found none`);
   }
@@ -425,13 +460,18 @@ export async function runProof(options, { log = console.log } = {}) {
     results.push("shipped runtime answered /health with a keyed database");
 
     const liveSize = assertEncryptedDatabase(liveDb, "sidecar database");
-    const liveTables = JSON.parse(
-      runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
-        TUARI_PROOF_DB: liveDb,
-        TUARI_PROOF_KEY: key,
-        TUARI_PROOF_SQL: "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
-      }) || "[]",
-    );
+    // One reader for both databases, so "the backup is a copy of the live
+    // database" is a comparison of like with like.
+    const keyedTableNames = (databasePath) =>
+      JSON.parse(
+        runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
+          TUARI_PROOF_DB: databasePath,
+          TUARI_PROOF_KEY: key,
+          TUARI_PROOF_SQL: "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+        }) || "[]",
+      ).map((row) => row.name);
+
+    const liveTables = keyedTableNames(liveDb);
     if (liveTables.length === 0) {
       throw new Error("the keyed sidecar database holds no tables — nothing was written under the key");
     }
@@ -443,15 +483,18 @@ export async function runProof(options, { log = console.log } = {}) {
       transcript,
     });
     const snapshotSize = assertEncryptedDatabase(snapshot, "daily backup");
-    const snapshotTables = JSON.parse(
-      runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
-        TUARI_PROOF_DB: snapshot,
-        TUARI_PROOF_KEY: key,
-        TUARI_PROOF_SQL: "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
-      }) || "[]",
-    );
+    const snapshotTables = keyedTableNames(snapshot);
     if (snapshotTables.length === 0) {
       throw new Error("the keyed daily backup holds no tables — the backup is not key-readable");
+    }
+    // The backup is a `VACUUM INTO` copy, so the schema it carries must be the
+    // live schema. Equality is schema-agnostic, so this cannot drift with a
+    // migration — and it catches a backup that is readable but incomplete.
+    if (snapshotTables.join("\n") !== liveTables.join("\n")) {
+      throw new Error(
+        `the daily backup is not a faithful copy: the live database has [${liveTables.join(", ")}] `
+        + `but the backup has [${snapshotTables.join(", ")}]`,
+      );
     }
     results.push(`daily backup ${path.relative(backupsRoot, snapshot)} is ${snapshotSize} encrypted bytes (key-readable)`);
 

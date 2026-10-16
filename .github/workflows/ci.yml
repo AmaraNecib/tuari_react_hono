@@ -43,6 +43,7 @@ jobs:
       - run: pnpm test:prose
       - run: pnpm test:ci-scripts
       - run: pnpm check:e2e-selection
+      - run: pnpm check:sqlcipher-proof
       - run: pnpm check:license-signer
 
   typecheck:
@@ -397,15 +398,30 @@ jobs:
     runs-on: windows-latest
     needs: detect
     steps:
+      # Every step but the last is gated: a Windows runner that only echoes
+      # "skipped" is a wasted runner-minute on every unrelated PR. The JOB
+      # always runs, so its required status check always reports.
       - uses: actions/checkout@v4
+        if: needs.detect.outputs.encryption == 'true'
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@v4
+        if: needs.detect.outputs.encryption == 'true'
       - uses: actions/setup-node@v4
+        if: needs.detect.outputs.encryption == 'true'
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        if: needs.detect.outputs.encryption == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # `@tuari/contracts` dist is gitignored and the API bundle inlines it, so
+      # every build path in this workflow builds it first. Omitting it here is
+      # how this job would die before reaching the proof.
+      - name: Build shared contracts
+        if: needs.detect.outputs.encryption == 'true'
+        run: pnpm --filter @tuari/contracts build
 
       # No --allow-plaintext: a sidecar that cannot encrypt must fail here
       # rather than ship. The waiver exists for local typechecking, not for CI.

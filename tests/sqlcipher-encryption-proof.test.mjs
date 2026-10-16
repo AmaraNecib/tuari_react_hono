@@ -6,6 +6,7 @@ import test from "node:test";
 
 import {
   SQLITE_HEADER_MAGIC,
+  assertEncryptedDatabase,
   findSnapshotDatabase,
   isPlaintextSqliteFile,
   parseArgs,
@@ -59,6 +60,7 @@ test("findSnapshotDatabase returns the newest dated backup", () => {
     const write = (name) => {
       mkdirSync(path.join(dir, name), { recursive: true });
       writeFileSync(path.join(dir, name, "tuari.sqlite"), Buffer.from("x"));
+      writeFileSync(path.join(dir, name, "snapshot.json"), '{"app":"tuari"}');
     };
     write("2026-01-01");
     write("2026-03-02");
@@ -69,13 +71,47 @@ test("findSnapshotDatabase returns the newest dated backup", () => {
 
 test("findSnapshotDatabase ignores folders that are not snapshots", () => {
   withTempDir((dir) => {
+    // A dated folder the app never marked is not one of ours, even with a
+    // database file in it.
+    mkdirSync(path.join(dir, "2026-03-01"), { recursive: true });
+    writeFileSync(path.join(dir, "2026-03-01", "tuari.sqlite"), Buffer.from("x"));
+    // An undated folder is not a backup period.
     mkdirSync(path.join(dir, "not-a-date"), { recursive: true });
     writeFileSync(path.join(dir, "not-a-date", "tuari.sqlite"), Buffer.from("x"));
+    writeFileSync(path.join(dir, "not-a-date", "snapshot.json"), "{}");
+    // A marked folder with no database is a failed run, not a backup.
     mkdirSync(path.join(dir, "2026-03-02"), { recursive: true });
     writeFileSync(path.join(dir, "2026-03-02", "snapshot.json"), "{}");
 
     assert.equal(findSnapshotDatabase(dir), null);
     assert.equal(findSnapshotDatabase(path.join(dir, "missing")), null);
+  });
+});
+
+test("assertEncryptedDatabase rejects a database that is missing, too small, or plaintext", () => {
+  withTempDir((dir) => {
+    const missing = path.join(dir, "missing.sqlite");
+    assert.throws(() => assertEncryptedDatabase(missing, "probe"), /probe: expected a database .* found none/);
+
+    const empty = path.join(dir, "empty.sqlite");
+    writeFileSync(empty, Buffer.alloc(0));
+    assert.throws(() => assertEncryptedDatabase(empty, "probe"), /probe: .* is 0 bytes/);
+
+    const short = path.join(dir, "short.sqlite");
+    writeFileSync(short, SQLITE_HEADER_MAGIC.subarray(0, 8));
+    assert.throws(() => assertEncryptedDatabase(short, "probe"), /probe: .* is 8 bytes/);
+
+    const plaintext = path.join(dir, "plain.sqlite");
+    writeFileSync(plaintext, Buffer.concat([SQLITE_HEADER_MAGIC, Buffer.from("rows")]));
+    assert.throws(() => assertEncryptedDatabase(plaintext, "probe"), /probe: .* is a PLAINTEXT database/);
+  });
+});
+
+test("assertEncryptedDatabase accepts a sufficiently large non-plaintext file", () => {
+  withTempDir((dir) => {
+    const encrypted = path.join(dir, "encrypted.sqlite");
+    writeFileSync(encrypted, Buffer.alloc(2048, 0xab));
+    assert.equal(assertEncryptedDatabase(encrypted, "probe"), 2048);
   });
 });
 
@@ -107,4 +143,14 @@ test("parseArgs honours overrides and rejects unknown flags", () => {
   assert.equal(options.keep, true);
 
   assert.throws(() => parseArgs(["--nope"]), /Unknown option: --nope/);
+});
+
+test("parseArgs rejects a flag with no value and a non-numeric timeout", () => {
+  // `path.resolve(undefined)` would throw a bare TypeError, and a NaN timeout
+  // makes the wait fail instantly with a message about `NaNms`.
+  assert.throws(() => parseArgs(["--runtime"]), /--runtime needs a value/);
+  assert.throws(() => parseArgs(["--runtime", "--keep"]), /--runtime needs a value/);
+  assert.throws(() => parseArgs(["--health-timeout-ms", "soon"]), /--health-timeout-ms needs a positive number/);
+  assert.throws(() => parseArgs(["--backup-timeout-ms", "0"]), /--backup-timeout-ms needs a positive number/);
+  assert.equal(parseArgs(["--health-timeout-ms", "5000"]).healthTimeoutMs, 5000);
 });

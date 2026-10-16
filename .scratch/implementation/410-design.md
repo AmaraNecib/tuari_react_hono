@@ -62,9 +62,12 @@ every file this lane adds is disjoint from the #402 diff.
 ## Tests
 
 - `tests/sqlcipher-encryption-proof.test.mjs` — pure helpers only, runs on
-  every PR in the `lint` job: the magic predicate (including that an **empty or
-  truncated** file is not proof of encryption), snapshot discovery (only
-  `YYYY-MM-DD` folders), argument parsing, and the required-file list.
+  every PR as an explicit step of the `lint` job (the root `lint` script is not
+  what CI invokes; `pnpm turbo lint` never reaches the root package): the magic
+  predicate (including that an **empty or truncated** file is not proof of
+  encryption), `assertEncryptedDatabase`'s three rejection paths, snapshot
+  discovery (only marked `YYYY-MM-DD` folders carry a backup), argument parsing
+  (including a flag whose value is missing), and the required-file list.
 - The Windows job is the integration proof. It is not unit-testable locally
   (`node-gyp` fails configure on this workstation: *missing any Windows SDK*),
   so the CI run is the only place steps 2–5 execute.
@@ -76,9 +79,16 @@ every file this lane adds is disjoint from the #402 diff.
   `pnpm-lock.yaml`, `package.json`, and `ci.yml`.
 - **The sidecar boot couples to config.** `BETTER_AUTH_SECRET` must pass the
   entropy gate and `NODE_ENV=development` avoids `BOOTSTRAP_SETUP_KEY`. Both are
-  generated/pinned inside the proof, not inherited from the runner.
+  generated/pinned inside the proof, not inherited from the runner. The Rust
+  shell never sets `NODE_ENV`, so `development` is the app's own default.
 - **The daily backup is asynchronous.** The proof polls the backups root with a
   bounded timeout; a silent no-backup is a red job, not a hang.
+- **The backup-folder layout is duplicated, deliberately.** The proof knows
+  `YYYY-MM-DD` + `tuari.sqlite` + `snapshot.json`; the owner is
+  `backup.policy.ts` / `backup.service.ts`. A layout change makes the proof find
+  nothing and go red — fail-closed, which is the right failure for a gate. The
+  marker's own `encrypted` field is **not** asserted: `backup.service.ts` writes
+  `Boolean(databaseKey)`, an echo of the config rather than a verification.
 
 ## Verification plan
 

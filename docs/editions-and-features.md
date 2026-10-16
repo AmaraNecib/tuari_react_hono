@@ -221,18 +221,33 @@ the desktop shell enforces it:
 - The build loads the copied addon with the copied Node and requires a non-empty
   `PRAGMA cipher_version` before publishing, and the installer smoke test checks
   the same capability on the built artifact.
+- **A keyed write is proven, not asserted.** The `prove-encryption` job in
+  `ci.yml` builds the sidecar with the real SQLCipher dependency (no waiver) and
+  then proves against that built runtime that `PRAGMA cipher_version` is
+  non-empty, that a keyed write leaves a file which is not `SQLite format 3`,
+  that reopening it WITH the key reads the row back, and that the daily-backup
+  path writes a backup that is encrypted and key-readable too (#410). The
+  release smoke test still only asserts that a native binding is *present*; it
+  does not load it and does not query `cipher_version`, so it is not this proof.
 
 The end-to-end proof that a keyed write lands ciphertext lives in
 `apps/api/src/modules/backup/backup.encrypted.test.ts`: it writes a keyed
 database, backs it up, asserts the copy does not start with `SQLite format 3`,
 reads a committed row back with the key, and refuses the copy without the key.
 It runs only where the native fork can be built (node-gyp plus the platform SDK);
-this workstation has no Windows SDK, so the file is `describe.skipIf`-gated and
-#410's native CI job is what runs it.
+this workstation has no Windows SDK, so the file is `describe.skipIf`-gated, and
+#410's job exports `TUARI_REQUIRE_SQLCIPHER=1` so the file FAILS instead of
+skipping when the fork is absent. The CI proof is the thing that runs it.
 
 Without `encrypted_db`, the workspace opens a plain, unencrypted SQLite file,
 regardless of edition. That is the entire practical difference the license makes
 today.
+
+**Shipping the feature later** now has one remaining condition: add
+`encrypted_db` to a licence. The other three are delivered by #402 + #410 — the
+desktop build refuses to package a plaintext artifact, the native addon is built
+and its keyed write proven in CI, and the runtime refuses a keyed database it
+cannot encrypt. Until the licence condition is met, the matrix says parked.
 
 The flag is not reversible for an existing workspace. If a database was created
 while the license carried `encrypted_db`, a later launch whose license lacks the
