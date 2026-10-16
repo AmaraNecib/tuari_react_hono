@@ -312,9 +312,6 @@ parent as separate issues.
   encryption support, so a customer with the `encrypted_db` feature would get
   `APP_DB_KEY` set and a driver that cannot use it. The build should fail, or at
   least the packaging step should record which driver was bundled.
-- `cleanup_stale_api_processes` kills any `node.exe` whose command line contains
-  `api-runtime` and `index.cjs`, regardless of install path. Launching the
-  portable build kills a running installed build's sidecar.
 - The shell migrates a legacy database from `Documents/Tuari` into the data dir
   with `std::fs::copy`, which preserves the source mtime. That is deliberate
   product behaviour, but it means a first-run check must neutralize the source
