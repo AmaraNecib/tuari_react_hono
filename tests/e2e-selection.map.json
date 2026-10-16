@@ -98,7 +98,8 @@
         "foundation-smoke.spec.ts",
         "mobile-drawer.spec.ts",
         "dialogs-a11y.spec.ts",
-        "workspace-snapshot.spec.ts"
+        "workspace-snapshot.spec.ts",
+        "backup-settings.spec.ts"
       ]
     },
     {
