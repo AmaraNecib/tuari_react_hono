@@ -434,6 +434,27 @@ describe("outbound consumption semantics and guards (#450)", () => {
     // The inverse of the original confusion: an entry id is not a definition id.
     expect(() => transfer(env, [{ itemId: "entry-not-def", quantity: 1 }])).toThrow(/غير موجود/)
   })
+
+  it("returns the create envelope the RPC contract declares", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-env", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-env", invoiceGroupId: "g", itemDefinitionId: "def-env", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-env", entryId: "e-env", itemDefinitionId: "def-env", warehouseId: "wh-1", quantity: 5 })
+
+    // `inventoryOutboundTransfersCreate` declares `createEntityResultSchema`, so
+    // a bare record is an ORPC output-validation failure on the client.
+    const result = env.service.createOutboundTransfer(
+      { fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE", items: [{ itemId: "def-env", quantity: 1 }] },
+      AUDIT,
+    )
+
+    expect(result).toMatchObject({
+      success: true,
+      message: expect.any(String),
+      item: { fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE", status: "COMPLETED" },
+    })
+  })
 })
 
 describe("fractional consumable quantities round through one rule (#450 round 4)", () => {
