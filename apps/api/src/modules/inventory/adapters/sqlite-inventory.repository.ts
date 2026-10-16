@@ -699,7 +699,7 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       ))
       .orderBy(desc(schema.inventoryAssetUnit.updatedAt), asc(schema.inventoryAssetUnit.id))
       .all()
-      .map((row) => mapAssetUnit(row.unit as Record<string, unknown>))
+      .map((row) => mapAssetUnit(row.unit))
 
     return { consumableBalances, assetUnits }
   }

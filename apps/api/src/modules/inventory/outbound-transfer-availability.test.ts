@@ -29,6 +29,7 @@ import {
 import { ensureDatabaseSchema } from "../../infrastructure/database/schema"
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor"
 import { createInventoryRepository } from "./adapters/sqlite-inventory.repository"
+import { InventoryError } from "./inventory.errors"
 import type { InventoryRepository } from "./inventory.repository"
 import { InventoryService } from "./inventory.service"
 import type { InventoryAttachmentStorage } from "./inventory.storage"
@@ -100,6 +101,7 @@ function seedAsset(db: Database.Database, input: { id: string; entryId: string; 
 }
 
 const SOURCE_AT_WAREHOUSE = (warehouseId: string): InventoryItemOfferSource => ({ locationType: "WAREHOUSE", warehouseId })
+const SOURCE_AT_PROJECT = (projectId: string): InventoryItemOfferSource => ({ locationType: "PROJECT", projectId })
 
 type Env = Awaited<ReturnType<typeof createEnv>>
 const envs: Database.Database[] = []
@@ -269,12 +271,167 @@ describe("the outbound write gate accepts exactly what the picker offers (#450)"
           AUDIT,
         )
         acceptedIds.add(fixture.id)
-      } catch {
-        // Rejected by the gate; recorded by absence.
+      } catch (error) {
+        // Rejected by the gate. A wrong error class (e.g. NOT_FOUND from a broken
+        // definition lookup) must not count as a rejection, or this parity would
+        // be satisfied by the very bug it guards against.
+        expect(error).toBeInstanceOf(InventoryError)
+        expect((error as InventoryError).appError.code).toBe("BUSINESS_RULE")
       }
     }
 
     expect([...offeredIds].sort()).toEqual(["a-instock", "c-instock"])
     expect([...acceptedIds].sort()).toEqual([...offeredIds].sort())
+  })
+
+  it("agrees with the paged picker for a project source", async () => {
+    const env = await openEnv()
+    seedWarehouse(env.db, "wh-1")
+    seedProject(env.db, "prj-1")
+    seedCounterparty(env.db, "buyer")
+    seedGroup(env.db, "g")
+    seedDefinition(env.db, { id: "c-at-prj", itemType: "CONSUMABLE" })
+    seedDefinition(env.db, { id: "c-at-wh", itemType: "CONSUMABLE" })
+    seedDefinition(env.db, { id: "a-at-prj", itemType: "ASSET" })
+    seedEntry(env.db, { id: "e-cprj", invoiceGroupId: "g", itemDefinitionId: "c-at-prj", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-cwh", invoiceGroupId: "g", itemDefinitionId: "c-at-wh", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-aprj", invoiceGroupId: "g", itemDefinitionId: "a-at-prj", itemType: "ASSET" })
+    seedBalance(env.db, { id: "b-cprj", entryId: "e-cprj", itemDefinitionId: "c-at-prj", projectId: "prj-1", quantity: 10 })
+    seedBalance(env.db, { id: "b-cwh", entryId: "e-cwh", itemDefinitionId: "c-at-wh", warehouseId: "wh-1", quantity: 10 })
+    seedAsset(env.db, { id: "asset-aprj", entryId: "e-aprj", projectId: "prj-1" })
+
+    // The project columns are a different arm of the shared source predicate; a
+    // swap here would ship silently without this case.
+    const source = SOURCE_AT_PROJECT("prj-1")
+    const offeredIds = new Set(
+      env.repository.listItemDefinitionsPaged({ filter: resolveItemOffer(outboundPickUsage(source)), limit: 50 }).items.map((item) => item.id),
+    )
+    expect([...offeredIds].sort()).toEqual(["a-at-prj", "c-at-prj"])
+
+    const acceptedIds = new Set<string>()
+    for (const itemId of ["c-at-prj", "c-at-wh", "a-at-prj"]) {
+      try {
+        env.service.createOutboundTransfer(
+          { fromType: "PROJECT", fromId: "prj-1", counterpartyId: "buyer", transferType: "SALE", items: [{ itemId, quantity: 1 }] },
+          AUDIT,
+        )
+        acceptedIds.add(itemId)
+      } catch (error) {
+        expect(error).toBeInstanceOf(InventoryError)
+      }
+    }
+
+    expect([...acceptedIds].sort()).toEqual([...offeredIds].sort())
+  })
+})
+
+describe("outbound consumption semantics and guards (#450)", () => {
+  function seedBase(env: Env): void {
+    seedWarehouse(env.db, "wh-1")
+    seedCounterparty(env.db, "buyer")
+    seedGroup(env.db, "g")
+  }
+
+  function transfer(env: Env, items: Array<{ itemId: string; quantity: number }>): void {
+    env.service.createOutboundTransfer(
+      { fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE", items },
+      AUDIT,
+    )
+  }
+
+  it("rejects a request above the total across balances, and accepts exactly the total", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-b1", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-b1", invoiceGroupId: "g", itemDefinitionId: "def-b1", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-b2", invoiceGroupId: "g", itemDefinitionId: "def-b1", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-b1", entryId: "e-b1", itemDefinitionId: "def-b1", warehouseId: "wh-1", quantity: 3, createdAt: NOW })
+    seedBalance(env.db, { id: "bal-b2", entryId: "e-b2", itemDefinitionId: "def-b1", warehouseId: "wh-1", quantity: 2, createdAt: LATER })
+
+    expect(() => transfer(env, [{ itemId: "def-b1", quantity: 6 }])).toThrow(/غير متوفرة/)
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" })).toHaveLength(2)
+
+    transfer(env, [{ itemId: "def-b1", quantity: 5 }])
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" })).toHaveLength(0)
+    expect(env.repository.listAllMovements({}).map((movement) => movement.quantity).sort((a, b) => a - b)).toEqual([2, 3])
+  })
+
+  it("consumes two lines of the same definition against one balance", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-two", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-two", invoiceGroupId: "g", itemDefinitionId: "def-two", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-two", entryId: "e-two", itemDefinitionId: "def-two", warehouseId: "wh-1", quantity: 10 })
+
+    transfer(env, [{ itemId: "def-two", quantity: 6 }, { itemId: "def-two", quantity: 4 }])
+
+    // The gate re-reads the stock inside the loop, so the second line sees the
+    // first's decrement instead of double-spending the same balance.
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" })).toHaveLength(0)
+    const movements = env.repository.listAllMovements({})
+    expect(movements.map((movement) => movement.quantity).sort((a, b) => b - a)).toEqual([6, 4])
+    expect(movements.every((movement) => movement.inventoryEntryId === "e-two")).toBe(true)
+  })
+
+  it("moves a definition's asset units with one movement per unit and leaves other definitions alone", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-units", itemType: "ASSET" })
+    seedEntry(env.db, { id: "e-units", invoiceGroupId: "g", itemDefinitionId: "def-units", itemType: "ASSET" })
+    seedAsset(env.db, { id: "asset-old", entryId: "e-units", warehouseId: "wh-1", updatedAt: NOW })
+    seedAsset(env.db, { id: "asset-new", entryId: "e-units", warehouseId: "wh-1", updatedAt: LATER })
+    seedDefinition(env.db, { id: "def-other", itemType: "ASSET" })
+    seedEntry(env.db, { id: "e-other", invoiceGroupId: "g", itemDefinitionId: "def-other", itemType: "ASSET" })
+    seedAsset(env.db, { id: "asset-other", entryId: "e-other", warehouseId: "wh-1", updatedAt: "2026-06-01T00:20:00.000Z" })
+
+    transfer(env, [{ itemId: "def-units", quantity: 2 }])
+
+    expect(env.repository.getAssetUnitById("asset-old")?.currentWarehouseId).toBeNull()
+    expect(env.repository.getAssetUnitById("asset-new")?.currentWarehouseId).toBeNull()
+    expect(env.repository.getAssetUnitById("asset-other")?.currentWarehouseId).toBe("wh-1")
+
+    const movements = env.repository.listAllMovements({})
+    expect(movements).toHaveLength(2)
+    expect(movements.every((movement) => movement.quantity === 1 && movement.inventoryEntryId === "e-units")).toBe(true)
+    expect([...movements.map((movement) => movement.assetUnitId)].sort()).toEqual(["asset-new", "asset-old"])
+  })
+
+  it("rolls back a partial transfer when a later item is unavailable", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-ok", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-ok", invoiceGroupId: "g", itemDefinitionId: "def-ok", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-ok", entryId: "e-ok", itemDefinitionId: "def-ok", warehouseId: "wh-1", quantity: 10 })
+    seedDefinition(env.db, { id: "def-empty", itemType: "CONSUMABLE" })
+
+    expect(() => transfer(env, [{ itemId: "def-ok", quantity: 4 }, { itemId: "def-empty", quantity: 1 }])).toThrow()
+
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" }).find((balance) => balance.id === "bal-ok")?.quantity).toBe(10)
+    expect(env.repository.listAllMovements({})).toHaveLength(0)
+    expect(env.repository.listOutboundTransfers()).toHaveLength(0)
+  })
+
+  it("refuses a non-positive quantity before writing anything", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-zero", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-zero", invoiceGroupId: "g", itemDefinitionId: "def-zero", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-zero", entryId: "e-zero", itemDefinitionId: "def-zero", warehouseId: "wh-1", quantity: 10 })
+
+    // The wire schema already enforces this; the service must not trust the wire.
+    expect(() => transfer(env, [{ itemId: "def-zero", quantity: 0 }])).toThrow(/أكبر من صفر/)
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" }).find((balance) => balance.id === "bal-zero")?.quantity).toBe(10)
+    expect(env.repository.listOutboundTransfers()).toHaveLength(0)
+  })
+
+  it("rejects an id that is an inventory entry, not a definition", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-x", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-not-def", invoiceGroupId: "g", itemDefinitionId: "def-x", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-x", entryId: "entry-not-def", itemDefinitionId: "def-x", warehouseId: "wh-1", quantity: 10 })
+
+    // The inverse of the original confusion: an entry id is not a definition id.
+    expect(() => transfer(env, [{ itemId: "entry-not-def", quantity: 1 }])).toThrow(/غير موجود/)
   })
 })

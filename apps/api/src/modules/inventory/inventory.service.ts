@@ -35,6 +35,7 @@ import type {
   InventoryAssetUnitCreateData,
   InventoryConsumableBalanceRecord,
   InventoryItemDefinitionRecord,
+  InventoryItemStockHolding,
   InventoryUploadFile,
   InventoryStoredUpload,
 } from "./inventory.types"
@@ -147,6 +148,36 @@ function generateNextInvoiceNumber(latestInvoiceNumber: string | null) {
 
 function resolveOccurredAt(value?: string | null) {
   return value ?? createAlgeriaTimestamp()
+}
+
+/** The `from*` columns an outbound movement leaves from, for one source. */
+function outboundFromLocation(source: InventoryItemOfferSource) {
+  return source.locationType === "WAREHOUSE"
+    ? { fromWarehouseId: source.warehouseId, fromProjectId: undefined }
+    : { fromWarehouseId: undefined, fromProjectId: source.projectId }
+}
+
+/**
+ * The offer-rule evidence for a definition, projected from the stock rows the
+ * gate read. Both stock tables are read regardless of the definition's type, so
+ * this is the same evidence the picker's SQL `inStockAt` predicate sees.
+ */
+function itemOfferCandidate(
+  definition: InventoryItemDefinitionRecord,
+  holding: InventoryItemStockHolding,
+): ItemOfferCandidate {
+  return {
+    itemType: definition.itemType,
+    isActive: definition.isActive,
+    stockWarehouseIds: [
+      ...holding.consumableBalances.flatMap((balance) => (balance.warehouseId ? [balance.warehouseId] : [])),
+      ...holding.assetUnits.flatMap((asset) => (asset.currentWarehouseId ? [asset.currentWarehouseId] : [])),
+    ],
+    stockProjectIds: [
+      ...holding.consumableBalances.flatMap((balance) => (balance.projectId ? [balance.projectId] : [])),
+      ...holding.assetUnits.flatMap((asset) => (asset.currentProjectId ? [asset.currentProjectId] : [])),
+    ],
+  }
 }
 
 const ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES = new Set([
@@ -977,8 +1008,8 @@ export class InventoryService {
     balances: InventoryConsumableBalanceRecord[]
     quantity: number
     definitionName: string
-    source: InventoryItemOfferSource
-    counterpartyId: string
+    from: { fromWarehouseId?: string; fromProjectId?: string }
+    note: string
     occurredAt: string
   }) {
     const available = input.balances.reduce((total, balance) => total + balance.quantity, 0)
@@ -1003,9 +1034,8 @@ export class InventoryService {
         itemType: "CONSUMABLE",
         inventoryEntryId: balance.inventoryEntryId,
         quantity: consumed,
-        fromWarehouseId: input.source.locationType === "WAREHOUSE" ? input.source.warehouseId : undefined,
-        fromProjectId: input.source.locationType === "PROJECT" ? input.source.projectId : undefined,
-        note: `تحويل خارجي إلى ${input.counterpartyId}`,
+        ...input.from,
+        note: input.note,
         occurredAt: input.occurredAt,
       })
 
@@ -1082,8 +1112,14 @@ export class InventoryService {
       const source: InventoryItemOfferSource = input.fromType === "WAREHOUSE"
         ? { locationType: "WAREHOUSE", warehouseId: input.fromId }
         : { locationType: "PROJECT", projectId: input.fromId }
+      const from = outboundFromLocation(source)
+      const note = `تحويل خارجي إلى ${input.counterpartyId}`
 
-      for (const item of input.items) {
+      for (const [index, item] of input.items.entries()) {
+        // The wire schema enforces a positive quantity; a direct caller must not
+        // be able to write an empty transfer past it.
+        normalizePositive(item.quantity, `items.${index}.quantity`)
+
         const definition = this.repository.getItemDefinitionById(item.itemId)
         if (!definition) {
           throw new InventoryError("NOT_FOUND", `العنصر ${item.itemId} غير موجود.`)
@@ -1093,20 +1129,8 @@ export class InventoryService {
           itemDefinitionId: definition.id,
           source,
         })
-        const candidate: ItemOfferCandidate = {
-          itemType: definition.itemType,
-          isActive: definition.isActive,
-          stockWarehouseIds: [
-            ...stockAtSource.consumableBalances.flatMap((balance) => (balance.warehouseId ? [balance.warehouseId] : [])),
-            ...stockAtSource.assetUnits.flatMap((asset) => (asset.currentWarehouseId ? [asset.currentWarehouseId] : [])),
-          ],
-          stockProjectIds: [
-            ...stockAtSource.consumableBalances.flatMap((balance) => (balance.projectId ? [balance.projectId] : [])),
-            ...stockAtSource.assetUnits.flatMap((asset) => (asset.currentProjectId ? [asset.currentProjectId] : [])),
-          ],
-        }
 
-        if (!matchesItemOfferFilter(resolveItemOffer(outboundPickUsage(source)), candidate)) {
+        if (!matchesItemOfferFilter(resolveItemOffer(outboundPickUsage(source)), itemOfferCandidate(definition, stockAtSource))) {
           throw new InventoryError("BUSINESS_RULE", `العنصر ${definition.name} غير متوفر في الموقع المحدد.`)
         }
 
@@ -1116,8 +1140,8 @@ export class InventoryService {
             balances: stockAtSource.consumableBalances,
             quantity: item.quantity,
             definitionName: definition.name,
-            source,
-            counterpartyId: input.counterpartyId,
+            from,
+            note,
             occurredAt,
           })
           continue
@@ -1136,9 +1160,8 @@ export class InventoryService {
             inventoryEntryId: asset.inventoryEntryId,
             assetUnitId: asset.id,
             quantity: 1,
-            fromWarehouseId: input.fromType === "WAREHOUSE" ? input.fromId : undefined,
-            fromProjectId: input.fromType === "PROJECT" ? input.fromId : undefined,
-            note: `تحويل خارجي إلى ${input.counterpartyId}`,
+            ...from,
+            note,
             occurredAt,
           })
         }

@@ -4,7 +4,16 @@
 inventory entry id is expected, and lists asset units without narrowing to the
 picked definition.
 
-**Base**: `origin/develop` @ `073af118`.
+**Base**: `origin/develop` @ `073af118`. **Mode**: local-only (no remote PR in this lane).
+
+**Dependencies**: none. Uses the existing `resolveItemOffer` / `matchesItemOfferFilter`
+rule and `InventoryItemOfferSource` from `@tuari/contracts`; adds one repository read.
+
+**Deviations from architecture**: none. The port/adapter split is kept — the read is a
+`InventoryRepository` method implemented in `adapters/sqlite-inventory.repository.ts`.
+
+**Playwright**: N/A. This is a backend write path with no UI change; the picker it must
+agree with already has its own page tests from #465.
 
 ## The defect, confirmed
 
@@ -96,7 +105,10 @@ Each was run against the pre-fix implementation; results are in the handoff.
 
 ## Not in this change
 
-- The inbound/`transferConsumable` path already resolves the entry first and is
-  correct; there is no shared helper between the two that carries the bug.
+- The inbound path does not share a helper with outbound. `transferConsumable`
+  (`inventory.service.ts`) takes an `inventoryEntryId` and calls `getEntryById`
+  before any balance write; `transferAsset` takes an `assetUnitId` and calls
+  `getAssetUnitById`. Neither resolves a definition, so the outbound bug is not
+  shared and there is nothing to fix there. Verified by reading both methods.
 - Asset-unit identity in `OUTBOUND_SALE` movements for *reports* is unchanged in
   shape (still `OUTBOUND_SALE` from the source, no destination).
