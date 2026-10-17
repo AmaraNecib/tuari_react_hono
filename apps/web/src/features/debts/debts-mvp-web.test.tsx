@@ -13,6 +13,7 @@ import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { DebtsHubPage } from "@/features/debts/debts-hub-page"
 import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
 import { DebtPartySummaryCard } from "@/features/debts/debt-party-summary-card"
+import { RecordEntryPaymentDialog } from "@/features/debts/record-entry-payment-dialog"
 import { VoidEntryDialog } from "@/features/debts/void-entry-dialog"
 import { ExternalCounterpartyCreatePage } from "@/features/externals/external-create-page"
 import { ExternalCounterpartyDetailsPage } from "@/features/externals/external-details-page"
@@ -882,6 +883,92 @@ describe("debts MVP web UI", () => {
       )
 
       expect(document.body.textContent).toContain("-300")
+    })
+  })
+
+  describe("entry dialogs take the direction from the prop, not the amount's sign", () => {
+    const openingEntry = (signedAmountDzd: number): DebtEntry => ({
+      actorLabel: null,
+      actorUserId: null,
+      balanceAfterDzd: signedAmountDzd,
+      createdAt: "2026-03-01T10:00:00.000Z",
+      debtAccountId: "acct-1",
+      entryDate: "2026-03-01T10:00:00.000Z",
+      entryType: "OPENING",
+      id: "entry-1",
+      note: "افتتاحي",
+      paymentMethod: null,
+      reasonCategory: "INVOICE_DRIVEN",
+      reasonDetail: null,
+      signedAmountDzd,
+      status: "LIVE",
+      transactionId: null,
+      updatedAt: "2026-03-01T10:00:00.000Z",
+      voidReason: null,
+      voidedAt: null,
+      voidedBy: null,
+    })
+
+    it("VoidEntryDialog phrases the opening from accountDirection, not the sign", () => {
+      // A positive movement on both ledgers: only the prop can change the phrase.
+      const entry = openingEntry(5000)
+
+      const payable = renderWithProviders(
+        <VoidEntryDialog
+          accountDirection="PAYABLE"
+          entry={entry}
+          livePaymentEntries={[]}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByText("مستحق علينا")).toBeTruthy()
+      expect(screen.queryByText("مستحق لنا")).toBeNull()
+      payable.unmount()
+
+      renderWithProviders(
+        <VoidEntryDialog
+          accountDirection="RECEIVABLE"
+          entry={entry}
+          livePaymentEntries={[]}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByText("مستحق لنا")).toBeTruthy()
+      expect(screen.queryByText("مستحق علينا")).toBeNull()
+    })
+
+    it("RecordEntryPaymentDialog phrases the entry and the max from accountDirection, not the sign", () => {
+      const entry = openingEntry(5000)
+
+      const payable = renderWithProviders(
+        <RecordEntryPaymentDialog
+          accountCurrentBalance={-5000}
+          accountDirection="PAYABLE"
+          entry={entry}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+      // +5000 on a PAYABLE ledger is owed by us; the -5000 max is a credit with us.
+      expect(screen.getByText("مستحق علينا")).toBeTruthy()
+      expect(screen.getByText(/رصيد مستحق لنا/)).toBeTruthy()
+      expect(screen.queryByText("مستحق لنا")).toBeNull()
+      payable.unmount()
+
+      renderWithProviders(
+        <RecordEntryPaymentDialog
+          accountCurrentBalance={-5000}
+          accountDirection="RECEIVABLE"
+          entry={entry}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByText("مستحق لنا")).toBeTruthy()
+      expect(screen.getByText(/رصيد مستحق لهم/)).toBeTruthy()
+      expect(screen.queryByText("مستحق علينا")).toBeNull()
     })
   })
 })
