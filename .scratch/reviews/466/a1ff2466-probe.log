@@ -1,0 +1,61 @@
+### EXTRACTOR (verbatim block, lines: CLOSE_VERBS..final filter) ###
+X1 No, this does not close #460.                     num=[] neg=[460]
+X2 No, it doesn't fix #470.                          num=[] neg=[470]
+X3 No, we never close #150.                          num=[] neg=[150]
+X4 No, we have decided that this does not close #150. num=[] neg=[150]
+X5 No, this Closes #457.                             num=[457] neg=[]
+X6 4-word control (must close #135)                  num=[135] neg=[]
+X7 does not close #231, nor does it fix #232         num=[232] neg=[231]
+X8 No, this never fixes #239 nor closes #240.        num=[240] neg=[239]
+X9 not just a rename; does not close #225            num=[] neg=[225]
+X10 not only a rename; does not close #226           num=[] neg=[226]
+X11 not only docs: does not close #227               num=[] neg=[227]
+X12 not only <3 words>, does not close #228          num=[] neg=[228]
+X13 that word-boundary check: component only         num=[241] neg=[]
+X14 does not just fix #466                           num=[466] neg=[]
+
+### END-TO-END (real script + fake curl; fake PATCH records closed_<n>) ###
+BLOCKER No, this does not close #460.                        #460   expect=no  got=no  rc=0 OK
+BLOCKER No, it doesn't fix #470.                             #470   expect=no  got=no  rc=0 OK
+BLOCKER No, we never close #150.                             #150   expect=no  got=no  rc=0 OK
+NEG does not close                                           #151   expect=no  got=no  rc=0 OK
+NEG does not, however, close                                 #152   expect=no  got=no  rc=0 OK
+NEG no intention of closing                                  #153   expect=no  got=no  rc=0 OK
+NEG no longer closes                                         #154   expect=no  got=no  rc=0 OK
+NEG won't fix                                                #155   expect=no  got=no  rc=0 OK
+NEG cannot resolve                                           #156   expect=no  got=no  rc=0 OK
+NEG not going to close                                       #157   expect=no  got=no  rc=0 OK
+NEG never fixes                                              #158   expect=no  got=no  rc=0 OK
+NEG does not, in any way, close                              #159   expect=no  got=no  rc=0 OK
+AFF Closes                                                   #160   expect=yes got=yes rc=0 OK
+AFF **Closes**                                               #461   expect=yes got=yes rc=0 OK
+AFF Closes **#N**                                            #462   expect=yes got=yes rc=0 OK
+AFF CLOSES                                                   #463   expect=yes got=yes rc=0 OK
+AFF Closes\n#N                                               #464   expect=yes got=yes rc=0 OK
+AFF Not only fixes                                           #465   expect=yes got=yes rc=0 OK
+AFF doesn't just fix                                         #466   expect=yes got=yes rc=0 OK
+AFF Note: this Closes                                        #458   expect=yes got=yes rc=0 OK
+AFF No, this Closes                                          #457   expect=yes got=yes rc=0 OK
+AFF Do not merge this until it Closes (4w)                   #135   expect=yes got=yes rc=0 OK
+AFF Nobody closes                                            #459   expect=yes got=yes rc=0 OK
+AFF not only fixes + Closes                                  #467   expect=yes got=yes rc=0 OK
+AFF (2nd number same body)                                   #449   expect=yes got=yes rc=0 OK
+MENTION filed as #N                                          #220   expect=no  got=no  rc=0 OK
+MENTION Part of #N                                           #221   expect=no  got=no  rc=0 OK
+MENTION tracked in #N                                        #222   expect=no  got=no  rc=0 OK
+HUNT Not just a rename, does not close                       #225   expect=no  got=no  rc=0 OK
+HUNT not only a rename; does not close                       #226   expect=no  got=no  rc=0 OK
+HUNT Not only docs: does not close                           #227   expect=no  got=no  rc=0 OK
+HUNT Not only does it …, does not close                    #228   expect=no  got=no  rc=0 OK
+HUNT component only (filter overreach?)                      #241   expect=yes got=yes rc=0 OK
+HUNT nor-clause 1st                                          #231   expect=no  got=no  rc=0 OK
+HUNT nor-clause 2nd (pre-existing?)                          #232   expect=no  got=yes rc=0 MISMATCH
+HUNT No, never fixes … nor closes 1st                      #239   expect=no  got=no  rc=0 OK
+HUNT No, never fixes … nor closes 2nd                      #240   expect=no  got=yes rc=0 MISMATCH
+HUNT does not just fix (filter rescue)                       #252   expect=yes got=yes rc=0 OK
+RESIDUAL hard-wrapped mention (known N6)                     #223   expect=no  got=yes rc=0 MISMATCH
+RESIDUAL narrative past tense (known N7)                     #224   expect=no  got=yes rc=0 MISMATCH
+DROPCAND No changes needed elsewhere; Closes                 #242   expect=yes got=no  rc=0 MISMATCH
+DROPCAND There is no bug; this Closes                        #243   expect=yes got=no  rc=0 MISMATCH
+DROPCAND No - it Closes                                      #244   expect=yes got=yes rc=0 OK
+DROPCAND Not sure, but Closes                                #245   expect=yes got=no  rc=0 MISMATCH

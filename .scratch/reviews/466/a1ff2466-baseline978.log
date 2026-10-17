@@ -1,0 +1,11 @@
+=== TARGET: /tmp/c978.sh
+BLOCKER No, this does not close #460.        #460   closed=yes rc=0
+BLOCKER No, it doesn't fix #470.             #470   closed=yes rc=0
+nor-clause 2nd                               #232   closed=no rc=0
+nor-clause 2nd (No, never … nor)           #240   closed=no rc=0
+does not just fix (filter rescue)            #252   closed=yes rc=0
+hard-wrapped mention (N6)                    #223   closed=yes rc=0
+narrative past tense (N7)                    #224   closed=yes rc=0
+drop No changes needed; Closes               #242   closed=no rc=0
+drop There is no bug; this Closes            #243   closed=no rc=0
+drop Not sure, but Closes                    #245   closed=no rc=0

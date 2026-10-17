@@ -1,0 +1,148 @@
+PASS: happy path exits 0
+PASS: happy path closed #101
+PASS: already-closed skip did NOT close #102
+PASS: skip-closed exit still 0
+PASS: skip reason echoed
+PASS: parent w/ open sub-issues skipped did NOT close #103
+PASS: sub-issue reason echoed
+PASS: parent w/ all sub-issues done closes closed #104
+PASS: remaining-in-open-issue guard did NOT close #105
+PASS: remaining ref to CLOSED issue does not block closed #106
+PASS: lineage marker on OTHER number never blocks (#201) closed #201
+PASS: #200 not referenced as a close target did NOT close #200
+PASS: self-reference partial guard did NOT close #107
+PASS: self-reference reason echoed
+PASS: mid-word match extracts nothing (exit 0)
+PASS: mid-word match does not close did NOT close #108
+PASS: mention-only run exits 0
+PASS: 'filed as #N' never closes did NOT close #120
+PASS: 'Part of #N' never closes did NOT close #121
+FAIL: prose keyword far from the reference never closes (#442 regression) did NOT close #122
+  expected: [no]
+  actual:   [yes]
+  --- output ---
+  | PR_BODY not provided — fetching body of PR #42
+  | api GET issues/42: ok len=95
+  | ── Checking issue #122 ──
+  | api GET pulls/42: ok len=4
+  | api GET pulls/42: ok len=7
+  |   CLOSED #122
+  | ── Done. Manually verify any SKIP lines on the next sync pass.
+FAIL: prose 'the fix for #N' never closes did NOT close #1220
+  expected: [no]
+  actual:   [yes]
+  --- output ---
+  | PR_BODY not provided — fetching body of PR #42
+  | api GET issues/42: ok len=53
+  | ── Checking issue #1220 ──
+  | api GET pulls/42: ok len=4
+  | api GET pulls/42: ok len=7
+  |   CLOSED #1220
+  | ── Done. Manually verify any SKIP lines on the next sync pass.
+PASS: bare '#N' mention never closes did NOT close #123
+PASS: 'Closes #N' closes closed #124
+PASS: 'Fixes #N' closes closed #125
+PASS: 'Resolves: #N' closes closed #126
+PASS: title-only run exits 0
+PASS: a closing keyword in the PR TITLE never closes did NOT close #127
+PASS: negated run exits 0
+FAIL: 'does not close #N' never closes did NOT close #128
+  expected: [no]
+  actual:   [yes]
+  --- output ---
+  | PR_BODY not provided — fetching body of PR #42
+  | api GET issues/42: ok len=52
+  | ── Checking issue #128 ──
+  | api GET pulls/42: ok len=4
+  | api GET pulls/42: ok len=7
+  |   CLOSED #128
+  | ── Done. Manually verify any SKIP lines on the next sync pass.
+FAIL: negation is echoed
+  expected: [yes]
+  actual:   [no]
+  --- output ---
+  | PR_BODY not provided — fetching body of PR #42
+  | api GET issues/42: ok len=52
+  | ── Checking issue #128 ──
+  | api GET pulls/42: ok len=4
+  | api GET pulls/42: ok len=7
+  |   CLOSED #128
+  | ── Done. Manually verify any SKIP lines on the next sync pass.
+FAIL: 'does not resolve #N' never closes did NOT close #129
+  expected: [no]
+  actual:   [yes]
+  --- output ---
+  | PR_BODY not provided — fetching body of PR #42
+  | api GET issues/42: ok len=54
+  | ── Checking issue #129 ──
+  | api GET pulls/42: ok len=4
+  | api GET pulls/42: ok len=7
+  |   CLOSED #129
+  | ── Done. Manually verify any SKIP lines on the next sync pass.
+FAIL: 'never fixes #N' never closes did NOT close #130
+  expected: [no]
+  actual:   [yes]
+  --- output ---
+  | PR_BODY not provided — fetching body of PR #42
+  | api GET issues/42: ok len=38
+  | ── Checking issue #130 ──
+  | api GET pulls/42: ok len=4
+  | api GET pulls/42: ok len=7
+  |   CLOSED #130
+  | ── Done. Manually verify any SKIP lines on the next sync pass.
+FAIL: the negated reference in a mixed body is dropped (#131) did NOT close #131
+  expected: [no]
+  actual:   [yes]
+  --- output ---
+  | PR_BODY not provided — fetching body of PR #42
+  | api GET issues/42: ok len=42
+  | ── Checking issue #131 ──
+  | api GET pulls/42: ok len=4
+  | api GET pulls/42: ok len=7
+  |   CLOSED #131
+  | ── Checking issue #132 ──
+  |   CLOSED #132
+  | ── Done. Manually verify any SKIP lines on the next sync pass.
+PASS: the affirmative reference in the same body still closes (#132) closed #132
+PASS: a leading affirmative close still fires (#133) closed #133
+FAIL: a trailing negated close does not (#134) did NOT close #134
+  expected: [no]
+  actual:   [yes]
+  --- output ---
+  | PR_BODY not provided — fetching body of PR #42
+  | api GET issues/42: ok len=34
+  | ── Checking issue #133 ──
+  | api GET pulls/42: ok len=4
+  | api GET pulls/42: ok len=7
+  |   CLOSED #133
+  | ── Checking issue #134 ──
+  |   CLOSED #134
+  | ── Done. Manually verify any SKIP lines on the next sync pass.
+PASS: a negator three words from the keyword is a different clause (#135) closed #135
+PASS: no refs exits 0
+PASS: sub-issue field absent from response fails open → closes closed #109
+PASS: whole-API failure exits 0 (job survives)
+PASS: whole-API failure skips safely (no wrongful close) did NOT close #1234
+PASS: API-failure reason echoed
+PASS: close failure warns but exits 0
+PASS: WARN echoed
+PASS: dry run exits 0
+PASS: DRY_RUN never closes did NOT close #111
+PASS: dry run logs intent
+PASS: unmerged dry run exits 0
+PASS: unmerged dry run promises nothing
+PASS: unmerged dry run echoes the refusal reason
+PASS: merge-event run closes without a qualification read
+PASS: merge-event run closed #117
+PASS: summary run exits 0
+PASS: step summary table written
+PASS: PR_BODY auto-fetched via API closed #114
+PASS: unmerged-PR refusal exits 0
+PASS: unmerged PR: nothing closed did NOT close #115
+PASS: unmerged refusal reason echoed
+PASS: missing token errors clearly
+PASS: missing-token message
+
+════════════════════════════════
+PASS=52 FAIL=8
+BASE_RC=1

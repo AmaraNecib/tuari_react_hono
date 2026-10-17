@@ -1,0 +1,68 @@
+=== TARGET: /d/projects/tuari_react_hono/worktrees/fix-autoclose-workflow/scripts/ci/close-linked-issues.sh
+
+--- A. bare 'no' as a word / inside other words (NEW negator) ---
+A1 No, it Closes #150 (must CLOSE)         rc=0 closed=[150]
+A2 no plans to close #150 (must NOT)       rc=0 closed=[]
+A3 nobody closes #150                      rc=0 closed=[]
+A4 nothing closes #150                     rc=0 closed=[]
+A5 no bug; this Closes #150 (must CLOSE)   rc=0 closed=[]
+A6 No changes needed; Closes #150 (must CLOSE) rc=0 closed=[]
+A7 No test changes; this Closes #150 (must CLOSE) rc=0 closed=[]
+A8 No, however it Closes #150              rc=0 closed=[150]
+A9 No - it Closes #150                     rc=0 closed=[]
+A10 explicitly no regression; Closes #151  rc=0 closed=[]
+
+--- B. 'not' in an unrelated clause within 3 words ---
+B1 Not sure, but Closes #150               rc=0 closed=[]
+B2 Not blocked; Closes #150                rc=0 closed=[]
+B3 Do not merge until it Closes #150 (3 words) rc=0 closed=[]
+B4 Do not merge this until it Closes #150 (4 words) rc=0 closed=[150]
+B5 Notably, this Closes #150               rc=0 closed=[]
+B6 Notional cleanup; Closes #150           rc=0 closed=[]
+
+--- C. punctuation-only gaps ---
+C1 Closes:#150                             rc=0 closed=[150]
+C2 Closes : #150                           rc=0 closed=[]
+C3 Closes.** #150                          rc=0 closed=[]
+C4 Closes - #150                           rc=0 closed=[]
+C5 Closes\t#150                            rc=0 closed=[150]
+C6 does not,however,close #150             rc=0 closed=[]
+C7 does not...close #150                   rc=0 closed=[]
+
+--- D. '#' inside the negator gap ---
+D1 not #151 or #150 closes                 rc=0 closed=[]
+D2 not fix#150 weird                       rc=0 closed=[]
+D3 no #150 close (ref before verb)         rc=0 closed=[]
+
+--- E. CRLF bodies ---
+E1 CRLF Closes #150                        rc=0 closed=[150]
+E2 CRLF negation split                     rc=0 closed=[]
+E3 CRLF keyword line, ref next line        rc=0 closed=[150]
+E4 CRLF No, interjection                   rc=0 closed=[150]
+
+--- F. same number negated + affirmative ---
+F1 negated then affirmative same           rc=0 closed=[]
+F2 affirmative in one sentence, negated next rc=0 closed=[]
+F3 negated #150 + affirmative #151         rc=0 closed=[151]
+
+--- G. affirmative extraction regressions (must CLOSE) ---
+G1 Closes #150                             rc=0 closed=[150]
+G2 **Closes** #150                         rc=0 closed=[150]
+G3 Closes **#150**                         rc=0 closed=[150]
+G4 Closes\n#150                            rc=0 closed=[150]
+G5 this not only fixes #150                rc=0 closed=[150]
+G6 doesn't just fix #150                   rc=0 closed=[]
+G7 not merely resolves #150                rc=0 closed=[150]
+G8 not simply closes #150                  rc=0 closed=[150]
+G9 Hardly any change; Closes #150          rc=0 closed=[]
+
+--- H. must NOT close (mention forms) ---
+H1 filed as #150                           rc=0 closed=[]
+H2 Part of #150                            rc=0 closed=[]
+H3 bare mention #150                       rc=0 closed=[]
+H4 the fix for #150                        rc=0 closed=[]
+
+--- I. false-close hunting: past tense / narrative ---
+I1 PR closed #150 prematurely              rc=0 closed=[150]
+I2 hard-wrapped prose false close          rc=0 closed=[150]
+I3 no.\nCloses #150                        rc=0 closed=[]
