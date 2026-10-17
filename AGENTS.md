@@ -2,6 +2,32 @@
 
 Rules for AI agents working in this repository. Read this before making changes.
 
+## Context discipline (codemode)
+
+Tool output is what fills an agent's context with noise: test logs, `gh` and
+`pnpm` output, greps, several file reads at once, PowerShell queries. For that
+work, prefer a `codemode` script over a bare `bash` call. The script calls
+`tools.bash` / `tools.read` and prints only the lines that matter, so the raw
+output never enters the context. A bare `bash` call is still right for one short
+command whose whole output you actually want.
+
+- `tools.bash({ command })` resolves to `{ output, truncated, full_output_path?, exit_code, wall_time_seconds }`. Its `output` holds up to 1 MiB, against the 2000 lines / 50 KB a bare `bash` result shows, so run the command in a script and print the summary.
+- `tools.read({ path })` returns the file's text (an image file comes back as an image block). Run independent calls in parallel with `Promise.all` / `Promise.allSettled`.
+- `text(value)` and a top-level `return` add output; `// @options: {"max_output_tokens": N, "timeout_ms": N}` must be the script's first line.
+- `store(key, value)` / `load(key)` keep small JSON (IDs, cursors, summaries) across calls. The sandbox has no Node APIs, file system, network, or timers, and a script cannot start another script.
+
+```js
+// run a scoped test and print only the failures
+const r = await tools.bash({ command: "pnpm --filter @tuari/web test --run src/features/x.test.tsx 2>&1" });
+const lines = r.output.split("\n").filter((l) => /FAIL|✗|×|Error|Tests\s/.test(l)).slice(0, 40);
+text(`exit=${r.exit_code}\n${lines.join("\n")}`);
+```
+
+The workflow points back here: `docs/engineering-workflow.md` under
+*3. Implementation*, and `.agents/skills/feature-implement/SKILL.md` under
+*Implement with tests*. The full reference is `docs/codemode.md` in the pi
+installation.
+
 ## Commit staging discipline
 
 **Never run `git add -A` or `git add .`.** Stage files explicitly so scratch/review
