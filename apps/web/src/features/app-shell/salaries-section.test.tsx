@@ -11,6 +11,8 @@ vi.mock("@/features/app-shell/workspace-mutations", () => ({
   useCreateSalaryPaymentMutation: () => ({ mutateAsync, isPending: false, isSuccess: false, reset: vi.fn() }),
 }))
 
+import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
+
 import { SalariesSection } from "./salaries-section"
 
 const PROJECT = { id: "project-1", name: "مشروع ألف" }
@@ -636,5 +638,52 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     expect(historyTable().getByText(/12,000/)).toBeTruthy()
     expect(screen.queryByText(/18,000|18000/)).toBeNull()
     expect(screen.queryByText(/المتبقي|متبق|الرصيد|رصيد/)).toBeNull()
+  })
+})
+
+describe("stored business day timezone (#473)", () => {
+  let restoreTimeZone: () => void
+
+  beforeEach(() => {
+    restoreTimeZone = pinUtcTimeZone()
+  })
+
+  afterEach(() => {
+    cleanup()
+    restoreTimeZone()
+  })
+
+  it("runs under UTC so the assertions are not vacuous", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
+    expect(ALGERIA_DAY).not.toBe(UTC_DAY)
+  })
+
+  it("renders the payment history date on its Algeria day, not the ambient UTC day", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[PROJECT]}
+        recentPayments={[{ ...PAYMENT, paymentDate: MIDNIGHT_CROSSING }]}
+        workers={[worker(30000)]}
+      />,
+    )
+
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  })
+
+  it("renders the workers' last-payment date on its Algeria day, not the ambient UTC day", () => {
+    render(
+      <SalariesSection
+        onEditSalary={vi.fn()}
+        projects={[PROJECT]}
+        recentPayments={[]}
+        workers={[{ ...worker(30000), lastPaymentDate: MIDNIGHT_CROSSING }]}
+      />,
+    )
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
   })
 })

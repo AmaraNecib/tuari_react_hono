@@ -4,7 +4,7 @@ import "@/i18n"
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
@@ -12,6 +12,7 @@ import { ConsolidationDialog } from "@/features/debts/consolidation-dialog"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { DebtsHubPage } from "@/features/debts/debts-hub-page"
 import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
+import { RecordEntryPaymentDialog } from "@/features/debts/record-entry-payment-dialog"
 import { DebtPartySummaryCard } from "@/features/debts/debt-party-summary-card"
 import { RecordEntryPaymentDialog } from "@/features/debts/record-entry-payment-dialog"
 import { VoidEntryDialog } from "@/features/debts/void-entry-dialog"
@@ -19,6 +20,7 @@ import { ExternalCounterpartyCreatePage } from "@/features/externals/external-cr
 import { ExternalCounterpartyDetailsPage } from "@/features/externals/external-details-page"
 import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
 
 const {
   createDebtAccountMutateAsync,
@@ -970,5 +972,114 @@ describe("debts MVP web UI", () => {
       expect(screen.getByText(/رصيد مستحق لهم/)).toBeTruthy()
       expect(screen.queryByText("مستحق علينا")).toBeNull()
     })
+  })
+})
+
+describe("stored business day timezone (#473)", () => {
+  let restoreTimeZone: () => void
+
+  beforeEach(() => {
+    restoreTimeZone = pinUtcTimeZone()
+  })
+
+  afterEach(() => {
+    cleanup()
+    restoreTimeZone()
+  })
+
+  const account = (direction: "PAYABLE" | "RECEIVABLE"): DebtAccount => ({
+    actorLabel: null,
+    actorUserId: null,
+    createdAt: "2026-03-27T10:00:00.000Z",
+    currentBalance: 500,
+    direction,
+    externalCounterpartyId: "external-1",
+    id: `acct-${direction}`,
+    note: null,
+    partyType: "EXTERNAL_COUNTERPARTY",
+    settledAt: null,
+    status: "OPEN",
+    transactionId: null,
+    updatedAt: "2026-03-27T10:00:00.000Z",
+    workerId: null,
+  })
+
+  const entry = (overrides: Partial<DebtEntry> = {}): DebtEntry => ({
+    actorLabel: null,
+    actorUserId: null,
+    balanceAfterDzd: 500,
+    createdAt: "2026-03-27T10:00:00.000Z",
+    debtAccountId: "acct-PAYABLE",
+    entryDate: MIDNIGHT_CROSSING,
+    entryType: "OPENING",
+    id: "entry-1",
+    note: null,
+    paymentMethod: null,
+    reasonCategory: "INVOICE_DRIVEN",
+    reasonDetail: null,
+    signedAmountDzd: 500,
+    status: "LIVE",
+    transactionId: null,
+    updatedAt: "2026-03-27T10:00:00.000Z",
+    voidReason: null,
+    voidedAt: null,
+    voidedBy: null,
+    ...overrides,
+  })
+
+  it("actually runs under UTC, so the assertions are not vacuous", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
+    expect(ALGERIA_DAY).not.toBe(UTC_DAY)
+  })
+
+  it("DebtLedgerPanel renders the entry on its Algeria day", () => {
+    renderWithProviders(
+      <DebtLedgerPanel debtAccount={account("PAYABLE")} debtEntries={[entry()]} title="حساب" />,
+    )
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  })
+
+  it("ConsolidationDialog renders the openings on their Algeria day", () => {
+    renderWithProviders(
+      <ConsolidationDialog
+        open
+        onOpenChange={vi.fn()}
+        payableAccount={account("PAYABLE")}
+        payableEntries={[entry({ id: "payable-entry" })]}
+        receivableAccount={account("RECEIVABLE")}
+        receivableEntries={[entry({ id: "receivable-entry", debtAccountId: "acct-RECEIVABLE" })]}
+      />,
+    )
+    expect(screen.getAllByText(ALGERIA_DAY)).toHaveLength(2)
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  })
+
+  it("VoidEntryDialog renders the entry on its Algeria day", () => {
+    renderWithProviders(
+      <VoidEntryDialog
+        accountDirection="PAYABLE"
+        entry={entry()}
+        livePaymentEntries={[]}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  })
+
+  it("RecordEntryPaymentDialog renders the entry on its Algeria day", () => {
+    renderWithProviders(
+      <RecordEntryPaymentDialog
+        accountCurrentBalance={500}
+        accountDirection="PAYABLE"
+        entry={entry()}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
   })
 })

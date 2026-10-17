@@ -6,7 +6,13 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import { LicenseSettings } from "./license-settings";
 import { ar } from "@/i18n/resources/ar";
-import type { LicenseStatusData } from "./license-hooks";
+import type { LicenseStatusData } from "./license-hooks"
+import {
+  ALGERIA_DAY_LONG,
+  MIDNIGHT_CROSSING,
+  UTC_DAY_LONG,
+  pinUtcTimeZone,
+} from "@/test-utils/algeria-day";
 
 // ─── Mock useLicenseStatus ─────────────────────────────────────
 
@@ -271,5 +277,37 @@ describe("LicenseSettings", () => {
     renderWithQuery(<LicenseSettings />);
 
     expect(screen.queryByText("لا توجد ميزات إضافية في هذا الإصدار.")).toBeTruthy();
+  });
+});
+
+describe("stored business day timezone (#473)", () => {
+  let restoreTimeZone: () => void;
+
+  beforeEach(() => {
+    restoreTimeZone = pinUtcTimeZone();
+    mockUseLicenseStatus.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    restoreTimeZone();
+  });
+
+  it("runs under UTC so the assertions are not vacuous", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC");
+    expect(ALGERIA_DAY_LONG).not.toBe(UTC_DAY_LONG);
+  });
+
+  it("renders the licence expiry date on its Algeria day, not the ambient UTC day", () => {
+    mockUseLicenseStatus.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: createLicenseData({ validUntil: MIDNIGHT_CROSSING }),
+    });
+
+    renderWithQuery(<LicenseSettings />);
+
+    expect(screen.queryByText(ALGERIA_DAY_LONG)).toBeTruthy();
+    expect(screen.queryByText(UTC_DAY_LONG)).toBeNull();
   });
 });

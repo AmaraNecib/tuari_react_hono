@@ -2,33 +2,25 @@
  * Formatting utilities for home view data.
  * Provides helper functions for formatting names, dates, etc.
  */
+import { getAlgeriaTimeZone } from "@/lib/algeria-time"
 import type { DemoWorkspace } from "./workspace-queries"
 
-/**
- * formatName(employee component.
- */
+/** The employee's display name. */
 export function formatName(employee: DemoWorkspace["employees"][number]) {
-/**
- * formatDateLabel(value component.
- */
   return `${employee.firstName} ${employee.lastName}`
 }
 
+/** A stored business day as the Algeria calendar day, or `-` when absent. */
 export function formatDateLabel(value: string | null) {
   if (!value) {
     return "-"
   }
 
   return new Intl.DateTimeFormat("ar-DZ", {
-/**
- * formatDateRange(startDate component.
- */
     year: "numeric",
-/**
- * formatSalaryPeriodLabel( component.
- */
     month: "short",
     day: "numeric",
+    timeZone: getAlgeriaTimeZone(),
   }).format(new Date(value))
 }
 

@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { AdvancedSearchBar, type QuickFilter } from "@/features/shared/advanced-search-bar"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 import { useOutboundTransfersQuery } from "./inventory-hooks"
 
 /**
@@ -110,7 +111,7 @@ export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () =
                         {transfer.transferType === "SALE" ? t("inventoryPage.transfers.typeSale") : transfer.transferType === "GIFT" ? t("inventoryPage.transfers.typeGift") : t("inventoryPage.transfers.typeReturn")}
                       </div>
                       <div className="text-muted-foreground">
-                        {new Date(transfer.transferDate).toLocaleDateString("ar-DZ")}
+                        {formatAlgeriaDate(transfer.transferDate)}
                       </div>
                     </div>
                   </div>
