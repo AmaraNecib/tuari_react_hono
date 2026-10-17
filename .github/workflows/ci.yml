@@ -403,7 +403,13 @@ jobs:
     # skips every step still provisions (and bills for) a Windows VM. When
     # nothing encryption-relevant moved, this runs the skipped-echo step on
     # Ubuntu so the required status check still reports and costs nothing.
-    runs-on: ${{ needs.detect.outputs.encryption == 'true' && 'windows-latest' || 'ubuntu-latest' }}
+    #
+    # `windows-2022`, not `windows-latest`: the fork builds through node-gyp,
+    # and node-gyp 11.5 cannot map the Visual Studio 18 that `windows-latest`
+    # now ships (`find VS unknown version "undefined"` at
+    # `C:\Program Files\Microsoft Visual Studio\18\Enterprise`), so the build
+    # dies before the proof runs. Windows 2022 carries VS 17.x, which it reads.
+    runs-on: ${{ needs.detect.outputs.encryption == 'true' && 'windows-2022' || 'ubuntu-latest' }}
     needs: detect
     steps:
       # Every step but the last is gated, so an unrelated PR runs no real work.
@@ -450,20 +456,25 @@ jobs:
       # behind a green tick.
       #
       # The test and `factory.ts` resolve `better-sqlite3-sqlcipher` from
-      # `apps/api/node_modules`, where pnpm links the UNBUILT package —
-      # `onlyBuiltDependencies` excludes the fork, so its install script never
-      # runs. That link wins over `NODE_PATH`, and a plain unbuilt binding is
-      # exactly the silent-plaintext case this job exists to catch, so it is
-      # repointed at the package the steps above already proved.
+      # `apps/api/node_modules`, where pnpm links the package without building
+      # it (`onlyBuiltDependencies` excludes the fork). `sidecar:build` above
+      # built that same pnpm-store directory in place, so this repoint is
+      # provenance, not the plaintext guard: it makes the test read the tree the
+      # proof step just validated instead of whatever the link happens to
+      # resolve to. The plaintext guard is the proof step and this sentinel.
       #
       # The host Node can load that addon: `build-sidecar.mjs` copies
       # `process.execPath` to `bin/node.exe`, so the node-gyp build and this run
       # share one ABI.
       - name: Run the encrypted-backup test against the built binding
         if: needs.detect.outputs.encryption == 'true'
+        # Declared, not implicit: the default pwsh reports only the LAST
+        # command's exit code, so a failed repoint would be masked by vitest's.
+        shell: bash
         env:
           TUARI_REQUIRE_SQLCIPHER: "1"
         run: |
+          set -euo pipefail
           node -e "const fs = require('node:fs'), p = require('node:path'); const built = p.resolve('apps/desktop/src-tauri/bin/api-runtime/node_modules/better-sqlite3-sqlcipher'); const target = p.resolve('apps/api/node_modules/better-sqlite3-sqlcipher'); fs.rmSync(target, { recursive: true, force: true }); fs.symlinkSync(built, target, 'junction');"
           pnpm --filter @tuari/api exec vitest run src/modules/backup/backup.encrypted.test.ts
 
