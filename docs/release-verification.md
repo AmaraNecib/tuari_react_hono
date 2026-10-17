@@ -64,7 +64,7 @@ pnpm --filter @tuari/desktop portable:only
 ```
 
 `@tuari/desktop build` runs `build-sidecar.mjs` first. That script builds the
-API, copies `dist/` plus the `better-sqlite3` (or `better-sqlite3-sqlcipher`)
+API, copies `dist/` plus the `better-sqlite3` (or `better-sqlite3-multiple-ciphers`)
 native binding into `apps/desktop/src-tauri/bin/api-runtime`, and copies the
 current Node binary to `apps/desktop/src-tauri/bin/node.exe`. Tauri then compiles
 the Rust shell and runs `pnpm --filter @tuari/web build` for the frontend.
@@ -223,7 +223,7 @@ manual:
 - The desktop IPC bridge (`desktop_api_request`, `activate_license`,
   `check_for_updates`). These need the webview.
 - The encrypted-database path. It needs a license with `encrypted_db` and a
-  build that includes the `better-sqlite3-sqlcipher` native binding.
+  build that includes the `better-sqlite3-multiple-ciphers` native binding.
 - Update download, signature verification, and restart.
 - Codesigning and notarisation. The local build is unsigned.
 
@@ -307,7 +307,7 @@ These are real but out of scope for the smoke-test lane. They are reported to th
 parent as separate issues.
 
 - The sidecar build falls back to plain `better-sqlite3` when the
-  `better-sqlite3-sqlcipher` native binding is not present, and it prints a
+  `better-sqlite3-multiple-ciphers` native binding is not present, and it prints a
   warning rather than failing. The portable artifact then ships without
   encryption support, so a customer with the `encrypted_db` feature would get
   `APP_DB_KEY` set and a driver that cannot use it. The build should fail, or at

@@ -607,7 +607,7 @@ async function main() {
       path.join(
         sidecarDir,
         "node_modules",
-        "better-sqlite3-sqlcipher",
+        "better-sqlite3-multiple-ciphers",
         "build",
         "Release",
         "better_sqlite3.node",
