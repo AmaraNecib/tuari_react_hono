@@ -33,16 +33,16 @@ One-line change of the extraction contract, plus the tests that pin it:
 
 ```
 scripts/ci/close-linked-issues.sh       # extractor: keyword must be ADJACENT to #N
-scripts/ci/test-close-linked-issues.sh  # regression matrix, 91 assertions
+scripts/ci/test-close-linked-issues.sh  # regression matrix, 134 assertions
 .github/workflows/auto-close-issues.yml # header rule restated (no logic changed)
 ```
 
-New pattern (verbs defined once, used by both passes):
+New pattern (the closing reference is defined once, used by all three passes):
 
 ```bash
 CLOSE_VERBS='(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)'
 CLOSE_SEP='[*_]*([[:space:]]+|:)[[:space:]]*[*_]*'
-\b${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+
+CLOSE_REF="${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"   # the affirmative pass adds \b
 ```
 
 - The keyword list is unchanged: `close/closes/closed/closing`,
@@ -76,14 +76,23 @@ then markdown emphasis) each fixed one body and broke another, because a word
 count is not a clause. The window is now structural:
 
 ```bash
-body_sentences=$(printf '%s' "$body_flat" | tr '.!?;' '\n\n\n\n')
-NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
+body_sentences=$(printf '%s' "$body_flat" | sed -E 's/([.!?;])([[:space:]]+[^[:lower:]])/\1\n\2/g')
+NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_REF}"
 ```
 
-- **A sentence ends at `. ! ? ;`.** A negator in one sentence cannot reach a
-  close verb in the next, and vice versa. `Neither reviewer objected. Closes #N`
-  closes; `This does not, in any way whatsoever, close #N` negates. Under the
-  word count both of those were wrong, in opposite directions.
+- **A sentence ends at `. ! ? ;`** — but only when the next non-space character
+  is not a lowercase letter. The bare `tr '.!?;'` version split inside tokens
+  too (`per AGENTS.md,`, `e.g.`, `v1.2`, `...`), which moved the negator into a
+  different "sentence" from its verb and turned a drop into a **close** — the
+  direction that must never happen, and a regression against the round-1
+  commit. The guard costs the safe direction instead: a sentence that opens
+  with a lowercase word is not treated as a break, so a negation can reach
+  further and drop a later close (logged, `Ignoring #N`). Pinned by
+  `#510`/`#512`/`#513`/`#515`, which fail on the tr-split commit.
+- **A negator in one sentence cannot reach a close verb in the next.**
+  `Neither reviewer objected. Closes #N` closes;
+  `This does not, in any way whatsoever, close #N` negates. Under the word count
+  both of those were wrong, in opposite directions.
 - **No word-count window.** Inside a sentence the gap holds any amount of prose
   and punctuation, bounded only by the next `#` — so a negation still swallows
   only the reference it directly precedes (`does not close #A, but Closes #B`
@@ -96,20 +105,23 @@ NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
 - **Contractions are enumerated** (`hasn't`, `haven't`, `hadn't`, `won't`, …)
   because `grep -E` has no lookaround; `hasn't fixed #N` and `has not fixed #N`
   now agree.
-- **`not only` / `not just` / `not merely` is affirmative — per matched span.**
-  The check runs on the span the negator actually covers, not on the whole line,
-  so `not only does not fix #N` keeps its negation while `not **only** fixes #N`
-  closes. The old line filter threw away the whole span, negation included.
+- **`not only` / `not just` / `not merely` / `not simply` is affirmative — per
+  matched span.** The check runs on the span the negator actually covers, not on
+  the whole line, so `not only does not fix #N` keeps its negation while
+  `not **only** fixes #N` closes. The old line filter threw away the whole span,
+  negation included.
 - **Subtraction is by number, and conservative.** A body that both negates and
   closes the same number does not close it (`#456`). The safe direction: a
   missing close is visible, a wrong close is not.
 
 Known trade, accepted in #486: a negator and a close verb in the SAME sentence
 negate, so `Do not merge this until it Closes #N` is now a logged, recoverable
-drop (`Ignoring #N: the PR body negates closing it`) instead of a close. Comma-
-separated clauses are the same sentence, so `Not sure, but Closes #N` is the
-same class of conservative miss — visible in the run log and the step summary,
-correctable by hand.
+drop (`Ignoring #N: the PR body negates closing it`) instead of a close. Any
+clause that never breaks the sentence is the same class — a comma clause
+(`Not sure, but Closes #N`), a colon clause (`does not just run: it Closes #N`),
+an unpunctuated one (`found no blockers, so Closes #N`) and a lowercase sentence
+start. All are conservative misses: visible in the run log and the step
+summary, correctable by hand.
 
 Negated candidates are recorded in the step summary as `SKIP` as well as echoed
 to the run log; they used to vanish from the summary table.
@@ -171,18 +183,36 @@ Existing scenarios keep running; added (each one is a real-world shape):
 | `not **only**` is affirmative | `This not **only** fixes #501, it also improves performance. It does not fix #502.` | #501 closed, #502 not closed |
 | negator in an earlier sentence (#486) | `Neither reviewer objected. Closes #503.` | closed |
 | negation padded past three words (#486) | `This does not, in any way whatsoever, close #504. Closes #505.` | #504 not closed, #505 closed |
-| negated candidate in the step summary | `This does not close #507. Closes #508.` with `GITHUB_STEP_SUMMARY` set | summary carries `SKIP … #507` and `CLOSED … #508` |
+| negated candidate in the step summary | `This does not close #507. Closes #508.` with `GITHUB_STEP_SUMMARY` set | #507 not closed, #508 closed, summary carries `SKIP … #507 … negates closing it` |
+| negated-ONLY body (empty `numbers`) | `This does not close #509.` with `GITHUB_STEP_SUMMARY` set | nothing closed, early exit 0, summary still carries the `SKIP … #509` row |
+| token-internal `.` (round-2 gate) | `This does not, per AGENTS.md, close #510. Closes #511.` | #510 not closed, #511 closed |
+| abbreviation + ellipsis (round-2 gate) | `This does not e.g. fix #512, and it does not... close #513. Closes #514.` | #512/#513 not closed, #514 closed |
+| version number (round-2 gate) | `This does not (see v1.2) fix #515. Closes #516.` | #515 not closed, #516 closed |
+| `?` / `!` terminators (round-2 gate) | `Did you not read the issue? Closes #517. It was not fixed! Closes #518.` | both closed |
+| `;` terminator (round-2 gate) | `The change is not related; Closes #519.` | closed |
+| negation after a `;` (round-2 gate) | `The change is not related; this does not close #520. Closes #521.` | #520 not closed, #521 closed |
+| failed PR_BODY fetch | `fail_subs` on the PR number, no `PR_BODY` | exit 0, `nothing to close` |
+| empty body | `PR_BODY=""` | exit 0, `nothing to close`, nothing closed |
 
 The gap tests and the negated-close tests are the regression pins. With the
 74-assertion suite the pre-fix script reported `PASS=58 FAIL=16` (2 prose-gap
 closes, the negated-close scenarios, the split-line/bold separators, the mixed
-body); the 84-assertion control run against the base script is PENDING A SLOT
-(the machine is CPU-bound and the owner's policy forbids re-running suites for
-it). The round-1 fixed script: `PASS=91 FAIL=0`. After the #486 rescope the
-suite is 110 assertions: `PASS=110 FAIL=0` at the round-2 code HEAD, and the
-same suite against the 8b2504e2 (word-count) script is recorded in
-`<head>-control-wordcount.log` — the round-2 rows are exactly the ones that
-fail there, which is what makes them non-vacuous.
+body). The round-1 fixed script (`978cf95b`): `PASS=91 FAIL=0`. After the #486
+rescope (`bfe4c50d`) the suite is 110 assertions: `PASS=110 FAIL=0`, and the
+same suite against the round-1 word-count script is
+`bfe4c50d-control-wordcount.log` — `PASS=99 FAIL=11`, the round-2 rows.
+
+After the round-2 gate fixes the suite is 134 assertions: `PASS=134 FAIL=0` at
+`<head>`. Two controls, both in `.scratch/reviews/466/`:
+
+| Control | Suite | Script | Result |
+| --- | --- | --- | --- |
+| word-count baseline | 134 | `8b2504e2` (word count) | `PASS=119 FAIL=15` — every #486 and round-2 pin |
+| tr-split baseline | 134 | `bfe4c50d` (token-internal split) | `PASS=130 FAIL=4` — the `#510`/`#512`/`#513`/`#515` wrong-close rows |
+
+Two baselines because the round-2 gate fix answers a regression against
+`bfe4c50d`, not against `8b2504e2`: a test that only fails on the older script
+would not prove the newer fix.
 
 ## Risks and non-goals
 
@@ -192,12 +222,14 @@ fail there, which is what makes them non-vacuous.
   always closed (base did it too, and so does GitHub's own parser), so the
   change makes a line-break body behave like a one-line body rather than
   inventing a new class. It is the direct cost of the C3 fix.
-- **A negator inside an unrelated COMMA clause can still swallow a following
-  close** (`Not sure, but Closes #N` drops #N). Deliberate, and the direction is
-  safe: a missed close is visible in the log and the step summary, a wrong close
-  is not. Splitting on `,` instead of `. ! ? ;` would break
-  `This does not, however, close #N`, which is a real negation — the two cases
-  are indistinguishable on surface tokens, so the matcher stays conservative.
+- **A negator inside an unrelated unbroken clause can still swallow a following
+  close** (`Not sure, but Closes #N`, `does not just run: it Closes #N`,
+  `found no blockers, so Closes #N`, and a sentence that opens with a lowercase
+  word). Deliberate, and the direction is safe: a missed close is visible in the
+  log and the step summary, a wrong close is not. Splitting on `,` instead of
+  `. ! ? ;` would break `This does not, however, close #N`, which is a real
+  negation — the two cases are indistinguishable on surface tokens, so the
+  matcher stays conservative.
 - **Only whole-word negators count.** `Note:` and `Nobody` do not negate
   (`\bnot\b` / `\bno\b[[:space:]]+`), so `Note: this Closes #N` closes.
 - **Subtraction is lossy in one direction only.** See the negated-closes section:

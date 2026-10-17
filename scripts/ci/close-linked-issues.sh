@@ -19,17 +19,20 @@
 #                         must never silently leave delivered issues open).
 #   GITHUB_STEP_SUMMARY — optional; a Closed/Skipped table is appended there
 #
-# Backend: bash + curl + jq — deliberately AVOIDS the `gh` CLI. The repo's
-# self-hosted runner (probed 2026-08-24, issue #54) has curl + jq but NO gh
-# and no passwordless sudo, so gh could not be installed from the workflow.
-# curl + jq are the minimum guaranteed toolchain.
+# Backend: bash + curl + jq + sed — deliberately AVOIDS the `gh` CLI. The
+# repo's self-hosted runner (probed 2026-08-24, issue #54) has curl + jq but NO
+# gh and no passwordless sudo, so gh could not be installed from the workflow.
+# curl + jq + sed are the minimum guaranteed toolchain, and the preflight below
+# fails loudly when one is missing.
 #
 # Safety rules (preserved from the original workflow):
 #   1. Only "Closes/Fixes/Resolves #N" in the PR BODY counts (never titles),
 #      the keyword must come IMMEDIATELY before the reference (#466), and a
 #      NEGATED close ("does not close #N") counts for nothing — prose that
 #      merely mentions #N, or says it will not close it, never closes it. A
-#      negator only reaches a close verb inside its OWN sentence (#486).
+#      negator only reaches a close verb inside its OWN sentence (#486), and
+#      "not only/just/merely/simply <verb> #N" is the one carve-out: that
+#      idiom is AFFIRMATIVE and closes.
 #   2. Skips parent/tracker issues that still have open sub-issues.
 #   3. Skips issues whose body marks REMAINING work in a still-open issue
 #      ("remaining"/"todo" — NOT lineage markers like "Part of #N").
@@ -80,7 +83,7 @@ EOF
 
 # Preflight: fail loudly and early on a missing tool or token — a clear
 # message beats a confusing mid-script death.
-for tool in curl jq; do
+for tool in curl jq sed; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "::error::$tool not found on runner — auto-close needs curl + jq"
     exit 1
@@ -164,6 +167,9 @@ CLOSE_VERBS='(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)'
 # "Closes#12" is not a close; only emphasis may sit around that separator,
 # never prose. That is the #466 fix.
 CLOSE_SEP='[*_]*([[:space:]]+|:)[[:space:]]*[*_]*'
+# "A closing reference" — the verb list plus its reference, defined once and
+# shared by all three passes below (the affirmative pass adds the \b).
+CLOSE_REF="${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
 # Negators. Each alternative carries its OWN trailing boundary/separator, so a
 # word test can never be defeated by what follows the word (round-2 finding 3:
 # `no **intention** of closing #N` slipped through while the \b sat after the
@@ -176,14 +182,14 @@ CLOSE_SEP='[*_]*([[:space:]]+|:)[[:space:]]*[*_]*'
 # because grep -E has no lookaround (round-2 finding 2: `hasn't` closed its
 # issue while `has not` did not).
 NEGATOR='(\b(not|never|nor|neither|hardly)\b|\bno[[:space:]]+(longer|more)\b|\bno\b[[:space:]]+|\b(won|don|doesn|didn|hasn|haven|hadn|isn|aren|wasn|weren|can|couldn|shouldn|wouldn|mustn|needn)[[:punct:]]t\b|\bcannot\b)'
-NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
+NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_REF}"
 # "not only/just/merely/simply fixes #N" is AFFIRMATIVE, but only when the
 # close verb follows the idiom DIRECTLY. The test runs per matched SPAN, not
 # per line, so a later real negator in that span survives (round-2 finding 1:
 # the old line filter threw away "…does not fix #443" because "not only"
 # appeared earlier in the same span). Emphasis is allowed between the words
 # and before the verb (round-2 finding 4: `not **only** fixes #N` closes).
-AFFIRMATIVE_IDIOM="${NEGATOR}[[:space:]*_]+(only|just|merely|simply)[[:space:]*_]+${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
+AFFIRMATIVE_IDIOM="${NEGATOR}[[:space:]*_]+(only|just|merely|simply)[[:space:]*_]+${CLOSE_REF}"
 
 # One line, not many: grep is line-based, and "does not\nclose #N" is the same
 # statement as "does not close #N" (test-audit finding).
@@ -198,10 +204,21 @@ body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ')
 # sentence at a time. The affirmative pass needs no split (a `#` can never
 # appear between a keyword and its reference), so it keeps reading body_flat.
 #
+# A terminator only ends a sentence when the next non-space character is NOT a
+# lowercase letter. Those four characters also occur INSIDE tokens ("per
+# AGENTS.md,", "e.g.", "v1.2", "..."), and splitting there moves the negator
+# into a different "sentence" from its verb, which turns a drop into a CLOSE:
+# "This does not, per AGENTS.md, close #N" must still negate. The cost is the
+# safe direction — a real sentence that opens with a lowercase word is not
+# treated as a break, so a negation can reach further and drop a later close
+# (logged, and the same class as the trade below).
+#
 # Known trade, accepted in #486: a negator and a close verb in the SAME
 # sentence negate, so "Do not merge this until it Closes #N" is a logged,
-# recoverable drop instead of a close.
-body_sentences=$(printf '%s' "$body_flat" | tr '.!?;' '\n\n\n\n')
+# recoverable drop instead of a close. Comma-, colon- and unpunctuated clauses
+# are the same sentence, so "Not sure, but Closes #N" and "found no blockers,
+# so Closes #N" are the same class of conservative miss.
+body_sentences=$(printf '%s' "$body_flat" | sed -E 's/([.!?;])([[:space:]]+[^[:lower:]])/\1\n\2/g')
 
 to_numbers() { # stdin: matched closing spans → one issue number per line
   grep -oE '#[0-9]+' | tr -d '#' | sort -un
@@ -209,7 +226,7 @@ to_numbers() { # stdin: matched closing spans → one issue number per line
 
 numbers=$(
   printf '%s\n' "$body_flat" \
-    | grep -oiE "\b${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+" \
+    | grep -oiE "\b${CLOSE_REF}" \
     | to_numbers \
     || true
 )
@@ -226,15 +243,13 @@ numbers=$(
 #     AFFIRMATIVE and is filtered back out per matched span, emphasis included.
 #     Subtracting a NUMBER is deliberately conservative — a body that both
 #     negates and closes the same number does not close it.
-negated_spans=$(
-  printf '%s\n' "$body_sentences" \
-    | while IFS= read -r sentence; do
-        [ -n "$sentence" ] || continue
-        printf '%s\n' "$sentence" | grep -oiE "$NEGATED_CLOSE" || true
-      done
-)
+#
+#     One grep, not one grep per sentence: body_sentences is already one
+#     sentence per line and grep cannot match across a line break, so the line
+#     IS the sentence scope.
 negated=$(
-  printf '%s\n' "$negated_spans" \
+  printf '%s\n' "$body_sentences" \
+    | grep -oiE "$NEGATED_CLOSE" \
     | grep -viE "$AFFIRMATIVE_IDIOM" \
     | to_numbers \
     || true
@@ -252,7 +267,7 @@ done
 numbers=$(printf '%s\n' "$numbers" | grep -E '^[0-9]+$' || true)
 
 if [ -z "$numbers" ]; then
-  echo "No 'Closes #N' reference in PR body #$PR_NUMBER — nothing to close."
+  echo "No 'Closes #N' reference to act on in PR body #$PR_NUMBER — nothing to close."
   exit 0
 fi
 

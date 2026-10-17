@@ -97,6 +97,9 @@ run_script() { # pr_body  -> sets OUT and RC  (PR number defaults to 42; merged 
 
 reset_state() {
   rm -rf "$TMP/issues" "$TMP/fail_close" "$TMP/fail_subs" "$TMP"/closed_* 2>/dev/null
+  # Summary files are APPENDED to by the script, so a stale one would let a
+  # grep-based assertion pass on a row this scenario never wrote.
+  rm -f "$TMP"/summary*.md
   mkdir -p "$TMP/issues"
   true
 }
@@ -486,6 +489,7 @@ assert_not_closed "the real negation in that body still negates (#502)" 502
 reset_state
 mk_issue 503 open "negator in an unrelated sentence"
 run_script "Neither reviewer objected. Closes #503."
+check "negator-in-an-earlier-sentence run exits 0" "0" "$RC"
 assert_closed "a negator in an earlier sentence does not negate a later close (#503)" 503
 
 reset_state
@@ -505,11 +509,81 @@ mk_issue 508 open "affirmative summary row"
 SUMF="$TMP/summary-negated.md"
 OUT=$(GITHUB_STEP_SUMMARY="$SUMF" PR_NUMBER=42 PR_BODY="This does not close #507. Closes #508." bash "$TARGET" 2>&1); RC=$?
 check "negated-summary run exits 0" "0" "$RC"
-if grep -q "SKIP.*#507" "$SUMF" && grep -q "CLOSED.*#508" "$SUMF"; then
-  check "a negated candidate is reported as skipped in the step summary" yes yes
+assert_not_closed "the negated candidate in that body does not close (#507)" 507
+assert_closed "the affirmative candidate in that body closes (#508)" 508
+if grep -qE 'SKIP.*#507.*negates closing it' "$SUMF" && grep -q 'CLOSED.*#508' "$SUMF"; then
+  check "a negated candidate is reported as skipped with its reason in the step summary" yes yes
 else
-  check "a negated candidate is reported as skipped in the step summary" yes no
+  check "a negated candidate is reported as skipped with its reason in the step summary" yes no
 fi
+
+# A body whose ONLY candidate is negated leaves `numbers` empty: the script
+# takes the empty-numbers early exit and still has to write the SKIP row
+# through the EXIT trap. Without a summary file that path was untested.
+reset_state
+jq -cn --arg s open --arg b 'This does not close #509.' \
+  '{state:$s, body:$b, merged:true, base:{ref:"develop"}}' >"$TMP/issues/42.json"
+mk_issue 509 open "negated-only body"
+SUMF="$TMP/summary-negated-only.md"
+OUT=$(GITHUB_STEP_SUMMARY="$SUMF" PR_NUMBER=42 PR_BODY="This does not close #509." bash "$TARGET" 2>&1); RC=$?
+check "negated-only run exits 0" "0" "$RC"
+assert_not_closed "a negated-only body closes nothing (#509)" 509
+if grep -qE 'SKIP.*#509.*negates closing it' "$SUMF" && grep -q 'nothing to close' <<<"$OUT"; then
+  check "a negated-only body still reports its SKIP row and takes the empty-numbers exit" yes yes
+else
+  check "a negated-only body still reports its SKIP row and takes the empty-numbers exit" yes no
+fi
+
+# ── Round-2 gate findings (fix on top of bfe4c50d) ──────────────────────
+# A `.`/`!`/`?`/`;` INSIDE a token is not a sentence end. Splitting on it moved
+# the negator into a different "sentence" from its verb and turned a drop into
+# a CLOSE — the wrong-close direction, and a regression against the parent
+# commit. The boundary is now "terminator + whitespace + a non-lowercase", so
+# each block below pairs the must-NOT-close with a same-body must-close.
+reset_state
+mk_issue 510 open "dot inside a filename between negator and verb"
+mk_issue 511 open "affirmative control in the same body"
+run_script "This does not, per AGENTS.md, close #510. Closes #511."
+assert_not_closed "a '.' inside a filename is not a sentence end (#510)" 510
+assert_closed "the affirmative control in that body closes (#511)" 511
+
+reset_state
+mk_issue 512 open "abbreviation between negator and verb"
+mk_issue 513 open "ellipsis between negator and verb"
+mk_issue 514 open "affirmative control in the same body"
+run_script "This does not e.g. fix #512, and it does not... close #513. Closes #514."
+assert_not_closed "'e.g.' between negator and verb still negates (#512)" 512
+assert_not_closed "an ellipsis between negator and verb still negates (#513)" 513
+assert_closed "the affirmative control in that body closes (#514)" 514
+
+reset_state
+mk_issue 515 open "version number between negator and verb"
+mk_issue 516 open "affirmative control in the same body"
+run_script "This does not (see v1.2) fix #515. Closes #516."
+assert_not_closed "a version number between negator and verb still negates (#515)" 515
+assert_closed "the affirmative control in that body closes (#516)" 516
+
+# The other three terminators are load-bearing too: `!`, `?` and `;` end a
+# sentence, so a negation cannot reach across them.
+reset_state
+mk_issue 517 open "negator before a '?' terminator"
+mk_issue 518 open "negator before a '!' terminator"
+run_script "Did you not read the issue? Closes #517. It was not fixed! Closes #518."
+assert_closed "a '?' ends the sentence, so the later close stands (#517)" 517
+assert_closed "a '!' ends the sentence, so the later close stands (#518)" 518
+
+reset_state
+mk_issue 519 open "negator before a ';' terminator"
+run_script "The change is not related; Closes #519."
+check "';' terminator run exits 0" "0" "$RC"
+assert_closed "a ';' ends the sentence, so the later close stands (#519)" 519
+
+reset_state
+mk_issue 520 open "negation after a ';'"
+mk_issue 521 open "affirmative control in the same body"
+run_script "The change is not related; this does not close #520. Closes #521."
+assert_not_closed "a negation after the ';' still negates (#520)" 520
+assert_closed "the affirmative control in that body closes (#521)" 521
 
 reset_state
 run_script "no references at all in this body"
@@ -584,6 +658,22 @@ mk_issue 114 open "fetch-body target"
 jq -cn --arg s open --arg b 'Closes #114' '{state:$s, body:$b, merged:true, base:{ref:"develop"}}' >"$TMP/issues/77.json"
 OUT=$(PR_NUMBER=77 bash "$TARGET" 2>&1); RC=$?
 assert_closed "PR_BODY auto-fetched via API" 114
+
+# ... and a FAILED body fetch still fails open with an empty body.
+reset_state
+mkdir -p "$TMP/issues"
+echo 42 >"$TMP/fail_subs"
+OUT=$(PR_NUMBER=42 bash "$TARGET" 2>&1); RC=$?
+check "PR_BODY fetch failure exits 0" "0" "$RC"
+assert_has "$OUT" "nothing to close" "a failed PR_BODY fetch degrades to an empty body"
+
+# An empty body is a no-op, not a crash.
+reset_state
+mk_issue 118 open "empty-body target"
+run_script ""
+check "empty body exits 0" "0" "$RC"
+assert_has "$OUT" "nothing to close" "an empty body takes the nothing-to-close path"
+assert_not_closed "an empty body closes nothing" 118
 
 # Unmerged PR must never close anything, even with dry_run unset
 reset_state
