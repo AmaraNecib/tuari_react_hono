@@ -37,6 +37,7 @@ export const resolvePnpmExecution = ({
   env = process.env,
   nodeExecPath = process.execPath,
   platform = process.platform,
+  exists = existsSync,
 } = {}) => {
   const npmExecPath = env.npm_execpath;
 
@@ -72,7 +73,7 @@ export const resolvePnpmExecution = ({
 
   if (platform === "win32" && isWindowsShellScriptExtension(extension)) {
     return {
-      command: resolveTrustedWindowsBinaryPath({ binaryName: "cmd.exe", env }),
+      command: resolveTrustedWindowsBinaryPath({ binaryName: "cmd.exe", env, exists }),
       argsPrefix: ["/d", "/s", "/c", quoteForWindowsCommandProcessor(normalizedExecPath)],
       useWindowsCommandString: true,
     };

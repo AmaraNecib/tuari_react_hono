@@ -67,6 +67,8 @@ test("resolvePnpmExecution wraps pnpm cmd paths with trusted cmd.exe", async () 
     const pnpmExecPath = path.join(tempDir, "pnpm.cmd");
     writeFileSync(pnpmExecPath, "@echo off\r\n");
 
+    const trustedCmdPath = path.join(path.resolve("C:/Windows"), "System32", "cmd.exe");
+
     const execution = resolvePnpmExecution({
       env: {
         npm_execpath: pnpmExecPath,
@@ -74,9 +76,13 @@ test("resolvePnpmExecution wraps pnpm cmd paths with trusted cmd.exe", async () 
       },
       nodeExecPath: "/node.exe",
       platform: "win32",
+      // Windows-only branch, host-independent: stub the System32 probe so the
+      // assertion also runs on the Linux CI runner (the previous version did a
+      // real existsSync("C:/Windows/System32/cmd.exe") and threw on Linux).
+      exists: (candidate) => candidate === trustedCmdPath,
     });
 
-    assert.equal(execution.command, path.join(path.resolve("C:/Windows"), "System32", "cmd.exe"));
+    assert.equal(execution.command, trustedCmdPath);
     assert.deepEqual(execution.argsPrefix, [
       "/d",
       "/s",
