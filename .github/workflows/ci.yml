@@ -443,6 +443,30 @@ jobs:
         if: needs.detect.outputs.encryption == 'true'
         run: node apps/desktop/scripts/sqlcipher-encryption-proof.mjs
 
+      # #402's sentinel, wired: `backup.encrypted.test.ts` skips itself when the
+      # native fork is missing — right on a workstation without a C++ toolchain,
+      # wrong in the one job that just built the fork. `TUARI_REQUIRE_SQLCIPHER=1`
+      # turns that skip into a failure, so a broken native build cannot hide
+      # behind a green tick.
+      #
+      # The test and `factory.ts` resolve `better-sqlite3-sqlcipher` from
+      # `apps/api/node_modules`, where pnpm links the UNBUILT package —
+      # `onlyBuiltDependencies` excludes the fork, so its install script never
+      # runs. That link wins over `NODE_PATH`, and a plain unbuilt binding is
+      # exactly the silent-plaintext case this job exists to catch, so it is
+      # repointed at the package the steps above already proved.
+      #
+      # The host Node can load that addon: `build-sidecar.mjs` copies
+      # `process.execPath` to `bin/node.exe`, so the node-gyp build and this run
+      # share one ABI.
+      - name: Run the encrypted-backup test against the built binding
+        if: needs.detect.outputs.encryption == 'true'
+        env:
+          TUARI_REQUIRE_SQLCIPHER: "1"
+        run: |
+          node -e "const fs = require('node:fs'), p = require('node:path'); const built = p.resolve('apps/desktop/src-tauri/bin/api-runtime/node_modules/better-sqlite3-sqlcipher'); const target = p.resolve('apps/api/node_modules/better-sqlite3-sqlcipher'); fs.rmSync(target, { recursive: true, force: true }); fs.symlinkSync(built, target, 'junction');"
+          pnpm --filter @tuari/api exec vitest run src/modules/backup/backup.encrypted.test.ts
+
       - name: Encryption proof skipped (no desktop/api/native changes)
         if: needs.detect.outputs.encryption != 'true'
         run: echo "No encryption-relevant changes — skipping (required check satisfied)"

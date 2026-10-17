@@ -2,13 +2,15 @@
 
 - **mode:** remote
 - **ticket:** GitHub #410 (`CI: prove the release artifact can actually encrypt`)
-- **target ref:** `origin/develop`
-- **base SHA:** `d6164c65` (worktree HEAD at lane start; `origin/develop` was `ec369a30`, one commit ahead)
+- **target ref:** `origin/fix/402-encryption-fallback` (the base landed and was
+  pushed; see "Base decision")
+- **base SHA:** `42609a75` (`origin/fix/402-encryption-fallback`; the lane started
+  on `d6164c65` with the parked `fix/sqlcipher-fallback` merged in)
 - **branch:** `fix/410-encryption-ci-proof`
 - **review tier:** High-assurance — encryption at rest, and a gate whose whole
   purpose is to stop a silent loss of that guarantee.
 - **dependency:** #402 (the fail-loud sidecar build + the real SQLCipher probe).
-  Not merged. See "Base decision" below.
+  Landed on `fix/402-encryption-fallback`; this branch is stacked on it.
 
 ## Problem
 
@@ -39,6 +41,11 @@ encrypted too.
    that copy does carry drift risk and is only mitigated by failing closed.
 4. **The job lives in `ci.yml` and is path-gated**, not only in the publish
    gate — a broken native build must fail before release day.
+5. **#402's sentinel is armed by the same job.** `backup.encrypted.test.ts`
+   skips itself when the native fork is missing, which is right on a workstation
+   and wrong in the one job that just built the fork. The job exports
+   `TUARI_REQUIRE_SQLCIPHER=1` before running that file, so a missing or
+   unloadable binding is a red job rather than three skipped tests.
 
 ## Base decision (dependency #402)
 
@@ -54,14 +61,61 @@ Stacked on the first (see the merge commit on this branch). **Flagged to the
 parent:** if the live lane lands its #402 instead, this branch rebases cleanly —
 every file this lane adds is disjoint from the #402 diff.
 
+**Resolved.** `fix/402-encryption-fallback` landed and was pushed
+(`origin/fix/402-encryption-fallback`), so this branch was rebuilt on it: the
+branch was reset to that tip and the six #410 commits were cherry-picked
+(`6e446141`, `9e94d1fe`, `8e729c4d`, `ada25cc5`, `69530400`, `8e3a39ef`). The
+`fix/sqlcipher-fallback` merge and the ~27 parked `#409`-era commits are gone,
+so a PR from this branch no longer resurrects that stack. One conflict per
+round, both in `docs/editions-and-features.md`, where #402's newer section 6c
+replaced the parked text this lane had edited; the resolution keeps #402's text
+and folds in this lane's additions (the `prove-encryption` job, the
+`onlyBuiltDependencies` note, the armed sentinel).
+
 ## Changed contracts
 
 | Surface | Change |
 | --- | --- |
 | `apps/desktop/scripts/sqlcipher-encryption-proof.mjs` (new) | CLI: `--runtime`, `--node`, `--health-timeout-ms`, `--backup-timeout-ms`, `--keep`. Exit 0 = proven, 1 = the artifact cannot encrypt or its backup is plaintext. |
 | `apps/desktop/scripts/sqlcipher-availability.mjs` | Consumed, not changed: `inspectSqlcipherArtifact`, `probeSqlcipherBinding`. |
-| `.github/workflows/ci.yml` | New `prove-encryption` job (`windows-latest`), new `detect` output `encryption`, new path filter. |
+| `.github/workflows/ci.yml` | New `prove-encryption` job (`windows-latest`), new `detect` output `encryption`, new path filter. Its last step repoints `apps/api/node_modules/better-sqlite3-sqlcipher` at the built package and runs `backup.encrypted.test.ts` with `TUARI_REQUIRE_SQLCIPHER=1`. |
 | root `package.json` | New `check:sqlcipher-proof`, wired into `lint` (pure-logic tests, no native toolchain). |
+
+## Sentinel wiring (#402's `backup.encrypted.test.ts`)
+
+#402 added the file and its sentinel; #410 is what runs it. The step comes
+after the runtime proof, and the ordering is load-bearing: `sidecar:build`
+builds the fork, the proof proves the built runtime encrypts, and only then does
+the API test run against that same binding.
+
+Two mechanisms, both verified locally:
+
+- **`TUARI_REQUIRE_SQLCIPHER=1` is what turns a skip into a failure.** Without
+  it the file reports `1 skipped (1)` / `3 skipped (3)` and exits 0 — a green
+  tick for an unbuilt fork. With it, on this workstation's unbuilt binding:
+  `Tests 1 failed | 2 skipped (3)`, exit 1, message `native SQLCipher binding
+  required in this job`.
+- **The built package is linked in, not reached through `NODE_PATH`.** The test
+  and `factory.ts` resolve `better-sqlite3-sqlcipher` from
+  `apps/api/node_modules`, and pnpm links the UNBUILT package there
+  (`onlyBuiltDependencies` excludes the fork, so its install script never runs).
+  A local probe confirms the precedence: with that link present, a `NODE_PATH`
+  pointing at a different copy still resolved the local one; removing the link
+  made `NODE_PATH` resolve. A plain unbuilt binding is exactly the
+  silent-plaintext case the job exists to catch, so the link is replaced
+  (`fs.rmSync` + a `junction` symlink) with the package the proof already
+  proved. The host Node can load that addon because `build-sidecar.mjs` copies
+  `process.execPath` to `bin/node.exe`, so the node-gyp build and the vitest run
+  share one ABI.
+
+The step is inside the existing `prove-encryption` job, so the required-status
+contract and the `detect` path filter are untouched.
+
+**Not verified locally:** whether the built addon loads in the vitest run, and
+whether the Windows job is green end to end. No Windows SDK here, so no fork can
+be built; only the CI job can answer that. Fail-closed: a missing binding is red,
+and `vitest run <file>` exits 1 when the file is gone, so a rename cannot make
+the step pass silently.
 
 ## Tests
 
@@ -108,7 +162,8 @@ every file this lane adds is disjoint from the #402 diff.
 ## Verification plan
 
 1. `pnpm check:sqlcipher-proof`, `pnpm check:workflow-assets`,
-   `pnpm check:repo-hygiene`, `pnpm check:e2e-selection`, `pnpm lint`.
+   `pnpm check:repo-hygiene`, `pnpm check:e2e-selection`, `pnpm lint`,
+   `pnpm typecheck`.
 2. Windows CI: `pnpm --filter @tuari/desktop sidecar:build` (no
    `--allow-plaintext`) then `node apps/desktop/scripts/sqlcipher-encryption-proof.mjs`.
 3. Gate: debate + code-review + test-audit at the code HEAD.
