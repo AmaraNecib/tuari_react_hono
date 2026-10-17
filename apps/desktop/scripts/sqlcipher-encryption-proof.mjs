@@ -77,6 +77,11 @@ const SQLCIPHER_PACKAGE_DIR = path.join("node_modules", "better-sqlite3-sqlciphe
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 90_000;
 const DEFAULT_BACKUP_TIMEOUT_MS = 120_000;
+// Every `runBundledNode` probe talks to a native addon. A hung native call must
+// not hold the job: without a bound, `spawnSync` never returns, the script never
+// reaches its own error checks or cleanup, and the Windows runner stays
+// occupied until GitHub cancels it. Same bound as `probeSqlcipherBinding`.
+const BUNDLED_NODE_TIMEOUT_MS = 30_000;
 
 // ─── pure helpers (unit-tested without a native toolchain) ─────────────────
 
@@ -286,8 +291,14 @@ function runBundledNode(nodeExe, runtimeDir, source, env) {
     cwd: runtimeDir,
     env: { ...process.env, ...env },
     encoding: "utf8",
+    timeout: BUNDLED_NODE_TIMEOUT_MS,
   });
 
+  if (result.error?.code === "ETIMEDOUT" || result.signal) {
+    throw new Error(
+      `${nodeExe} probe did not finish within ${BUNDLED_NODE_TIMEOUT_MS}ms (hung native call)`,
+    );
+  }
   if (result.error) {
     throw new Error(`${nodeExe} could not be executed: ${result.error.message}`);
   }
