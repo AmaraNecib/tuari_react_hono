@@ -43,6 +43,7 @@ jobs:
       - run: pnpm test:prose
       - run: pnpm test:ci-scripts
       - run: pnpm check:e2e-selection
+      - run: pnpm check:sqlcipher-proof
       - run: pnpm check:license-signer
 
   typecheck:
@@ -77,6 +78,7 @@ jobs:
       api: ${{ steps.resolve.outputs.api }}
       web: ${{ steps.resolve.outputs.web }}
       e2e: ${{ steps.resolve.outputs.e2e }}
+      encryption: ${{ steps.resolve.outputs.encryption }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -111,6 +113,22 @@ jobs:
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'playwright.config.ts'
+            # The encryption proof builds a native SQLCipher addon, so it is a
+            # Windows runner and only pays for itself when something it depends
+            # on moved: the sidecar build, the API database/backup paths, the
+            # native build config, or the locked SQLCipher version.
+            encryption:
+              - 'apps/desktop/**'
+              - 'apps/api/**'
+              - 'packages/contracts/**'
+              - 'infrastructure/**'
+              # The proof's own unit test: a change to it alone must re-run the
+              # job it guards, not just the ungated lint step.
+              - 'tests/sqlcipher-encryption-proof.test.mjs'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
+              - '.github/workflows/ci.yml'
 
       # Manual dispatch (workflow_dispatch) has no PR diff to compare —
       # paths-filter would see "no changes" and skip every test, defeating
@@ -123,11 +141,13 @@ jobs:
             echo "api=true" >> "$GITHUB_OUTPUT"
             echo "web=true" >> "$GITHUB_OUTPUT"
             echo "e2e=true" >> "$GITHUB_OUTPUT"
+            echo "encryption=true" >> "$GITHUB_OUTPUT"
           else
             echo "rust=${{ steps.filter.outputs.rust }}" >> "$GITHUB_OUTPUT"
             echo "api=${{ steps.filter.outputs.api }}" >> "$GITHUB_OUTPUT"
             echo "web=${{ steps.filter.outputs.web }}" >> "$GITHUB_OUTPUT"
             echo "e2e=${{ steps.filter.outputs.e2e }}" >> "$GITHUB_OUTPUT"
+            echo "encryption=${{ steps.filter.outputs.encryption }}" >> "$GITHUB_OUTPUT"
           fi
 
   test-rust:
@@ -366,3 +386,98 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo build --filter="!@tuari/desktop"
+
+  # ── The encryption proof (#410) ─────────────────────────────────
+  # The only place a real SQLCipher native build is exercised. `windows-latest`
+  # is required *when the proof runs*: the addon is a node-gyp build that needs
+  # the Windows SDK, and the runtime it is proven against is the Windows
+  # artifact. When nothing encryption-relevant moved the job still runs (so its
+  # required check reports) but the conditional `runs-on` below keeps it off a
+  # Windows VM. A green release previously said nothing about encryption, because
+  # the fallback to plain better-sqlite3 was a warning in the build log — this
+  # job is what makes that failure loud before release day, not on it.
+  prove-encryption:
+    name: Prove SQLCipher encryption (built artifact)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # `runs-on` is conditional, not just the steps: a `windows-latest` job that
+    # skips every step still provisions (and bills for) a Windows VM. When
+    # nothing encryption-relevant moved, this runs the skipped-echo step on
+    # Ubuntu so the required status check still reports and costs nothing.
+    #
+    # `windows-2022`, not `windows-latest`: the fork builds through node-gyp,
+    # and node-gyp 11.5 cannot map the Visual Studio 18 that `windows-latest`
+    # now ships (`find VS unknown version "undefined"` at
+    # `C:\Program Files\Microsoft Visual Studio\18\Enterprise`), so the build
+    # dies before the proof runs. Windows 2022 carries VS 17.x, which it reads.
+    runs-on: ${{ needs.detect.outputs.encryption == 'true' && 'windows-2022' || 'ubuntu-latest' }}
+    needs: detect
+    steps:
+      # Every step but the last is gated, so an unrelated PR runs no real work.
+      # The JOB always runs, so its required status check always reports.
+      - uses: actions/checkout@v4
+        if: needs.detect.outputs.encryption == 'true'
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        if: needs.detect.outputs.encryption == 'true'
+      - uses: actions/setup-node@v4
+        if: needs.detect.outputs.encryption == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        if: needs.detect.outputs.encryption == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # `@tuari/contracts` dist is gitignored and the API bundle inlines it, so
+      # every build path in this workflow builds it first. Omitting it here is
+      # how this job would die before reaching the proof.
+      - name: Build shared contracts
+        if: needs.detect.outputs.encryption == 'true'
+        run: pnpm --filter @tuari/contracts build
+
+      # No --allow-plaintext: a sidecar that cannot encrypt must fail here
+      # rather than ship. The waiver exists for local typechecking, not for CI.
+      - name: Build the sidecar with the real SQLCipher dependency
+        if: needs.detect.outputs.encryption == 'true'
+        run: pnpm --filter @tuari/desktop sidecar:build
+
+      # Proves cipher_version, a keyed write, a non-plaintext file, a keyed
+      # read, and a non-plaintext key-readable daily backup — against the
+      # runtime the previous step built.
+      - name: Prove the built runtime encrypts
+        if: needs.detect.outputs.encryption == 'true'
+        run: node apps/desktop/scripts/sqlcipher-encryption-proof.mjs
+
+      # #402's sentinel, wired: `backup.encrypted.test.ts` skips itself when the
+      # native fork is missing — right on a workstation without a C++ toolchain,
+      # wrong in the one job that just built the fork. `TUARI_REQUIRE_SQLCIPHER=1`
+      # turns that skip into a failure, so a broken native build cannot hide
+      # behind a green tick.
+      #
+      # The test and `factory.ts` resolve `better-sqlite3-sqlcipher` from
+      # `apps/api/node_modules`, where pnpm links the package without building
+      # it (`onlyBuiltDependencies` excludes the fork). `sidecar:build` above
+      # built that same pnpm-store directory in place, so this repoint is
+      # provenance, not the plaintext guard: it makes the test read the tree the
+      # proof step just validated instead of whatever the link happens to
+      # resolve to. The plaintext guard is the proof step and this sentinel.
+      #
+      # The host Node can load that addon: `build-sidecar.mjs` copies
+      # `process.execPath` to `bin/node.exe`, so the node-gyp build and this run
+      # share one ABI.
+      - name: Run the encrypted-backup test against the built binding
+        if: needs.detect.outputs.encryption == 'true'
+        # Declared, not implicit: the default pwsh reports only the LAST
+        # command's exit code, so a failed repoint would be masked by vitest's.
+        shell: bash
+        env:
+          TUARI_REQUIRE_SQLCIPHER: "1"
+        run: |
+          set -euo pipefail
+          node -e "const fs = require('node:fs'), p = require('node:path'); const built = p.resolve('apps/desktop/src-tauri/bin/api-runtime/node_modules/better-sqlite3-sqlcipher'); const target = p.resolve('apps/api/node_modules/better-sqlite3-sqlcipher'); fs.rmSync(target, { recursive: true, force: true }); fs.symlinkSync(built, target, 'junction');"
+          pnpm --filter @tuari/api exec vitest run src/modules/backup/backup.encrypted.test.ts
+
+      - name: Encryption proof skipped (no desktop/api/native changes)
+        if: needs.detect.outputs.encryption != 'true'
+        run: echo "No encryption-relevant changes — skipping (required check satisfied)"
