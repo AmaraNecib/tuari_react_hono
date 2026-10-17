@@ -89,7 +89,7 @@ treated as perpetual (section 8, gap 5).
 
 The shell computes a `LicenseStatus` (`apps/desktop/src-tauri/src/license.rs:37`,
 logic at `:412`) and exports the coarser `TUARI_LICENSE_STATUS` string only when
-`LicenseManager::initialize` succeeds (`apps/desktop/src-tauri/src/lib.rs`,
+`LicenseManager::initialize` succeeds (`apps/desktop/src-tauri/src/lib.rs:2052`,
 `apps/desktop/src-tauri/src/license.rs:502`, mapping at `:536` for a licensed
 install and `:557` for no license). The API reads that string; when the
 variable is absent it falls back to `standard` / no features / `maxUsers 1` /
@@ -105,7 +105,7 @@ writes.
 | `inactive` | `NotYetActive` | Clock is before `validFrom`. | No |
 | `suspicious` | `Tampered` | A clock inconsistency seen by a manager that already initialized; `status()` also fails closed on tracker I/O errors (`:414`). A tamper at startup fails `initialize` instead (next row). | No |
 | `unknown` | `Invalid` | No license file and outside the post-install window (`:440` returns `Invalid`, `:562` maps it to `unknown`). | No |
-| `unknown` (defaulted) | none; `initialize` returned `Err` | Bad signature, malformed license, I/O error, or a clock tamper at startup (`apps/desktop/src-tauri/src/license.rs:114`). The shell then sets no license vars (`apps/desktop/src-tauri/src/lib.rs`), so the API falls back to `standard` / `unknown` and refuses writes (`apps/api/src/infrastructure/license.ts:61`; the omitted status is #399). | No |
+| `unknown` (defaulted) | none; `initialize` returned `Err` | Bad signature, malformed license, I/O error, or a clock tamper at startup (`apps/desktop/src-tauri/src/license.rs:114`). The shell then sets no license vars (`apps/desktop/src-tauri/src/lib.rs:2052`), so the API falls back to `standard` / `unknown` and refuses writes (`apps/api/src/infrastructure/license.ts:61`; the omitted status is #399). | No |
 
 The `Writes` column is `mutationLicenseRefusalMessage`
 (`apps/api/src/infrastructure/license.ts:109`), applied to every audited
