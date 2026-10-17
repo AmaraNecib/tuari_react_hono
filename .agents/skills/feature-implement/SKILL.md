@@ -103,6 +103,10 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
 ```
 
+Run output-heavy checks here and in Guard Phase 1 through a `codemode` script
+(see `AGENTS.md` → *Context discipline (codemode)*) so raw test logs, `pnpm`/
+`gh` output, and multi-file reads are filtered before they reach the context.
+
 ### Source-only staging rule
 
 Builds and test commands may generate `dist/`, `target/`, sidecar binaries,

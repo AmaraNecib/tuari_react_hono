@@ -167,6 +167,11 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
 ```
 
+Run these checks, and the Guard Phase 1 checks below, through a `codemode`
+script where the output is large (see `AGENTS.md` →
+*Context discipline (codemode)*): the script prints the failures and counts, so
+the full log never enters the context.
+
 Run these checks locally so a predictable failure surfaces in the worktree,
 not first on an external system.
 
