@@ -100,14 +100,112 @@ function findMatchingParen(source, openIndex) {
   return -1;
 }
 
+/** Index of the first non-whitespace character at or after `start`. */
+function skipWhitespace(source, start) {
+  let index = start;
+  while (index < source.length && /\s/.test(source[index])) index += 1;
+  return index;
+}
+
+/** Whether `char` can start an identifier (so a bare option value is a value). */
+function isIdentifierStart(char) {
+  return /[A-Za-z_$]/.test(char ?? '');
+}
+
 /**
- * A real pin is the `timeZone` option *with a usable value*: the key alone is
- * not enough (`{ timeZone: undefined }`, `{ timeZone: "" }`), and a comment that
- * merely mentions the word does not pin the call. Shorthand `{ timeZone }`
- * counts because the identifier is the option value.
+ * Replace every comment in `source` with a space, leaving strings intact.
+ *
+ * The paren matcher already skips comments while balancing; the *option* check
+ * needs the same treatment, or a commented-out `timeZone: getAlgeriaTimeZone()`
+ * would read as a pin while the call actually uses the machine zone.
  */
-const PINNED_TIME_ZONE_PATTERN =
-  /\btimeZone\s*:\s*(?=\S)(?!undefined\b|null\b|["'`])|\btimeZone\s*[,}]/;
+function stripComments(source) {
+  let out = '';
+  let index = 0;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '/' && source[index + 1] === '/') {
+      out += ' ';
+      index = skipLineComment(source, index);
+      continue;
+    }
+    if (char === '/' && source[index + 1] === '*') {
+      out += ' ';
+      index = skipBlockComment(source, index);
+      continue;
+    }
+    if (char === '"' || char === "'" || char === '`') {
+      const end = skipString(source, index);
+      out += source.slice(index, end);
+      index = end;
+      continue;
+    }
+    out += char;
+    index += 1;
+  }
+  return out;
+}
+
+/**
+ * The option value text at `start`, or `null` when it does not pin the zone.
+ * A usable value is a nonempty quoted zone, a non-`undefined`/`null`
+ * identifier (or call on one), or any other nonempty token.
+ */
+function readTimeZoneValue(source, start) {
+  const char = source[start];
+  if (char === undefined || char === ',' || char === '}') return null;
+  if (char === '"' || char === "'" || char === '`') {
+    const end = skipString(source, start);
+    return end - start > 2 ? source.slice(start, end) : null;
+  }
+  if (isIdentifierStart(char)) {
+    let end = start + 1;
+    while (isIdentifierChar(source[end])) end += 1;
+    const identifier = source.slice(start, end);
+    return identifier === 'undefined' || identifier === 'null' ? null : identifier;
+  }
+  return source.slice(start);
+}
+
+/**
+ * Whether the call text carries a usable `timeZone` option, ignoring comments.
+ *
+ * A real pin is the `timeZone` option *with a usable value*: the key alone is
+ * not enough (`{ timeZone: undefined }`, `{ timeZone: "" }`), and a comment or
+ * string that merely mentions the word does not pin the call. A nonempty
+ * quoted zone (`{ timeZone: "Africa/Algiers" }`), an identifier or call
+ * (`getAlgeriaTimeZone()`) and the shorthand `{ timeZone }` all count.
+ */
+function hasUsableTimeZoneOption(call) {
+  const source = stripComments(call);
+  let index = 0;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '"' || char === "'" || char === '`') {
+      index = skipString(source, index);
+      continue;
+    }
+    if (!isIdentifierStart(char)) {
+      index += 1;
+      continue;
+    }
+    let end = index + 1;
+    while (isIdentifierChar(source[end])) end += 1;
+    const identifier = source.slice(index, end);
+    index = end;
+    if (identifier !== 'timeZone') continue;
+
+    // Shorthand `{ timeZone }`: the key itself is the option value.
+    const afterKey = skipWhitespace(source, index);
+    if (source[afterKey] === ',' || source[afterKey] === '}') return true;
+    if (source[afterKey] !== ':') continue;
+
+    if (readTimeZoneValue(source, skipWhitespace(source, afterKey + 1)) !== null) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Every `toLocaleDateString(...)` / `Intl.DateTimeFormat(...)` call whose
@@ -116,8 +214,8 @@ const PINNED_TIME_ZONE_PATTERN =
  *
  * Text-level heuristic: it does not descend into a template literal's `${…}`
  * interpolation (none in `apps/web/src` today), and a `timeZone` supplied via a
- * spread also counts. The point is to catch a re-added bare call, not to be a
- * type checker.
+ * spread is not seen and is therefore reported. The point is to catch a
+ * re-added bare call, not to be a type checker.
  */
 export function findUnpinnedDateFormatters(source) {
   const violations = [];
@@ -153,7 +251,7 @@ export function findUnpinnedDateFormatters(source) {
       break;
     }
     const call = source.slice(index, closeParen + 1);
-    if (!PINNED_TIME_ZONE_PATTERN.test(call)) {
+    if (!hasUsableTimeZoneOption(call)) {
       violations.push({ line: lineNumberAt(source, index), callee: formatter.name, call });
     }
     // Step one character, not a whole call: an unpinned call nested inside this
@@ -273,6 +371,10 @@ test('date formatter scanner self-test: pinned passes, unpinned flags, comments 
     'const a = new Date(x).toLocaleDateString("ar-DZ", { timeZone: getAlgeriaTimeZone() })',
     'const b = new Intl.DateTimeFormat("ar-DZ", { year: "numeric", timeZone: getAlgeriaTimeZone() }).format(d)',
     'const c = new Intl.DateTimeFormat("ar-DZ", { timeZone }).format(d)',
+    // A nonempty quoted zone is a valid pin: a valid `Africa/Algiers` literal
+    // must not be reported as unpinned (it would fail lint and test).
+    'const d = new Intl.DateTimeFormat("ar-DZ", { timeZone: "Africa/Algiers" }).format(d)',
+    "const e = new Date(x).toLocaleDateString('ar-DZ', { timeZone: 'Africa/Algiers' })",
   ].join('\n');
   assert.deepEqual(findUnpinnedDateFormatters(pinned), []);
 
@@ -312,10 +414,13 @@ test('date formatter scanner self-test: pinned passes, unpinned flags, comments 
     'const a = new Date(x).toLocaleDateString("ar-DZ", { timeZone: undefined })',
     'const b = new Intl.DateTimeFormat("ar-DZ", { timeZone: "" }).format(d)',
     'const c = new Date(x).toLocaleDateString("ar-DZ", opts /* timeZone lives in opts */)',
+    // A commented-out option is not a pin: stripping it leaves the real call
+    // using the machine zone, so it must stay flagged.
+    'const f = d.toLocaleDateString("ar-DZ", { /* timeZone: getAlgeriaTimeZone() */ })',
   ].join('\n');
   assert.deepEqual(
     findUnpinnedDateFormatters(valuelessPins).map((violation) => violation.line),
-    [1, 2, 3],
+    [1, 2, 3, 4],
   );
 
   // The pinned not being skipped means an unpinned call nested inside a pinned
