@@ -192,7 +192,7 @@ the desktop shell enforces it:
 
 - The shell sets `APP_DB_KEY` on the API sidecar only when
   `manager.has_feature("encrypted_db")` is true
-  (`apps/desktop/src-tauri/src/lib.rs:2148`). The sidecar environment is cleared
+  (`apps/desktop/src-tauri/src/lib.rs:2228`). The sidecar environment is cleared
   first, so a system-level `APP_DB_KEY` cannot leak in.
 - The API database factory uses the key when present: it loads
   `better-sqlite3-sqlcipher` and runs `PRAGMA key` plus
@@ -270,7 +270,7 @@ Caveats for sales:
 2. Encryption follows the `encrypted_db` feature on the signed license, not the
    edition. `editionToMinEdition` states the minimum edition the feature implies
    (`apps/api/src/infrastructure/license.ts:168`); the shell checks
-   `has_feature("encrypted_db")` (`apps/desktop/src-tauri/src/lib.rs:2148`). An
+   `has_feature("encrypted_db")` (`apps/desktop/src-tauri/src/lib.rs:2228`). An
    Enterprise license without the feature opens a plain database, and a
    Professional license that carries it enables encryption. The flag is not
    reversible for an existing workspace: the file stays encrypted while the key

@@ -18,9 +18,9 @@ unpacks, but it does not run the installer itself and it does not replace a
 human looking at the window.
 
 Current status: the smoke test passes 22/22 with exit 0 on a locally built
-artifact, and it runs at the publish gate. It now performs 24 checks; the two
-SQLCipher checks added for #402 have not yet run against a full packaging
-build, so treat their result as pending. Two startup blockers it found are
+artifact, and it runs at the publish gate. #402 added the SQLCipher fork and
+`cipher_version` checks; they have not yet run against a full packaging build,
+so treat their result as pending. Two startup blockers it found are
 fixed; the story and the remaining known gaps are at the end of this document.
 
 ### Real encryption is proven only by CI (#410)

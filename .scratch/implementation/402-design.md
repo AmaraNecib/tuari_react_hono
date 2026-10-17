@@ -15,7 +15,7 @@
 runtime with a `console.warn` and exit code 0 when the SQLCipher binding was
 unavailable. The shipped artifact is edition-agnostic and the shell sets
 `APP_DB_KEY` whenever the signed licence carries `encrypted_db`
-(`apps/desktop/src-tauri/src/lib.rs:2148`), so a customer who bought encrypted
+(`apps/desktop/src-tauri/src/lib.rs:2228`), so a customer who bought encrypted
 storage got an artifact that cannot honour the guarantee — silently.
 
 Four defects made the fallback unconditional:
@@ -244,7 +244,8 @@ acceptance criteria. Fixed here:
   the doc and the `build-sidecar.mjs` comment say so.
 - **Duplicated npm script and an off-by-one doc citation (code-review).**
   `@tuari/desktop`'s `test` now delegates to `test:packaging-security`;
-  `docs/editions-and-features.md` cites `lib.rs:2148`.
+  `docs/editions-and-features.md` cites `lib.rs:2228` (2228 after the rebase onto
+  origin/develop; #403/#490 shifted the line).
 
 Dismissed with a cited reason (not silently):
 
@@ -326,3 +327,25 @@ shape-insensitive on purpose (the worker coerces it to a number).
 Evidence freshness: the evidence commit follows the reviewed HEAD, so the diff
 between `4444ca13` and the evidence commit touches only `.scratch/` — which the
 guard treats as non-reviewable, leaving the evidence valid for the reviewed code.
+
+## Rebase onto origin/develop (`ee366d0d`)
+
+The branch was rebased from `ec369a30` onto `ee366d0d` before handoff. One
+conflict, in `docs/release-verification.md`'s "Known gaps":
+
+- Kept #402's "the sidecar build fell back … Fixed in #402" bullet, which
+  replaces develop's pre-fix "falls back … warning rather than failing" text.
+- Dropped the branch's `cleanup_stale_api_processes` gap bullet: develop already
+  fixed that in #490, so keeping the bullet would have reverted it.
+- Kept develop's legacy-migration gap.
+
+Post-rebase doc sync (the auto-merge left line numbers from the pre-rebase
+`lib.rs`): `has_feature("encrypted_db")` moved to `lib.rs:2228` after
+#403/#490, so the two `docs/editions-and-features.md` citations and this record
+now say 2228. The unverified "24 checks" count in `docs/release-verification.md`
+(the smoke script assembles its list, including per-resource entries, at run
+time) was replaced with wording that does not name a number.
+
+The branch never edits `apps/desktop/src-tauri/src/lib.rs` — the rebase diff for
+that file against develop is empty — so #403's per-installation stale-sidecar
+scoping is intact by construction.
