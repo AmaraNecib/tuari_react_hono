@@ -18,8 +18,27 @@ unpacks, but it does not run the installer itself and it does not replace a
 human looking at the window.
 
 Current status: the smoke test passes 22/22 with exit 0 on a locally built
-artifact, and it runs at the publish gate. Two startup blockers it found are
+artifact, and it runs at the publish gate. #402 added the SQLCipher fork and
+`cipher_version` checks; they have not yet run against a full packaging build,
+so treat their result as pending. Two startup blockers it found are
 fixed; the story and the remaining known gaps are at the end of this document.
+
+### Real encryption is proven only by CI (#410)
+
+Everything in this repository proves the *plumbing*: the fork's addon is at the
+path its loader expects, the bundled Node can load it, and `PRAGMA
+cipher_version` is non-empty. No local test writes a keyed database and reads it
+back. The unit tests in
+`apps/desktop/scripts/sqlcipher-availability.test.mjs` use a JavaScript stand-in
+that cannot encrypt, and the smoke check opens no keyed database either.
+
+Real encryption is proven only by the CI job tracked in
+[#410](https://github.com/AmaraNecib/tuari_react_hono/issues/410): it builds the
+real SQLCipher fork, opens a database with `PRAGMA key`, writes a row, asserts
+the file does not start with `SQLite format 3`, then reopens it with the key and
+reads the row back. Until that job is green against a built artifact, the sold
+`encrypted_db` guarantee is unverified end to end, and no local or unit test
+substitutes for it.
 
 ## The publish gate
 
@@ -63,11 +82,17 @@ pnpm --filter @tuari/desktop build
 pnpm --filter @tuari/desktop portable:only
 ```
 
-`@tuari/desktop build` runs `build-sidecar.mjs` first. That script builds the
-API, copies `dist/` plus the `better-sqlite3` (or `better-sqlite3-sqlcipher`)
-native binding into `apps/desktop/src-tauri/bin/api-runtime`, and copies the
-current Node binary to `apps/desktop/src-tauri/bin/node.exe`. Tauri then compiles
-the Rust shell and runs `pnpm --filter @tuari/web build` for the frontend.
+`@tuari/desktop build` runs `tauri build`, whose `beforeBuildCommand` builds the
+web bundle and then runs the strict `sidecar:build`. That script builds the
+API, copies `dist/` plus plain `better-sqlite3` and, when the SQLCipher fork is
+available, `better-sqlite3-sqlcipher`, and copies the current Node binary to
+`apps/desktop/src-tauri/bin/node.exe`. The strict build fails when SQLCipher
+cannot be produced, so `tauri build` never packages a plaintext-only runtime.
+`--allow-plaintext` / `TUARI_ALLOW_PLAINTEXT_DB=1` is the only opt-out and is
+never passed by release scripts; it downgrades either refusal mode (a missing
+addon, or an addon that is present but cannot load) to a loud plaintext-only
+banner that names what the runtime cannot do.
+Tauri then compiles the Rust shell.
 
 Outputs:
 
@@ -147,7 +172,12 @@ a normal launch, and never deletes them.
    real PE (`MZ`). Both get a SHA-256 line.
 2. The zip contains `Tuari.exe`, `bin/node.exe`, and
    `bin/api-runtime/dist/index.cjs`.
-3. A bundled SQLite native binding is present in `bin/api-runtime/node_modules`.
+3. The plain `better-sqlite3` binding is present, the `better-sqlite3-sqlcipher`
+   fork is at its loader path (`build/better_sqlite3.node`, not `build/Release`),
+   and the bundled `node.exe` can load the fork and report a non-empty
+   `PRAGMA cipher_version`. That proves the shipped binding is real SQLCipher
+   and loadable; it does not prove that a keyed write encrypts the file. No
+   local check does (see "Real encryption is proven only by CI (#410)").
 4. Every entry in `tauri.conf.json` `bundle.resources` exists in the extracted
    bundle.
 5. Port 4318 is free, then `Tuari.exe` starts and a
@@ -222,8 +252,10 @@ manual:
   a test should do unattended.
 - The desktop IPC bridge (`desktop_api_request`, `activate_license`,
   `check_for_updates`). These need the webview.
-- The encrypted-database path. It needs a license with `encrypted_db` and a
-  build that includes the `better-sqlite3-sqlcipher` native binding.
+- The encrypted-database path. The smoke check proves the fork is present and
+  loadable (check 3), but it never opens a keyed database; the write/read-back
+  proof is the #410 CI job above. Exercising the path through the shipped shell
+  would also need a licence with `encrypted_db`.
 - Update download, signature verification, and restart.
 - Codesigning and notarisation. The local build is unsigned.
 
@@ -306,12 +338,11 @@ written by this run, and clean shutdown. `cargo test` and
 These are real but out of scope for the smoke-test lane. They are reported to the
 parent as separate issues.
 
-- The sidecar build falls back to plain `better-sqlite3` when the
-  `better-sqlite3-sqlcipher` native binding is not present, and it prints a
-  warning rather than failing. The portable artifact then ships without
-  encryption support, so a customer with the `encrypted_db` feature would get
-  `APP_DB_KEY` set and a driver that cannot use it. The build should fail, or at
-  least the packaging step should record which driver was bundled.
+- The sidecar build fell back to plain `better-sqlite3` when the
+  `better-sqlite3-sqlcipher` native binding was not present. Fixed in #402: the
+  strict build now fails unless the operator explicitly asks for a
+  plaintext-only artifact, and the installer smoke check verifies the fork and
+  its `cipher_version` independently of the always-copied plain binding.
 - The shell migrates a legacy database from `Documents/Tuari` into the data dir
   with `std::fs::copy`, which preserves the source mtime. That is deliberate
   product behaviour, but it means a first-run check must neutralize the source

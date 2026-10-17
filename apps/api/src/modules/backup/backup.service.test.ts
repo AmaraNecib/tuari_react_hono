@@ -987,22 +987,10 @@ describe("createBackupService", () => {
     );
   });
 
-  // NOT COVERED — skipped on purpose, not a passing test.
-  //
-  // The SQLCipher native binding is not built in this workspace (#410), so an
-  // encrypted snapshot cannot be opened here; the two worker tests in
-  // `backup.snapshot.test.ts` only prove the keyed branch resolves the SQLCipher
-  // module. Nothing in this file is evidence that an encrypted copy is usable,
-  // and encryption at rest is parked (#435). Unskip only once the binding is
-  // built and the steps below can actually run.
-  it.skip("NOT COVERED: encrypted snapshot openable with the key in force — needs the SQLCipher binding (#410)", () => {
-    // 1. open the live DB with `databaseKey` (createDatabaseConnection(path, key));
-    // 2. run `runDueBackup()`;
-    // 3. assert the copy opens with the SAME key and `PRAGMA integrity_check` is ok;
-    // 4. assert it does NOT open with a wrong/absent key (proves real encryption);
-    // 5. pin the rotation constraint: a snapshot taken before a key rotation is
-    //    openable only with the pre-rotation key (see docs/backups.md).
-  });
+  // The encrypted path is proved in `backup.encrypted.test.ts`, which is gated
+  // on the SQLCipher native binding actually being present and loadable (#402).
+  // This file stays PLAIN-SQLite-only on purpose: every snapshot it takes is an
+  // unencrypted database read back with a plain better-sqlite3 reader.
 });
 
 describe("pruneBackups", () => {

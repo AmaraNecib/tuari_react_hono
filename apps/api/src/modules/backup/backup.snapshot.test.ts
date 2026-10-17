@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -18,6 +18,33 @@ import { createWorkerSnapshotter } from "./backup.snapshot";
 describe("createWorkerSnapshotter", () => {
   let tempRoot: string;
   let databasePath: string;
+
+  /** Write a fake driver module whose PRAGMA cipher_version returns `cipherVersion`. */
+  const writeFakeDriver = (cipherVersion: string): string => {
+    const driverPath = join(
+      tempRoot,
+      `fake-sqlite-${cipherVersion === "" ? "plain" : "cipher"}.cjs`,
+    );
+    writeFileSync(
+      driverPath,
+      [
+        "class FakeDatabase {",
+        "  pragma(source, options) {",
+        "    if (source === \"cipher_version\") {",
+        `      return options && options.simple ? ${JSON.stringify(cipherVersion)} : [{ cipher_version: ${JSON.stringify(cipherVersion)} }];`,
+        "    }",
+        '    if (source === "integrity_check") return [{ integrity_check: "ok" }];',
+        '    if (source === "user_version") return 0;',
+        "    return [];",
+        "  }",
+        "  exec() {}",
+        "  close() {}",
+        "}",
+        "module.exports = FakeDatabase;",
+      ].join("\n"),
+    );
+    return driverPath;
+  };
 
   const seedDatabase = (rows: number) => {
     const db = new Database(databasePath);
@@ -131,5 +158,41 @@ describe("createWorkerSnapshotter", () => {
     await expect(snapshot(join(tempRoot, "out.sqlite"))).rejects.toThrow(
       /better_sqlite3\.node|sqlcipher|not a database|cannot open|unable to open/i,
     );
+  });
+
+  it("refuses a keyed snapshot when the binding reports no cipher_version (#402)", async () => {
+    // The revert detector for the worker's capability probe: without it a
+    // plaintext-only binding accepts PRAGMA key as a no-op, writes a plaintext
+    // copy, and still reports encrypted: true.
+    seedDatabase(1);
+    const snapshot = createWorkerSnapshotter({
+      databasePath,
+      databaseKey: "secret",
+      resolveDriverModule: (specifier) => {
+        expect(specifier).toBe("better-sqlite3-sqlcipher");
+        return writeFakeDriver("");
+      },
+    });
+
+    await expect(snapshot(join(tempRoot, "out.sqlite"))).rejects.toThrow(
+      /no cipher_version/,
+    );
+  });
+
+  it("does not refuse a binding that reports a cipher version (plumbing, not encryption)", async () => {
+    seedDatabase(1);
+    const snapshot = createWorkerSnapshotter({
+      databasePath,
+      databaseKey: "secret",
+      resolveDriverModule: (specifier) => {
+        expect(specifier).toBe("better-sqlite3-sqlcipher");
+        return writeFakeDriver("4.5.6 community");
+      },
+    });
+
+    await expect(snapshot(join(tempRoot, "out.sqlite"))).resolves.toEqual({
+      schemaVersion: 0,
+      encrypted: true,
+    });
   });
 });

@@ -13,14 +13,18 @@
  *   2. The portable zip contains the app exe, the bundled Node runtime, and the
  *      api-runtime sidecar entry the Rust shell spawns.
  *   3. Every `bundle.resources` entry from tauri.conf.json is present.
- *   4. Tuari.exe starts and leaves a `node.exe ... api-runtime/dist/index.cjs`
+ *   4. The SQLCipher fork is at its loader path and the bundled Node can load it
+ *      and report a `cipher_version`. That proves the binding is loadable, not
+ *      that a keyed write encrypts the file; the write/read-back proof is the
+ *      #410 CI job (see docs/release-verification.md).
+ *   5. Tuari.exe starts and leaves a `node.exe ... api-runtime/dist/index.cjs`
  *      child process alive.
- *   5. The sidecar received the runtime env the shell sets (API_HOST,
+ *   6. The sidecar received the runtime env the shell sets (API_HOST,
  *      API_PORT, APP_DB_PATH, TUARI_LICENSE_STATUS). Secrets are redacted.
- *   6. GET /health returns 200 with {"status":"ok"}.
- *   7. The data directory the app resolved holds a real SQLite database with
+ *   7. GET /health returns 200 with {"status":"ok"}.
+ *   8. The data directory the app resolved holds a real SQLite database with
  *      the app schema, plus the license/clock runtime state.
- *   8. Cleanup: both processes are gone and the port is free again.
+ *   9. Cleanup: both processes are gone and the port is free again.
  *
  * What it cannot prove: the WebView2 render (login screen, splashscreen to
  * main-window reveal, IPC bridge). Those need a human looking at a screen.
@@ -53,6 +57,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { probeSqlcipherBinding } from "../../apps/desktop/scripts/sqlcipher-availability.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
@@ -575,6 +580,7 @@ async function main() {
   }
 
   const exePath = path.join(extractDir, "Tuari.exe");
+  const nodePath = path.join(extractDir, "bin", "node.exe");
   const dataDir = resolveDataDir(extractDir);
   const dbPath = path.join(dataDir, "projects", "default", "tuari.sqlite");
 
@@ -586,7 +592,6 @@ async function main() {
   });
 
   check("bundled Node runtime is present", () => {
-    const nodePath = path.join(extractDir, "bin", "node.exe");
     assert(existsSync(nodePath), `missing ${nodePath}`);
     assert(statSync(nodePath).size > 1_000_000, `${nodePath} is suspiciously small`);
     return describeFile(nodePath);
@@ -601,24 +606,45 @@ async function main() {
     return describeFile(sidecarEntry);
   });
 
-  check("bundled SQLite native binding is present", () => {
-    const candidates = [
-      path.join(sidecarDir, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node"),
-      path.join(
-        sidecarDir,
-        "node_modules",
-        "better-sqlite3-sqlcipher",
-        "build",
-        "Release",
-        "better_sqlite3.node",
-      ),
-    ];
-    const found = candidates.find((candidate) => existsSync(candidate));
-    assert(
-      found,
-      `no SQLite native binding in ${path.join(sidecarDir, "node_modules")}; the sidecar cannot open its database`,
+  check("plain better-sqlite3 native binding is present", () => {
+    const candidate = path.join(
+      sidecarDir,
+      "node_modules",
+      "better-sqlite3",
+      "build",
+      "Release",
+      "better_sqlite3.node",
     );
-    return describeFile(found);
+    assert(
+      existsSync(candidate),
+      `missing ${candidate}; the sidecar cannot open its unencrypted database`,
+    );
+    return describeFile(candidate);
+  });
+
+  // The fork's loader requires `../build/better_sqlite3.node`; `build/Release`
+  // is PLAIN better-sqlite3's layout. Checking only the plain package (always
+  // copied now) would pass on an artifact that cannot encrypt (#402/#409).
+  check("SQLCipher native binding is present at the fork's loader path", () => {
+    const candidate = path.join(
+      sidecarDir,
+      "node_modules",
+      "better-sqlite3-sqlcipher",
+      "build",
+      "better_sqlite3.node",
+    );
+    assert(
+      existsSync(candidate),
+      `missing ${candidate}; the release artifact would ship without encryption support`,
+    );
+    return describeFile(candidate);
+  });
+
+  // Presence is not capability: load the copied fork with the copied Node and
+  // require a real cipher version (the runtime probe from #402).
+  check("bundled Node loads the SQLCipher binding and reports a cipher version", () => {
+    const version = probeSqlcipherBinding({ nodeExecPath: nodePath, runtimeDir: sidecarDir });
+    return `cipher_version ${version}`;
   });
 
   check("every tauri.conf.json bundle.resources entry is in the bundle", () => {
