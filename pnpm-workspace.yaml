@@ -1,6 +1,14 @@
 packages:
   - apps/*
   - packages/*
+# No build step for better-sqlite3-multiple-ciphers on purpose: it ships
+# `prebuilds/<platform>-<arch>.node` in the tarball (including win32-x64) and has
+# no install script. Listing it here would make pnpm run `node-gyp rebuild`
+# because the package contains a `binding.gyp`, which needs a C++ toolchain on
+# every machine. The old better-sqlite3-sqlcipher DID need its install script
+# (`prebuild-install || node-gyp rebuild`) — and was missing from this list, so
+# the addon was never fetched and an encrypted_db licence silently got a
+# plaintext database (#402).
 onlyBuiltDependencies:
   - better-sqlite3
   - prisma

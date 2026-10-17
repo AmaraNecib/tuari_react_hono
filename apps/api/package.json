@@ -20,7 +20,7 @@
     "@tuari/contracts": "workspace:*",
     "better-auth": "^1.6.20",
     "better-sqlite3": "^12.6.2",
-    "better-sqlite3-sqlcipher": "5.4.3-3",
+    "better-sqlite3-multiple-ciphers": "^13.0.3",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.12",

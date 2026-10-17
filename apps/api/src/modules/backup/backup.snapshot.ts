@@ -128,7 +128,7 @@ export const createWorkerSnapshotter = (
   options: SnapshotWorkerOptions,
 ): BackupSnapshotter => {
   const modulePath = resolveDriverModule(
-    options.databaseKey ? "better-sqlite3-sqlcipher" : "better-sqlite3",
+    options.databaseKey ? "better-sqlite3-multiple-ciphers" : "better-sqlite3",
   );
   const timeoutMs = options.timeoutMs ?? DEFAULT_SNAPSHOT_TIMEOUT_MS;
 

@@ -197,7 +197,7 @@ parked and must not be sold or advertised. What exists and what does not:
   (`apps/desktop/src-tauri/src/lib.rs:2058`). The sidecar environment is cleared
   first (`:2025`), so a system-level `APP_DB_KEY` cannot leak in.
 - The API database factory uses the key when present: it loads
-  `better-sqlite3-sqlcipher` and runs `PRAGMA key` plus
+  `better-sqlite3-multiple-ciphers` and runs `PRAGMA key` plus
   `cipher_compatibility = 4` (`apps/api/src/infrastructure/database/factory.ts:51`,
   `:27`, `:56`). With no key it returns plain `better-sqlite3`
   (`apps/api/src/infrastructure/database/factory.ts:23`).

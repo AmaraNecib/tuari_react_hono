@@ -266,11 +266,11 @@ fallback path, add a direct unit test for the primary path (the #236 fix has
 one: "does not resolve from bare orpc.session.key()").
 ## sqlcipher native binding may be unbuilt in a worktree: pin the databaseKey WIRING, not real encryption (🟠 Major)
 
-`createDatabaseConnection(path, key)` requires the `better-sqlite3-sqlcipher`
-native binding (`require("better-sqlite3-sqlcipher")` → `build/better_sqlite3.node`).
+`createDatabaseConnection(path, key)` requires the `better-sqlite3-multiple-ciphers`
+native binding (`require("better-sqlite3-multiple-ciphers")` → `build/better_sqlite3.node`).
 On a Windows worktree the package files exist but the `.node` binary is often NOT
 compiled → passing any `databaseKey` throws "Database encryption requires
-better-sqlite3-sqlcipher". So a test that passes `databaseKey` and expects a real
+better-sqlite3-multiple-ciphers". So a test that passes `databaseKey` and expects a real
 encrypted connection fails in such environments. Fix pattern (issue #198): mock
 the factory module (`vi.mock("../infrastructure/database/factory", importOriginal)`)
 to capture the key argument and strip it (delegate with `undefined`), asserting
@@ -453,7 +453,7 @@ password change" claimed a rekey that never happened. The password change
 was only a comment. The tempting fix, "exercise a real rekey", is a trap:
 `DatabaseKeyManager.changeKey` (`PRAGMA key`/`rekey`) is a **documented
 no-op** on the plain better-sqlite3 the workspace tests use (the
-`better-sqlite3-sqlcipher` binding is deliberately not built:
+`better-sqlite3-multiple-ciphers` binding is deliberately not built:
 `pnpm-workspace.yaml` `onlyBuiltDependencies` lists only `better-sqlite3`
 and `prisma`). Calling it would succeed silently and the test would still
 lie. Enabling the sqlcipher build is a workspace-wide change (node-gyp

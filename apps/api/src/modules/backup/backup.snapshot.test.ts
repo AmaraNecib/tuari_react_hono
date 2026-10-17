@@ -9,7 +9,7 @@ import { createWorkerSnapshotter } from "./backup.snapshot";
 /**
  * Scope: PLAIN SQLite only.
  *
- * The `better-sqlite3-sqlcipher` native binding is not built in this workspace
+ * The `better-sqlite3-multiple-ciphers` native binding is not built in this workspace
  * (`#410`), so the encrypted path cannot be exercised here. The keyed test at
  * the bottom only proves the keyed branch resolves the SQLCipher module and
  * reports a rejection; it is NOT proof that an encrypted copy is openable.
