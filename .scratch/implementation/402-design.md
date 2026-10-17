@@ -349,3 +349,28 @@ time) was replaced with wording that does not name a number.
 The branch never edits `apps/desktop/src-tauri/src/lib.rs` — the rebase diff for
 that file against develop is empty — so #403's per-installation stale-sidecar
 scoping is intact by construction.
+
+## Round 7 — post-rebase review at `18029346`
+
+After the rebase onto `ee366d0d`, the design pass, debate (critic + defender),
+test-audit, and code-review ran again in fresh contexts at `18029346`. All
+passed with no blockers. Two independent checks confirmed the rebase changed no
+#402 code:
+
+- every #402 source and test file is byte-identical to `4444ca13`
+  (`git diff 4444ca13 18029346` is empty once the pathspec is restricted to the
+  #402 files), and
+- the branch's rebased commits carry the same `git patch-id` as their
+  pre-rebase originals; only the conflict-resolved first commit differs, and only
+  in context lines.
+
+Evidence for `4444ca13` was superseded by this round (that HEAD is no longer an
+ancestor of the branch) and is removed; `18029346-*.md` is the evidence of
+record.
+
+Dismissed with reason: `docs/release-verification.md:20` still records a *past*
+"22/22" local smoke run — a historical observation, and the same paragraph now
+says the #402 checks are pending, so it does not claim the count today. The
+other `lib.rs` citations in `docs/editions-and-features.md` (`:853`, `:1049`,
+`:2026`, `:2052`) are develop's own stale line pins, outside this diff's edit
+set.
