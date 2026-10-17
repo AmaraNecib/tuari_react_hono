@@ -582,8 +582,26 @@ reset_state
 mk_issue 520 open "negation after a ';'"
 mk_issue 521 open "affirmative control in the same body"
 run_script "The change is not related; this does not close #520. Closes #521."
-assert_not_closed "a negation after the ';' still negates (#520)" 520
+assert_not_closed "a lowercase clause after the ';' is one sentence, and its negation still negates (#520)" 520
 assert_closed "the affirmative control in that body closes (#521)" 521
+
+# The guard is about the character after the whole whitespace RUN: a second
+# space is not a sentence start, so the two-space form must negate exactly like
+# the one-space form. CRLF bodies go through the same join-then-guard path.
+reset_state
+mk_issue 522 open "double space after the terminator"
+mk_issue 523 open "affirmative control in the same body"
+run_script "This does not fix the parser.  closes #522. Closes #523."
+assert_not_closed "a double space after the terminator is not a sentence break (#522)" 522
+assert_closed "the affirmative control in that body closes (#523)" 523
+
+reset_state
+mk_issue 524 open "CRLF body, negated first sentence"
+mk_issue 525 open "CRLF body, affirmative second sentence"
+run_script $'This does not close #524.\r\nCloses #525.'
+check "CRLF body exits 0" "0" "$RC"
+assert_not_closed "a CRLF body keeps the negated reference negated (#524)" 524
+assert_closed "a CRLF body still fires the affirmative close (#525)" 525
 
 reset_state
 run_script "no references at all in this body"

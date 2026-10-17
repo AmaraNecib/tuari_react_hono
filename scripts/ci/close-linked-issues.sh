@@ -85,7 +85,7 @@ EOF
 # message beats a confusing mid-script death.
 for tool in curl jq sed; do
   if ! command -v "$tool" >/dev/null 2>&1; then
-    echo "::error::$tool not found on runner — auto-close needs curl + jq"
+    echo "::error::$tool not found on runner — auto-close needs curl + jq + sed"
     exit 1
   fi
 done
@@ -204,7 +204,7 @@ body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ')
 # sentence at a time. The affirmative pass needs no split (a `#` can never
 # appear between a keyword and its reference), so it keeps reading body_flat.
 #
-# A terminator only ends a sentence when the next non-space character is NOT a
+# A terminator only ends a sentence when the next NON-SPACE character is not a
 # lowercase letter. Those four characters also occur INSIDE tokens ("per
 # AGENTS.md,", "e.g.", "v1.2", "..."), and splitting there moves the negator
 # into a different "sentence" from its verb, which turns a drop into a CLOSE:
@@ -218,7 +218,7 @@ body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ')
 # recoverable drop instead of a close. Comma-, colon- and unpunctuated clauses
 # are the same sentence, so "Not sure, but Closes #N" and "found no blockers,
 # so Closes #N" are the same class of conservative miss.
-body_sentences=$(printf '%s' "$body_flat" | sed -E 's/([.!?;])([[:space:]]+[^[:lower:]])/\1\n\2/g')
+body_sentences=$(printf '%s' "$body_flat" | sed -E 's/([.!?;])([[:space:]]+[^[:space:][:lower:]])/\1\n\2/g')
 
 to_numbers() { # stdin: matched closing spans → one issue number per line
   grep -oE '#[0-9]+' | tr -d '#' | sort -un

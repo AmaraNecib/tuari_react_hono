@@ -80,15 +80,19 @@ body_sentences=$(printf '%s' "$body_flat" | sed -E 's/([.!?;])([[:space:]]+[^[:l
 NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_REF}"
 ```
 
-- **A sentence ends at `. ! ? ;`** — but only when the next non-space character
-  is not a lowercase letter. The bare `tr '.!?;'` version split inside tokens
-  too (`per AGENTS.md,`, `e.g.`, `v1.2`, `...`), which moved the negator into a
-  different "sentence" from its verb and turned a drop into a **close** — the
-  direction that must never happen, and a regression against the round-1
+- **A sentence ends at `. ! ? ;`** — but only when the next **non-space**
+  character is not a lowercase letter. The bare `tr '.!?;'` version split inside
+  tokens too (`per AGENTS.md,`, `e.g.`, `v1.2`, `...`), which moved the negator
+  into a different "sentence" from its verb and turned a drop into a **close** —
+  the direction that must never happen, and a regression against the round-1
   commit. The guard costs the safe direction instead: a sentence that opens
   with a lowercase word is not treated as a break, so a negation can reach
   further and drop a later close (logged, `Ignoring #N`). Pinned by
-  `#510`/`#512`/`#513`/`#515`, which fail on the tr-split commit.
+  `#510`/`#512`/`#513`/`#515`, which fail on the tr-split commit, and by
+  `#522` (a double space is still one whitespace run) which fails there too.
+  The class is locale-sensitive: under `LC_ALL=C` an accented lowercase word is
+  not `[[:lower:]]` and the split happens anyway — Linux CI runs UTF-8, and the
+  failure direction there is a drop, not a close.
 - **A negator in one sentence cannot reach a close verb in the next.**
   `Neither reviewer objected. Closes #N` closes;
   `This does not, in any way whatsoever, close #N` negates. Under the word count
@@ -190,7 +194,9 @@ Existing scenarios keep running; added (each one is a real-world shape):
 | version number (round-2 gate) | `This does not (see v1.2) fix #515. Closes #516.` | #515 not closed, #516 closed |
 | `?` / `!` terminators (round-2 gate) | `Did you not read the issue? Closes #517. It was not fixed! Closes #518.` | both closed |
 | `;` terminator (round-2 gate) | `The change is not related; Closes #519.` | closed |
-| negation after a `;` (round-2 gate) | `The change is not related; this does not close #520. Closes #521.` | #520 not closed, #521 closed |
+| lowercase clause after a `;` (round-2 gate) | `The change is not related; this does not close #520. Closes #521.` | #520 not closed (control — passes on every baseline) |
+| double space after a terminator (round-2 gate) | `This does not fix the parser.  closes #522. Closes #523.` | #522 not closed, #523 closed |
+| CRLF body (round-2 gate) | `This does not close #524.\r\nCloses #525.` | #524 not closed, #525 closed |
 | failed PR_BODY fetch | `fail_subs` on the PR number, no `PR_BODY` | exit 0, `nothing to close` |
 | empty body | `PR_BODY=""` | exit 0, `nothing to close`, nothing closed |
 
@@ -202,19 +208,39 @@ rescope (`bfe4c50d`) the suite is 110 assertions: `PASS=110 FAIL=0`, and the
 same suite against the round-1 word-count script is
 `bfe4c50d-control-wordcount.log` — `PASS=99 FAIL=11`, the round-2 rows.
 
-After the round-2 gate fixes the suite is 134 assertions: `PASS=134 FAIL=0` at
-`<head>`. Two controls, both in `.scratch/reviews/466/`:
+After the round-2 gate fixes the suite is 139 assertions: `PASS=139 FAIL=0` at
+`<head>`. Three controls, all in `.scratch/reviews/466/`:
 
 | Control | Suite | Script | Result |
 | --- | --- | --- | --- |
-| word-count baseline | 134 | `8b2504e2` (word count) | `PASS=119 FAIL=15` — every #486 and round-2 pin |
-| tr-split baseline | 134 | `bfe4c50d` (token-internal split) | `PASS=130 FAIL=4` — the `#510`/`#512`/`#513`/`#515` wrong-close rows |
+| word-count baseline | 139 | `8b2504e2` (word count) | `PASS=124 FAIL=15` — every #486 and round-2 pin |
+| tr-split baseline | 139 | `bfe4c50d` (unconditional token split) | `PASS=138 FAIL=1` — the `#510`/`#512`/`#513`/`#515` wrong-close rows |
+| gate-fix baseline | 139 | `a1fd3f6d` (space-blind guard) | `PASS=138 FAIL=1` — the `#522` double-space wrong-close row |
 
-Two baselines because the round-2 gate fix answers a regression against
-`bfe4c50d`, not against `8b2504e2`: a test that only fails on the older script
-would not prove the newer fix.
+Three baselines because each fix answers a regression against the commit
+before it: a test that only fails on the newer-of-two older scripts would not
+prove the newer fix.
 
 ## Risks and non-goals
+
+### Known remaining wrong-close classes (deferred, named — not silent)
+
+Both are narrower than what this PR fixed, both are documented here so they are
+not discovered as surprises, and each needs its own change rather than another
+character-class patch:
+
+1. **An abbreviation followed by a non-lowercase continuation still splits.**
+   `This does not e.g. Fix #N` and `This does not e.g. **fix** #N` close #N,
+   because the character after `e.g. ` is not lowercase. Telling `e.g.`/`i.e.`
+   from a sentence end needs an abbreviation lexicon, not another case rule.
+   Proposed follow-up: *auto-close: an abbreviation before a non-lowercase
+   continuation defeats the sentence-scoped negation.*
+2. **A negator does not reach a second close in an `or`-coordinated clause.**
+   `This does not fix #A or resolve #B` closes #B, because `[^#]*` cannot cross
+   the `#A`. Pre-existing since round 1 (identical at `8b2504e2`); the naive
+   fix (allow `#` in the gap) breaks the pinned
+   `does not close #A, but Closes #B` case. Proposed follow-up: *auto-close: a
+   negator does not reach a second close in an `or`-coordinated clause.*
 
 - **Joining newlines makes a hard-wrapped mention a close.** `…the earlier PR
   closes\n#150 was reopened…` closes #150, because the keyword and the reference
