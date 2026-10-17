@@ -33,7 +33,7 @@ One-line change of the extraction contract, plus the tests that pin it:
 
 ```
 scripts/ci/close-linked-issues.sh       # extractor: keyword must be ADJACENT to #N
-scripts/ci/test-close-linked-issues.sh  # regression matrix, 134 assertions
+scripts/ci/test-close-linked-issues.sh  # regression matrix, 139 assertions
 .github/workflows/auto-close-issues.yml # header rule restated (no logic changed)
 ```
 
@@ -76,7 +76,7 @@ then markdown emphasis) each fixed one body and broke another, because a word
 count is not a clause. The window is now structural:
 
 ```bash
-body_sentences=$(printf '%s' "$body_flat" | sed -E 's/([.!?;])([[:space:]]+[^[:lower:]])/\1\n\2/g')
+body_sentences=$(printf '%s' "$body_flat" | sed -E 's/([.!?;])([[:space:]]+[^[:space:][:lower:]])/\1\n\2/g')
 NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_REF}"
 ```
 
@@ -89,10 +89,14 @@ NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_REF}"
   with a lowercase word is not treated as a break, so a negation can reach
   further and drop a later close (logged, `Ignoring #N`). Pinned by
   `#510`/`#512`/`#513`/`#515`, which fail on the tr-split commit, and by
-  `#522` (a double space is still one whitespace run) which fails there too.
-  The class is locale-sensitive: under `LC_ALL=C` an accented lowercase word is
-  not `[[:lower:]]` and the split happens anyway — Linux CI runs UTF-8, and the
-  failure direction there is a drop, not a close.
+  `#522` (a double space is still one whitespace run, and a double space before
+  an UPPERCASE word still ends the sentence — verified by probe, pinned only for
+  the lowercase half) which fails there too.
+  The class is locale-sensitive, and the exposure is the DANGEROUS direction:
+  under `LC_ALL=C` an accented lowercase word is not `[[:lower:]]`, so the split
+  happens where UTF-8 would keep one sentence and the negation is lost. Linux CI
+  runs UTF-8, and the locale is not pinned, so this stays a documented caveat
+  rather than a claim.
 - **A negator in one sentence cannot reach a close verb in the next.**
   `Neither reviewer objected. Closes #N` closes;
   `This does not, in any way whatsoever, close #N` negates. Under the word count
@@ -204,18 +208,17 @@ The gap tests and the negated-close tests are the regression pins. With the
 74-assertion suite the pre-fix script reported `PASS=58 FAIL=16` (2 prose-gap
 closes, the negated-close scenarios, the split-line/bold separators, the mixed
 body). The round-1 fixed script (`978cf95b`): `PASS=91 FAIL=0`. After the #486
-rescope (`bfe4c50d`) the suite is 110 assertions: `PASS=110 FAIL=0`, and the
-same suite against the round-1 word-count script is
-`bfe4c50d-control-wordcount.log` — `PASS=99 FAIL=11`, the round-2 rows.
+rescope (`bfe4c50d`) the suite was 110 assertions at `PASS=110 FAIL=0`, with
+`PASS=99 FAIL=11` against the round-1 word-count script.
 
-After the round-2 gate fixes the suite is 139 assertions: `PASS=139 FAIL=0` at
-`<head>`. Three controls, all in `.scratch/reviews/466/`:
+After the two gate-fix commits the suite is 139 assertions: `PASS=139 FAIL=0`
+at `<head>`. Three controls, all recorded in `.scratch/reviews/466/`:
 
 | Control | Suite | Script | Result |
 | --- | --- | --- | --- |
 | word-count baseline | 139 | `8b2504e2` (word count) | `PASS=124 FAIL=15` — every #486 and round-2 pin |
-| tr-split baseline | 139 | `bfe4c50d` (unconditional token split) | `PASS=138 FAIL=1` — the `#510`/`#512`/`#513`/`#515` wrong-close rows |
-| gate-fix baseline | 139 | `a1fd3f6d` (space-blind guard) | `PASS=138 FAIL=1` — the `#522` double-space wrong-close row |
+| tr-split baseline | 139 | `bfe4c50d` (unconditional token split) | `PASS=134 FAIL=5` — `#510`/`#512`/`#513`/`#515`/`#522` |
+| gate-fix baseline | 139 | `a1fd3f6d` (space-blind guard) | `PASS=138 FAIL=1` — the `#522` double-space row |
 
 Three baselines because each fix answers a regression against the commit
 before it: a test that only fails on the newer-of-two older scripts would not
