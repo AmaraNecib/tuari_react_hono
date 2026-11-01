@@ -17,7 +17,7 @@
  * an unrelated entry id — the only way to make the old code corrupt a wrong row
  * deterministically instead of failing on a lookup miss.
  */
-import { afterEach, describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import Database from "better-sqlite3"
 
 import {
@@ -30,34 +30,27 @@ import { ensureDatabaseSchema } from "../../infrastructure/database/schema"
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor"
 import { createInventoryRepository } from "./adapters/sqlite-inventory.repository"
 import { InventoryError } from "./inventory.errors"
-import type { InventoryRepository } from "./inventory.repository"
 import { InventoryService } from "./inventory.service"
 import type { InventoryAttachmentStorage } from "./inventory.storage"
 import type { MutationAuditContext } from "../company/company.types"
+import { SqliteCompanyRepository } from "../company/company.repository"
+import { CompanyService } from "../company/company.service"
 
 const NOW = "2026-06-01T00:00:00.000Z"
 const LATER = "2026-06-01T00:10:00.000Z"
 const AUDIT: MutationAuditContext = { actorUserId: "user-1", actorLabel: "test", transactionId: "tx-1" }
 
-async function createEnv(): Promise<{ db: Database.Database; repository: InventoryRepository; service: InventoryService }> {
+async function createEnv() {
   const db = new Database(":memory:")
   db.pragma("foreign_keys = ON")
   // The production bootstrap, not the base schema: `OUTBOUND_SALE` is only a
   // valid movement type after the outbound-transfer migration.
   await ensureDatabaseSchema(new BetterSqlite3Executor(db))
   const repository = createInventoryRepository(db)
-  // `createOutboundTransfer` requires a debt gate to exist. These fixtures carry
-  // no debt (`debtAmountDzd` omitted), so the stub must never be called.
-  const debtService = {
-    createDebtAccount: () => {
-      throw new Error("debt service was not expected to be called")
-    },
-    createDebtEntry: () => {
-      throw new Error("debt service was not expected to be called")
-    },
-  }
-  const service = new InventoryService(repository, {} as unknown as InventoryAttachmentStorage, debtService)
-  return { db, repository, service }
+  // Debt and inventory must share the connection for nested writes to roll back.
+  const company = new CompanyService(new SqliteCompanyRepository(db))
+  const service = new InventoryService(repository, {} as unknown as InventoryAttachmentStorage, company)
+  return { db, repository, service, company }
 }
 
 function seedWarehouse(db: Database.Database, id: string, name = id): void {
@@ -100,6 +93,37 @@ function seedAsset(db: Database.Database, input: { id: string; entryId: string; 
   ).run(input.id, input.entryId, input.id, input.warehouseId ?? null, input.projectId ?? null, NOW, input.updatedAt ?? NOW)
 }
 
+function snapshotWrites(db: Database.Database) {
+  return {
+    stock: db.prepare("SELECT * FROM inventory_consumable_balance ORDER BY id").all(),
+    assets: db.prepare("SELECT * FROM inventory_asset_unit ORDER BY id").all(),
+    accounts: db.prepare("SELECT * FROM debt_account ORDER BY id").all(),
+    entries: db.prepare("SELECT * FROM debt_entry ORDER BY entry_type, id").all(),
+    movements: db.prepare("SELECT * FROM inventory_movement ORDER BY id").all(),
+    transfers: db.prepare("SELECT * FROM inventory_outbound_transfer ORDER BY id").all(),
+    items: db.prepare("SELECT * FROM inventory_outbound_transfer_item ORDER BY id").all(),
+  }
+}
+
+// Pass SQL snapshots into the callback. better-sqlite3 cannot run another query
+// from a user-defined function while the triggering statement is still busy.
+function observeWrites(db: Database.Database, event: string, fail = false) {
+  const progress: unknown[] = []
+  db.function("observe_writes", (snapshot) => { progress.push(JSON.parse(String(snapshot))); return 0 })
+  db.exec(`CREATE TEMP TRIGGER observe_writes ${event} BEGIN
+    SELECT observe_writes(json_object(
+      'stock', (SELECT json_group_array(json_object('id', id, 'quantity', quantity)) FROM (SELECT * FROM inventory_consumable_balance ORDER BY id)),
+      'accounts', (SELECT json_group_array(json_object('direction', direction)) FROM debt_account),
+      'entries', (SELECT json_group_array(json_object('entry_type', entry_type, 'signed_amount', signed_amount)) FROM (SELECT * FROM debt_entry ORDER BY entry_type, id)),
+      'movements', (SELECT json_group_array(json_object('quantity', quantity)) FROM inventory_movement),
+      'transfers', (SELECT json_group_array(json_object('status', status)) FROM inventory_outbound_transfer),
+      'items', (SELECT json_group_array(json_object('quantity', quantity)) FROM inventory_outbound_transfer_item)
+    ));
+    ${fail ? "SELECT RAISE(ABORT, 'forced item failure');" : ""}
+  END`)
+  return progress
+}
+
 const SOURCE_AT_WAREHOUSE = (warehouseId: string): InventoryItemOfferSource => ({ locationType: "WAREHOUSE", warehouseId })
 const SOURCE_AT_PROJECT = (projectId: string): InventoryItemOfferSource => ({ locationType: "PROJECT", projectId })
 
@@ -107,6 +131,7 @@ type Env = Awaited<ReturnType<typeof createEnv>>
 const envs: Database.Database[] = []
 
 afterEach(() => {
+  vi.restoreAllMocks()
   while (envs.length > 0) {
     envs.pop()?.close()
   }
@@ -569,7 +594,134 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
     expect(env.db.prepare("SELECT count(*) AS count FROM inventory_outbound_transfer_item").get()).toEqual({ count: 0 })
   })
 
-  it("fully fulfills the sum of normalized split balances with no zero movements", async () => {
+  it.each(["WAREHOUSE", "PROJECT"] as const)("rolls back real debt and earlier consumption on a split shortage at a %s", async (fromType) => {
+    const env = await openEnv()
+    seedBase(env)
+    seedProject(env.db, "prj-split")
+    const fromId = fromType === "WAREHOUSE" ? "wh-1" : "prj-split"
+    const location = fromType === "WAREHOUSE" ? { warehouseId: fromId } : { projectId: fromId }
+    for (const [id, quantity, definition] of [["first", 5, "first"], ["split-1", 1.0000014, "split"], ["split-2", 1.0000014, "split"]] as const) {
+      if (id !== "split-2") seedDefinition(env.db, { id: definition, itemType: "CONSUMABLE" })
+      seedEntry(env.db, { id: `entry-${id}`, invoiceGroupId: "g", itemDefinitionId: definition, itemType: "CONSUMABLE" })
+      seedBalance(env.db, { id, entryId: `entry-${id}`, itemDefinitionId: definition, ...location, quantity })
+    }
+    const before = snapshotWrites(env.db)
+    const progress = observeWrites(env.db, "AFTER INSERT ON inventory_movement")
+
+    expect(() => env.service.createOutboundTransfer({
+      fromType, fromId, counterpartyId: "buyer", transferType: "SALE",
+      debtAmountDzd: 500, firstPaymentAmountDzd: 200,
+      items: [{ itemId: "first", quantity: 1 }, { itemId: "split", quantity: 2.000003 }],
+    }, AUDIT)).toThrow(/غير متوفرة/)
+
+    // Observe real writes before the shortage, then require their full rollback.
+    expect(progress).toHaveLength(1)
+    expect(progress[0]).toMatchObject({
+      stock: [{ id: "first", quantity: 4 }, { id: "split-1", quantity: 1.0000014 }, { id: "split-2", quantity: 1.0000014 }],
+      accounts: [{ direction: "RECEIVABLE" }],
+      entries: [{ entry_type: "OPENING", signed_amount: 500 }, { entry_type: "PAYMENT", signed_amount: -200 }],
+      movements: [{ quantity: 1 }], transfers: [], items: [],
+    })
+    expect(snapshotWrites(env.db)).toEqual(before)
+  })
+
+  it("rolls back the header, real debt and stock after a late transfer-item persistence failure", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "first", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-first", invoiceGroupId: "g", itemDefinitionId: "first", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "first", entryId: "entry-first", itemDefinitionId: "first", warehouseId: "wh-1", quantity: 5 })
+    const before = snapshotWrites(env.db)
+    const progress = observeWrites(env.db, "BEFORE INSERT ON inventory_outbound_transfer_item", true)
+
+    expect(() => env.service.createOutboundTransfer({
+      fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE",
+      debtAmountDzd: 500, firstPaymentAmountDzd: 200, items: [{ itemId: "first", quantity: 1 }],
+    }, AUDIT)).toThrow("forced item failure")
+
+    expect(progress).toHaveLength(1)
+    expect(progress[0]).toMatchObject({
+      stock: [{ id: "first", quantity: 4 }], accounts: [{ direction: "RECEIVABLE" }],
+      entries: [{ entry_type: "OPENING", signed_amount: 500 }, { entry_type: "PAYMENT", signed_amount: -200 }],
+      movements: [{ quantity: 1 }], transfers: [{ status: "COMPLETED" }], items: [],
+    })
+    expect(snapshotWrites(env.db)).toEqual(before)
+  })
+
+  it.each([
+    [1_000_000, 0.000001, 999_999.999999],
+    [2 ** 32, 0.000001, 4_294_967_295.999999],
+    [2 ** 33, 0.000001, 8_589_934_591.999999],
+    [2 ** 34, 0.000002, 17_179_869_183.999998],
+    [1e12, 2, 999_999_999_998],
+  ])("allows a representable normalized deduction from %s of %s", async (stock, quantity, expected) => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "magnitude", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-magnitude", invoiceGroupId: "g", itemDefinitionId: "magnitude", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-magnitude", entryId: "entry-magnitude", itemDefinitionId: "magnitude", warehouseId: "wh-1", quantity: stock })
+
+    transfer(env, [{ itemId: "magnitude", quantity }])
+
+    expect(env.db.prepare("SELECT quantity FROM inventory_consumable_balance").all()).toEqual([{ quantity: expected }])
+    expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([quantity])
+    expect(env.db.prepare("SELECT quantity FROM inventory_outbound_transfer_item").all()).toEqual([{ quantity }])
+  })
+
+  it.each([
+    [2 ** 34, 0.000001],
+    [2 ** 35, 0.000002],
+    [1e12, 0.0001],
+    [1e12, 1],
+  ])("rejects a lost or wrong-quantum deduction from %s of %s", async (stock, quantity) => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "magnitude", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-magnitude", invoiceGroupId: "g", itemDefinitionId: "magnitude", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-magnitude", entryId: "entry-magnitude", itemDefinitionId: "magnitude", warehouseId: "wh-1", quantity: stock })
+    const before = snapshotWrites(env.db)
+
+    expect(() => transfer(env, [{ itemId: "magnitude", quantity }])).toThrow(expect.objectContaining({
+      appError: expect.objectContaining({ code: "BUSINESS_RULE" }),
+    }))
+    expect(snapshotWrites(env.db)).toEqual(before)
+  })
+
+  it("rejects allocation when a tiny row cannot decrease a large remaining request", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "remainder", itemType: "CONSUMABLE" })
+    for (const [index, quantity] of [0.000001, 1e12].entries()) {
+      seedEntry(env.db, { id: `entry-remainder-${index}`, invoiceGroupId: "g", itemDefinitionId: "remainder", itemType: "CONSUMABLE" })
+      seedBalance(env.db, { id: `balance-remainder-${index}`, entryId: `entry-remainder-${index}`, itemDefinitionId: "remainder", warehouseId: "wh-1", quantity, createdAt: index === 0 ? NOW : LATER })
+    }
+    const before = snapshotWrites(env.db)
+
+    expect(() => transfer(env, [{ itemId: "remainder", quantity: 1e12 }])).toThrow(expect.objectContaining({
+      appError: expect.objectContaining({ code: "BUSINESS_RULE" }),
+    }))
+    expect(snapshotWrites(env.db)).toEqual(before)
+  })
+
+  it("rejects an unrepresentable deduction atomically instead of creating stock", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    for (const [id, quantity] of [["first", 5], ["large", 1e12]] as const) {
+      seedDefinition(env.db, { id, itemType: "CONSUMABLE" })
+      seedEntry(env.db, { id: `entry-${id}`, invoiceGroupId: "g", itemDefinitionId: id, itemType: "CONSUMABLE" })
+      seedBalance(env.db, { id: `balance-${id}`, entryId: `entry-${id}`, itemDefinitionId: id, warehouseId: "wh-1", quantity })
+    }
+    const before = env.db.prepare("SELECT * FROM inventory_consumable_balance ORDER BY id").all()
+
+    expect(() => transfer(env, [{ itemId: "first", quantity: 1 }, { itemId: "large", quantity: 0.000001 }])).toThrow(InventoryError)
+
+    expect(env.db.prepare("SELECT * FROM inventory_consumable_balance ORDER BY id").all()).toEqual(before)
+    expect(env.repository.listAllMovements({})).toEqual([])
+    expect(env.repository.listOutboundTransfers()).toEqual([])
+    expect(env.db.prepare("SELECT * FROM inventory_outbound_transfer_item").all()).toEqual([])
+  })
+
+  it("fully consumes normalized split balances while leaving upstream-excluded dust unchanged", async () => {
     const env = await openEnv()
     seedBase(env)
     seedDefinition(env.db, { id: "def-full-split", itemType: "CONSUMABLE" })
@@ -582,7 +734,100 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
 
     expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([1.000001, 1.000001])
     expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" })).toHaveLength(0)
+    // The repository excludes dust upstream; this asserts physical persistence,
+    // not the allocator's zero-row skip.
+    expect(env.db.prepare("SELECT id, quantity FROM inventory_consumable_balance ORDER BY id").all()).toEqual([
+      { id: "bal-full-0", quantity: 0.0000004 },
+    ])
     expect(env.db.prepare("SELECT quantity FROM inventory_outbound_transfer_item").all()).toEqual([{ quantity: 2.000002 }])
+  })
+
+  it.each([
+    [0.0000005, 0.000001, 0.499999],
+    [0.000001, 0.000001, 0.499999],
+    [0.1000005, 0.100001, 0.399999],
+  ])("normalizes request %s to stored and moved %s without changing the caller", async (requested, expected, stock) => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "boundary", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-boundary", invoiceGroupId: "g", itemDefinitionId: "boundary", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-boundary", entryId: "entry-boundary", itemDefinitionId: "boundary", warehouseId: "wh-1", quantity: 0.5 })
+    const input = { fromType: "WAREHOUSE" as const, fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE" as const, items: [{ itemId: "boundary", quantity: requested }] }
+    const original = structuredClone(input)
+
+    const result = env.service.createOutboundTransfer(input, AUDIT)
+
+    expect(env.db.prepare("SELECT quantity FROM inventory_outbound_transfer_item WHERE transfer_id = ?").all(result.item.id)).toEqual([{ quantity: expected }])
+    expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([expected])
+    expect(env.db.prepare("SELECT quantity FROM inventory_consumable_balance").all()).toEqual([{ quantity: stock }])
+    expect(input).toEqual(original)
+  })
+
+  it.each([NaN, Infinity, -1, 0, 0.0000004])("prevalidates invalid second quantity %s before any debt or inventory writes", async (quantity) => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "valid", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-valid", invoiceGroupId: "g", itemDefinitionId: "valid", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-valid", entryId: "entry-valid", itemDefinitionId: "valid", warehouseId: "wh-1", quantity: 0.5 })
+    const account = vi.spyOn(env.company, "createDebtAccount")
+    const entry = vi.spyOn(env.company, "createDebtEntry")
+    const before = snapshotWrites(env.db)
+
+    expect(() => env.service.createOutboundTransfer({
+      fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE",
+      debtAmountDzd: 500, firstPaymentAmountDzd: 200,
+      items: [{ itemId: "valid", quantity: 0.1 }, { itemId: "valid", quantity }],
+    }, AUDIT)).toThrow(expect.objectContaining({ appError: expect.objectContaining({
+      code: "VALIDATION", fieldErrors: [expect.objectContaining({ field: "items.1.quantity" })],
+    }) }))
+
+    expect(account).not.toHaveBeenCalled()
+    expect(entry).not.toHaveBeenCalled()
+    expect(snapshotWrites(env.db)).toEqual(before)
+  })
+
+  it("partially consumes upward-rounded legacy balances oldest first", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "legacy", itemType: "CONSUMABLE" })
+    for (const [index, createdAt] of [NOW, LATER].entries()) {
+      seedEntry(env.db, { id: `entry-legacy-${index}`, invoiceGroupId: "g", itemDefinitionId: "legacy", itemType: "CONSUMABLE" })
+      seedBalance(env.db, { id: `balance-legacy-${index}`, entryId: `entry-legacy-${index}`, itemDefinitionId: "legacy", warehouseId: "wh-1", quantity: 1.0000016, createdAt })
+    }
+
+    transfer(env, [{ itemId: "legacy", quantity: 1.000003 }])
+
+    expect(env.db.prepare("SELECT inventory_entry_id, quantity FROM inventory_movement ORDER BY rowid").all()).toEqual([
+      { inventory_entry_id: "entry-legacy-0", quantity: 1.000002 },
+      { inventory_entry_id: "entry-legacy-1", quantity: 0.000001 },
+    ])
+    expect(env.db.prepare("SELECT id, quantity FROM inventory_consumable_balance").all()).toEqual([{ id: "balance-legacy-1", quantity: 1.000001 }])
+    expect(env.db.prepare("SELECT quantity FROM inventory_outbound_transfer_item").all()).toEqual([{ quantity: 1.000003 }])
+  })
+
+  it.each([0.2, 0.199999])("allocates repeated fractional lines against stock %s atomically", async (stock) => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "repeated", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-repeated", invoiceGroupId: "g", itemDefinitionId: "repeated", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-repeated", entryId: "entry-repeated", itemDefinitionId: "repeated", warehouseId: "wh-1", quantity: stock })
+    const before = snapshotWrites(env.db)
+    const input = { fromType: "WAREHOUSE" as const, fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE" as const,
+      debtAmountDzd: 500, firstPaymentAmountDzd: 200,
+      items: [{ itemId: "repeated", quantity: 0.1000004 }, { itemId: "repeated", quantity: 0.1000004 }],
+    }
+    const original = structuredClone(input)
+
+    if (stock === 0.199999) {
+      expect(() => env.service.createOutboundTransfer(input, AUDIT)).toThrow(/غير متوفرة/)
+      expect(snapshotWrites(env.db)).toEqual(before)
+    } else {
+      env.service.createOutboundTransfer(input, AUDIT)
+      expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([0.1, 0.1])
+      expect(env.db.prepare("SELECT quantity FROM inventory_outbound_transfer_item").all()).toEqual([{ quantity: 0.1 }, { quantity: 0.1 }])
+      expect(env.db.prepare("SELECT * FROM inventory_consumable_balance").all()).toEqual([])
+    }
+    expect(input).toEqual(original)
   })
 
   it("persists the normalized outbound quantity equal to its movement and balance delta", async () => {

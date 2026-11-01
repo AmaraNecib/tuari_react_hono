@@ -1,0 +1,55 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-6557dc2c/apps/api
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts (30 tests | 3 failed | 27 skipped) 228ms
+     × rolls back real debt and earlier consumption on a split shortage at a WAREHOUSE 106ms
+     × rolls back real debt and earlier consumption on a split shortage at a PROJECT 62ms
+     × rolls back the header, real debt and stock after a late transfer-item persistence failure 57ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rolls back real debt and earlier consumption on a split shortage at a WAREHOUSE
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rolls back real debt and earlier consumption on a split shortage at a PROJECT
+AssertionError: expected [Function] to throw error matching /غير متوفرة/ but got 'This database connection is busy exec…'
+
+- Expected:
+/غير متوفرة/
+
++ Received:
+"This database connection is busy executing a query"
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:598:16
+    596|       debtAmountDzd: 500, firstPaymentAmountDzd: 200,
+    597|       items: [{ itemId: "first", quantity: 1 }, { itemId: "split", qua…
+    598|     }, AUDIT)).toThrow(/غير متوفرة/)
+       |                ^
+    599|
+    600|     // Observe real writes before the shortage, then require their ful…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rolls back the header, real debt and stock after a late transfer-item persistence failure
+AssertionError: expected [Function] to throw error including 'forced item failure' but got 'This database connection is busy exec…'
+
+Expected: "forced item failure"
+Received: "This database connection is busy executing a query"
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:626:16
+    624|       fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", …
+    625|       debtAmountDzd: 500, firstPaymentAmountDzd: 200, items: [{ itemId…
+    626|     }, AUDIT)).toThrow("forced item failure")
+       |                ^
+    627|
+    628|     expect(progress).toHaveLength(1)
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 27 skipped (30)
+   Start at  18:16:15
+   Duration  4.87s (transform 1.72s, setup 0ms, import 4.14s, tests 228ms, environment 0ms)
+
+undefined
+D:\worktrees\tuari_react_hono\t3-6557dc2c\apps\api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/modules/inventory/outbound-transfer-availability.test.ts --maxWorkers=1 -t real debt

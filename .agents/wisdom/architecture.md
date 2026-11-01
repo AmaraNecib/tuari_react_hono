@@ -743,3 +743,19 @@ invoice save-reason pattern: `validateLines` returns the first localized reason
 and `saveDisabledReason` renders it in a `role="status"` line beside the
 disabled save control
 (`apps/web/src/features/inventory/inventory-invoice-create-page.tsx`).
+
+## Outbound stock subtraction must fund its movement at storage precision (Major)
+
+The #450 audit found that `1e12 - 0.000001 === 1e12`. A positive movement
+could therefore complete without reducing stock. Normalizing input alone does
+not protect subtraction, and the normalized request remainder can lose a small
+deduction too. The outbound allocator now rejects the operation inside its
+transaction unless both normalized remainders decrease and both normalized
+reverse deltas equal the movement quantity. It does not impose a public bound
+or change the shared rounding helper. Some large operations remain valid,
+such as deducting `2` from `1e12`; deducting `1` fails closed because the current
+normalizer yields a remainder whose reverse delta differs from `1`.
+
+**Always**: test both stock and request deltas near binary magnitude boundaries.
+Do not infer safe allocation from a positive movement or a zero request remainder.
+When a format change is out of scope, reject unrepresentable operations atomically.

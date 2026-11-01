@@ -137,6 +137,41 @@ consumable-aware min/step/default quantity with render tests; preserve integer
 asset controls. It does not block this lane's server precision fix or require a
 lane reorder. Parent already excluded this UX change.
 
+## Accepted audit remediation
+
+This local-only HIGH-ASSURANCE follow-up starts at
+`73bfeb9a36fc4538207ad0c2a1ac56bdad6bad34`, preserving the first quantity fix.
+The parent supplied the three original test-audit outputs for PR #477 and
+approved the existing SQLite service and rendered picker seams. No public
+contract, schema, dependency or global precision-helper change is needed.
+
+The new production rule is local to outbound allocation. Before writing each
+movement, calculate the normalized stock remainder and request remainder.
+Both must be finite, nonnegative and strictly smaller than their previous
+values. The normalized reverse difference of each must equal the consumed
+quantity. Otherwise throw `BUSINESS_RULE` inside the existing transaction.
+This checks the actual operation, not a public magnitude bound. For example,
+`1e12 - 0.000001` cannot fund a movement; a representable deduction of `2` from
+`1e12` remains supported. Existing six-decimal normalization still defines
+legacy stock and normal fractional arithmetic.
+
+Tests cover half-quantum/upward requests, invalid second-item prevalidation,
+upward-rounded legacy rows, repeated fractional lines, and magnitude boundaries.
+Real `CompanyService` and inventory repositories share one SQLite connection.
+TEMP triggers observe the real OPENING/PAYMENT and earlier stock writes before
+shortage, or force a failure immediately before transfer-item persistence after
+the header exists. Raw before/after snapshots prove rollback. These additions
+close proof gaps, not newly discovered debt transaction defects.
+
+Picker tests record source-query arguments without losing concrete-row identity
+and deduplication assertions. Exact fulfillment queries raw balances to establish
+that consumed rows are deleted while upstream-excluded dust remains unchanged.
+It does not claim that dust exercises the allocator's zero-row skip.
+
+The implementation lane cannot spawn reviewers or use paid reviews. Parent-owned
+fresh HIGH-ASSURANCE review and broader checks remain gates, not completed work.
+Evidence for this follow-up lives in `.scratch/reviews/450/audit-remediation/`.
+
 ## Not in this change
 
 - The inbound path does not share a helper with outbound. `transferConsumable`

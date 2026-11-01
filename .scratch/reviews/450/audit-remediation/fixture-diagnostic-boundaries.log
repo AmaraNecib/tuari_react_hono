@@ -1,0 +1,70 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-6557dc2c/apps/api
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts (50 tests | 2 failed) 1115ms
+     × allows a representable normalized deduction from 1000000000000 of 1 31ms
+     × partially consumes upward-rounded legacy balances oldest first 31ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > allows a representable normalized deduction from 1000000000000 of 1
+InventoryError: لا يمكن تمثيل خصم الكمية بدقة المخزون.
+ ❯ InventoryService.consumeConsumableFromSource src/modules/inventory/inventory.service.ts:1061:15
+    1059|         roundQuantity(remaining - nextRemaining) !== consumed
+    1060|       ) {
+    1061|         throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل خصم ا…
+       |               ^
+    1062|       }
+    1063|       if (left > 0) {
+ ❯ src/modules/inventory/inventory.service.ts:1185:16
+ ❯ sqliteTransaction ../../node_modules/.pnpm/better-sqlite3@12.6.2/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ src/infrastructure/database/fifo-lock.ts:239:47
+ ❯ Object.runSync src/infrastructure/database/fifo-lock.ts:218:14
+ ❯ runSyncTransaction src/infrastructure/database/fifo-lock.ts:239:15
+ ❯ DrizzleInventoryRepository.withTransaction src/modules/inventory/adapters/sqlite-inventory.repository.ts:245:12
+ ❯ InventoryService.createOutboundTransfer src/modules/inventory/inventory.service.ts:1112:28
+ ❯ transfer src/modules/inventory/outbound-transfer-availability.test.ts:493:17
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:664:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > partially consumes upward-rounded legacy balances oldest first
+AssertionError: expected [ Array(2) ] to deeply equal [ Array(2) ]
+
+- Expected
++ Received
+
+  [
+    [
+-     "entry-legacy-0",
+-     1.000002,
+-   ],
+-   [
+      "entry-legacy-1",
+      0.000001,
++   ],
++   [
++     "entry-legacy-0",
++     1.000002,
+    ],
+  ]
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:799:115
+    797|     transfer(env, [{ itemId: "legacy", quantity: 1.000003 }])
+    798|
+    799|     expect(env.repository.listAllMovements({}).map((movement) => [move…
+       |                                                                                                                   ^
+    800|       ["entry-legacy-0", 1.000002], ["entry-legacy-1", 0.000001],
+    801|     ])
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  2 failed | 60 passed (62)
+   Start at  18:18:29
+   Duration  4.65s (transform 588ms, setup 0ms, import 2.50s, tests 1.40s, environment 0ms)
+
+undefined
+D:\worktrees\tuari_react_hono\t3-6557dc2c\apps\api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/modules/inventory/outbound-transfer-availability.test.ts src/modules/inventory/inventory-debt-sign.test.ts src/modules/inventory/inventory.helpers.test.ts --maxWorkers=1

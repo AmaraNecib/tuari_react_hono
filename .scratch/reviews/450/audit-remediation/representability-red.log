@@ -1,0 +1,29 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-6557dc2c/apps/api
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts (27 tests | 1 failed | 26 skipped) 123ms
+     × rejects an unrepresentable deduction atomically instead of creating stock 119ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rejects an unrepresentable deduction atomically instead of creating stock
+AssertionError: expected function to throw an error, but it didn't
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:582:110
+    580|     const before = env.db.prepare("SELECT * FROM inventory_consumable_…
+    581|
+    582|     expect(() => transfer(env, [{ itemId: "first", quantity: 1 }, { it…
+       |                                                                                                              ^
+    583|
+    584|     expect(env.db.prepare("SELECT * FROM inventory_consumable_balance …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 26 skipped (27)
+   Start at  18:14:19
+   Duration  4.66s (transform 1.54s, setup 0ms, import 3.75s, tests 123ms, environment 0ms)
+
+undefined
+D:\worktrees\tuari_react_hono\t3-6557dc2c\apps\api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/modules/inventory/outbound-transfer-availability.test.ts --maxWorkers=1 -t unrepresentable deduction

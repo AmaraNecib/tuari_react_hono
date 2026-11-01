@@ -1,0 +1,9 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-6557dc2c/apps/web
+
+
+ Test Files  2 passed (2)
+      Tests  9 passed (9)
+   Start at  18:19:23
+   Duration  7.18s (transform 516ms, setup 0ms, import 1.86s, tests 2.56s, environment 2.20s)
+

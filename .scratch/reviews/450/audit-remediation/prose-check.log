@@ -1,0 +1,122 @@
+
+> tuari_react_hono@ check:unslop D:\worktrees\tuari_react_hono\t3-6557dc2c
+> node ./scripts/prose/check-unslop.ts
+
+
+unslop prose gate: 188 markdown files scanned
+
+ERROR tier: clean (no filler / sycophancy tells found)
+
+WARN tier (1702) — advisory, review for real tells:
+  .agents\skills\accessibility\SKILL.md: warn:inline-bold-label=5, warn:em-dash=8
+  .agents\skills\ask-matt\SKILL.md: warn:em-dash=23, warn:chained-em-dash=4
+  .agents\skills\capture-wisdom\SKILL.md: warn:em-dash=4
+  .agents\skills\cli-review\SKILL.md: warn:em-dash=1
+  .agents\skills\code-review\SKILL.md: warn:em-dash=25, warn:chained-em-dash=1
+  .agents\skills\codebase-design\DEEPENING.md: warn:em-dash=4
+  .agents\skills\codebase-design\DESIGN-IT-TWICE.md: warn:em-dash=9
+  .agents\skills\codebase-design\SKILL.md: warn:em-dash=13
+  .agents\skills\crew-dispatch\SKILL.md: warn:em-dash=32, warn:chained-em-dash=3, warn:inline-bold-label=2
+  .agents\skills\debate\SKILL.md: warn:em-dash=9, warn:inline-bold-label=2
+  .agents\skills\diagnosing-bugs\SKILL.md: warn:em-dash=28, warn:chained-em-dash=2
+  .agents\skills\domain-modeling\ADR-FORMAT.md: warn:em-dash=11
+  .agents\skills\domain-modeling\CONTEXT-FORMAT.md: warn:inline-bold-label=2
+  .agents\skills\domain-modeling\SKILL.md: warn:em-dash=9
+  .agents\skills\feature-implement\SKILL.md: warn:em-dash=18
+  .agents\skills\greploop\SKILL.md: warn:em-dash=4
+  .agents\skills\grilling\SKILL.md: warn:em-dash=1
+  .agents\skills\guard\SKILL.md: warn:em-dash=4, warn:inline-bold-label=1
+  .agents\skills\hono\SKILL.md: warn:inline-bold-label=2, warn:em-dash=1
+  .agents\skills\impeccable\reference\live.md: warn:inline-bold-label=2
+  .agents\skills\impeccable\SKILL.md: warn:inline-bold-label=2
+  .agents\skills\playwright-best-practices\advanced\authentication-flows.md: warn:em-dash=7
+  .agents\skills\playwright-best-practices\advanced\authentication.md: warn:em-dash=8
+  .agents\skills\playwright-best-practices\architecture\pom-vs-fixtures.md: warn:em-dash=8, warn:inline-bold-label=4
+  .agents\skills\playwright-best-practices\architecture\test-architecture.md: warn:em-dash=9
+  .agents\skills\playwright-best-practices\architecture\when-to-mock.md: warn:inline-bold-label=3
+  .agents\skills\playwright-best-practices\core\configuration.md: warn:inline-bold-label=1
+  .agents\skills\playwright-best-practices\core\global-setup.md: warn:inline-bold-label=1
+  .agents\skills\playwright-best-practices\frameworks\angular.md: warn:em-dash=5
+  .agents\skills\playwright-best-practices\frameworks\react.md: warn:em-dash=16
+  .agents\skills\playwright-best-practices\frameworks\vue.md: warn:em-dash=2
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\docker.md: warn:inline-bold-label=3
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\github-actions.md: warn:em-dash=9, warn:inline-bold-label=1
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\gitlab.md: warn:inline-bold-label=2
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\parallel-sharding.md: warn:inline-bold-label=5
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\performance.md: warn:em-dash=1
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\reporting.md: warn:inline-bold-label=1, warn:em-dash=1
+  .agents\skills\playwright-best-practices\testing-patterns\api-testing.md: warn:em-dash=13
+  .agents\skills\playwright-best-practices\testing-patterns\drag-drop.md: warn:em-dash=4
+  .agents\skills\playwright-best-practices\testing-patterns\file-upload-download.md: warn:em-dash=2
+  .agents\skills\playwright-best-practices\testing-patterns\forms-validation.md: warn:em-dash=6
+  .agents\skills\playwright-best-practices\testing-patterns\graphql-testing.md: warn:em-dash=2
+  .agents\skills\playwright-best-practices\testing-patterns\visual-regression.md: warn:em-dash=5, warn:chained-em-dash=1, warn:inline-bold-label=2
+  .agents\skills\prototype\LOGIC.md: warn:em-dash=16, warn:chained-em-dash=1
+  .agents\skills\prototype\SKILL.md: warn:em-dash=6
+  .agents\skills\prototype\UI.md: warn:em-dash=20
+  .agents\skills\research\SKILL.md: warn:em-dash=1, warn:chained-em-dash=1
+  .agents\skills\setup-matt-pocock-skills\domain.md: warn:em-dash=4
+  .agents\skills\setup-matt-pocock-skills\issue-tracker-github.md: warn:em-dash=4
+  .agents\skills\setup-matt-pocock-skills\issue-tracker-gitlab.md: warn:em-dash=5
+  .agents\skills\setup-matt-pocock-skills\issue-tracker-local.md: warn:em-dash=1
+  .agents\skills\setup-matt-pocock-skills\SKILL.md: warn:em-dash=36, warn:chained-em-dash=1, warn:inline-bold-label=1
+  .agents\skills\tauri-v2\README.md: warn:inline-bold-label=1
+  .agents\skills\tauri-v2\SKILL.md: warn:inline-bold-label=17, warn:em-dash=6
+  .agents\skills\tdd\SKILL.md: warn:em-dash=7, warn:chained-em-dash=1
+  .agents\skills\test-audit\SKILL.md: warn:em-dash=5
+  .agents\skills\testsprite-onboard\SKILL.md: warn:em-dash=53, warn:chained-em-dash=2, warn:inline-bold-label=2
+  .agents\skills\testsprite-verify\SKILL.md: warn:em-dash=28
+  .agents\skills\to-spec\SKILL.md: warn:em-dash=4
+  .agents\skills\to-tickets\SKILL.md: warn:em-dash=14, warn:chained-em-dash=1, warn:inline-bold-label=2
+  .agents\skills\triage\AGENT-BRIEF.md: warn:em-dash=3, warn:inline-bold-label=6
+  .agents\skills\triage\OUT-OF-SCOPE.md: warn:em-dash=12
+  .agents\skills\triage\SKILL.md: warn:em-dash=29
+  .agents\skills\wayfinder\SKILL.md: warn:em-dash=30, warn:chained-em-dash=8
+  .agents\skills\writing-great-skills\GLOSSARY.md: warn:em-dash=35, warn:chained-em-dash=8
+  .agents\skills\writing-great-skills\SKILL.md: warn:em-dash=26, warn:chained-em-dash=6
+  .agents\wisdom\architecture.md: warn:em-dash=26
+  .agents\wisdom\process.md: warn:em-dash=6
+  .agents\wisdom\security.md: warn:em-dash=7, warn:chained-em-dash=1
+  .agents\wisdom\testing.md: warn:em-dash=29
+  docs\adr\ADR-DIAG-001.md: warn:em-dash=12, warn:inline-bold-label=3
+  docs\adr\ADR-UPD-001.md: warn:em-dash=3, warn:inline-bold-label=4, warn:chained-em-dash=2
+  docs\adr\ADR-UPD-002.md: warn:em-dash=3, warn:inline-bold-label=4, warn:chained-em-dash=1
+  docs\adr\ADR-UPD-003.md: warn:em-dash=3, warn:inline-bold-label=4, warn:chained-em-dash=2
+  docs\adr\ADR-UPD-004.md: warn:em-dash=3, warn:inline-bold-label=4, warn:chained-em-dash=2
+  docs\adr\ADR-UPD-005.md: warn:em-dash=4, warn:inline-bold-label=7, warn:chained-em-dash=3
+  docs\adr\ADR-UPD-006.md: warn:em-dash=6, warn:inline-bold-label=4, warn:chained-em-dash=1
+  docs\adr\ADR-UPD-008.md: warn:em-dash=4, warn:inline-bold-label=4, warn:chained-em-dash=2
+  docs\architecture-decisions.md: warn:em-dash=1, warn:inline-bold-label=2
+  docs\ARCHITECTURE.md: warn:em-dash=3
+  docs\ARCHITECTURE_REVIEW.md: warn:inline-bold-label=112, warn:em-dash=48
+  docs\auth-recovery.md: warn:em-dash=10
+  docs\BRANCH_STRATEGY.md: warn:inline-bold-label=24
+  docs\COMPLETION_STATUS.md: warn:inline-bold-label=26
+  docs\customer-install-guide.md: warn:em-dash=7
+  docs\development-workflow.md: warn:em-dash=12, warn:inline-bold-label=5
+  docs\editions-and-features.md: warn:em-dash=5, warn:inline-bold-label=1
+  docs\engineering-workflow.md: warn:em-dash=6
+  docs\implementation-roadmap.md: warn:em-dash=10, warn:inline-bold-label=7, warn:chained-em-dash=1
+  docs\lessons\gh-pr-merge-squash-issue-close.md: warn:em-dash=13
+  docs\lessons\README.md: warn:em-dash=3
+  docs\license-issuance.md: warn:em-dash=3
+  docs\licensing-architecture.md: warn:em-dash=44, warn:inline-bold-label=27
+  docs\PHASE3-INTEGRATION-TESTS.md: warn:inline-bold-label=9
+  docs\PHASE5-INTEGRATION-RELEASE.md: warn:inline-bold-label=7
+  docs\prd\licensing-prd.md: warn:em-dash=14, warn:inline-bold-label=45, warn:chained-em-dash=1
+  docs\prd\rust-core-prd.md: warn:em-dash=13, warn:inline-bold-label=10
+  docs\prd\update-prd.md: warn:em-dash=1, warn:inline-bold-label=41
+  docs\QUERY_OPTIMIZATION.md: warn:inline-bold-label=3, warn:em-dash=3
+  docs\README.md: warn:em-dash=6
+  docs\REFACTORING_TASKS.md: warn:inline-bold-label=106, warn:em-dash=1
+  docs\release-verification.md: warn:em-dash=1
+  docs\RELEASE_SUMMARY.md: warn:inline-bold-label=30
+  docs\rust-core-architecture.md: warn:em-dash=85, warn:inline-bold-label=19, warn:chained-em-dash=5
+  docs\update-architecture.md: warn:em-dash=11, warn:inline-bold-label=10
+
+Total: 1702 warn / 0 error
+[check:unslop] PASS
+(node:22740) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/worktrees/tuari_react_hono/t3-6557dc2c/scripts/prose/check-unslop.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to D:\worktrees\tuari_react_hono\t3-6557dc2c\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)

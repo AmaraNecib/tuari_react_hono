@@ -1048,6 +1048,19 @@ export class InventoryService {
 
       const consumed = roundQuantity(Math.min(balance.quantity, remaining))
       const left = roundQuantity(balance.quantity - consumed)
+      const nextRemaining = roundQuantity(remaining - consumed)
+      // At large magnitudes subtraction can do nothing or remove the wrong
+      // quantum. Reject inside the transaction rather than fund a movement
+      // with stock that did not decrease by its normalized quantity.
+      if (
+        !Number.isFinite(left) || !Number.isFinite(nextRemaining) ||
+        left < 0 || nextRemaining < 0 ||
+        left >= balance.quantity || nextRemaining >= remaining ||
+        roundQuantity(balance.quantity - left) !== consumed ||
+        roundQuantity(remaining - nextRemaining) !== consumed
+      ) {
+        throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل خصم الكمية بدقة المخزون.")
+      }
       if (left > 0) {
         this.repository.updateConsumableBalanceQuantity(balance.id, left)
       } else {
@@ -1064,7 +1077,7 @@ export class InventoryService {
         occurredAt: input.occurredAt,
       })
 
-      remaining = roundQuantity(remaining - consumed)
+      remaining = nextRemaining
     }
 
     // Throw inside the outbound transaction so no partial stock or transfer

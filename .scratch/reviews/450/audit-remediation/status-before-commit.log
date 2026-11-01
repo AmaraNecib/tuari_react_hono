@@ -1,0 +1,29 @@
+ M .agents/wisdom/architecture.md
+ M .scratch/implementation/450-design.md
+ M apps/api/src/modules/inventory/inventory.service.ts
+ M apps/api/src/modules/inventory/outbound-transfer-availability.test.ts
+ M apps/web/src/features/inventory/multi-source-item-picker.test.tsx
+?? .scratch/reviews/450/audit-remediation/
+!! .husky/_/.gitignore
+!! .husky/_/applypatch-msg
+!! .husky/_/commit-msg
+!! .husky/_/h
+!! .husky/_/husky.sh
+!! .husky/_/post-applypatch
+!! .husky/_/post-checkout
+!! .husky/_/post-commit
+!! .husky/_/post-merge
+!! .husky/_/post-rewrite
+!! .husky/_/pre-applypatch
+!! .husky/_/pre-auto-gc
+!! .husky/_/pre-commit
+!! .husky/_/pre-merge-commit
+!! .husky/_/pre-push
+!! .husky/_/pre-rebase
+!! .husky/_/prepare-commit-msg
+!! apps/api/node_modules/
+!! apps/desktop/node_modules/
+!! apps/web/node_modules/
+!! node_modules/
+!! packages/contracts/dist/
+!! packages/contracts/node_modules/

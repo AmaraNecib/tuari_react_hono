@@ -4,12 +4,14 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { MultiSourceItemPicker, type SelectedItem } from "./multi-source-item-picker"
 
+const contentsQuery = vi.hoisted(() => vi.fn())
+
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 
 vi.mock("./inventory-hooks", () => ({
   useInventoryWarehousesQuery: () => ({ data: { items: [{ id: "warehouse", name: "Warehouse" }] } }),
   useInventoryProjectsQuery: () => ({ data: { items: [{ id: "project", name: "Project" }] } }),
-  useInventoryLocationContentsQuery: () => ({ data: {
+  useInventoryLocationContentsQuery: contentsQuery.mockImplementation(() => ({ data: {
     assets: [
       { id: "unit-first", inventoryEntryId: "entry-asset-first", itemDefinitionId: "definition-asset", assetName: "First drill" },
       { id: "unit-second", inventoryEntryId: "entry-asset-second", itemDefinitionId: "definition-asset", assetName: "Second drill" },
@@ -18,10 +20,13 @@ vi.mock("./inventory-hooks", () => ({
       { id: "balance-first", inventoryEntryId: "entry-consumable-first", itemDefinitionId: "definition-consumable", itemName: "First cement", quantity: 4, locationLabel: "Warehouse" },
       { id: "balance-second", inventoryEntryId: "entry-consumable-second", itemDefinitionId: "definition-consumable", itemName: "Second cement", quantity: 7, locationLabel: "Warehouse" },
     ],
-  } }),
+  } })),
 }))
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.clearAllMocks()
+})
 
 describe("MultiSourceItemPicker outbound identity", () => {
   it.each(["WAREHOUSE", "PROJECT"])("emits definition IDs while independently selecting and deduplicating concrete rows at a %s", (sourceType) => {
@@ -34,8 +39,13 @@ describe("MultiSourceItemPicker outbound identity", () => {
       }} />
     }
     render(<Harness />)
+    expect(contentsQuery).toHaveBeenLastCalledWith({ warehouseId: "", projectId: undefined })
     fireEvent.change(screen.getByLabelText("inventory.transfer.sourceType"), { target: { value: sourceType } })
     fireEvent.change(screen.getByLabelText("inventory.transfer.source"), { target: { value: sourceType === "WAREHOUSE" ? "warehouse" : "project" } })
+
+    expect(contentsQuery).toHaveBeenLastCalledWith(sourceType === "WAREHOUSE"
+      ? { warehouseId: "warehouse", projectId: undefined }
+      : { warehouseId: undefined, projectId: "project" })
 
     // Adding one unit must not disable the other unit of the same definition.
     // The same rule applies independently to two balances of one consumable.
