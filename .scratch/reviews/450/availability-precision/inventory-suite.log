@@ -1,0 +1,38 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-af2f7992/apps/api
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts (53 tests | 2 failed) 1211ms
+     × rolls back real debt and earlier consumption on a split shortage at a WAREHOUSE 39ms
+     × rolls back real debt and earlier consumption on a split shortage at a PROJECT 28ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rolls back real debt and earlier consumption on a split shortage at a WAREHOUSE
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rolls back real debt and earlier consumption on a split shortage at a PROJECT
+AssertionError: expected [ { …(6) }, { …(6) }, { …(6) } ] to have a length of 1 but got 3
+
+- Expected
++ Received
+
+- 1
++ 3
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:618:22
+    616|
+    617|     // Observe real writes before the shortage, then require their ful…
+    618|     expect(progress).toHaveLength(1)
+       |                      ^
+    619|     expect(progress[0]).toMatchObject({
+    620|       stock: [{ id: "first", quantity: 4 }, { id: "split-1", quantity:…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed | 8 passed (9)
+      Tests  2 failed | 162 passed (164)
+   Start at  18:51:49
+   Duration  9.03s (transform 729ms, setup 0ms, import 4.95s, tests 1.87s, environment 1ms)
+
+undefined
+D:\worktrees\tuari_react_hono\t3-af2f7992\apps\api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/modules/inventory --maxWorkers=1

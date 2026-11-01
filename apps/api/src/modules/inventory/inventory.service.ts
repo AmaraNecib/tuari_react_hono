@@ -1033,13 +1033,9 @@ export class InventoryService {
     note: string
     occurredAt: string
   }) {
-    // Availability and allocation must use the same per-balance precision.
-    // Rounding a raw combined total can promise more than the rounded rows hold.
+    // A Number sum can lose micro-balances beside large rows. Normalize each row,
+    // then let guarded allocation and the final remainder decide availability.
     const balances = input.balances.map((balance) => ({ ...balance, quantity: roundQuantity(balance.quantity) }))
-    const available = roundQuantity(balances.reduce((total, balance) => total + balance.quantity, 0))
-    if (available < input.quantity) {
-      throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${input.definitionName} غير متوفرة.`)
-    }
 
     let remaining = input.quantity
     for (const balance of balances) {

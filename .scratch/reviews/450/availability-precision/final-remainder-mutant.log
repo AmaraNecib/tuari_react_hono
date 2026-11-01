@@ -1,0 +1,36 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-af2f7992/apps/api
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts (53 tests | 1 failed | 52 skipped) 65ms
+     × rejects the unspent final micro and rolls back stock, debt, and outbound writes 63ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rejects the unspent final micro and rolls back stock, debt, and outbound writes
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:909:16
+    907|       debtAmountDzd: 500, firstPaymentAmountDzd: 200,
+    908|       items: [{ itemId: definitionId, quantity: requested }],
+    909|     }, AUDIT)).toThrow(/غير متوفرة/)
+       |                ^
+    910|
+    911|     // Both row-level guards passed and wrote movements; only the fina…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 52 skipped (53)
+   Start at  18:50:23
+   Duration  2.08s (transform 597ms, setup 0ms, import 1.69s, tests 65ms, environment 0ms)
+
+undefined
+D:\worktrees\tuari_react_hono\t3-af2f7992\apps\api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/modules/inventory/outbound-transfer-availability.test.ts --maxWorkers=1 -t rejects the unspent final micro and rolls back

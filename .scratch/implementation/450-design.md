@@ -117,11 +117,13 @@ persisted item quantity, movement quantity and remaining balance through the rea
 SQLite service seam. Item rows have no repository read API, so that assertion uses
 one SQL read linked to the returned transfer ID; no response shape change is needed.
 
-For legacy balances with more than six decimals, availability must sum the same
-per-balance rounded quantities allocation uses. Deduct from those quantities,
-skip normalized empty rows and reject a surviving normalized remainder inside the
-transaction. Test the reported `[1.0000014, 1.0000014]` shortage, exact normalized
-fulfillment, and rollback of earlier items when a later allocation fails.
+For legacy balances with more than six decimals, normalize each row. Do not sum
+those rounded values into one IEEE-754 total. A large balance can erase small
+positive rows even when guarded sequential deductions can represent them. Skip
+normalized empty rows. Let the final normalized request remainder inside the
+transaction decide whether allocation fulfilled the request. Test exact
+fulfillment, shortage, and rollback of earlier items when a later allocation
+fails.
 
 The agreed seams are the real SQLite outbound service/repository, existing quantity
 helper tests, and the V2 picker's rendered controls plus `onItemsChange` callback.
@@ -171,6 +173,30 @@ It does not claim that dust exercises the allocator's zero-row skip.
 The implementation lane cannot spawn reviewers or use paid reviews. Parent-owned
 fresh HIGH-ASSURANCE review and broader checks remain gates, not completed work.
 Evidence for this follow-up lives in `.scratch/reviews/450/audit-remediation/`.
+
+### Availability precision follow-up
+
+This child starts from local remediation HEAD
+`546be3e5a98627984218bf8474895036219835a7`, whose ancestry includes original PR
+head `338cbde3c9b3a5645c98e86f9bdd70a15a41d6b6`.
+
+The aggregate precheck rounds one `Number` sum of rounded rows. For
+`[4294967296, ...Array(12).fill(0.000001)]`, it loses one micro and rejects
+request `4294967296.000012`. Remove this lossy precheck. Guarded sequential
+allocation checks each deduction. The final normalized request remainder throws
+the existing insufficient-stock `BUSINESS_RULE` inside the transaction when
+rows cannot fulfill the request.
+
+Add two real-SQLite regressions. Successful fulfillment asserts that raw balance
+rows are gone, the persisted transfer item is `4294967296.000012`, and all 13
+movements have the expected entry IDs and quantities. The repository orders these
+balances by `createdAt, id`. The shortage case uses `[8589934592, 0.000001]` for
+request `8589934592.000002`. Both per-row guards pass, so the final remainder
+guard must reject and roll back stock, movements, debt records, transfer headers,
+and transfer items. This test covers existing protection, not another production
+bug.
+
+No global rounding helper, public magnitude bound, schema, or contract change.
 
 ## Not in this change
 

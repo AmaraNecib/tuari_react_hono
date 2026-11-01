@@ -1,0 +1,37 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-af2f7992/apps/api
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts (52 tests | 1 failed | 51 skipped) 61ms
+     × fulfills a request when a large row would hide six-decimal rows in the aggregate 59ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > fulfills a request when a large row would hide six-decimal rows in the aggregate
+InventoryError: الكمية المطلوبة من def-large-plus-micros غير متوفرة.
+ ❯ InventoryService.consumeConsumableFromSource src/modules/inventory/inventory.service.ts:1041:13
+    1039|     const available = roundQuantity(balances.reduce((total, balance) =…
+    1040|     if (available < input.quantity) {
+    1041|       throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${…
+       |             ^
+    1042|     }
+    1043|
+ ❯ src/modules/inventory/inventory.service.ts:1186:16
+ ❯ sqliteTransaction ../../node_modules/.pnpm/better-sqlite3@12.6.2/node_modules/better-sqlite3/lib/methods/transaction.js:65:24
+ ❯ src/infrastructure/database/fifo-lock.ts:239:47
+ ❯ Object.runSync src/infrastructure/database/fifo-lock.ts:218:14
+ ❯ runSyncTransaction src/infrastructure/database/fifo-lock.ts:239:15
+ ❯ DrizzleInventoryRepository.withTransaction src/modules/inventory/adapters/sqlite-inventory.repository.ts:245:12
+ ❯ InventoryService.createOutboundTransfer src/modules/inventory/inventory.service.ts:1113:28
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:875:32
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 51 skipped (52)
+   Start at  18:48:09
+   Duration  2.99s (transform 1.14s, setup 0ms, import 2.63s, tests 61ms, environment 0ms)
+
+undefined
+D:\worktrees\tuari_react_hono\t3-af2f7992\apps\api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/modules/inventory/outbound-transfer-availability.test.ts --maxWorkers=1 -t fulfills a request when a large row would hide six-decimal rows in the aggregate

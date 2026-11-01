@@ -30,6 +30,7 @@ import { ensureDatabaseSchema } from "../../infrastructure/database/schema"
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor"
 import { createInventoryRepository } from "./adapters/sqlite-inventory.repository"
 import { InventoryError } from "./inventory.errors"
+import { roundQuantity } from "./inventory.helpers"
 import { InventoryService } from "./inventory.service"
 import type { InventoryAttachmentStorage } from "./inventory.storage"
 import type { MutationAuditContext } from "../company/company.types"
@@ -614,14 +615,25 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
       items: [{ itemId: "first", quantity: 1 }, { itemId: "split", quantity: 2.000003 }],
     }, AUDIT)).toThrow(/غير متوفرة/)
 
-    // Observe real writes before the shortage, then require their full rollback.
-    expect(progress).toHaveLength(1)
+    // The final remainder check now sees both split rows consumed before rollback.
+    expect(progress).toHaveLength(3)
     expect(progress[0]).toMatchObject({
       stock: [{ id: "first", quantity: 4 }, { id: "split-1", quantity: 1.0000014 }, { id: "split-2", quantity: 1.0000014 }],
       accounts: [{ direction: "RECEIVABLE" }],
       entries: [{ entry_type: "OPENING", signed_amount: 500 }, { entry_type: "PAYMENT", signed_amount: -200 }],
       movements: [{ quantity: 1 }], transfers: [], items: [],
     })
+    const afterSecondMovement = progress[1] as { stock: Array<{ id: string; quantity: number }>; movements: Array<{ quantity: number }> }
+    expect(afterSecondMovement.stock).toHaveLength(2)
+    expect(afterSecondMovement.stock.find((balance) => balance.id === "first")?.quantity).toBe(4)
+    const remainingSplitBalances = afterSecondMovement.stock.filter((balance) => balance.id.startsWith("split-"))
+    expect(remainingSplitBalances).toHaveLength(1)
+    expect(remainingSplitBalances[0]!.quantity).toBe(1.0000014)
+    expect(afterSecondMovement.movements.map((movement) => movement.quantity).sort((a, b) => a - b)).toEqual([1, 1.000001])
+
+    const beforeFinalRemainderCheck = progress[2] as { stock: Array<{ id: string; quantity: number }>; movements: Array<{ quantity: number }> }
+    expect(beforeFinalRemainderCheck.stock).toEqual([{ id: "first", quantity: 4 }])
+    expect(beforeFinalRemainderCheck.movements.map((movement) => movement.quantity).sort((a, b) => a - b)).toEqual([1, 1.000001, 1.000001])
     expect(snapshotWrites(env.db)).toEqual(before)
   })
 
@@ -846,6 +858,90 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
     expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([0.1])
     expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-consistent", warehouseId: "wh-1" })?.quantity).toBe(0.4)
     expect(input.items[0]!.quantity).toBe(0.1000004)
+  })
+
+  it("fulfills a request when a large row would hide six-decimal rows in the aggregate", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    const requested = 4_294_967_296.000012
+    const definitionId = "def-large-plus-micros"
+    seedDefinition(env.db, { id: definitionId, itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-large", invoiceGroupId: "g", itemDefinitionId: definitionId, itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-large", entryId: "entry-large", itemDefinitionId: definitionId, warehouseId: "wh-1", quantity: 4_294_967_296, createdAt: NOW })
+
+    const microEntries = Array.from({ length: 12 }, (_, index) => {
+      const suffix = String(index).padStart(2, "0")
+      const entryId = `entry-micro-${suffix}`
+      const balanceId = `balance-micro-${suffix}`
+      seedEntry(env.db, { id: entryId, invoiceGroupId: "g", itemDefinitionId: definitionId, itemType: "CONSUMABLE" })
+      seedBalance(env.db, { id: balanceId, entryId, itemDefinitionId: definitionId, warehouseId: "wh-1", quantity: 0.000001, createdAt: LATER })
+      return { entryId, balanceId }
+    })
+    const expectedBalanceIds = ["balance-large", ...microEntries.map(({ balanceId }) => balanceId)]
+    const insertedBalanceIds = env.db.prepare("SELECT id FROM inventory_consumable_balance ORDER BY rowid").all()
+    expect(insertedBalanceIds).toEqual(expectedBalanceIds.map((id) => ({ id })))
+    // `listItemStockAtSource` orders by createdAt, then id; the large row must be first.
+    const balances = env.repository.listItemStockAtSource({ itemDefinitionId: definitionId, source: SOURCE_AT_WAREHOUSE("wh-1") }).consumableBalances
+    expect(balances.map((balance) => balance.id)).toEqual(expectedBalanceIds)
+
+    const result = env.service.createOutboundTransfer({
+      fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE",
+      items: [{ itemId: definitionId, quantity: requested }],
+    }, AUDIT)
+    const movements = env.db.prepare("SELECT inventory_entry_id, quantity FROM inventory_movement ORDER BY rowid").all() as Array<{ inventory_entry_id: string; quantity: number }>
+    expect(movements).toEqual([
+      { inventory_entry_id: "entry-large", quantity: 4_294_967_296 },
+      ...microEntries.map(({ entryId }) => ({ inventory_entry_id: entryId, quantity: 0.000001 })),
+    ])
+    expect(movements.reduce((total, movement) => total + Math.round(movement.quantity * 1_000_000), 0)).toBe(4_294_967_296_000_012)
+    expect(env.db.prepare("SELECT item_id, quantity FROM inventory_outbound_transfer_item WHERE transfer_id = ?").get(result.item.id)).toEqual({
+      item_id: definitionId, quantity: requested,
+    })
+    expect(env.db.prepare("SELECT id, quantity FROM inventory_consumable_balance WHERE item_definition_id = ?").all(definitionId)).toEqual([])
+  })
+
+  it("rejects the unspent final micro and rolls back stock, debt, and outbound writes", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    const definitionId = "def-final-remainder"
+    const requested = 8_589_934_592.000002
+    seedDefinition(env.db, { id: definitionId, itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-final-large", invoiceGroupId: "g", itemDefinitionId: definitionId, itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-final-large", entryId: "entry-final-large", itemDefinitionId: definitionId, warehouseId: "wh-1", quantity: 8_589_934_592, createdAt: NOW })
+    seedEntry(env.db, { id: "entry-final-micro", invoiceGroupId: "g", itemDefinitionId: definitionId, itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-final-micro", entryId: "entry-final-micro", itemDefinitionId: definitionId, warehouseId: "wh-1", quantity: 0.000001, createdAt: LATER })
+    expect(roundQuantity(8_589_934_592 + 0.000001)).toBe(requested)
+    const before = snapshotWrites(env.db)
+    const progress = observeWrites(env.db, "AFTER INSERT ON inventory_movement")
+
+    expect(() => env.service.createOutboundTransfer({
+      fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE",
+      debtAmountDzd: 500, firstPaymentAmountDzd: 200,
+      items: [{ itemId: definitionId, quantity: requested }],
+    }, AUDIT)).toThrow(/غير متوفرة/)
+
+    // Both row-level guards passed and wrote movements; only the final request remainder is short.
+    expect(progress).toHaveLength(2)
+    expect(progress[0]).toMatchObject({
+      stock: [{ id: "balance-final-micro", quantity: 0.000001 }],
+      accounts: [{ direction: "RECEIVABLE" }],
+      entries: expect.arrayContaining([
+        { entry_type: "OPENING", signed_amount: 500 },
+        { entry_type: "PAYMENT", signed_amount: -200 },
+      ]),
+      movements: [{ quantity: 8_589_934_592 }],
+      transfers: [], items: [],
+    })
+    expect(progress[1]).toMatchObject({
+      stock: [],
+      movements: expect.arrayContaining([{ quantity: 8_589_934_592 }, { quantity: 0.000001 }]),
+      transfers: [], items: [],
+    })
+    const movedMicros = (progress[1] as { movements: Array<{ quantity: number }> }).movements
+      .reduce((total, movement) => total + Math.round(movement.quantity * 1_000_000), 0)
+    expect(movedMicros).toBe(8_589_934_592_000_001)
+    expect(Math.round(requested * 1_000_000)).toBe(8_589_934_592_000_002)
+    expect(snapshotWrites(env.db)).toEqual(before)
   })
 
   it("rounds a noisy request before comparing it with the available total", async () => {
