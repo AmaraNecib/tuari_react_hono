@@ -39,6 +39,8 @@ describe("roundQuantity (#450 round 4)", () => {
   it("converts normalized quantities to exact micro-units, including exponent notation", () => {
     expect(normalizedQuantityMicroUnits(8_589_934_592.000011)).toBe(8_589_934_592_000_011n)
     expect(normalizedQuantityMicroUnits(1e-6)).toBe(1n)
+    expect(normalizedQuantityMicroUnits(-1.25)).toBe(-1_250_000n)
+    expect(normalizedQuantityMicroUnits(0)).toBe(0n)
     expect(normalizedQuantityMicroUnits(roundQuantity(1e21))).toBe(1_000_000_000_000_000_000_000_000_000n)
     expect(normalizedQuantityMicroUnits(1e-7)).toBeNull()
     expect(normalizedQuantityMicroUnits(Number.POSITIVE_INFINITY)).toBeNull()
