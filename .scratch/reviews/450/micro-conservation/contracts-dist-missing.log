@@ -1,0 +1,34 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/api
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts [ src/modules/inventory/outbound-transfer-availability.test.ts ]
+Error: Failed to resolve entry for package "@tuari/contracts". The package may have incorrect main/module/exports specified in its package.json.
+  Plugin: vite:import-analysis
+  File: D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/api/src/modules/inventory/outbound-transfer-availability.test.ts:27:7
+  4  |    outboundPickUsage,
+  5  |    resolveItemOffer
+  6  |  } from "@tuari/contracts";
+     |          ^
+  7  |  import { ensureDatabaseSchema } from "../../infrastructure/database/schema";
+  8  |  import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor";
+ ❯ packageEntryFailure ../../node_modules/.pnpm/vite@7.3.2_@types+node@25.5_2323df12ea79cd03bd1a48e98805e963/node_modules/vite/dist/node/chunks/config.js:32820:32
+ ❯ resolvePackageEntry ../../node_modules/.pnpm/vite@7.3.2_@types+node@25.5_2323df12ea79cd03bd1a48e98805e963/node_modules/vite/dist/node/chunks/config.js:32817:2
+ ❯ tryNodeResolve ../../node_modules/.pnpm/vite@7.3.2_@types+node@25.5_2323df12ea79cd03bd1a48e98805e963/node_modules/vite/dist/node/chunks/config.js:32720:70
+ ❯ ResolveIdContext.handler ../../node_modules/.pnpm/vite@7.3.2_@types+node@25.5_2323df12ea79cd03bd1a48e98805e963/node_modules/vite/dist/node/chunks/config.js:32559:16
+ ❯ EnvironmentPluginContainer.resolveId ../../node_modules/.pnpm/vite@7.3.2_@types+node@25.5_2323df12ea79cd03bd1a48e98805e963/node_modules/vite/dist/node/chunks/config.js:28721:56
+ ❯ TransformPluginContext.resolve ../../node_modules/.pnpm/vite@7.3.2_@types+node@25.5_2323df12ea79cd03bd1a48e98805e963/node_modules/vite/dist/node/chunks/config.js:28933:13
+ ❯ normalizeUrl ../../node_modules/.pnpm/vite@7.3.2_@types+node@25.5_2323df12ea79cd03bd1a48e98805e963/node_modules/vite/dist/node/chunks/config.js:27115:22
+ ❯ ../../node_modules/.pnpm/vite@7.3.2_@types+node@25.5_2323df12ea79cd03bd1a48e98805e963/node_modules/vite/dist/node/chunks/config.js:27181:32
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  19:10:03
+   Duration  418ms (transform 0ms, setup 0ms, import 0ms, tests 0ms, environment 0ms)
+

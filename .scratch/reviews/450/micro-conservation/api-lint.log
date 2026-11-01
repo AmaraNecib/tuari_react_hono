@@ -1,0 +1,2 @@
+COMMAND=pnpm --dir apps/api exec eslint src/modules/inventory/inventory.service.ts src/modules/inventory/inventory.helpers.ts src/modules/inventory/inventory.helpers.test.ts src/modules/inventory/outbound-transfer-availability.test.ts
+EXIT=0

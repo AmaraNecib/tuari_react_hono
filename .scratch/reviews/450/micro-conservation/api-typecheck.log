@@ -1,0 +1,2 @@
+COMMAND=pnpm --dir apps/api exec tsc --noEmit
+EXIT=0

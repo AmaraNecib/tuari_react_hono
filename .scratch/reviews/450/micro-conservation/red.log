@@ -1,0 +1,28 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/api
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts (55 tests | 2 failed | 53 skipped) 110ms
+     × rejects a micro-unit ledger mismatch at a 'warehouse' source 74ms
+     × rejects a micro-unit ledger mismatch at a 'project' source 34ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rejects a micro-unit ledger mismatch at a 'warehouse' source
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rejects a micro-unit ledger mismatch at a 'project' source
+AssertionError: expected undefined to be an instance of InventoryError
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:916:20
+    914|     }
+    915|
+    916|     expect(caught).toBeInstanceOf(InventoryError)
+       |                    ^
+    917|     expect((caught as InventoryError).appError.code).toBe("BUSINESS_RU…
+    918|     expect((caught as InventoryError).message).toBe("لا يمكن تمثيل خصم…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 53 skipped (55)
+   Start at  19:10:41
+   Duration  3.10s (transform 1.15s, setup 0ms, import 2.65s, tests 110ms, environment 0ms)
+

@@ -1,0 +1,73 @@
+
+> tuari_react_hono@ check:web-tracking D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node ./scripts/check-web-tracking.mjs
+
+apps/web is tracked as normal files.
+
+> tuari_react_hono@ check:web-hygiene D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node --test ./tests/web-hygiene.test.mjs
+
+TAP version 13
+# Subtest: web README documents the current Vite and Tauri-connected app
+ok 1 - web README documents the current Vite and Tauri-connected app
+  ---
+  duration_ms: 6.3363
+  type: 'test'
+  ...
+# Subtest: web workspace does not keep the backup components manifest
+ok 2 - web workspace does not keep the backup components manifest
+  ---
+  duration_ms: 1.1062
+  type: 'test'
+  ...
+# Subtest: splashscreen is a dependency-free, CSP-safe static page
+ok 3 - splashscreen is a dependency-free, CSP-safe static page
+  ---
+  duration_ms: 1.5258
+  type: 'test'
+  ...
+# Subtest: tauri config keeps the main window hidden behind a splashscreen window
+ok 4 - tauri config keeps the main window hidden behind a splashscreen window
+  ---
+  duration_ms: 0.9626
+  type: 'test'
+  ...
+# Subtest: agent branch PR template has no trailing whitespace noise
+ok 5 - agent branch PR template has no trailing whitespace noise
+  ---
+  duration_ms: 0.8313
+  type: 'test'
+  ...
+# Subtest: root package scripts keep web hygiene validation in normal checks
+ok 6 - root package scripts keep web hygiene validation in normal checks
+  ---
+  duration_ms: 0.8066
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: index.html has no Google Fonts links or preconnects
+ok 7 - fonts are self-hosted: index.html has no Google Fonts links or preconnects
+  ---
+  duration_ms: 1.123
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: styles.css never imports Google Fonts CSS
+ok 8 - fonts are self-hosted: styles.css never imports Google Fonts CSS
+  ---
+  duration_ms: 0.9397
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: every family the design tokens reference is declared
+ok 9 - fonts are self-hosted: every family the design tokens reference is declared
+  ---
+  duration_ms: 1.4791
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 102.4198

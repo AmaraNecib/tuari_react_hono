@@ -1,0 +1,56 @@
+Scope: all 6 workspace projects
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +882
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 882, reused 408, downloaded 0, added 0
+Progress: resolved 882, reused 871, downloaded 0, added 2
+Progress: resolved 882, reused 874, downloaded 0, added 25
+Progress: resolved 882, reused 874, downloaded 0, added 113
+Progress: resolved 882, reused 874, downloaded 0, added 217
+Progress: resolved 882, reused 874, downloaded 0, added 243
+Progress: resolved 882, reused 874, downloaded 0, added 275
+Progress: resolved 882, reused 874, downloaded 0, added 277
+Progress: resolved 882, reused 874, downloaded 0, added 308
+Progress: resolved 882, reused 874, downloaded 0, added 383
+Progress: resolved 882, reused 874, downloaded 0, added 444
+Progress: resolved 882, reused 874, downloaded 0, added 559
+Progress: resolved 882, reused 874, downloaded 0, added 618
+Progress: resolved 882, reused 874, downloaded 0, added 647
+Progress: resolved 882, reused 874, downloaded 0, added 689
+Progress: resolved 882, reused 874, downloaded 0, added 739
+Progress: resolved 882, reused 874, downloaded 0, added 877
+Progress: resolved 882, reused 874, downloaded 0, added 878
+Progress: resolved 882, reused 874, downloaded 0, added 879
+Progress: resolved 882, reused 874, downloaded 0, added 880
+Progress: resolved 882, reused 874, downloaded 0, added 881
+Progress: resolved 882, reused 874, downloaded 0, added 882
+Progress: resolved 882, reused 874, downloaded 0, added 882, done
+
+dependencies:
++ puppeteer-core 25.2.1
+
+devDependencies:
++ @playwright/test 1.58.2
++ @testing-library/react 16.3.2
++ @types/node 25.5.0
++ agent-browser 0.31.0
++ husky 9.1.7
++ impeccable 3.1.0
++ jsdom 28.1.0
++ turbo 2.8.16
++ typescript 5.9.3
++ vitest 4.1.4
+
+╭ Warning ─────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│   Ignored build scripts: @prisma/engines, @swc/core, agent-browser,          │
+│   better-sqlite3-sqlcipher, esbuild, integer, msw, puppeteer, sharp.         │
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+│   to run scripts.                                                            │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+. prepare$ husky
+. prepare: Done
+Done in 31.1s using pnpm v10.8.1
