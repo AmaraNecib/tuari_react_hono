@@ -1,0 +1,20 @@
+got slot 1 - running: pnpm --dir D:/worktrees/tuari_react_hono/t3-b83e09ba test:web
+
+> tuari_react_hono@ test:web D:\worktrees\tuari_react_hono\t3-b83e09ba
+> pnpm --filter @tuari/web test
+
+
+> @tuari/web@0.0.0 test D:\worktrees\tuari_react_hono\t3-b83e09ba\apps\web
+> vitest run
+
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/web
+
+
+ Test Files  103 passed (103)
+      Tests  965 passed (965)
+   Start at  19:47:51
+   Duration  216.29s (transform 5.56s, setup 0ms, import 142.63s, tests 130.84s, environment 124.02s)
+
+
+[heavy_run] slot 1 released, exit 0

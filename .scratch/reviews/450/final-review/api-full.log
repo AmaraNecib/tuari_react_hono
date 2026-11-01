@@ -1,0 +1,12 @@
+got slot 1 - running: pnpm --dir D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/api exec vitest run --maxWorkers=1
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/api
+
+
+ Test Files  96 passed (96)
+      Tests  1743 passed | 3 skipped (1746)
+   Start at  19:41:35
+   Duration  99.18s (transform 2.37s, setup 0ms, import 31.24s, tests 43.72s, environment 13ms)
+
+
+[heavy_run] slot 1 released, exit 0
