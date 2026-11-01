@@ -421,6 +421,11 @@ mk_issue 481 open "no-space colon separator"
 run_script "Closes:#481"
 assert_closed "'Closes:#N' closes" 481
 
+reset_state
+mk_issue 602 open "spaced colon separator"
+run_script "Closes : #602"
+assert_closed "'Closes : #N' closes" 602
+
 # Documented conservative tie-break: one number, negated and closed.
 reset_state
 mk_issue 456 open "negated and closed"
@@ -482,6 +487,38 @@ mk_issue 502 open "real negation in the same body"
 run_script "This not **only** fixes #501, it also improves performance. It does not fix #502."
 assert_closed "'not **only** fixes #N' is affirmative (#501)" 501
 assert_not_closed "the real negation in that body still negates (#502)" 502
+
+# Markdown emphasis cannot hide a negative word from the matcher.
+reset_state
+mk_issue 603 open "emphasized not"
+mk_issue 604 open "emphasized no"
+mk_issue 605 open "affirmative control"
+run_script "This does __not__ close #603. We have **no** intention of closing #604. Closes #605."
+assert_not_closed "'__not__' still negates (#603)" 603
+assert_not_closed "'**no** intention' still negates (#604)" 604
+assert_closed "emphasized-negation controls do not swallow a real close (#605)" 605
+
+# 'nor', 'neither' and 'cannot' are negatives, not 'not only' affirmatives.
+reset_state
+mk_issue 606 open "not modifier"
+mk_issue 607 open "nor modifier"
+mk_issue 608 open "neither modifier"
+mk_issue 609 open "cannot modifier"
+mk_issue 610 open "affirmative control"
+run_script "This will not fix #606, nor simply resolve #607. It can neither simply resolve #608, and cannot merely fix #609. Closes #610."
+assert_not_closed "'not fix' remains negative (#606)" 606
+assert_not_closed "'nor simply resolve' remains negative (#607)" 607
+assert_not_closed "'neither simply resolve' remains negative (#608)" 608
+assert_not_closed "'cannot merely fix' remains negative (#609)" 609
+assert_closed "the modifier controls preserve a real close (#610)" 610
+
+# An inner 'not only' cannot override the negator that starts the span.
+reset_state
+mk_issue 612 open "patch not yet present"
+mk_issue 613 open "affirmative control"
+run_script "This does not yet contain the patch that not only fixes #612 but also improves performance. Closes #613."
+assert_not_closed "an inner 'not only' cannot erase the outer negation (#612)" 612
+assert_closed "the inner-idiom case keeps its affirmative control (#613)" 613
 
 # #486 itself: the sentence scope. A negator in an unrelated sentence used to
 # swallow a real close; a negation padded past the old three-word window used
@@ -602,6 +639,15 @@ run_script $'This does not close #524.\r\nCloses #525.'
 check "CRLF body exits 0" "0" "$RC"
 assert_not_closed "a CRLF body keeps the negated reference negated (#524)" 524
 assert_closed "a CRLF body still fires the affirmative close (#525)" 525
+
+for test_locale in C C.utf8; do
+  reset_state
+  mk_issue 526 open "non-ASCII lowercase after abbreviation"
+  mk_issue 527 open "affirmative control"
+  LC_ALL="$test_locale" run_script "This does not e.g. évidemment close #526. Closes #527."
+  assert_not_closed "non-ASCII prose preserves negation under $test_locale (#526)" 526
+  assert_closed "affirmative control still closes under $test_locale (#527)" 527
+done
 
 reset_state
 run_script "no references at all in this body"

@@ -166,7 +166,7 @@ CLOSE_VERBS='(close[sd]?|closing|fix(e[sd])?|fixing|resolve[sd]?|resolving)'
 # At least a space or a ":" must sit between keyword and reference, so
 # "Closes#12" is not a close; only emphasis may sit around that separator,
 # never prose. That is the #466 fix.
-CLOSE_SEP='[*_]*([[:space:]]+|:)[[:space:]]*[*_]*'
+CLOSE_SEP='[*_]*([[:space:]]+:[[:space:]]*|[[:space:]]+|:[[:space:]]*)[*_]*'
 # "A closing reference" — the verb list plus its reference, defined once and
 # shared by all three passes below (the affirmative pass adds the \b).
 CLOSE_REF="${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
@@ -189,11 +189,13 @@ NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_REF}"
 # the old line filter threw away "…does not fix #443" because "not only"
 # appeared earlier in the same span). Emphasis is allowed between the words
 # and before the verb (round-2 finding 4: `not **only** fixes #N` closes).
-AFFIRMATIVE_IDIOM="${NEGATOR}[[:space:]*_]+(only|just|merely|simply)[[:space:]*_]+${CLOSE_REF}"
+AFFIRMATIVE_NEGATOR='(not|doesn[[:punct:]]t)'
+AFFIRMATIVE_IDIOM="^${AFFIRMATIVE_NEGATOR}[[:space:]*_]+(only|just|merely|simply)[[:space:]*_]+${CLOSE_REF}"
 
 # One line, not many: grep is line-based, and "does not\nclose #N" is the same
 # statement as "does not close #N" (test-audit finding).
-body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ')
+body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ' | sed -E \
+  's/(\*\*|__|\*|_)(not|no|never|nor|neither|hardly|cannot)(\*\*|__|\*|_)/\2/gI')
 
 # Negation is scoped to a SENTENCE, not a word count (#486). The old
 # "{0,3} words" window was zero-sum: a negator in an unrelated clause
@@ -204,9 +206,11 @@ body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ')
 # sentence at a time. The affirmative pass needs no split (a `#` can never
 # appear between a keyword and its reference), so it keeps reading body_flat.
 #
-# A terminator only ends a sentence when the next NON-SPACE character is not a
-# lowercase letter. Those four characters also occur INSIDE tokens ("per
-# AGENTS.md,", "e.g.", "v1.2", "..."), and splitting there moves the negator
+# A terminator only ends a sentence before an ASCII uppercase letter, digit,
+# or issue marker. Non-ASCII prose stays in the current sentence regardless of
+# runner locale, preferring a recoverable skip over an unintended close.
+# Terminators also occur inside tokens ("per AGENTS.md,", "e.g.", "v1.2",
+# "..."), and splitting there moves the negator
 # into a different "sentence" from its verb, which turns a drop into a CLOSE:
 # "This does not, per AGENTS.md, close #N" must still negate. The cost is the
 # safe direction — a real sentence that opens with a lowercase word is not
@@ -218,7 +222,7 @@ body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ')
 # recoverable drop instead of a close. Comma-, colon- and unpunctuated clauses
 # are the same sentence, so "Not sure, but Closes #N" and "found no blockers,
 # so Closes #N" are the same class of conservative miss.
-body_sentences=$(printf '%s' "$body_flat" | sed -E 's/([.!?;])([[:space:]]+[^[:space:][:lower:]])/\1\n\2/g')
+body_sentences=$(printf '%s' "$body_flat" | LC_ALL=C sed -E 's/([.!?;])([[:space:]]+[A-Z0-9#])/\1\n\2/g')
 
 to_numbers() { # stdin: matched closing spans → one issue number per line
   grep -oE '#[0-9]+' | tr -d '#' | sort -un
