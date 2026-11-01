@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { QUANTITY_MIN, roundQuantity } from "./inventory.helpers"
+import { normalizedQuantityMicroUnits, QUANTITY_MIN, roundQuantity } from "./inventory.helpers"
 
 describe("roundQuantity (#450 round 4)", () => {
   it("snaps float noise while keeping fractional quantities", () => {
@@ -34,6 +34,14 @@ describe("roundQuantity (#450 round 4)", () => {
     expect(roundQuantity(1e-7)).toBe(0)
     expect(roundQuantity(1e21)).toBe(1e21)
     expect(roundQuantity(Number.MAX_VALUE)).toBe(Number.MAX_VALUE)
+  })
+
+  it("converts normalized quantities to exact micro-units, including exponent notation", () => {
+    expect(normalizedQuantityMicroUnits(8_589_934_592.000011)).toBe(8_589_934_592_000_011n)
+    expect(normalizedQuantityMicroUnits(1e-6)).toBe(1n)
+    expect(normalizedQuantityMicroUnits(roundQuantity(1e21))).toBe(1_000_000_000_000_000_000_000_000_000n)
+    expect(normalizedQuantityMicroUnits(1e-7)).toBeNull()
+    expect(normalizedQuantityMicroUnits(Number.POSITIVE_INFINITY)).toBeNull()
   })
 
   it("exposes the quantum that splits an empty balance from a held one", () => {

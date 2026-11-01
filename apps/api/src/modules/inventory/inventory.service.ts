@@ -25,7 +25,7 @@ import type {
 } from "@tuari/contracts"
 
 import { InventoryError } from "./inventory.errors"
-import { roundQuantity } from "./inventory.helpers"
+import { normalizedQuantityMicroUnits, roundQuantity } from "./inventory.helpers"
 import { normalizePageSize } from "../shared/cursor"
 import { StructuredLogger } from "../../infrastructure/observability/logger"
 import { CompanyError } from "../company/company.errors"
@@ -1045,15 +1045,26 @@ export class InventoryService {
       const consumed = roundQuantity(Math.min(balance.quantity, remaining))
       const left = roundQuantity(balance.quantity - consumed)
       const nextRemaining = roundQuantity(remaining - consumed)
+      // Number subtraction can round a wrong reverse delta back to the consumed amount.
+      // Compare normalized decimal representations as exact micro-units.
+      const balanceMicroUnits = normalizedQuantityMicroUnits(balance.quantity)
+      const leftMicroUnits = normalizedQuantityMicroUnits(left)
+      const consumedMicroUnits = normalizedQuantityMicroUnits(consumed)
+      const remainingMicroUnits = normalizedQuantityMicroUnits(remaining)
+      const nextRemainingMicroUnits = normalizedQuantityMicroUnits(nextRemaining)
+      const stockDeltaMatches = balanceMicroUnits !== null && leftMicroUnits !== null && consumedMicroUnits !== null &&
+        balanceMicroUnits - leftMicroUnits === consumedMicroUnits
+      const requestDeltaMatches = remainingMicroUnits !== null && nextRemainingMicroUnits !== null && consumedMicroUnits !== null &&
+        remainingMicroUnits - nextRemainingMicroUnits === consumedMicroUnits
+
       // At large magnitudes subtraction can do nothing or remove the wrong
       // quantum. Reject inside the transaction rather than fund a movement
-      // with stock that did not decrease by its normalized quantity.
+      // with stock or request remainder that did not decrease by its normalized quantity.
       if (
         !Number.isFinite(left) || !Number.isFinite(nextRemaining) ||
         left < 0 || nextRemaining < 0 ||
         left >= balance.quantity || nextRemaining >= remaining ||
-        roundQuantity(balance.quantity - left) !== consumed ||
-        roundQuantity(remaining - nextRemaining) !== consumed
+        !stockDeltaMatches || !requestDeltaMatches
       ) {
         throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل خصم الكمية بدقة المخزون.")
       }

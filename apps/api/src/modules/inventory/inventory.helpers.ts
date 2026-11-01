@@ -26,6 +26,35 @@ const QUANTITY_SCALE = 10 ** QUANTITY_DECIMALS;
 export const QUANTITY_MIN = 1 / QUANTITY_SCALE;
 
 /**
+ * Convert a quantity already normalized to the storage quantum into exact
+ * micro-units from its decimal Number representation. Exponent notation is
+ * supported; values that do not represent a whole micro-unit are rejected.
+ */
+export function normalizedQuantityMicroUnits(value: number): bigint | null {
+  if (!Number.isFinite(value)) return null
+
+  const match = /^(-?)(\d+)(?:\.(\d*))?(?:e([+-]?\d+))?$/i.exec(String(value))
+  if (!match) return null
+
+  const [, sign, integerPart, fractionalPart = "", exponentText] = match
+  if (integerPart === undefined) return null
+
+  const exponent = exponentText === undefined ? 0 : Number(exponentText)
+  const digits = BigInt(`${integerPart}${fractionalPart}`)
+  const decimalPlaces = fractionalPart.length - exponent
+  const scaleAdjustment = QUANTITY_DECIMALS - decimalPlaces
+  const signedDigits = sign === "-" ? -digits : digits
+
+  if (scaleAdjustment >= 0) {
+    return signedDigits * 10n ** BigInt(scaleAdjustment)
+  }
+
+  const divisor = 10n ** BigInt(-scaleAdjustment)
+  if (digits % divisor !== 0n) return null
+  return signedDigits / divisor
+}
+
+/**
  * Round a consumable quantity to {@link QUANTITY_DECIMALS} decimals, half away
  * from zero.
  *

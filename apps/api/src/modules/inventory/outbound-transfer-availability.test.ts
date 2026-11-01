@@ -30,7 +30,7 @@ import { ensureDatabaseSchema } from "../../infrastructure/database/schema"
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor"
 import { createInventoryRepository } from "./adapters/sqlite-inventory.repository"
 import { InventoryError } from "./inventory.errors"
-import { roundQuantity } from "./inventory.helpers"
+import { normalizedQuantityMicroUnits, roundQuantity } from "./inventory.helpers"
 import { InventoryService } from "./inventory.service"
 import type { InventoryAttachmentStorage } from "./inventory.storage"
 import type { MutationAuditContext } from "../company/company.types"
@@ -106,6 +106,12 @@ function snapshotWrites(db: Database.Database) {
   }
 }
 
+function quantityMicroUnits(value: number): bigint {
+  const units = normalizedQuantityMicroUnits(value)
+  if (units === null) throw new Error("Quantity is not normalized to micro-units: " + value)
+  return units
+}
+
 // Pass SQL snapshots into the callback. better-sqlite3 cannot run another query
 // from a user-defined function while the triggering statement is still busy.
 function observeWrites(db: Database.Database, event: string, fail = false) {
@@ -127,6 +133,23 @@ function observeWrites(db: Database.Database, event: string, fail = false) {
 
 const SOURCE_AT_WAREHOUSE = (warehouseId: string): InventoryItemOfferSource => ({ locationType: "WAREHOUSE", warehouseId })
 const SOURCE_AT_PROJECT = (projectId: string): InventoryItemOfferSource => ({ locationType: "PROJECT", projectId })
+
+const MICRO_CONSERVATION_SOURCES = [
+  {
+    sourceLabel: "warehouse",
+    fromType: "WAREHOUSE" as const,
+    fromId: "wh-micro",
+    source: SOURCE_AT_WAREHOUSE("wh-micro"),
+    stockLocation: { warehouseId: "wh-micro" },
+  },
+  {
+    sourceLabel: "project",
+    fromType: "PROJECT" as const,
+    fromId: "prj-micro",
+    source: SOURCE_AT_PROJECT("prj-micro"),
+    stockLocation: { projectId: "prj-micro" },
+  },
+] as const
 
 type Env = Awaited<ReturnType<typeof createEnv>>
 const envs: Database.Database[] = []
@@ -344,6 +367,7 @@ describe("the outbound write gate accepts exactly what the picker offers (#450)"
         acceptedIds.add(itemId)
       } catch (error) {
         expect(error).toBeInstanceOf(InventoryError)
+        expect((error as InventoryError).appError.code).toBe("BUSINESS_RULE")
       }
     }
 
@@ -666,6 +690,7 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
     [2 ** 33, 0.000001, 8_589_934_591.999999],
     [2 ** 34, 0.000002, 17_179_869_183.999998],
     [1e12, 2, 999_999_999_998],
+    [1e12, 0.0001, 999_999_999_999.9999],
   ])("allows a representable normalized deduction from %s of %s", async (stock, quantity, expected) => {
     const env = await openEnv()
     seedBase(env)
@@ -675,6 +700,7 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
 
     transfer(env, [{ itemId: "magnitude", quantity }])
 
+    expect(quantityMicroUnits(stock) - quantityMicroUnits(expected)).toBe(quantityMicroUnits(quantity))
     expect(env.db.prepare("SELECT quantity FROM inventory_consumable_balance").all()).toEqual([{ quantity: expected }])
     expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([quantity])
     expect(env.db.prepare("SELECT quantity FROM inventory_outbound_transfer_item").all()).toEqual([{ quantity }])
@@ -683,7 +709,6 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
   it.each([
     [2 ** 34, 0.000001],
     [2 ** 35, 0.000002],
-    [1e12, 0.0001],
     [1e12, 1],
   ])("rejects a lost or wrong-quantum deduction from %s of %s", async (stock, quantity) => {
     const env = await openEnv()
@@ -860,6 +885,98 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
     expect(input.items[0]!.quantity).toBe(0.1000004)
   })
 
+  it.each(MICRO_CONSERVATION_SOURCES)(
+    "rejects a micro-unit ledger mismatch at a $sourceLabel source",
+    async ({ fromType, fromId, source, stockLocation }) => {
+      const env = await openEnv()
+      if (fromType === "WAREHOUSE") seedWarehouse(env.db, fromId)
+      else seedProject(env.db, fromId)
+      seedBase(env)
+      const definitionId = "def-micro-mismatch"
+      const requested = 8_589_934_592.000011
+      seedDefinition(env.db, { id: definitionId, itemType: "CONSUMABLE" })
+      seedEntry(env.db, { id: "entry-old-micro", invoiceGroupId: "g", itemDefinitionId: definitionId, itemType: "CONSUMABLE" })
+      seedEntry(env.db, { id: "entry-next-large", invoiceGroupId: "g", itemDefinitionId: definitionId, itemType: "CONSUMABLE" })
+      seedBalance(env.db, {
+        id: "balance-old-micro", entryId: "entry-old-micro", itemDefinitionId: definitionId,
+        ...stockLocation, quantity: 0.000006, createdAt: NOW,
+      })
+      seedBalance(env.db, {
+        id: "balance-next-large", entryId: "entry-next-large", itemDefinitionId: definitionId,
+        ...stockLocation, quantity: 8_589_934_592.000006, createdAt: LATER,
+      })
+
+      const balances = env.repository.listItemStockAtSource({ itemDefinitionId: definitionId, source }).consumableBalances
+      expect(balances.map((balance) => balance.id)).toEqual(["balance-old-micro", "balance-next-large"])
+      expect(quantityMicroUnits(0.000006) + quantityMicroUnits(8_589_934_592.000006)).toBe(8_589_934_592_000_012n)
+      expect(quantityMicroUnits(requested)).toBe(8_589_934_592_000_011n)
+
+      const before = snapshotWrites(env.db)
+      let caught: unknown
+      try {
+        env.service.createOutboundTransfer({
+          fromType,
+          fromId,
+          counterpartyId: "buyer",
+          transferType: "SALE",
+          debtAmountDzd: 500,
+          firstPaymentAmountDzd: 200,
+          items: [{ itemId: definitionId, quantity: requested }],
+        }, AUDIT)
+      } catch (error) {
+        caught = error
+      }
+
+      expect(caught).toBeInstanceOf(InventoryError)
+      expect((caught as InventoryError).appError.code).toBe("BUSINESS_RULE")
+      expect((caught as InventoryError).message).toBe("لا يمكن تمثيل خصم الكمية بدقة المخزون.")
+      expect(snapshotWrites(env.db)).toEqual(before)
+    },
+  )
+
+  it.each(MICRO_CONSERVATION_SOURCES)(
+    "rejects a five-micro stock delta for a six-micro movement at a $sourceLabel source",
+    async ({ fromType, fromId, source, stockLocation }) => {
+      const env = await openEnv()
+      if (fromType === "WAREHOUSE") seedWarehouse(env.db, fromId)
+      else seedProject(env.db, fromId)
+      seedBase(env)
+      const definitionId = "def-stock-mismatch"
+      const stock = 8_589_934_592.000011
+      const requested = 0.000006
+      const remainder = roundQuantity(stock - requested)
+      expect(remainder).toBe(8_589_934_592.000006)
+      expect(roundQuantity(stock - remainder)).toBe(requested)
+      expect(quantityMicroUnits(stock) - quantityMicroUnits(remainder)).toBe(5n)
+      expect(quantityMicroUnits(requested)).toBe(6n)
+
+      seedDefinition(env.db, { id: definitionId, itemType: "CONSUMABLE" })
+      seedEntry(env.db, { id: "entry-stock-mismatch", invoiceGroupId: "g", itemDefinitionId: definitionId, itemType: "CONSUMABLE" })
+      seedBalance(env.db, {
+        id: "balance-stock-mismatch", entryId: "entry-stock-mismatch", itemDefinitionId: definitionId,
+        ...stockLocation, quantity: stock, createdAt: NOW,
+      })
+      expect(env.repository.listItemStockAtSource({ itemDefinitionId: definitionId, source }).consumableBalances.map((balance) => balance.id))
+        .toEqual(["balance-stock-mismatch"])
+      const before = snapshotWrites(env.db)
+      let caught: unknown
+      try {
+        env.service.createOutboundTransfer({
+          fromType, fromId, counterpartyId: "buyer", transferType: "SALE",
+          debtAmountDzd: 500, firstPaymentAmountDzd: 200,
+          items: [{ itemId: definitionId, quantity: requested }],
+        }, AUDIT)
+      } catch (error) {
+        caught = error
+      }
+
+      expect(caught).toBeInstanceOf(InventoryError)
+      expect((caught as InventoryError).appError.code).toBe("BUSINESS_RULE")
+      expect((caught as InventoryError).message).toBe("لا يمكن تمثيل خصم الكمية بدقة المخزون.")
+      expect(snapshotWrites(env.db)).toEqual(before)
+    },
+  )
+
   it("fulfills a request when a large row would hide six-decimal rows in the aggregate", async () => {
     const env = await openEnv()
     seedBase(env)
@@ -893,7 +1010,8 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
       { inventory_entry_id: "entry-large", quantity: 4_294_967_296 },
       ...microEntries.map(({ entryId }) => ({ inventory_entry_id: entryId, quantity: 0.000001 })),
     ])
-    expect(movements.reduce((total, movement) => total + Math.round(movement.quantity * 1_000_000), 0)).toBe(4_294_967_296_000_012)
+    const movedMicroUnits = movements.reduce((total, movement) => total + quantityMicroUnits(movement.quantity), 0n)
+    expect(movedMicroUnits).toBe(4_294_967_296_000_012n)
     expect(env.db.prepare("SELECT item_id, quantity FROM inventory_outbound_transfer_item WHERE transfer_id = ?").get(result.item.id)).toEqual({
       item_id: definitionId, quantity: requested,
     })
@@ -938,9 +1056,9 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
       transfers: [], items: [],
     })
     const movedMicros = (progress[1] as { movements: Array<{ quantity: number }> }).movements
-      .reduce((total, movement) => total + Math.round(movement.quantity * 1_000_000), 0)
-    expect(movedMicros).toBe(8_589_934_592_000_001)
-    expect(Math.round(requested * 1_000_000)).toBe(8_589_934_592_000_002)
+      .reduce((total, movement) => total + quantityMicroUnits(movement.quantity), 0n)
+    expect(movedMicros).toBe(8_589_934_592_000_001n)
+    expect(quantityMicroUnits(requested)).toBe(8_589_934_592_000_002n)
     expect(snapshotWrites(env.db)).toEqual(before)
   })
 
