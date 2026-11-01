@@ -255,7 +255,8 @@ jobs:
   test-e2e:
     name: Test E2E
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    # Playwright 1.58.2 rejects the current ubuntu-latest image (26.04).
+    runs-on: ubuntu-24.04
     needs: detect
     steps:
       - uses: actions/checkout@v4
