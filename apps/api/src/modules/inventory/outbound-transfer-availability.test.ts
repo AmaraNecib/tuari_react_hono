@@ -543,6 +543,66 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
     expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-inbound", projectId: "prj-1" })?.quantity).toBe(0.2)
   })
 
+  it.each(["WAREHOUSE", "PROJECT"] as const)("rolls back a split-balance shortage at a %s instead of completing an underfilled transfer", async (fromType) => {
+    const env = await openEnv()
+    seedBase(env)
+    seedProject(env.db, "prj-split")
+    const fromId = fromType === "WAREHOUSE" ? "wh-1" : "prj-split"
+    const location = fromType === "WAREHOUSE" ? { warehouseId: fromId } : { projectId: fromId }
+    seedDefinition(env.db, { id: "def-split", itemType: "CONSUMABLE" })
+    for (const suffix of ["1", "2"]) {
+      seedEntry(env.db, { id: `e-split-${suffix}`, invoiceGroupId: "g", itemDefinitionId: "def-split", itemType: "CONSUMABLE" })
+      seedBalance(env.db, { id: `bal-split-${suffix}`, entryId: `e-split-${suffix}`, itemDefinitionId: "def-split", ...location, quantity: 1.0000014 })
+    }
+    seedDefinition(env.db, { id: "def-first", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-first", invoiceGroupId: "g", itemDefinitionId: "def-first", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-first", entryId: "e-first", itemDefinitionId: "def-first", ...location, quantity: 5 })
+
+    expect(() => env.service.createOutboundTransfer({
+      fromType, fromId, counterpartyId: "buyer", transferType: "SALE",
+      items: [{ itemId: "def-first", quantity: 1 }, { itemId: "def-split", quantity: 2.000003 }],
+    }, AUDIT)).toThrow(/غير متوفرة/)
+
+    expect(env.repository.listConsumableBalancesByLocation(location).map((balance) => balance.quantity).sort((a, b) => a - b)).toEqual([1.0000014, 1.0000014, 5])
+    expect(env.repository.listAllMovements({})).toHaveLength(0)
+    expect(env.repository.listOutboundTransfers()).toHaveLength(0)
+    expect(env.db.prepare("SELECT count(*) AS count FROM inventory_outbound_transfer_item").get()).toEqual({ count: 0 })
+  })
+
+  it("fully fulfills the sum of normalized split balances with no zero movements", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-full-split", itemType: "CONSUMABLE" })
+    for (const [index, quantity] of [0.0000004, 1.0000014, 1.0000014].entries()) {
+      seedEntry(env.db, { id: `e-full-${index}`, invoiceGroupId: "g", itemDefinitionId: "def-full-split", itemType: "CONSUMABLE" })
+      seedBalance(env.db, { id: `bal-full-${index}`, entryId: `e-full-${index}`, itemDefinitionId: "def-full-split", warehouseId: "wh-1", quantity })
+    }
+
+    transfer(env, [{ itemId: "def-full-split", quantity: 2.000002 }])
+
+    expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([1.000001, 1.000001])
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" })).toHaveLength(0)
+    expect(env.db.prepare("SELECT quantity FROM inventory_outbound_transfer_item").all()).toEqual([{ quantity: 2.000002 }])
+  })
+
+  it("persists the normalized outbound quantity equal to its movement and balance delta", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-consistent", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-consistent", invoiceGroupId: "g", itemDefinitionId: "def-consistent", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "bal-consistent", entryId: "e-consistent", itemDefinitionId: "def-consistent", warehouseId: "wh-1", quantity: 0.5 })
+
+    const input = { fromType: "WAREHOUSE" as const, fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE" as const, items: [{ itemId: "def-consistent", quantity: 0.1000004, unitPriceDzd: 23 }] }
+    const result = env.service.createOutboundTransfer(input, AUDIT)
+    // The returned envelope contains the transfer header, not its item rows.
+    // Read the item table because the repository exposes no item read method.
+    const stored = env.db.prepare("SELECT quantity, unit_price_dzd FROM inventory_outbound_transfer_item WHERE transfer_id = ?").get(result.item.id)
+    expect(stored).toEqual({ quantity: 0.1, unit_price_dzd: 23 })
+    expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([0.1])
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-consistent", warehouseId: "wh-1" })?.quantity).toBe(0.4)
+    expect(input.items[0]!.quantity).toBe(0.1000004)
+  })
+
   it("rounds a noisy request before comparing it with the available total", async () => {
     const env = await openEnv()
     seedBase(env)

@@ -1,0 +1,60 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-004d9b35/apps/api
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts (26 tests | 3 failed | 23 skipped) 265ms
+     × rolls back a split-balance shortage at a WAREHOUSE instead of completing an underfilled transfer 149ms
+     × rolls back a split-balance shortage at a PROJECT instead of completing an underfilled transfer 46ms
+     × fully fulfills the sum of normalized split balances with no zero movements 64ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rolls back a split-balance shortage at a WAREHOUSE instead of completing an underfilled transfer
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > rolls back a split-balance shortage at a PROJECT instead of completing an underfilled transfer
+AssertionError: expected [Function] to throw an error
+
+- Expected:
+null
+
++ Received:
+undefined
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:564:16
+    562|       fromType, fromId, counterpartyId: "buyer", transferType: "SALE",
+    563|       items: [{ itemId: "def-first", quantity: 1 }, { itemId: "def-spl…
+    564|     }, AUDIT)).toThrow(/غير متوفرة/)
+       |                ^
+    565|
+    566|     expect(env.repository.listConsumableBalancesByLocation(location).m…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > fully fulfills the sum of normalized split balances with no zero movements
+AssertionError: expected [] to deeply equal [ 4e-7 ]
+
+- Expected
++ Received
+
+- [
+-   4e-7,
+- ]
++ []
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:584:121
+    582|
+    583|     expect(env.repository.listAllMovements({}).map((movement) => movem…
+    584|     expect(env.repository.listConsumableBalancesByLocation({ warehouse…
+       |                                                                                                                         ^
+    585|     expect(env.db.prepare("SELECT quantity FROM inventory_outbound_tra…
+    586|   })
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 23 skipped (26)
+   Start at  17:31:01
+   Duration  3.77s (transform 783ms, setup 0ms, import 2.89s, tests 265ms, environment 0ms)
+
+undefined
+D:\worktrees\tuari_react_hono\t3-004d9b35\apps\api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/modules/inventory/outbound-transfer-availability.test.ts --maxWorkers=1 -t split.balance|normalized split

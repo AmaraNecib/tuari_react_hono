@@ -4,7 +4,9 @@
 inventory entry id is expected, and lists asset units without narrowing to the
 picked definition.
 
-**Base**: `origin/develop` @ `073af118`. **Mode**: local-only (no remote PR in this lane).
+**Base**: PR #477 head `338cbde3c9b3a5645c98e86f9bdd70a15a41d6b6`, verified against fetched `origin/fix/450-outbound-entry-id`.
+**Mode**: bounded implementation child, local commit only. Parent owns independent reviews and publication.
+**Tier**: HIGH-ASSURANCE, quantity allocation affects business and financial invariants.
 
 **Dependencies**: none. Uses the existing `resolveItemOffer` / `matchesItemOfferFilter`
 rule and `InventoryItemOfferSource` from `@tuari/contracts`; adds one repository read.
@@ -12,8 +14,11 @@ rule and `InventoryItemOfferSource` from `@tuari/contracts`; adds one repository
 **Deviations from architecture**: none. The port/adapter split is kept — the read is a
 `InventoryRepository` method implemented in `adapters/sqlite-inventory.repository.ts`.
 
-**Playwright**: N/A. This is a backend write path with no UI change; the picker it must
-agree with already has its own page tests from #465.
+**UI scope**: the PR also corrects V2 picker definition IDs, keeps concrete
+balance/unit `optionId` for deduplication, and returns the create-result envelope.
+Render tests cover the V2 picker callback and existing outbound create page.
+No new UX is introduced by this follow-up. Browser/full-suite/build validation
+is deferred to parent scheduling under the aggregate CPU policy.
 
 ## The defect, confirmed
 
@@ -102,6 +107,35 @@ production schema:
    rejected).
 
 Each was run against the pre-fix implementation; results are in the handoff.
+
+## Quantity consistency follow-up
+
+Normalize the outbound item array once without mutating the caller. Both stock
+consumption and persisted transfer items use it, preserving optional price fields.
+The create envelope returns only a transfer header, with no quantity field. Assert
+persisted item quantity, movement quantity and remaining balance through the real
+SQLite service seam. Item rows have no repository read API, so that assertion uses
+one SQL read linked to the returned transfer ID; no response shape change is needed.
+
+For legacy balances with more than six decimals, availability must sum the same
+per-balance rounded quantities allocation uses. Deduct from those quantities,
+skip normalized empty rows and reject a surviving normalized remainder inside the
+transaction. Test the reported `[1.0000014, 1.0000014]` shortage, exact normalized
+fulfillment, and rollback of earlier items when a later allocation fails.
+
+The agreed seams are the real SQLite outbound service/repository, existing quantity
+helper tests, and the V2 picker's rendered controls plus `onItemsChange` callback.
+Quantity regressions must fail on the pinned PR production code. The missing
+picker test is a coverage gap, not itself a production bug; its baseline can pass.
+
+Out of scope by parent decision: rounding extraction #480, shared-link fleet
+changes #491, and fractional UI changes. The V2 picker starts every selection at
+quantity 1, clamps edits with `Math.max(1, quantity)`, and renders `min="1"` without
+a fractional step. Stock below one starts above its maximum, and ordinary
+fractional selections cannot be entered reliably. Proposed separate follow-up:
+consumable-aware min/step/default quantity with render tests; preserve integer
+asset controls. It does not block this lane's server precision fix or require a
+lane reorder. Parent already excluded this UX change.
 
 ## Not in this change
 

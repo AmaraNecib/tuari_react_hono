@@ -1033,19 +1033,18 @@ export class InventoryService {
     note: string
     occurredAt: string
   }) {
-    // Quantities are fractional, so both the total and every deduction are
-    // rounded through the shared rule: `0.7 + 0.1` must compare equal to `0.8`,
-    // and a balance that reaches the requested total must end at exactly 0
-    // rather than a float epsilon that the picker's availability predicate still
-    // offers as stock.
-    const available = roundQuantity(input.balances.reduce((total, balance) => total + balance.quantity, 0))
+    // Availability and allocation must use the same per-balance precision.
+    // Rounding a raw combined total can promise more than the rounded rows hold.
+    const balances = input.balances.map((balance) => ({ ...balance, quantity: roundQuantity(balance.quantity) }))
+    const available = roundQuantity(balances.reduce((total, balance) => total + balance.quantity, 0))
     if (available < input.quantity) {
       throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${input.definitionName} غير متوفرة.`)
     }
 
     let remaining = input.quantity
-    for (const balance of input.balances) {
+    for (const balance of balances) {
       if (remaining <= 0) break
+      if (balance.quantity <= 0) continue
 
       const consumed = roundQuantity(Math.min(balance.quantity, remaining))
       const left = roundQuantity(balance.quantity - consumed)
@@ -1067,6 +1066,12 @@ export class InventoryService {
 
       remaining = roundQuantity(remaining - consumed)
     }
+
+    // Throw inside the outbound transaction so no partial stock or transfer
+    // writes survive if allocation cannot fulfill the normalized request.
+    if (remaining > 0) {
+      throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${input.definitionName} غير متوفرة.`)
+    }
   }
 
   /** Create an outbound transfer. */
@@ -1086,6 +1091,11 @@ export class InventoryService {
     }
 
     validateExternalCounterparty(this.repository, input.counterpartyId, "counterpartyId")
+
+    const items = input.items.map((item, index) => ({
+      ...item,
+      quantity: normalizeQuantity(item.quantity, `items.${index}.quantity`),
+    }))
 
     return this.repository.withTransaction(() => {
       let associatedDebtAccountId: string | undefined
@@ -1141,11 +1151,8 @@ export class InventoryService {
       const from = outboundFromLocation(source)
       const note = `تحويل خارجي إلى ${input.counterpartyId}`
 
-      for (const [index, item] of input.items.entries()) {
-        // The wire schema enforces a positive quantity; a direct caller must not
-        // be able to write an empty transfer past it, and a request below the
-        // storage quantum must not become a zero-quantity movement.
-        const quantity = normalizeQuantity(item.quantity, `items.${index}.quantity`)
+      for (const item of items) {
+        const quantity = item.quantity
 
         const definition = this.repository.getItemDefinitionById(item.itemId)
         if (!definition) {
@@ -1200,7 +1207,7 @@ export class InventoryService {
           fromId: input.fromId,
           counterpartyId: input.counterpartyId,
           transferType: input.transferType,
-          items: input.items,
+          items,
           associatedDebtAccountId,
           notes: input.notes,
         },

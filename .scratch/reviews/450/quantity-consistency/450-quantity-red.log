@@ -1,0 +1,39 @@
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-004d9b35/apps/api
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts (23 tests | 1 failed | 22 skipped) 348ms
+     × persists the normalized outbound quantity equal to its movement and balance delta 344ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/modules/inventory/outbound-transfer-availability.test.ts > fractional consumable quantities round through one rule (#450 round 4) > persists the normalized outbound quantity equal to its movement and balance delta
+AssertionError: expected { quantity: 0.1000004, …(1) } to deeply equal { quantity: 0.1, unit_price_dzd: 23 }
+
+- Expected
++ Received
+
+  {
+-   "quantity": 0.1,
++   "quantity": 0.1000004,
+    "unit_price_dzd": 23,
+  }
+
+ ❯ src/modules/inventory/outbound-transfer-availability.test.ts:558:20
+    556|     // Read the item table because the repository exposes no item read…
+    557|     const stored = env.db.prepare("SELECT quantity, unit_price_dzd FRO…
+    558|     expect(stored).toEqual({ quantity: 0.1, unit_price_dzd: 23 })
+       |                    ^
+    559|     expect(env.repository.listAllMovements({}).map((movement) => movem…
+    560|     expect(env.repository.getConsumableBalanceByEntryAndLocation({ inv…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 22 skipped (23)
+   Start at  17:29:46
+   Duration  5.89s (transform 2.37s, setup 0ms, import 4.91s, tests 348ms, environment 0ms)
+
+undefined
+D:\worktrees\tuari_react_hono\t3-004d9b35\apps\api:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: vitest run src/modules/inventory/outbound-transfer-availability.test.ts --maxWorkers=1 -t persists the normalized outbound
