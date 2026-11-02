@@ -4,6 +4,7 @@ import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { constants } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const rootDir = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 
@@ -15,250 +16,70 @@ async function readRepoFile(relativePath) {
   return readFile(resolveRepoPath(relativePath), 'utf8');
 }
 
-function isIdentifierChar(char) {
-  return /[A-Za-z0-9_$]/.test(char ?? '');
-}
-
-/** Advance past a string or template literal starting at `start`; returns the index after it. */
-function skipString(source, start) {
-  const quote = source[start];
-  let index = start + 1;
-  while (index < source.length) {
-    const char = source[index];
-    if (char === '\\') {
-      index += 2;
-      continue;
-    }
-    if (char === quote) {
-      return index + 1;
-    }
-    index += 1;
+function formatterName(expression) {
+  if (ts.isIdentifier(expression) && expression.text === 'toLocaleDateString') {
+    return 'toLocaleDateString';
   }
-  return index;
-}
-
-function skipLineComment(source, start) {
-  const newline = source.indexOf('\n', start + 2);
-  return newline === -1 ? source.length : newline + 1;
-}
-
-function skipBlockComment(source, start) {
-  const end = source.indexOf('*/', start + 2);
-  return end === -1 ? source.length : end + 2;
-}
-
-/** The 1-based line number of `index` in `source`. */
-function lineNumberAt(source, index) {
-  let line = 1;
-  for (let cursor = 0; cursor < index; cursor += 1) {
-    if (source[cursor] === '\n') line += 1;
+  if (!ts.isPropertyAccessExpression(expression)) return null;
+  if (expression.name.text === 'toLocaleDateString') return 'toLocaleDateString';
+  if (
+    expression.name.text === 'DateTimeFormat' &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === 'Intl'
+  ) {
+    return 'Intl.DateTimeFormat';
   }
-  return line;
-}
-
-/** Match a forbidden formatter callee at `index`, ignoring identifier prefixes. */
-function matchFormatterAt(source, index) {
-  if (isIdentifierChar(source[index - 1])) return null;
-  const rest = source.slice(index);
-
-  let match = /^toLocaleDateString\s*\(/.exec(rest);
-  if (match) return { name: 'toLocaleDateString', length: match[0].length };
-
-  // Match at `Intl`, not at `new`: matching the `new ` prefix too would let the
-  // same call be reported twice once the scan no longer skips the whole call.
-  match = /^Intl\.DateTimeFormat\s*\(/.exec(rest);
-  if (match) return { name: 'Intl.DateTimeFormat', length: match[0].length };
-
   return null;
 }
 
-/** Index of the `)` that closes the `(` at `openIndex`, or `-1` when unbalanced. */
-function findMatchingParen(source, openIndex) {
-  let depth = 0;
-  let index = openIndex;
-  while (index < source.length) {
-    const char = source[index];
-    if (char === '/' && source[index + 1] === '/') {
-      index = skipLineComment(source, index);
+function hasUsableTimeZoneOption(options) {
+  if (!options || !ts.isObjectLiteralExpression(options)) return false;
+  let pinned = false;
+  for (const property of options.properties) {
+    if (ts.isSpreadAssignment(property)) {
+      pinned = false;
       continue;
     }
-    if (char === '/' && source[index + 1] === '*') {
-      index = skipBlockComment(source, index);
+    const name = property.name;
+    if (!name || (!ts.isIdentifier(name) && !ts.isStringLiteral(name)) || name.text !== 'timeZone') {
       continue;
     }
-    if (char === '"' || char === "'" || char === '`') {
-      index = skipString(source, index);
+    if (ts.isShorthandPropertyAssignment(property)) {
+      pinned = true;
       continue;
     }
-    if (char === '(') depth += 1;
-    if (char === ')') {
-      depth -= 1;
-      if (depth === 0) return index;
+    if (!ts.isPropertyAssignment(property)) {
+      pinned = false;
+      continue;
     }
-    index += 1;
+    let value = property.initializer;
+    while (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isNonNullExpression(value)) {
+      value = value.expression;
+    }
+    pinned = value.kind !== ts.SyntaxKind.NullKeyword &&
+      !ts.isVoidExpression(value) &&
+      !(ts.isIdentifier(value) && value.text === 'undefined') &&
+      !((ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) && value.text.trim() === '');
   }
-  return -1;
+  return pinned;
 }
 
-/** Index of the first non-whitespace character at or after `start`. */
-function skipWhitespace(source, start) {
-  let index = start;
-  while (index < source.length && /\s/.test(source[index])) index += 1;
-  return index;
-}
-
-/** Whether `char` can start an identifier (so a bare option value is a value). */
-function isIdentifierStart(char) {
-  return /[A-Za-z_$]/.test(char ?? '');
-}
-
-/**
- * Replace every comment in `source` with a space, leaving strings intact.
- *
- * The paren matcher already skips comments while balancing; the *option* check
- * needs the same treatment, or a commented-out `timeZone: getAlgeriaTimeZone()`
- * would read as a pin while the call actually uses the machine zone.
- */
-function stripComments(source) {
-  let out = '';
-  let index = 0;
-  while (index < source.length) {
-    const char = source[index];
-    if (char === '/' && source[index + 1] === '/') {
-      out += ' ';
-      index = skipLineComment(source, index);
-      continue;
-    }
-    if (char === '/' && source[index + 1] === '*') {
-      out += ' ';
-      index = skipBlockComment(source, index);
-      continue;
-    }
-    if (char === '"' || char === "'" || char === '`') {
-      const end = skipString(source, index);
-      out += source.slice(index, end);
-      index = end;
-      continue;
-    }
-    out += char;
-    index += 1;
-  }
-  return out;
-}
-
-/**
- * The option value text at `start`, or `null` when it does not pin the zone.
- * A usable value is a nonempty quoted zone, a non-`undefined`/`null`
- * identifier (or call on one), or any other nonempty token.
- */
-function readTimeZoneValue(source, start) {
-  const char = source[start];
-  if (char === undefined || char === ',' || char === '}') return null;
-  if (char === '"' || char === "'" || char === '`') {
-    const end = skipString(source, start);
-    return end - start > 2 ? source.slice(start, end) : null;
-  }
-  if (isIdentifierStart(char)) {
-    let end = start + 1;
-    while (isIdentifierChar(source[end])) end += 1;
-    const identifier = source.slice(start, end);
-    return identifier === 'undefined' || identifier === 'null' ? null : identifier;
-  }
-  return source.slice(start);
-}
-
-/**
- * Whether the call text carries a usable `timeZone` option, ignoring comments.
- *
- * A real pin is the `timeZone` option *with a usable value*: the key alone is
- * not enough (`{ timeZone: undefined }`, `{ timeZone: "" }`), and a comment or
- * string that merely mentions the word does not pin the call. A nonempty
- * quoted zone (`{ timeZone: "Africa/Algiers" }`), an identifier or call
- * (`getAlgeriaTimeZone()`) and the shorthand `{ timeZone }` all count.
- */
-function hasUsableTimeZoneOption(call) {
-  const source = stripComments(call);
-  let index = 0;
-  while (index < source.length) {
-    const char = source[index];
-    if (char === '"' || char === "'" || char === '`') {
-      index = skipString(source, index);
-      continue;
-    }
-    if (!isIdentifierStart(char)) {
-      index += 1;
-      continue;
-    }
-    let end = index + 1;
-    while (isIdentifierChar(source[end])) end += 1;
-    const identifier = source.slice(index, end);
-    index = end;
-    if (identifier !== 'timeZone') continue;
-
-    // Shorthand `{ timeZone }`: the key itself is the option value.
-    const afterKey = skipWhitespace(source, index);
-    if (source[afterKey] === ',' || source[afterKey] === '}') return true;
-    if (source[afterKey] !== ':') continue;
-
-    if (readTimeZoneValue(source, skipWhitespace(source, afterKey + 1)) !== null) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Every `toLocaleDateString(...)` / `Intl.DateTimeFormat(...)` call whose
- * balanced parentheses do not carry a usable `timeZone`. Mentions in comments
- * or string literals are not calls and are never reported.
- *
- * Text-level heuristic: it does not descend into a template literal's `${…}`
- * interpolation (none in `apps/web/src` today), and a `timeZone` supplied via a
- * spread is not seen and is therefore reported. The point is to catch a
- * re-added bare call, not to be a type checker.
- */
-export function findUnpinnedDateFormatters(source) {
+/** Find real date formatter calls whose own options do not pin a timezone. */
+export function findUnpinnedDateFormatters(source, fileName = 'source.tsx') {
+  const kind = fileName.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, kind);
   const violations = [];
-  let index = 0;
-
-  while (index < source.length) {
-    const char = source[index];
-    if (char === '/' && source[index + 1] === '/') {
-      index = skipLineComment(source, index);
-      continue;
+  function visit(node) {
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) {
+      const callee = formatterName(node.expression);
+      if (callee && !hasUsableTimeZoneOption(node.arguments?.[1])) {
+        const position = file.getLineAndCharacterOfPosition(node.expression.getStart(file));
+        violations.push({ line: position.line + 1, callee, call: node.getText(file) });
+      }
     }
-    if (char === '/' && source[index + 1] === '*') {
-      index = skipBlockComment(source, index);
-      continue;
-    }
-    if (char === '"' || char === "'" || char === '`') {
-      index = skipString(source, index);
-      continue;
-    }
-
-    const formatter = matchFormatterAt(source, index);
-    if (!formatter) {
-      index += 1;
-      continue;
-    }
-
-    const openParen = index + formatter.length - 1;
-    const closeParen = findMatchingParen(source, openParen);
-    if (closeParen === -1) {
-      // Unbalanced input: flag it rather than letting a later `timeZone` mask
-      // it, and stop — the rest of the file cannot be trusted to resync.
-      violations.push({ line: lineNumberAt(source, index), callee: formatter.name, call: source.slice(index) });
-      break;
-    }
-    const call = source.slice(index, closeParen + 1);
-    if (!hasUsableTimeZoneOption(call)) {
-      violations.push({ line: lineNumberAt(source, index), callee: formatter.name, call });
-    }
-    // Step one character, not a whole call: an unpinned call nested inside this
-    // one is still a call and must be reported.
-    index += 1;
+    ts.forEachChild(node, visit);
   }
-
+  visit(file);
   return violations;
 }
 
@@ -353,7 +174,7 @@ test('production web source never calls toLocaleDateString() or Intl.DateTimeFor
 
   for (const file of files) {
     const source = await readFile(file, 'utf8');
-    for (const violation of findUnpinnedDateFormatters(source)) {
+    for (const violation of findUnpinnedDateFormatters(source, file)) {
       const relative = path.relative(rootDir, file).split(path.sep).join('/');
       violations.push(`${relative}:${violation.line}: ${violation.callee}`);
     }
@@ -401,6 +222,21 @@ test('date formatter scanner self-test: pinned passes, unpinned flags, comments 
   ].join('\n');
   assert.deepEqual(findUnpinnedDateFormatters(mentions), []);
 
+  const regexApostrophe = [
+    "const quote = /[']/;",
+    'date.toLocaleDateString("ar-DZ")',
+  ].join("\n");
+  assert.deepEqual(
+    findUnpinnedDateFormatters(regexApostrophe).map((violation) => violation.line),
+    [2],
+  );
+
+  const jsxApostrophe = `<p>don't {date.toLocaleDateString("ar-DZ")}</p>`;
+  assert.deepEqual(
+    findUnpinnedDateFormatters(jsxApostrophe).map((violation) => violation.line),
+    [1],
+  );
+
   // A pinned call with nested parentheses/strings stays balanced.
   const nested = 'new Intl.DateTimeFormat("ar-DZ", { timeZone: fn("a)b", (x) => x) }).format(d)';
   assert.deepEqual(findUnpinnedDateFormatters(nested), []);
@@ -431,6 +267,41 @@ test('date formatter scanner self-test: pinned passes, unpinned flags, comments 
     findUnpinnedDateFormatters(nestedInner).map((violation) => violation.callee),
     ['toLocaleDateString'],
   );
+});
+
+test('date formatter scanner inspects template expressions without treating template text as code', () => {
+  const source = [
+    'const label = `Date: ${date.toLocaleDateString("ar-DZ")}`;',
+    'const pinned = `Date: ${date.toLocaleDateString("ar-DZ", { timeZone: "Africa/Algiers" })}`;',
+    'const mention = `date.toLocaleDateString("ar-DZ")`;',
+    'const nested = `Outer ${`Inner ${new Intl.DateTimeFormat("ar-DZ").format(date)}`}`;',
+  ].join('\n');
+  assert.deepEqual(
+    findUnpinnedDateFormatters(source).map(({ line, callee }) => ({ line, callee })),
+    [
+      { line: 1, callee: 'toLocaleDateString' },
+      { line: 4, callee: 'Intl.DateTimeFormat' },
+    ],
+  );
+});
+
+test('date formatter scanner checks only effective timezone options on that call', () => {
+  const unpinned = [
+    'date.toLocaleDateString("ar-DZ", { unrelated: { timeZone: "Africa/Algiers" } })',
+    'date.toLocaleDateString("ar-DZ", { timeZone: "Africa/Algiers", ...options })',
+    'date.toLocaleDateString("ar-DZ", { timeZone: void 0 })',
+    'date.toLocaleDateString("ar-DZ", { timeZone: "  " })',
+    'date.toLocaleDateString("ar-DZ", { timeZone: "Africa/Algiers", timeZone: undefined })',
+  ].join('\n');
+  assert.deepEqual(
+    findUnpinnedDateFormatters(unpinned).map(({ line }) => line),
+    [1, 2, 3, 4, 5],
+  );
+  const pinned = [
+    'date.toLocaleDateString("ar-DZ", { ...options, "timeZone": "Africa/Algiers" })',
+    'date.toLocaleDateString("ar-DZ", { timeZone: (getAlgeriaTimeZone() as string) })',
+  ].join('\n');
+  assert.deepEqual(findUnpinnedDateFormatters(pinned), []);
 });
 
 test('fonts are self-hosted: index.html has no Google Fonts links or preconnects', async () => {

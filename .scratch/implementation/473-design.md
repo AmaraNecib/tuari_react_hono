@@ -52,15 +52,22 @@ the options object (the issue's explicit instruction): `transfer-history-page`,
 (`findUnpinnedDateFormatters(source)`) and two tests:
 
 1. Production web source (`apps/web/src/**/*.{ts,tsx}`, excluding tests) contains
-   no `toLocaleDateString(` / `new Intl.DateTimeFormat(` call whose balanced
-   parentheses do not contain `timeZone`.
+   no `toLocaleDateString(` / `Intl.DateTimeFormat(` call without a usable
+   `timeZone` in its own second options argument.
 2. The scanner is self-tested: a pinned sample yields none, an unpinned sample
    yields one, and a comment/string mention yields none — so the rule cannot
    pass vacuously.
 
-The scanner walks the source char-by-char, ignoring comments and string
-literals, matches the two APIs only in code, and balances the call's parens
-(also skipping nested strings/comments) before looking for `timeZone`.
+The scanner uses the repository's installed TypeScript parser. It visits actual
+call and constructor nodes, including JSX expressions and nested template
+interpolations, without reading comments, regex contents or literal text as code.
+Only a usable `timeZone` property in the call's second options argument counts.
+A spread after that property makes the result unknown and is conservatively
+reported. No package or lockfile change is needed.
+
+The template-interpolation regression fails against the earlier character
+scanner. Its red evidence is in
+`.scratch/reviews/473/guard-20261102/template-scanner-red.log`.
 
 ### TZ-pinned tests
 
@@ -76,7 +83,8 @@ exists.
 
 Issue item 4 — the expenses bar "current month" quick filter and the
 filter-following KPI label — is not in this lane's brief (Tasks 1–3 only). Left
-for the parent to scope/queue.
+for the separate expenses filter/KPI work in #483. PR #485 remains part of
+#473 and must not claim to close the whole issue.
 
 ## Public API / contracts
 
@@ -107,3 +115,15 @@ for the parent to scope/queue.
 
 `pnpm check:web-hygiene`; `pnpm --filter @tuari/web test`; `pnpm typecheck`;
 `pnpm lint`.
+
+The parser round passed contracts build, typecheck, lint with zero errors and
+all 13 scanner tests. Full web subsequently passed 1,001/1,001 tests across
+105 files. A two-worker full API run hit two 10-second file-based SQLite setup
+hook deadlines; both affected files passed 35/35 when focused. The controlled
+full API run with the existing VITEST_MAX_WORKERS=1 setting passed 1,687 tests
+with 3 skipped across 94 files. No assertion, hook deadline or test selection
+changed. This result is consistent with I/O contention, not proof of its cause.
+Logs are retained under .scratch/reviews/473/guard-parser-20261102/,
+guard-final-rerun-20261102/ and guard-api-one-worker-20261102/; the scanner's
+initial failing template regression is preserved separately. Hosted CI and
+final-source independent reviews remain required after publication.
