@@ -33,6 +33,7 @@ Thumbs.db
 # the runtime tree a swap renames aside. Never committed.
 /apps/desktop/src-tauri/.bin-staging-*/
 /apps/desktop/src-tauri/bin.previous-*
+/apps/desktop/src-tauri/bin.publish-lock*
 
 /tmp/*
 

@@ -1,13 +1,16 @@
 import {
   existsSync,
+  linkSync,
   readFileSync,
   readdirSync,
   renameSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 /** Infix shared by the tree a swap renames aside and the recovery scan for it. */
@@ -24,6 +27,160 @@ export const OWNER_MARKER_SUFFIX = ".owner";
  * `isAbandonedBackup`), and the lease settles only the case where it cannot.
  */
 const DEFAULT_MARKER_LEASE_MS = 30_000;
+const DEFAULT_PUBLISH_LOCK_TIMEOUT_MS = 120_000;
+const PUBLISH_LOCK_POLL_MS = 25;
+const PUBLISH_LOCK_SUFFIX = ".publish-lock";
+const PUBLISH_LOCK_WAIT_CELL = new Int32Array(new SharedArrayBuffer(4));
+
+const waitSynchronously = (milliseconds) => {
+  Atomics.wait(PUBLISH_LOCK_WAIT_CELL, 0, 0, milliseconds);
+};
+
+const readPublishLock = (lockPath) => {
+  try {
+    const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+
+    if (
+      typeof lock?.token !== "string"
+      || !Number.isInteger(lock?.pid)
+      || lock.pid <= 0
+      || !Number.isFinite(lock?.startedAt)
+    ) {
+      return null;
+    }
+
+    return lock;
+  } catch {
+    return null;
+  }
+};
+
+const publishLockIsAbandoned = (lock, probeOwner) => {
+  const owner = probeOwner(lock.pid);
+
+  if (!owner?.alive) return true;
+  if (!Number.isFinite(owner.startTime) || owner.startTime <= 0) return false;
+
+  return owner.startTime > lock.startedAt;
+};
+
+/**
+ * Atomically install a complete owner record. The temporary file is fully
+ * written before `linkSync` exposes it at the shared lock path, so readers
+ * never mistake a live publisher's partially written lock for an abandoned one.
+ */
+const tryCreatePublishLock = ({ lockPath, owner }) => {
+  const temporaryPath = `${lockPath}.${owner.pid}.${owner.token}.tmp`;
+
+  writeFileSync(temporaryPath, JSON.stringify(owner), { encoding: "utf8", flag: "wx" });
+
+  try {
+    linkSync(temporaryPath, lockPath);
+    return true;
+  } catch (error) {
+    if (error?.code === "EEXIST") return false;
+    throw new Error(
+      `Could not acquire the runtime publish lock at ${lockPath}: `
+      + (error instanceof Error ? error.message : String(error)),
+    );
+  } finally {
+    try {
+      unlinkSync(temporaryPath);
+    } catch {
+      // The hard link is the lock. A leftover unique temp name is harmless and
+      // ignored; cleanup failure must not strand the active lock in this frame.
+    }
+  }
+};
+
+/**
+ * Claim the exclusive stale-lock cleanup slot for this lock generation. Its
+ * name includes the old owner's token, so separate generations never share a
+ * cleanup claim. A leftover claim is not deleted automatically: it means a
+ * reclaimer may have crashed mid-cleanup, and proceeding unlocked is unsafe.
+ */
+const tryClaimStalePublishLock = ({ lockPath, owner, pid, startedAt }) => {
+  const claimPath = `${lockPath}.reclaim-${owner.token}`;
+  const claim = { pid, startedAt, token: randomUUID(), staleOwnerToken: owner.token };
+
+  try {
+    writeFileSync(claimPath, JSON.stringify(claim), { encoding: "utf8", flag: "wx" });
+    return claimPath;
+  } catch (error) {
+    if (error?.code === "EEXIST") return null;
+    throw error;
+  }
+};
+
+const reclaimStalePublishLock = ({ lockPath, owner, pid, startedAt }) => {
+  const claimPath = tryClaimStalePublishLock({ lockPath, owner, pid, startedAt });
+  if (claimPath === null) return false;
+
+  try {
+    const currentOwner = readPublishLock(lockPath);
+    if (currentOwner?.token !== owner.token) return true;
+
+    // Only the unique claimant for this generation can remove this lock. The
+    // stale process is already proven dead or pid-reused; no runtime backup is
+    // touched here.
+    unlinkSync(lockPath);
+    return true;
+  } finally {
+    unlinkSync(claimPath);
+  }
+};
+
+const acquireRuntimePublishLock = ({
+  destinationDir,
+  pid,
+  probeOwner,
+  lockTimeoutMs = DEFAULT_PUBLISH_LOCK_TIMEOUT_MS,
+  onLockWait = () => {},
+  sleep = waitSynchronously,
+  warn,
+}) => {
+  const lockPath = `${destinationDir}${PUBLISH_LOCK_SUFFIX}`;
+  const startedAt = Date.now();
+  const owner = { pid, startedAt, token: randomUUID() };
+  const deadline = startedAt + lockTimeoutMs;
+  let reportedWait = false;
+
+  while (true) {
+    if (tryCreatePublishLock({ lockPath, owner })) {
+      return () => {
+        try {
+          if (readPublishLock(lockPath)?.token === owner.token) unlinkSync(lockPath);
+        } catch (error) {
+          warn(
+            `Published runtime at ${destinationDir}, but could not release its publish lock at ${lockPath}: `
+            + (error instanceof Error ? error.message : String(error)),
+          );
+        }
+      };
+    }
+
+    const currentOwner = readPublishLock(lockPath);
+    if (currentOwner && publishLockIsAbandoned(currentOwner, probeOwner)) {
+      if (reclaimStalePublishLock({ lockPath, owner: currentOwner, pid, startedAt })) continue;
+    }
+
+    if (!reportedWait) {
+      reportedWait = true;
+      onLockWait(lockPath, currentOwner);
+    }
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      const ownerText = currentOwner ? ` (owner pid ${currentOwner.pid})` : " (owner record unreadable)";
+      throw new Error(
+        `Timed out waiting ${lockTimeoutMs}ms for runtime publish lock ${lockPath}${ownerText}; `
+        + "refusing to recover or publish without ownership.",
+      );
+    }
+
+    sleep(Math.min(PUBLISH_LOCK_POLL_MS, remaining));
+  }
+};
 
 /**
  * Name this run's backup `<destination>.previous-<epochMs>-<pid>`.
@@ -402,7 +559,7 @@ const removeOwnerMarker = (backupDir, { remove, warn }) => {
  * misreading this avoids. A failure clearing a stale backup BEFORE the swap is
  * still thrown — nothing has been published at that point.
  */
-export const swapRuntimeDirectory = ({
+const swapRuntimeDirectoryUnlocked = ({
   stagingDir,
   destinationDir,
   rename = renameSync,
@@ -506,6 +663,34 @@ export const swapRuntimeDirectory = ({
   }
 };
 
+/** Serialize recovery, swapping, rollback, and backup sweeping across publishers. */
+export const swapRuntimeDirectory = (options) => {
+  const {
+    destinationDir,
+    pid = process.pid,
+    probeOwner = probeProcess,
+    lockTimeoutMs,
+    onLockWait,
+    sleep,
+    warn = console.warn,
+  } = options;
+  const releaseLock = acquireRuntimePublishLock({
+    destinationDir,
+    pid,
+    probeOwner,
+    lockTimeoutMs,
+    onLockWait,
+    sleep,
+    warn,
+  });
+
+  try {
+    return swapRuntimeDirectoryUnlocked(options);
+  } finally {
+    releaseLock();
+  }
+};
+
 /**
  * Build a replacement runtime in `stagingDir`, prove it works with `probe`, and
  * only then publish it. `publish: false` (the ephemeral typecheck path) probes
@@ -537,6 +722,8 @@ export const buildProbeAndPublishRuntime = ({
   readMarker = readOwnerMarker,
   writeMarker = writeOwnerMarker,
   markerLeaseMs = DEFAULT_MARKER_LEASE_MS,
+  lockTimeoutMs = DEFAULT_PUBLISH_LOCK_TIMEOUT_MS,
+  onLockWait,
 }) => {
   try {
     build();
@@ -558,6 +745,8 @@ export const buildProbeAndPublishRuntime = ({
         readMarker,
         writeMarker,
         markerLeaseMs,
+        lockTimeoutMs,
+        onLockWait,
       });
     }
   } finally {

@@ -1,4 +1,5 @@
 import test from "node:test";
+import { spawn } from "node:child_process";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
@@ -1102,4 +1103,133 @@ test("probeProcess finds this live process and reports a gone pid as gone", () =
     probeProcess(777, { isAlive: () => true, readStartTime: () => null }),
     { alive: true, startTime: null },
   );
+});
+
+test("concurrent publishers serialize recovery and swap without stranding the previous runtime", { timeout: 15000 }, async () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "tuari-runtime-publish-race-"));
+  const destinationDir = path.join(root, "src-tauri", "bin");
+  const stagingA = path.join(root, "src-tauri", ".bin-staging-a");
+  const stagingB = path.join(root, "src-tauri", ".bin-staging-b");
+  const aInGap = path.join(root, "a-in-gap");
+  const releaseA = path.join(root, "release-a");
+  const bWaiting = path.join(root, "b-waiting-for-lock");
+  const bDone = path.join(root, "b-done");
+  const runtimeModule = new URL("./runtime-staging.mjs", import.meta.url).href;
+  const aSource = `
+    import { existsSync, renameSync, writeFileSync } from "node:fs";
+    import { join } from "node:path";
+    const { buildProbeAndPublishRuntime } = await import(process.argv[1]);
+    const root = process.argv[2];
+    const destinationDir = join(root, "src-tauri", "bin");
+    const stagingDir = join(root, "src-tauri", ".bin-staging-a");
+    buildProbeAndPublishRuntime({
+      stagingDir,
+      destinationDir,
+      build() {},
+      probe() {},
+      rename(from, to) {
+        renameSync(from, to);
+        if (from === destinationDir) {
+          writeFileSync(join(root, "a-in-gap"), "ready");
+          const wait = new Int32Array(new SharedArrayBuffer(4));
+          while (!existsSync(join(root, "release-a"))) Atomics.wait(wait, 0, 0, 10);
+        }
+      },
+    });
+  `;
+  const bSource = `
+    import { join } from "node:path";
+    import { writeFileSync } from "node:fs";
+    const { buildProbeAndPublishRuntime } = await import(process.argv[1]);
+    const root = process.argv[2];
+    buildProbeAndPublishRuntime({
+      stagingDir: join(root, "src-tauri", ".bin-staging-b"),
+      destinationDir: join(root, "src-tauri", "bin"),
+      build() {},
+      probe() {},
+      onLockWait() { writeFileSync(join(root, "b-waiting-for-lock"), "waiting"); },
+      lockTimeoutMs: 5000,
+    });
+    writeFileSync(join(root, "b-done"), "published");
+  `;
+  let publisherA;
+  let publisherB;
+  const waitForEither = async (paths) => {
+    const deadline = Date.now() + 7000;
+    while (Date.now() < deadline) {
+      const found = paths.find((candidate) => existsSync(candidate));
+      if (found) return found;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.fail(`Timed out waiting for ${paths.join(" or ")}`);
+  };
+  const exitCode = (child) => new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code) => resolve(code));
+  });
+
+  writeTree(destinationDir, { "marker.txt": "previous-working-runtime" });
+  writeTree(stagingA, { "marker.txt": "runtime-A" });
+  writeTree(stagingB, { "marker.txt": "runtime-B" });
+
+  try {
+    publisherA = spawn(process.execPath, ["--input-type=module", "-e", aSource, runtimeModule, root], { stdio: "ignore" });
+    await waitForEither([aInGap]);
+
+    publisherB = spawn(process.execPath, ["--input-type=module", "-e", bSource, runtimeModule, root], { stdio: "ignore" });
+    const bState = await waitForEither([bWaiting, bDone]);
+
+    assert.equal(bState, bWaiting, "publisher B must wait while A owns the recovery-and-swap window");
+    assert.equal(existsSync(bDone), false, "publisher B must not publish into A's temporary destination gap");
+    const lockPath = `${destinationDir}.publish-lock`;
+    const activeLock = JSON.parse(readFileSync(lockPath, "utf8"));
+    assert.equal(activeLock.pid, publisherA.pid);
+    assert.equal(readdirSync(path.join(root, "src-tauri")).some((name) => name.startsWith("bin.previous-")), true);
+    writeFileSync(releaseA, "continue");
+
+    assert.equal(await exitCode(publisherA), 0, "publisher A must complete without a failed restore");
+    assert.equal(await exitCode(publisherB), 0, "publisher B must publish after A releases the lock");
+    assert.equal(readFileSync(path.join(destinationDir, "marker.txt"), "utf8"), "runtime-B");
+    assert.equal(readdirSync(path.join(root, "src-tauri")).some((name) => name.includes(".previous-")), false);
+    assert.equal(existsSync(lockPath), false);
+  } finally {
+    writeFileSync(releaseA, "continue");
+    await Promise.all([publisherA, publisherB].map(async (child) => {
+      if (!child || child.exitCode !== null) return;
+      const exited = exitCode(child);
+      child.kill();
+      await exited;
+    }));
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a dead publisher lock is reclaimed before recovering its stranded runtime", () => {
+  withLayout(({ destinationDir, stagingDir }) => {
+    const lockPath = `${destinationDir}.publish-lock`;
+    const backupDir = `${destinationDir}.previous-1700000000000-777`;
+    const deadOwner = { pid: 777, startedAt: 1700000000000, token: "dead-publisher-token" };
+    rmSync(destinationDir, { recursive: true, force: true });
+    writeTree(backupDir, { "marker.txt": "runtime from crashed publisher" });
+    writeOwnerMarker(backupDir, {
+      pid: deadOwner.pid,
+      startedAt: deadOwner.startedAt,
+      heartbeatAt: deadOwner.startedAt,
+    });
+    writeFileSync(lockPath, JSON.stringify(deadOwner), "utf8");
+
+    buildProbeAndPublishRuntime({
+      stagingDir,
+      destinationDir,
+      build: () => {},
+      probe: () => {},
+      now: () => deadOwner.startedAt + 60_000,
+      probeOwner: ownerProbe({ alive: false }),
+    });
+
+    assert.equal(readFileSync(path.join(destinationDir, "node.exe"), "utf8"), "staged-node");
+    assert.equal(existsSync(backupDir), false);
+    assert.equal(existsSync(lockPath), false);
+    assert.equal(existsSync(`${lockPath}.reclaim-${deadOwner.token}`), false);
+  });
 });

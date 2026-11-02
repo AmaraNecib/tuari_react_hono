@@ -374,3 +374,52 @@ says the #402 checks are pending, so it does not claim the count today. The
 other `lib.rs` citations in `docs/editions-and-features.md` (`:853`, `:1049`,
 `:2026`, `:2052`) are develop's own stale line pins, outside this diff's edit
 set.
+
+## #496 hosted finding — serialize runtime recovery and swap
+
+**Finding:** backup ownership stops build B from taking build A's renamed-aside
+runtime, but does not stop B from publishing into the missing `bin/` path while A
+is between renames. A can then neither publish nor restore against B's non-empty
+destination.
+
+**Decision:** acquire a destination-scoped interprocess publish lock only after
+build and probe succeed. Hold it across recovery, the complete directory swap,
+rollback, and stale-backup sweep. A concurrent publisher waits before inspecting
+or mutating recovery state. Write the owner record to a unique sibling file,
+then create the shared lock path with an atomic hard link so readers never see a
+half-written lock. The record carries pid, process start time, and a unique
+token. Never reclaim a live owner, including when its start time cannot be read.
+Reclaim only a provably dead or reused pid so a crashed publisher does not block
+recovery. Reclamation touches only the lock record, never another build's
+backup. A bounded wait fails closed with the lock path rather than publishing
+unlocked. If a process crashes while holding the separate stale-lock
+recovery claim, later publishers time out and fail closed; they do not remove an
+ambiguous claim or publish without serialization. The operator must verify the
+claim owner's process is gone before clearing that metadata.
+
+**Regression seam:** drive `buildProbeAndPublishRuntime` from two child
+processes. Pause A after it renames `bin` aside; B must signal that it is waiting,
+remain unpublished, then publish after A completes. Before the fix, B publishes
+in the gap and A's rollback fails. Add a stale-lock case to prove a crashed
+publisher does not block future recovery. This fix does not change SQLCipher
+probes, `cipher_version`, or #501 behavior.
+
+## Verification
+
+The concurrent-publisher test was red before the lock change: publisher B
+completed while A was paused after renaming `bin`, so B published into A's gap
+and A could not restore its backup. After the fix, the same regression passes.
+
+- Focused race and stale-lock tests: 2 passed.
+- Runtime-staging suite: 31 passed.
+- Desktop packaging-security suite: 60 passed, 1 skipped.
+- Contracts build, repository lint, and typecheck: passed.
+- API suite: 96 files passed, 1 skipped; 1,722 tests passed, 5 skipped.
+- Web suite: 102 files passed; 983 tests passed.
+
+The offline install used the existing D: pnpm store with `--frozen-lockfile`;
+932 locked packages were linked, with zero downloads. Install scripts stayed off.
+The shared sibling install supplied the already-built `better-sqlite3@12.6.2`
+binary for this worktree after a read-only in-memory query confirmed Node could
+load it. The SQLCipher 5.4.3-3 package has no native build output in that cache;
+this change did not attempt to build it or alter the #501 integration.
