@@ -1,0 +1,650 @@
+
+> tuari_react_hono@ lint D:\worktrees\tuari_react_hono\t3-b83e09ba
+> pnpm check:web-tracking && pnpm check:web-hygiene && pnpm check:i18n-keys && pnpm check:repo-hygiene && pnpm check:workflow-assets && pnpm check:update-metadata && pnpm check:license-signer && pnpm check:e2e-selection && pnpm check:unslop && turbo lint --concurrency=2
+
+
+> tuari_react_hono@ check:web-tracking D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node ./scripts/check-web-tracking.mjs
+
+apps/web is tracked as normal files.
+
+> tuari_react_hono@ check:web-hygiene D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node --test ./tests/web-hygiene.test.mjs
+
+TAP version 13
+# Subtest: web README documents the current Vite and Tauri-connected app
+ok 1 - web README documents the current Vite and Tauri-connected app
+  ---
+  duration_ms: 11.6987
+  type: 'test'
+  ...
+# Subtest: web workspace does not keep the backup components manifest
+ok 2 - web workspace does not keep the backup components manifest
+  ---
+  duration_ms: 1.5752
+  type: 'test'
+  ...
+# Subtest: splashscreen is a dependency-free, CSP-safe static page
+ok 3 - splashscreen is a dependency-free, CSP-safe static page
+  ---
+  duration_ms: 2.0529
+  type: 'test'
+  ...
+# Subtest: tauri config keeps the main window hidden behind a splashscreen window
+ok 4 - tauri config keeps the main window hidden behind a splashscreen window
+  ---
+  duration_ms: 1.4778
+  type: 'test'
+  ...
+# Subtest: agent branch PR template has no trailing whitespace noise
+ok 5 - agent branch PR template has no trailing whitespace noise
+  ---
+  duration_ms: 1.0245
+  type: 'test'
+  ...
+# Subtest: root package scripts keep web hygiene validation in normal checks
+ok 6 - root package scripts keep web hygiene validation in normal checks
+  ---
+  duration_ms: 0.9205
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: index.html has no Google Fonts links or preconnects
+ok 7 - fonts are self-hosted: index.html has no Google Fonts links or preconnects
+  ---
+  duration_ms: 1.3528
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: styles.css never imports Google Fonts CSS
+ok 8 - fonts are self-hosted: styles.css never imports Google Fonts CSS
+  ---
+  duration_ms: 1.0216
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: every family the design tokens reference is declared
+ok 9 - fonts are self-hosted: every family the design tokens reference is declared
+  ---
+  duration_ms: 2.6829
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 155.2419
+
+> tuari_react_hono@ check:i18n-keys D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node --test ./tests/i18n-keys.test.mjs
+
+TAP version 13
+# Subtest: no t() call references a missing i18n key without a fallback
+ok 1 - no t() call references a missing i18n key without a fallback
+  ---
+  duration_ms: 1650.727
+  type: 'test'
+  ...
+# Subtest: root package scripts keep the i18n key gate in normal checks
+ok 2 - root package scripts keep the i18n key gate in normal checks
+  ---
+  duration_ms: 2.9193
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1764.3671
+
+> tuari_react_hono@ check:repo-hygiene D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node --test ./tests/repo-hygiene.test.mjs
+
+TAP version 13
+# Subtest: no stray `nul` file at the repo root and gitignore blocks it
+ok 1 - no stray `nul` file at the repo root and gitignore blocks it
+  ---
+  duration_ms: 7.0575
+  type: 'test'
+  ...
+# Subtest: api tsconfig does not include the removed prisma.config.ts
+ok 2 - api tsconfig does not include the removed prisma.config.ts
+  ---
+  duration_ms: 1.4983
+  type: 'test'
+  ...
+# Subtest: global focus ring uses the full-opacity outline color
+ok 3 - global focus ring uses the full-opacity outline color
+  ---
+  duration_ms: 1.4098
+  type: 'test'
+  ...
+1..3
+# tests 3
+# suites 0
+# pass 3
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 107.4553
+
+> tuari_react_hono@ check:workflow-assets D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node --test ./tests/workflow-assets.test.mjs
+
+TAP version 13
+# Subtest: delivery plan documents phase workflow expectations
+ok 1 - delivery plan documents phase workflow expectations
+  ---
+  duration_ms: 6.6966
+  type: 'test'
+  ...
+# Subtest: branch verification checklist captures required review prompts
+ok 2 - branch verification checklist captures required review prompts
+  ---
+  duration_ms: 1.1257
+  type: 'test'
+  ...
+# Subtest: branch workflow doc and PR templates stay aligned
+ok 3 - branch workflow doc and PR templates stay aligned
+  ---
+  duration_ms: 3.8864
+  type: 'test'
+  ...
+# Subtest: CI/CD workflow files exist and have correct triggers
+ok 4 - CI/CD workflow files exist and have correct triggers
+  ---
+  duration_ms: 3.2688
+  type: 'test'
+  ...
+# Subtest: publish workflows run the installer smoke test after packaging and before the upload
+ok 5 - publish workflows run the installer smoke test after packaging and before the upload
+  ---
+  duration_ms: 3.8844
+  type: 'test'
+  ...
+# Subtest: the gated release workflow owns publication
+ok 6 - the gated release workflow owns publication
+  ---
+  duration_ms: 1.8851
+  type: 'test'
+  ...
+# Subtest: workflow files do not embed a column-0 PowerShell here-string terminator
+ok 7 - workflow files do not embed a column-0 PowerShell here-string terminator
+  ---
+  duration_ms: 3.9808
+  type: 'test'
+  ...
+# Subtest: release workflows join the generated key output before splitting
+ok 8 - release workflows join the generated key output before splitting
+  ---
+  duration_ms: 2.1452
+  type: 'test'
+  ...
+# Subtest: release guard aborts when the main fetch fails
+ok 9 - release guard aborts when the main fetch fails
+  ---
+  duration_ms: 1.1428
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 131.1903
+
+> tuari_react_hono@ check:update-metadata D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node --test ./tests/update-channel-metadata.test.mjs
+
+TAP version 13
+# Subtest: update-channel-metadata exits with non-zero on missing --channel
+ok 1 - update-channel-metadata exits with non-zero on missing --channel
+  ---
+  duration_ms: 88.5308
+  type: 'test'
+  ...
+# Subtest: update-channel-metadata exits with non-zero on invalid channel name
+ok 2 - update-channel-metadata exits with non-zero on invalid channel name
+  ---
+  duration_ms: 75.2836
+  type: 'test'
+  ...
+# Subtest: update-channel-metadata rejects empty string args (not just undefined)
+ok 3 - update-channel-metadata rejects empty string args (not just undefined)
+  ---
+  duration_ms: 71.0455
+  type: 'test'
+  ...
+# Subtest: generated updates.json for nightly has correct fields
+ok 4 - generated updates.json for nightly has correct fields
+  ---
+  duration_ms: 67.757
+  type: 'test'
+  ...
+# Subtest: generated updates.json for stable points to stable download URL
+ok 5 - generated updates.json for stable points to stable download URL
+  ---
+  duration_ms: 71.8238
+  type: 'test'
+  ...
+# Subtest: --merge preserves existing channels and adds new one
+ok 6 - --merge preserves existing channels and adds new one
+  ---
+  duration_ms: 148.2473
+  type: 'test'
+  ...
+# Subtest: --merge updates existing channel entry
+ok 7 - --merge updates existing channel entry
+  ---
+  duration_ms: 167.8996
+  type: 'test'
+  ...
+# Subtest: output file has proper JSON formatting
+ok 8 - output file has proper JSON formatting
+  ---
+  duration_ms: 74.5795
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 866.4276
+
+> tuari_react_hono@ check:license-signer D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node --test ./tests/generate-license.test.mjs
+
+TAP version 13
+# Subtest: parseSeatCount accepts non-negative integers and rejects typos
+ok 1 - parseSeatCount accepts non-negative integers and rejects typos
+  ---
+  duration_ms: 2.0045
+  type: 'test'
+  ...
+# Subtest: normalizeLicenseType defaults to perpetual and rejects unknowns
+ok 2 - normalizeLicenseType defaults to perpetual and rejects unknowns
+  ---
+  duration_ms: 0.4433
+  type: 'test'
+  ...
+# Subtest: normalizeValidUntil converts date-only to RFC 3339 and rejects garbage
+ok 3 - normalizeValidUntil converts date-only to RFC 3339 and rejects garbage
+  ---
+  duration_ms: 1.001
+  type: 'test'
+  ...
+# Subtest: impossible RFC 3339 dates are rejected instead of rolling over
+ok 4 - impossible RFC 3339 dates are rejected instead of rolling over
+  ---
+  duration_ms: 1.6637
+  type: 'test'
+  ...
+# Subtest: assertExpiryForType requires expiry for time-limited types
+ok 5 - assertExpiryForType requires expiry for time-limited types
+  ---
+  duration_ms: 0.7243
+  type: 'test'
+  ...
+# Subtest: the script anchor matches the Rust embedded key
+ok 6 - the script anchor matches the Rust embedded key
+  ---
+  duration_ms: 10.7566
+  type: 'test'
+  ...
+# Subtest: a non-production key is refused unless explicitly allowed
+ok 7 - a non-production key is refused unless explicitly allowed
+  ---
+  duration_ms: 218.3028
+  type: 'test'
+  ...
+# Subtest: a flag where a value is expected is rejected
+ok 8 - a flag where a value is expected is rejected
+  ---
+  duration_ms: 90.8745
+  type: 'test'
+  ...
+# Subtest: trial/subscription without --valid-until are rejected
+ok 9 - trial/subscription without --valid-until are rejected
+  ---
+  duration_ms: 182.3104
+  type: 'test'
+  ...
+# Subtest: non-integer seat counts are rejected before signing
+ok 10 - non-integer seat counts are rejected before signing
+  ---
+  duration_ms: 398.5143
+  type: 'test'
+  ...
+# Subtest: seat counts at the u32 boundary are signed unchanged
+ok 11 - seat counts at the u32 boundary are signed unchanged
+  ---
+  duration_ms: 138.6307
+  type: 'test'
+  ...
+# Subtest: unknown license types are rejected
+ok 12 - unknown license types are rejected
+  ---
+  duration_ms: 113.8317
+  type: 'test'
+  ...
+# Subtest: date-only expiry is normalised into the signed payload
+ok 13 - date-only expiry is normalised into the signed payload
+  ---
+  duration_ms: 143.1455
+  type: 'test'
+  ...
+# Subtest: perpetual mint omits validUntil and keeps max-users explicit
+ok 14 - perpetual mint omits validUntil and keeps max-users explicit
+  ---
+  duration_ms: 121.7752
+  type: 'test'
+  ...
+# Subtest: unlimited seats are only emitted when the operator passes 0
+ok 15 - unlimited seats are only emitted when the operator passes 0
+  ---
+  duration_ms: 139.9493
+  type: 'test'
+  ...
+# Subtest: stdout contains only the license value; the summary goes to stderr
+ok 16 - stdout contains only the license value; the summary goes to stderr
+  ---
+  duration_ms: 121.3747
+  type: 'test'
+  ...
+# Subtest: --output writes the same license stdout would print
+ok 17 - --output writes the same license stdout would print
+  ---
+  duration_ms: 112.6297
+  type: 'test'
+  ...
+1..17
+# tests 17
+# suites 0
+# pass 17
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1934.7513
+
+> tuari_react_hono@ check:e2e-selection D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node --test ./tests/e2e-selection.test.mjs
+
+TAP version 13
+# Subtest: globToRegExp: ** crosses directories, * does not, ? is one char
+ok 1 - globToRegExp: ** crosses directories, * does not, ? is one char
+  ---
+  duration_ms: 1.8722
+  type: 'test'
+  ...
+# Subtest: selectSpecs: critical path beats a skip match
+ok 2 - selectSpecs: critical path beats a skip match
+  ---
+  duration_ms: 1.269
+  type: 'test'
+  ...
+# Subtest: selectSpecs: a feature match beats a skip match on the SAME path
+ok 3 - selectSpecs: a feature match beats a skip match on the SAME path
+  ---
+  duration_ms: 0.9531
+  type: 'test'
+  ...
+# Subtest: selectSpecs: a shared UI control routes its callers, warehouses included
+ok 4 - selectSpecs: a shared UI control routes its callers, warehouses included
+  ---
+  duration_ms: 1.4561
+  type: 'test'
+  ...
+# Subtest: selectSpecs: both sides of a rename are honoured
+ok 5 - selectSpecs: both sides of a rename are honoured
+  ---
+  duration_ms: 2.3897
+  type: 'test'
+  ...
+# Subtest: selectSpecs: an unmapped path fails closed to a full run
+ok 6 - selectSpecs: an unmapped path fails closed to a full run
+  ---
+  duration_ms: 0.7987
+  type: 'test'
+  ...
+# Subtest: selectSpecs: an empty diff fails closed to a full run
+ok 7 - selectSpecs: an empty diff fails closed to a full run
+  ---
+  duration_ms: 0.6543
+  type: 'test'
+  ...
+# Subtest: selectSpecs: docs-only diff is a skip
+ok 8 - selectSpecs: docs-only diff is a skip
+  ---
+  duration_ms: 0.5718
+  type: 'test'
+  ...
+# Subtest: selectSpecs: always_specs join an affected run but not a skip
+ok 9 - selectSpecs: always_specs join an affected run but not a skip
+  ---
+  duration_ms: 1.2156
+  type: 'test'
+  ...
+# Subtest: selectSpecs: api module maps to the owning feature specs
+ok 10 - selectSpecs: api module maps to the owning feature specs
+  ---
+  duration_ms: 0.8849
+  type: 'test'
+  ...
+# Subtest: selectAreas: a mapped web-only diff runs test:web and skips test:api
+ok 11 - selectAreas: a mapped web-only diff runs test:web and skips test:api
+  ---
+  duration_ms: 1.4483
+  type: 'test'
+  ...
+# Subtest: selectAreas: an api-only diff runs test:api and skips test:web
+ok 12 - selectAreas: an api-only diff runs test:api and skips test:web
+  ---
+  duration_ms: 0.635
+  type: 'test'
+  ...
+# Subtest: selectAreas: a docs-only diff scopes to no unit suites and skips e2e
+ok 13 - selectAreas: a docs-only diff scopes to no unit suites and skips e2e
+  ---
+  duration_ms: 0.5741
+  type: 'test'
+  ...
+# Subtest: selectAreas: contracts and manifests force both suites
+ok 14 - selectAreas: contracts and manifests force both suites
+  ---
+  duration_ms: 1.3274
+  type: 'test'
+  ...
+# Subtest: selectAreas: an empty diff fails closed to the full gate
+ok 15 - selectAreas: an empty diff fails closed to the full gate
+  ---
+  duration_ms: 0.5161
+  type: 'test'
+  ...
+# Subtest: anti-rot: every spec under tests/e2e/ is wired in the map
+ok 16 - anti-rot: every spec under tests/e2e/ is wired in the map
+  ---
+  duration_ms: 0.6541
+  type: 'test'
+  ...
+# Subtest: anti-rot: every declared spec exists and every feature rule is non-empty
+ok 17 - anti-rot: every declared spec exists and every feature rule is non-empty
+  ---
+  duration_ms: 0.7505
+  type: 'test'
+  ...
+# Subtest: CLI: --mode areas reads a changed-files list and prints key=value lines
+ok 18 - CLI: --mode areas reads a changed-files list and prints key=value lines
+  ---
+  duration_ms: 81.2713
+  type: 'test'
+  ...
+# Subtest: CLI: --mode e2e prints the flat scope for GITHUB_OUTPUT
+ok 19 - CLI: --mode e2e prints the flat scope for GITHUB_OUTPUT
+  ---
+  duration_ms: 77.8952
+  type: 'test'
+  ...
+1..19
+# tests 19
+# suites 0
+# pass 19
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 298.6842
+
+> tuari_react_hono@ check:unslop D:\worktrees\tuari_react_hono\t3-b83e09ba
+> node ./scripts/prose/check-unslop.ts
+
+
+unslop prose gate: 188 markdown files scanned
+
+ERROR tier: clean (no filler / sycophancy tells found)
+
+WARN tier (1702) — advisory, review for real tells:
+  .agents\skills\accessibility\SKILL.md: warn:inline-bold-label=5, warn:em-dash=8
+  .agents\skills\ask-matt\SKILL.md: warn:em-dash=23, warn:chained-em-dash=4
+  .agents\skills\capture-wisdom\SKILL.md: warn:em-dash=4
+  .agents\skills\cli-review\SKILL.md: warn:em-dash=1
+  .agents\skills\code-review\SKILL.md: warn:em-dash=25, warn:chained-em-dash=1
+  .agents\skills\codebase-design\DEEPENING.md: warn:em-dash=4
+  .agents\skills\codebase-design\DESIGN-IT-TWICE.md: warn:em-dash=9
+  .agents\skills\codebase-design\SKILL.md: warn:em-dash=13
+  .agents\skills\crew-dispatch\SKILL.md: warn:em-dash=32, warn:chained-em-dash=3, warn:inline-bold-label=2
+  .agents\skills\debate\SKILL.md: warn:em-dash=9, warn:inline-bold-label=2
+  .agents\skills\diagnosing-bugs\SKILL.md: warn:em-dash=28, warn:chained-em-dash=2
+  .agents\skills\domain-modeling\ADR-FORMAT.md: warn:em-dash=11
+  .agents\skills\domain-modeling\CONTEXT-FORMAT.md: warn:inline-bold-label=2
+  .agents\skills\domain-modeling\SKILL.md: warn:em-dash=9
+  .agents\skills\feature-implement\SKILL.md: warn:em-dash=18
+  .agents\skills\greploop\SKILL.md: warn:em-dash=4
+  .agents\skills\grilling\SKILL.md: warn:em-dash=1
+  .agents\skills\guard\SKILL.md: warn:em-dash=4, warn:inline-bold-label=1
+  .agents\skills\hono\SKILL.md: warn:inline-bold-label=2, warn:em-dash=1
+  .agents\skills\impeccable\reference\live.md: warn:inline-bold-label=2
+  .agents\skills\impeccable\SKILL.md: warn:inline-bold-label=2
+  .agents\skills\playwright-best-practices\advanced\authentication-flows.md: warn:em-dash=7
+  .agents\skills\playwright-best-practices\advanced\authentication.md: warn:em-dash=8
+  .agents\skills\playwright-best-practices\architecture\pom-vs-fixtures.md: warn:em-dash=8, warn:inline-bold-label=4
+  .agents\skills\playwright-best-practices\architecture\test-architecture.md: warn:em-dash=9
+  .agents\skills\playwright-best-practices\architecture\when-to-mock.md: warn:inline-bold-label=3
+  .agents\skills\playwright-best-practices\core\configuration.md: warn:inline-bold-label=1
+  .agents\skills\playwright-best-practices\core\global-setup.md: warn:inline-bold-label=1
+  .agents\skills\playwright-best-practices\frameworks\angular.md: warn:em-dash=5
+  .agents\skills\playwright-best-practices\frameworks\react.md: warn:em-dash=16
+  .agents\skills\playwright-best-practices\frameworks\vue.md: warn:em-dash=2
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\docker.md: warn:inline-bold-label=3
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\github-actions.md: warn:em-dash=9, warn:inline-bold-label=1
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\gitlab.md: warn:inline-bold-label=2
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\parallel-sharding.md: warn:inline-bold-label=5
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\performance.md: warn:em-dash=1
+  .agents\skills\playwright-best-practices\infrastructure-ci-cd\reporting.md: warn:inline-bold-label=1, warn:em-dash=1
+  .agents\skills\playwright-best-practices\testing-patterns\api-testing.md: warn:em-dash=13
+  .agents\skills\playwright-best-practices\testing-patterns\drag-drop.md: warn:em-dash=4
+  .agents\skills\playwright-best-practices\testing-patterns\file-upload-download.md: warn:em-dash=2
+  .agents\skills\playwright-best-practices\testing-patterns\forms-validation.md: warn:em-dash=6
+  .agents\skills\playwright-best-practices\testing-patterns\graphql-testing.md: warn:em-dash=2
+  .agents\skills\playwright-best-practices\testing-patterns\visual-regression.md: warn:em-dash=5, warn:chained-em-dash=1, warn:inline-bold-label=2
+  .agents\skills\prototype\LOGIC.md: warn:em-dash=16, warn:chained-em-dash=1
+  .agents\skills\prototype\SKILL.md: warn:em-dash=6
+  .agents\skills\prototype\UI.md: warn:em-dash=20
+  .agents\skills\research\SKILL.md: warn:em-dash=1, warn:chained-em-dash=1
+  .agents\skills\setup-matt-pocock-skills\domain.md: warn:em-dash=4
+  .agents\skills\setup-matt-pocock-skills\issue-tracker-github.md: warn:em-dash=4
+  .agents\skills\setup-matt-pocock-skills\issue-tracker-gitlab.md: warn:em-dash=5
+  .agents\skills\setup-matt-pocock-skills\issue-tracker-local.md: warn:em-dash=1
+  .agents\skills\setup-matt-pocock-skills\SKILL.md: warn:em-dash=36, warn:chained-em-dash=1, warn:inline-bold-label=1
+  .agents\skills\tauri-v2\README.md: warn:inline-bold-label=1
+  .agents\skills\tauri-v2\SKILL.md: warn:inline-bold-label=17, warn:em-dash=6
+  .agents\skills\tdd\SKILL.md: warn:em-dash=7, warn:chained-em-dash=1
+  .agents\skills\test-audit\SKILL.md: warn:em-dash=5
+  .agents\skills\testsprite-onboard\SKILL.md: warn:em-dash=53, warn:chained-em-dash=2, warn:inline-bold-label=2
+  .agents\skills\testsprite-verify\SKILL.md: warn:em-dash=28
+  .agents\skills\to-spec\SKILL.md: warn:em-dash=4
+  .agents\skills\to-tickets\SKILL.md: warn:em-dash=14, warn:chained-em-dash=1, warn:inline-bold-label=2
+  .agents\skills\triage\AGENT-BRIEF.md: warn:em-dash=3, warn:inline-bold-label=6
+  .agents\skills\triage\OUT-OF-SCOPE.md: warn:em-dash=12
+  .agents\skills\triage\SKILL.md: warn:em-dash=29
+  .agents\skills\wayfinder\SKILL.md: warn:em-dash=30, warn:chained-em-dash=8
+  .agents\skills\writing-great-skills\GLOSSARY.md: warn:em-dash=35, warn:chained-em-dash=8
+  .agents\skills\writing-great-skills\SKILL.md: warn:em-dash=26, warn:chained-em-dash=6
+  .agents\wisdom\architecture.md: warn:em-dash=26
+  .agents\wisdom\process.md: warn:em-dash=6
+  .agents\wisdom\security.md: warn:em-dash=7, warn:chained-em-dash=1
+  .agents\wisdom\testing.md: warn:em-dash=29
+  docs\adr\ADR-DIAG-001.md: warn:em-dash=12, warn:inline-bold-label=3
+  docs\adr\ADR-UPD-001.md: warn:em-dash=3, warn:inline-bold-label=4, warn:chained-em-dash=2
+  docs\adr\ADR-UPD-002.md: warn:em-dash=3, warn:inline-bold-label=4, warn:chained-em-dash=1
+  docs\adr\ADR-UPD-003.md: warn:em-dash=3, warn:inline-bold-label=4, warn:chained-em-dash=2
+  docs\adr\ADR-UPD-004.md: warn:em-dash=3, warn:inline-bold-label=4, warn:chained-em-dash=2
+  docs\adr\ADR-UPD-005.md: warn:em-dash=4, warn:inline-bold-label=7, warn:chained-em-dash=3
+  docs\adr\ADR-UPD-006.md: warn:em-dash=6, warn:inline-bold-label=4, warn:chained-em-dash=1
+  docs\adr\ADR-UPD-008.md: warn:em-dash=4, warn:inline-bold-label=4, warn:chained-em-dash=2
+  docs\architecture-decisions.md: warn:em-dash=1, warn:inline-bold-label=2
+  docs\ARCHITECTURE.md: warn:em-dash=3
+  docs\ARCHITECTURE_REVIEW.md: warn:inline-bold-label=112, warn:em-dash=48
+  docs\auth-recovery.md: warn:em-dash=10
+  docs\BRANCH_STRATEGY.md: warn:inline-bold-label=24
+  docs\COMPLETION_STATUS.md: warn:inline-bold-label=26
+  docs\customer-install-guide.md: warn:em-dash=7
+  docs\development-workflow.md: warn:em-dash=12, warn:inline-bold-label=5
+  docs\editions-and-features.md: warn:em-dash=5, warn:inline-bold-label=1
+  docs\engineering-workflow.md: warn:em-dash=6
+  docs\implementation-roadmap.md: warn:em-dash=10, warn:inline-bold-label=7, warn:chained-em-dash=1
+  docs\lessons\gh-pr-merge-squash-issue-close.md: warn:em-dash=13
+  docs\lessons\README.md: warn:em-dash=3
+  docs\license-issuance.md: warn:em-dash=3
+  docs\licensing-architecture.md: warn:em-dash=44, warn:inline-bold-label=27
+  docs\PHASE3-INTEGRATION-TESTS.md: warn:inline-bold-label=9
+  docs\PHASE5-INTEGRATION-RELEASE.md: warn:inline-bold-label=7
+  docs\prd\licensing-prd.md: warn:em-dash=14, warn:inline-bold-label=45, warn:chained-em-dash=1
+  docs\prd\rust-core-prd.md: warn:em-dash=13, warn:inline-bold-label=10
+  docs\prd\update-prd.md: warn:em-dash=1, warn:inline-bold-label=41
+  docs\QUERY_OPTIMIZATION.md: warn:inline-bold-label=3, warn:em-dash=3
+  docs\README.md: warn:em-dash=6
+  docs\REFACTORING_TASKS.md: warn:inline-bold-label=106, warn:em-dash=1
+  docs\release-verification.md: warn:em-dash=1
+  docs\RELEASE_SUMMARY.md: warn:inline-bold-label=30
+  docs\rust-core-architecture.md: warn:em-dash=85, warn:inline-bold-label=19, warn:chained-em-dash=5
+  docs\update-architecture.md: warn:em-dash=11, warn:inline-bold-label=10
+
+Total: 1702 warn / 0 error
+[check:unslop] PASS
+(node:26456) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/worktrees/tuari_react_hono/t3-b83e09ba/scripts/prose/check-unslop.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to D:\worktrees\tuari_react_hono\t3-b83e09ba\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+• turbo 2.8.16
+• Packages in scope: @tuari/api, @tuari/contracts, @tuari/desktop, @tuari/tsconfig, @tuari/web
+• Running lint in 5 packages
+• Remote caching disabled, using shared worktree cache
+@tuari/web:lint: cache miss, executing d0288ea32ed3b36e
+@tuari/api:lint: cache miss, executing c320728a4ef065f8
+@tuari/web:lint: 
+@tuari/web:lint: > @tuari/web@0.0.0 lint D:\worktrees\tuari_react_hono\t3-b83e09ba\apps\web
+@tuari/web:lint: > eslint .
+@tuari/web:lint: 
+@tuari/api:lint: 
+@tuari/api:lint: > @tuari/api@0.0.0 lint D:\worktrees\tuari_react_hono\t3-b83e09ba\apps\api
+@tuari/api:lint: > eslint .
+@tuari/api:lint: 
+
+ Tasks:    2 successful, 2 total
+Cached:    0 cached, 2 total
+  Time:    9.089s 
+

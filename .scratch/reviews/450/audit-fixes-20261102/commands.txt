@@ -1,0 +1,8 @@
+COMMAND: cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm --filter @tuari/api exec vitest run src/modules/inventory/outbound-transfer-availability.test.ts
+EXIT_CODE: 0
+COMMAND: cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm --filter @tuari/web exec vitest run src/features/inventory/multi-source-item-picker.test.tsx src/features/inventory/outbound-transfer-create-page-v2.test.tsx
+EXIT_CODE: 0
+COMMAND: cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm --filter @tuari/api exec vitest run
+EXIT_CODE: 0
+COMMAND: cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm --filter @tuari/web exec vitest run
+EXIT_CODE: 0

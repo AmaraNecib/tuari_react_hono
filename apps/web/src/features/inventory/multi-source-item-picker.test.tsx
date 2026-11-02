@@ -7,6 +7,7 @@ import { MultiSourceItemPicker, type SelectedItem } from "./multi-source-item-pi
 
 const contentsQuery = vi.hoisted(() => vi.fn())
 const definitionsState = vi.hoisted(() => ({ isPending: false, isError: false }))
+const contentsState = vi.hoisted(() => ({ isPending: false, isError: false }))
 
 function translation(key: string): string {
   let node: unknown = ar.translation
@@ -42,7 +43,7 @@ vi.mock("./inventory-hooks", () => ({
   ] } }),
   useInventoryWarehousesQuery: () => ({ data: { items: [{ id: "warehouse", name: "Warehouse" }] } }),
   useInventoryProjectsQuery: () => ({ data: { items: [{ id: "project", name: "Project" }] } }),
-  useInventoryLocationContentsQuery: contentsQuery.mockImplementation(() => ({ data: {
+  useInventoryLocationContentsQuery: contentsQuery.mockImplementation(() => ({ ...contentsState, data: {
     assets: [
       { id: "unit-first", inventoryEntryId: "entry-asset-first", itemDefinitionId: "definition-asset", assetName: "First drill" },
       { id: "unit-second", inventoryEntryId: "entry-asset-second", itemDefinitionId: "definition-asset", assetName: "Second drill" },
@@ -61,12 +62,20 @@ afterEach(() => {
   vi.clearAllMocks()
   definitionsState.isPending = false
   definitionsState.isError = false
+  contentsState.isPending = false
+  contentsState.isError = false
 })
 
 describe("MultiSourceItemPicker outbound identity", () => {
-  it.each(["pending", "error"] as const)("does not offer stock or report an empty source when definitions are %s", (state) => {
-    definitionsState.isPending = state === "pending"
-    definitionsState.isError = state === "error"
+  it.each([
+    ["definitions", "pending"],
+    ["definitions", "error"],
+    ["contents", "pending"],
+    ["contents", "error"],
+  ] as const)("does not offer stock or report an empty source when %s are %s", (query, state) => {
+    const queryState = query === "definitions" ? definitionsState : contentsState
+    queryState.isPending = state === "pending"
+    queryState.isError = state === "error"
     render(<MultiSourceItemPicker items={[]} onItemsChange={vi.fn()} />)
     fireEvent.change(screen.getByLabelText(translation("inventory.transfer.source")), { target: { value: "warehouse" } })
 

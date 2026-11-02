@@ -237,6 +237,21 @@ It is a design lens only, not independent debate, test-audit, code-review, or
 full guard evidence. The architecture-improvement skill was unavailable.
 Current-SHA evidence and remaining validation are required before publication.
 
+## Final audit coverage corrections
+
+The final audit found two missing regression scenarios, not a production defect.
+The picker now tests pending and failed source-content requests as well as the
+definition query, with status/alert assertions and no empty-stock message. The
+SQLite write-gate tests reject missing, foreign-source and wrong-kind concrete
+selectors for consumables and assets; exact before/after snapshots cover stock,
+assets, debt rows, movements and transfer rows. No production code changed.
+
+Fresh verification passed 68 focused API tests, 7 focused web tests, the full
+API suite (1,756 passed, 3 skipped) and full web suite (970 passed). Typecheck
+passed all four tasks; full lint reported 1,702 warnings and zero errors. Logs
+and commands are in .scratch/reviews/450/audit-fixes-20261102/. Fixed-head
+independent review and hosted gates still follow this test-only commit.
+
 ## Not in this change
 
 - Inbound transfers do not acquire definition-based selection. Consumables still

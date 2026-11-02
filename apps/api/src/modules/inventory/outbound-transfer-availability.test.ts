@@ -307,6 +307,47 @@ describe("createOutboundTransfer resolves a definition to its stock rows (#450)"
     expect(env.repository.listAllMovements({}).map((movement) => movement.inventoryEntryId)).toEqual(["entry-selected"])
   })
 
+  it.each([
+    ["CONSUMABLE", "missing"],
+    ["CONSUMABLE", "foreign-source"],
+    ["CONSUMABLE", "wrong-kind"],
+    ["ASSET", "missing"],
+    ["ASSET", "foreign-source"],
+    ["ASSET", "wrong-kind"],
+  ] as const)("rejects a %s selector that is %s without falling back to another row", async (itemType, selector) => {
+    const env = await openEnv()
+    seedWarehouse(env.db, "wh-1")
+    seedWarehouse(env.db, "wh-other")
+    seedCounterparty(env.db, "buyer")
+    seedGroup(env.db, "g")
+    seedDefinition(env.db, { id: "def-cement", itemType: "CONSUMABLE" })
+    seedDefinition(env.db, { id: "def-drill", itemType: "ASSET" })
+    seedEntry(env.db, { id: "entry-cement", invoiceGroupId: "g", itemDefinitionId: "def-cement", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-drill", invoiceGroupId: "g", itemDefinitionId: "def-drill", itemType: "ASSET" })
+    for (const warehouseId of ["wh-1", "wh-other"]) {
+      seedBalance(env.db, { id: `balance-${warehouseId}`, entryId: "entry-cement", itemDefinitionId: "def-cement", warehouseId, quantity: 5 })
+      seedAsset(env.db, { id: `asset-${warehouseId}`, entryId: "entry-drill", warehouseId })
+    }
+    const prefix = itemType === "CONSUMABLE" ? "balance" : "asset"
+    const wrongPrefix = itemType === "CONSUMABLE" ? "asset" : "balance"
+    const optionId = selector === "missing" ? "missing-row"
+      : selector === "foreign-source" ? `${prefix}-wh-other` : `${wrongPrefix}-wh-1`
+    const before = snapshotWrites(env.db)
+
+    let error: unknown
+    try {
+      env.service.createOutboundTransfer({
+        fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE",
+        items: [{ itemId: itemType === "CONSUMABLE" ? "def-cement" : "def-drill", optionId, quantity: 1 }],
+      }, AUDIT)
+    } catch (caught) {
+      error = caught
+    }
+    expect(error).toBeInstanceOf(InventoryError)
+    expect((error as InventoryError).appError.code).toBe("BUSINESS_RULE")
+    expect(snapshotWrites(env.db)).toEqual(before)
+  })
+
   it("moves the selected asset unit when sibling units share a definition", async () => {
     const env = await openEnv()
     seedWarehouse(env.db, "wh-1")
