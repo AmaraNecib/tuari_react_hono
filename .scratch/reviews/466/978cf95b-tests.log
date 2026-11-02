@@ -1,0 +1,78 @@
+PASS: happy path exits 0
+PASS: happy path closed #101
+PASS: already-closed skip did NOT close #102
+PASS: skip-closed exit still 0
+PASS: skip reason echoed
+PASS: parent w/ open sub-issues skipped did NOT close #103
+PASS: sub-issue reason echoed
+PASS: parent w/ all sub-issues done closes closed #104
+PASS: remaining-in-open-issue guard did NOT close #105
+PASS: remaining ref to CLOSED issue does not block closed #106
+PASS: lineage marker on OTHER number never blocks (#201) closed #201
+PASS: #200 not referenced as a close target did NOT close #200
+PASS: self-reference partial guard did NOT close #107
+PASS: self-reference reason echoed
+PASS: mid-word match extracts nothing (exit 0)
+PASS: mid-word match does not close did NOT close #108
+PASS: mention-only run exits 0
+PASS: 'filed as #N' never closes did NOT close #120
+PASS: 'Part of #N' never closes did NOT close #121
+PASS: prose keyword far from the reference never closes (#442 regression) did NOT close #122
+PASS: prose 'the fix for #N' never closes did NOT close #1220
+PASS: bare '#N' mention never closes did NOT close #123
+PASS: 'Closes #N' closes closed #124
+PASS: 'Fixes #N' closes closed #125
+PASS: 'Resolves: #N' closes closed #126
+PASS: title-only run exits 0
+PASS: a closing keyword in the PR TITLE never closes did NOT close #127
+PASS: negated run exits 0
+PASS: 'does not close #N' never closes did NOT close #128
+PASS: negation is echoed
+PASS: 'does not resolve #N' never closes did NOT close #129
+PASS: 'never fixes #N' never closes did NOT close #130
+PASS: the negated reference in a mixed body is dropped (#131) did NOT close #131
+PASS: the affirmative reference in the same body still closes (#132) closed #132
+PASS: a leading affirmative close still fires (#133) closed #133
+PASS: a trailing negated close does not (#134) did NOT close #134
+PASS: a negator four words from the keyword is a different clause (#135) closed #135
+PASS: 'does not, however, close #N' never closes did NOT close #444
+PASS: 'no intention of closing #N' never closes did NOT close #445
+PASS: a three-word negator gap still negates (#446) did NOT close #446
+PASS: a negated close split across two lines never closes did NOT close #447
+PASS: 'not only fixes #N' is affirmative and closes (#448) closed #448
+PASS: the second close in the same body closes (#449) closed #449
+PASS: '**Closes** #N' closes closed #450
+PASS: 'Closes **#N**' closes closed #451
+PASS: 'Closes' on one line and '#N' on the next closes closed #452
+PASS: the affirmative reference closes (#455) closed #455
+PASS: the negated reference does not (#454) did NOT close #454
+PASS: the subtracted candidate is reported
+PASS: a sentence-opening 'No,' does not negate the close (#457) closed #457
+PASS: a body that both negates and closes one number does not close it did NOT close #456
+PASS: no refs exits 0
+PASS: sub-issue field absent from response fails open → closes closed #109
+PASS: whole-API failure exits 0 (job survives)
+PASS: whole-API failure skips safely (no wrongful close) did NOT close #1234
+PASS: API-failure reason echoed
+PASS: close failure warns but exits 0
+PASS: WARN echoed
+PASS: dry run exits 0
+PASS: DRY_RUN never closes did NOT close #111
+PASS: dry run logs intent
+PASS: unmerged dry run exits 0
+PASS: unmerged dry run promises nothing
+PASS: unmerged dry run echoes the refusal reason
+PASS: merge-event run closes without a qualification read
+PASS: merge-event run closed #117
+PASS: summary run exits 0
+PASS: step summary table written
+PASS: PR_BODY auto-fetched via API closed #114
+PASS: unmerged-PR refusal exits 0
+PASS: unmerged PR: nothing closed did NOT close #115
+PASS: unmerged refusal reason echoed
+PASS: missing token errors clearly
+PASS: missing-token message
+
+════════════════════════════════
+PASS=74 FAIL=0
+EXIT=0

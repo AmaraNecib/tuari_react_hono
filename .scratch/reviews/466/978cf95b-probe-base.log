@@ -1,0 +1,22 @@
+== TARGET: /tmp/base-close.sh
+CRLF affirmative                               rc=0   CLOSED=[101] ignoring=0
+CRLF negated + affirmative                     rc=0   CLOSED=[102 103] ignoring=0
+hash between negator/kw                        rc=0   CLOSED=[105] ignoring=0
+no-substring 'Note: this Closes #N'            rc=0   CLOSED=[106] ignoring=0
+no-substring 'Now the PR Closes #N'            rc=0   CLOSED=[107] ignoring=0
+no-substring 'Nothing in #X; Closes #N'        rc=0   CLOSED=[109] ignoring=0
+no-substring 'There is no change. Closes #N'   rc=0   CLOSED=[110] ignoring=0
+no-substring 'novel approach Closes #N'        rc=0   CLOSED=[111] ignoring=0
+unicode NBSP separator                         rc=0   CLOSED=[112] ignoring=0
+unicode em-dash separator                      rc=0   CLOSED=[113] ignoring=0
+multi keywords one line                        rc=0   CLOSED=[114 115 116] ignoring=0
+body only newlines                             rc=0   CLOSED=[] ignoring=0
+'Closes#N' no separator                        rc=0   CLOSED=[117] ignoring=0
+'Closes:#N' colon no space                     rc=0   CLOSED=[118] ignoring=0
+long single line (100k)                        rc=0   CLOSED=[119] ignoring=0
+long single line (200k)                        rc=0   CLOSED=[120] ignoring=0
+negator 3 words out w/ punct                   rc=0   CLOSED=[121] ignoring=0
+negator 4 words out                            rc=0   CLOSED=[122] ignoring=0
+same-number negate+close                       rc=0   CLOSED=[123] ignoring=0
+interjection No,                               rc=0   CLOSED=[124] ignoring=0
+keyword inside word 'unclosed'                 rc=0   CLOSED=[] ignoring=0

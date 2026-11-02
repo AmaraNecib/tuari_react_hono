@@ -1,0 +1,53 @@
+### GROUP 1 — round-2 finding 1: not-only must not eat a real negation ###
+F1a not only does not fix #443                             closed=[] negated=[443] OK
+F1b not only doesn't fix #443                              closed=[] negated=[443] OK
+F1c control: same bodies + Closes #444                     closed=[444] negated=[443] OK
+F1d control: same bodies + Closes #444                     closed=[444] negated=[443] OK
+F1e not only IS affirmative                                closed=[448 449] negated=[] OK
+F1f ... and the second close stands                        closed=[448 449] negated=[] OK
+
+### GROUP 2 — finding 2: negative contractions, both spellings ###
+F2a hasn't fixed #443                                      closed=[] negated=[443] OK
+F2b has not fixed #443                                     closed=[] negated=[443] OK
+F2c haven't resolved #443                                  closed=[] negated=[443] OK
+F2d have not resolved #443                                 closed=[] negated=[443] OK
+F2e hadn't fixed #443                                      closed=[] negated=[443] OK
+F2f control: contraction body + Closes #444                closed=[444] negated=[443] OK
+
+### GROUP 3 — finding 3: markdown emphasis must not defeat the [no] word test ###
+F3a no **intention** of closing #443                       closed=[] negated=[443] OK
+F3b no intention of closing #443 (plain)                   closed=[] negated=[443] OK
+F3c control: same body + Closes #444                       closed=[444] negated=[443] OK
+F3d Nobody is not a negator (must close)                   closed=[459] negated=[] OK
+F3e No, this Closes #N (must close)                        closed=[457] negated=[] OK
+F3f No, this does not close #N                             closed=[] negated=[460] OK
+
+### GROUP 4 — finding 4: emphasis inside the AFFIRMATIVE idiom ###
+F4a not **only** fixes #443 (must close)                   closed=[443] negated=[] OK
+F4b not __only__ fixes #443 (must close)                   closed=[443] negated=[] OK
+F4c control: same body + a real negation                   closed=[501] negated=[502] OK
+F4d control: the real negation in that body                closed=[501] negated=[502] OK
+
+### GROUP 5 — #486: sentence scope, both directions ###
+S1 negator in an earlier sentence (must close)             closed=[503] negated=[] OK
+S2 negator 4+ words out, same sentence                     closed=[] negated=[504] OK
+S3 control: same body + Closes #505                        closed=[505] negated=[504] OK
+S4 Do not merge until it Closes #N (#486 trade, logged drop) closed=[] negated=[135] OK
+S5 negation, padded, same sentence                         closed=[] negated=[447] OK
+S6 negator, punctuation, same sentence                     closed=[] negated=[444] OK
+
+### GROUP 6 — regressions the sentence scope must NOT introduce ###
+R1 negated #A, affirmative #B in one sentence              closed=[132] negated=[131] OK
+R2 negated and closed same number (tie-break)              closed=[] negated=[456] OK
+R3 nor-clause, second ref negated                          closed=[233] negated=[231 232] OK
+R4 neither/nor both negated + control                      closed=[480] negated=[473 474] OK
+R5 not only/just idiom still affirmative                   closed=[462] negated=[] OK
+R6 uppercase keyword                                       closed=[463] negated=[] OK
+R7 emphasis around keyword/reference                       closed=[450] negated=[] OK
+R8 no-space colon separator                                closed=[481] negated=[] OK
+R9 mid-word 'unresolved' extracts nothing                  closed=[] negated=[] OK
+R10 'Note:'/None: no negator                               closed=[458] negated=[] OK
+R11 bare mention never closes                              closed=[] negated=[] OK
+R12 Part of #N never closes                                closed=[] negated=[] OK
+
+PROBE_RC=0

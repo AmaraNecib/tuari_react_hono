@@ -1,0 +1,62 @@
+### lifted block (tail) ###
+  if printf '%s\n' "$numbers" | grep -qx "$neg"; then
+    numbers=$(printf '%s\n' "$numbers" | grep -vx "$neg" || true)
+    echo "Ignoring #$neg: the PR body negates closing it"
+  fi
+done
+numbers=$(printf '%s\n' "$numbers" | grep -E '^[0-9]+$' || true)
+
+### TASK GROUP 1 — nor/neither clause (round-3 finding) ###
+N1 nor-clause 1st ref                                closed=[] negated=[231 232] OK
+N2 nor-clause 2nd ref                                closed=[] negated=[231 232] OK
+N3 never ... nor 1st ref                             closed=[] negated=[239 240] OK
+N4 never ... nor 2nd ref                             closed=[] negated=[239 240] OK
+N5 nor body + affirmative Closes                     closed=[233] negated=[231 232] OK
+N6 neither ... nor (both refs)                       closed=[] negated=[473 474] OK
+N7 neither X nor Y fixes #N (true negation)          closed=[] negated=[248] OK
+N8 nor-led sentence                                  closed=[] negated=[233] OK
+N9 nor + resolve 2nd ref                             closed=[] negated=[231 472] OK
+
+### TASK GROUP 2 — round-2 blocker repros ###
+B1 No, this does not close #150.                     closed=[] negated=[150] OK
+B2 No, it doesn't fix #150.                          closed=[] negated=[150] OK
+B3 No, we never close #150.                          closed=[] negated=[150] OK
+B4 No, this Closes #457 (must close)                 closed=[457] negated=[] OK
+B5 Note: this Closes #458 (must close)               closed=[458] negated=[] OK
+B6 Nobody closes #459 (decided: closes)              closed=[459] negated=[] OK
+B7 4-word control (must close)                       closed=[135] negated=[] OK
+B8 not only ... it Closes (both close)               closed=[448 449] negated=[] OK
+
+### TASK GROUP 3 — FALSE-CLOSE HUNT: negator families ###
+H1 without closing #243 (negation?)                  closed=[243] negated=[] MISMATCH(expected none)
+H2 unable to close #253 (negation?)                  closed=[253] negated=[] MISMATCH(expected none)
+H3 failed to close #254 (negation?)                  closed=[254] negated=[] MISMATCH(expected none)
+H4 reverts the PR that closed #224 (narration?)      closed=[224] negated=[] MISMATCH(expected none)
+H5 Nothing closes #245 (negation?)                   closed=[245] negated=[] MISMATCH(expected none)
+H6 No one closes #246 (negation?)                    closed=[] negated=[246] OK
+H7 unless we close #261 (negation?)                  closed=[261] negated=[] MISMATCH(expected none)
+H8 n/a - affirmative control                         closed=[262] negated=[] OK
+H9 not yet: does not close #250 yet                  closed=[] negated=[250] OK
+H10 not yet: Not closing #251 yet                    closed=[] negated=[251] OK
+H11 do not close #260 (imperative)                   closed=[] negated=[260] OK
+H12 no way this closes #234                          closed=[] negated=[234] OK
+H13 never again closes #273                          closed=[] negated=[273] OK
+H14 nor 2nd ref, 4 intervening words                 closed=[232] negated=[231] MISMATCH(expected none)
+H15 neither ... nor, 4 words                         closed=[474] negated=[473] MISMATCH(expected none)
+H16 nor, 3 words + punctuation                       closed=[232] negated=[231] MISMATCH(expected none)
+H17 nor, long clause                                 closed=[232] negated=[231] MISMATCH(expected none)
+H18 does not, in any way whatsoever, close           closed=[280] negated=[] MISMATCH(expected none)
+H19 cannot be done without closing #267              closed=[] negated=[267] OK
+H20 closes after a comma nor-clause                  closed=[233] negated=[231] OK
+
+### TASK GROUP 4 — FALSE-DROP HUNT (medium at worst) ###
+D1 neither ... ; Closes (unrelated clause)           closed=[] negated=[249] MISMATCH(expected 249)
+D2 Neither X. Closes                                 closed=[] negated=[259] MISMATCH(expected 259)
+D3 not in one clause, Closes in next                 closed=[] negated=[269] MISMATCH(expected 269)
+D4 does not matter; Closes                           closed=[] negated=[270] MISMATCH(expected 270)
+D5 no follow-up needed. Closes                       closed=[] negated=[236] MISMATCH(expected 236)
+D6 caveat: does not address docs. Closes             closed=[] negated=[271] MISMATCH(expected 271)
+D7 never touches it. Closes                          closed=[] negated=[272] MISMATCH(expected 272)
+D8 double negation (should close)                    closed=[] negated=[247] MISMATCH(expected 247)
+D9 do not forget to close (should close)             closed=[] negated=[249] MISMATCH(expected 249)
+D10 nor-clause then affirmative, separate sentence   closed=[233] negated=[231 232] OK
