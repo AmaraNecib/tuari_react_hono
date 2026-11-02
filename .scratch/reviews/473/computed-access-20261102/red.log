@@ -1,0 +1,151 @@
+TAP version 13
+# Subtest: web README documents the current Vite and Tauri-connected app
+ok 1 - web README documents the current Vite and Tauri-connected app
+  ---
+  duration_ms: 18.3206
+  type: 'test'
+  ...
+# Subtest: web workspace does not keep the backup components manifest
+ok 2 - web workspace does not keep the backup components manifest
+  ---
+  duration_ms: 5.4337
+  type: 'test'
+  ...
+# Subtest: splashscreen is a dependency-free, CSP-safe static page
+ok 3 - splashscreen is a dependency-free, CSP-safe static page
+  ---
+  duration_ms: 7.6169
+  type: 'test'
+  ...
+# Subtest: tauri config keeps the main window hidden behind a splashscreen window
+ok 4 - tauri config keeps the main window hidden behind a splashscreen window
+  ---
+  duration_ms: 4.0209
+  type: 'test'
+  ...
+# Subtest: agent branch PR template has no trailing whitespace noise
+ok 5 - agent branch PR template has no trailing whitespace noise
+  ---
+  duration_ms: 12.8949
+  type: 'test'
+  ...
+# Subtest: root package scripts keep web hygiene validation in normal checks
+ok 6 - root package scripts keep web hygiene validation in normal checks
+  ---
+  duration_ms: 12.5822
+  type: 'test'
+  ...
+# Subtest: production web source never calls toLocaleDateString() or Intl.DateTimeFormat() unpinned
+ok 7 - production web source never calls toLocaleDateString() or Intl.DateTimeFormat() unpinned
+  ---
+  duration_ms: 1659.0908
+  type: 'test'
+  ...
+# Subtest: date formatter scanner self-test: pinned passes, unpinned flags, comments do not pass vacuously
+ok 8 - date formatter scanner self-test: pinned passes, unpinned flags, comments do not pass vacuously
+  ---
+  duration_ms: 13.7899
+  type: 'test'
+  ...
+# Subtest: date formatter scanner inspects template expressions without treating template text as code
+ok 9 - date formatter scanner inspects template expressions without treating template text as code
+  ---
+  duration_ms: 1.4532
+  type: 'test'
+  ...
+# Subtest: date formatter scanner checks only effective timezone options on that call
+ok 10 - date formatter scanner checks only effective timezone options on that call
+  ---
+  duration_ms: 2.3865
+  type: 'test'
+  ...
+# Subtest: date formatter scanner recognizes literal computed member names
+not ok 11 - date formatter scanner recognizes literal computed member names
+  ---
+  duration_ms: 8.5274
+  type: 'test'
+  location: 'D:\\projects\\tuari_react_hono\\worktrees\\fix-algeria-day-pins\\tests\\web-hygiene.test.mjs:308:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+    + []
+    - [
+    -   {
+    -     callee: 'toLocaleDateString',
+    -     line: 1
+    -   },
+    -   {
+    -     callee: 'Intl.DateTimeFormat',
+    -     line: 2
+    -   },
+    -   {
+    -     callee: 'toLocaleDateString',
+    -     line: 3
+    -   },
+    -   {
+    -     callee: 'Intl.DateTimeFormat',
+    -     line: 4
+    -   }
+    - ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0:
+      line: 1
+      callee: 'toLocaleDateString'
+    1:
+      line: 2
+      callee: 'Intl.DateTimeFormat'
+    2:
+      line: 3
+      callee: 'toLocaleDateString'
+    3:
+      line: 4
+      callee: 'Intl.DateTimeFormat'
+  actual:
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///D:/projects/tuari_react_hono/worktrees/fix-algeria-day-pins/tests/web-hygiene.test.mjs:315:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: date formatter scanner does not trust shorthand timezone values
+ok 12 - date formatter scanner does not trust shorthand timezone values
+  ---
+  duration_ms: 3.1222
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: index.html has no Google Fonts links or preconnects
+ok 13 - fonts are self-hosted: index.html has no Google Fonts links or preconnects
+  ---
+  duration_ms: 7.1221
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: styles.css never imports Google Fonts CSS
+ok 14 - fonts are self-hosted: styles.css never imports Google Fonts CSS
+  ---
+  duration_ms: 15.3027
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: every family the design tokens reference is declared
+ok 15 - fonts are self-hosted: every family the design tokens reference is declared
+  ---
+  duration_ms: 2.5168
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 14
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3132.6038

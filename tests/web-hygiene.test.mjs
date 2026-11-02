@@ -20,10 +20,19 @@ function formatterName(expression) {
   if (ts.isIdentifier(expression) && expression.text === 'toLocaleDateString') {
     return 'toLocaleDateString';
   }
-  if (!ts.isPropertyAccessExpression(expression)) return null;
-  if (expression.name.text === 'toLocaleDateString') return 'toLocaleDateString';
+  let memberName;
+  if (ts.isPropertyAccessExpression(expression)) {
+    memberName = expression.name.text;
+  } else if (ts.isElementAccessExpression(expression)) {
+    const member = expression.argumentExpression;
+    if (!member || (!ts.isStringLiteral(member) && !ts.isNoSubstitutionTemplateLiteral(member))) return null;
+    memberName = member.text;
+  } else {
+    return null;
+  }
+  if (memberName === 'toLocaleDateString') return 'toLocaleDateString';
   if (
-    expression.name.text === 'DateTimeFormat' &&
+    memberName === 'DateTimeFormat' &&
     ts.isIdentifier(expression.expression) &&
     expression.expression.text === 'Intl'
   ) {
@@ -292,14 +301,40 @@ test('date formatter scanner checks only effective timezone options on that call
     'date.toLocaleDateString("ar-DZ", { timeZone: void 0 })',
     'date.toLocaleDateString("ar-DZ", { timeZone: "  " })',
     'date.toLocaleDateString("ar-DZ", { timeZone: "Africa/Algiers", timeZone: undefined })',
+    'date.toLocaleDateString("ar-DZ", { timeZone: null })',
   ].join('\n');
   assert.deepEqual(
     findUnpinnedDateFormatters(unpinned).map(({ line }) => line),
-    [1, 2, 3, 4, 5],
+    [1, 2, 3, 4, 5, 6],
   );
   const pinned = [
     'date.toLocaleDateString("ar-DZ", { ...options, "timeZone": "Africa/Algiers" })',
     'date.toLocaleDateString("ar-DZ", { timeZone: (getAlgeriaTimeZone() as string) })',
+  ].join('\n');
+  assert.deepEqual(findUnpinnedDateFormatters(pinned), []);
+});
+
+test('date formatter scanner recognizes literal computed member names', () => {
+  const unpinned = [
+    'date["toLocaleDateString"]("ar-DZ")',
+    'new Intl["DateTimeFormat"]("ar-DZ").format(date)',
+    'date[`toLocaleDateString`]("ar-DZ")',
+    'Intl[`DateTimeFormat`]("ar-DZ").format(date)',
+  ].join('\n');
+  assert.deepEqual(
+    findUnpinnedDateFormatters(unpinned).map(({ line, callee }) => ({ line, callee })),
+    [
+      { line: 1, callee: 'toLocaleDateString' },
+      { line: 2, callee: 'Intl.DateTimeFormat' },
+      { line: 3, callee: 'toLocaleDateString' },
+      { line: 4, callee: 'Intl.DateTimeFormat' },
+    ],
+  );
+  const pinned = [
+    'date["toLocaleDateString"]("ar-DZ", { timeZone: "Africa/Algiers" })',
+    'new Intl["DateTimeFormat"]("ar-DZ", { timeZone: getAlgeriaTimeZone() }).format(date)',
+    'date[`toLocaleDateString`]("ar-DZ", { timeZone: "Africa/Algiers" })',
+    'Intl[`DateTimeFormat`]("ar-DZ", { timeZone: getAlgeriaTimeZone() }).format(date)',
   ].join('\n');
   assert.deepEqual(findUnpinnedDateFormatters(pinned), []);
 });

@@ -136,3 +136,13 @@ checks both formatter types, including shorthand after a spread. It failed on
 the previous scanner and passes after conservative shorthand rejection. All
 14 scanner tests pass; no production web/API source changed. Red/green logs
 are in .scratch/reviews/473/shorthand-20261102/.
+
+The three test-audit lenses then found two minor gaps: computed string-literal
+member access was not recognized, and null rejection lacked a direct assertion.
+The scanner now treats literal element access like named property access for
+both formatters, including no-substitution template keys. Four unpinned forms
+and four pinned controls cover these paths; the new regression failed before
+the fix. The effective-options test now explicitly rejects null. All 15 scanner
+tests pass. Logs are in .scratch/reviews/473/computed-access-20261102/. This does
+not add alias or whole-program data-flow analysis. Production files and
+packages remain unchanged from the full API/web guard.
