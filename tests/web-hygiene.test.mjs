@@ -45,7 +45,8 @@ function hasUsableTimeZoneOption(options) {
       continue;
     }
     if (ts.isShorthandPropertyAssignment(property)) {
-      pinned = true;
+      // Require an explicit value rather than assuming this binding is usable.
+      pinned = false;
       continue;
     }
     if (!ts.isPropertyAssignment(property)) {
@@ -191,7 +192,6 @@ test('date formatter scanner self-test: pinned passes, unpinned flags, comments 
   const pinned = [
     'const a = new Date(x).toLocaleDateString("ar-DZ", { timeZone: getAlgeriaTimeZone() })',
     'const b = new Intl.DateTimeFormat("ar-DZ", { year: "numeric", timeZone: getAlgeriaTimeZone() }).format(d)',
-    'const c = new Intl.DateTimeFormat("ar-DZ", { timeZone }).format(d)',
     // A nonempty quoted zone is a valid pin: a valid `Africa/Algiers` literal
     // must not be reported as unpinned (it would fail lint and test).
     'const d = new Intl.DateTimeFormat("ar-DZ", { timeZone: "Africa/Algiers" }).format(d)',
@@ -302,6 +302,18 @@ test('date formatter scanner checks only effective timezone options on that call
     'date.toLocaleDateString("ar-DZ", { timeZone: (getAlgeriaTimeZone() as string) })',
   ].join('\n');
   assert.deepEqual(findUnpinnedDateFormatters(pinned), []);
+});
+
+test('date formatter scanner does not trust shorthand timezone values', () => {
+  const source = [
+    'const timeZone = undefined;',
+    'date.toLocaleDateString("ar-DZ", { timeZone })',
+    'new Intl.DateTimeFormat("ar-DZ", { ...options, timeZone }).format(date)',
+  ].join('\n');
+  assert.deepEqual(
+    findUnpinnedDateFormatters(source).map(({ line }) => line),
+    [2, 3],
+  );
 });
 
 test('fonts are self-hosted: index.html has no Google Fonts links or preconnects', async () => {

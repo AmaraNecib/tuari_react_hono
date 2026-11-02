@@ -1,0 +1,94 @@
+TAP version 13
+# Subtest: web README documents the current Vite and Tauri-connected app
+ok 1 - web README documents the current Vite and Tauri-connected app
+  ---
+  duration_ms: 15.1988
+  type: 'test'
+  ...
+# Subtest: web workspace does not keep the backup components manifest
+ok 2 - web workspace does not keep the backup components manifest
+  ---
+  duration_ms: 1.9451
+  type: 'test'
+  ...
+# Subtest: splashscreen is a dependency-free, CSP-safe static page
+ok 3 - splashscreen is a dependency-free, CSP-safe static page
+  ---
+  duration_ms: 2.1945
+  type: 'test'
+  ...
+# Subtest: tauri config keeps the main window hidden behind a splashscreen window
+ok 4 - tauri config keeps the main window hidden behind a splashscreen window
+  ---
+  duration_ms: 1.9566
+  type: 'test'
+  ...
+# Subtest: agent branch PR template has no trailing whitespace noise
+ok 5 - agent branch PR template has no trailing whitespace noise
+  ---
+  duration_ms: 3.5107
+  type: 'test'
+  ...
+# Subtest: root package scripts keep web hygiene validation in normal checks
+ok 6 - root package scripts keep web hygiene validation in normal checks
+  ---
+  duration_ms: 6.4795
+  type: 'test'
+  ...
+# Subtest: production web source never calls toLocaleDateString() or Intl.DateTimeFormat() unpinned
+ok 7 - production web source never calls toLocaleDateString() or Intl.DateTimeFormat() unpinned
+  ---
+  duration_ms: 1700.9885
+  type: 'test'
+  ...
+# Subtest: date formatter scanner self-test: pinned passes, unpinned flags, comments do not pass vacuously
+ok 8 - date formatter scanner self-test: pinned passes, unpinned flags, comments do not pass vacuously
+  ---
+  duration_ms: 5.3577
+  type: 'test'
+  ...
+# Subtest: date formatter scanner inspects template expressions without treating template text as code
+ok 9 - date formatter scanner inspects template expressions without treating template text as code
+  ---
+  duration_ms: 1.0429
+  type: 'test'
+  ...
+# Subtest: date formatter scanner checks only effective timezone options on that call
+ok 10 - date formatter scanner checks only effective timezone options on that call
+  ---
+  duration_ms: 1.4347
+  type: 'test'
+  ...
+# Subtest: date formatter scanner does not trust shorthand timezone values
+ok 11 - date formatter scanner does not trust shorthand timezone values
+  ---
+  duration_ms: 0.9272
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: index.html has no Google Fonts links or preconnects
+ok 12 - fonts are self-hosted: index.html has no Google Fonts links or preconnects
+  ---
+  duration_ms: 4.7093
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: styles.css never imports Google Fonts CSS
+ok 13 - fonts are self-hosted: styles.css never imports Google Fonts CSS
+  ---
+  duration_ms: 1.6382
+  type: 'test'
+  ...
+# Subtest: fonts are self-hosted: every family the design tokens reference is declared
+ok 14 - fonts are self-hosted: every family the design tokens reference is declared
+  ---
+  duration_ms: 4.9686
+  type: 'test'
+  ...
+1..14
+# tests 14
+# suites 0
+# pass 14
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2892.9374

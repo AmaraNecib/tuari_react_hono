@@ -63,7 +63,9 @@ call and constructor nodes, including JSX expressions and nested template
 interpolations, without reading comments, regex contents or literal text as code.
 Only a usable `timeZone` property in the call's second options argument counts.
 A spread after that property makes the result unknown and is conservatively
-reported. No package or lockfile change is needed.
+reported. Shorthand `{ timeZone }` is also reported: the syntax alone does not
+show a usable value, so callers must provide an explicit value instead. No
+package or lockfile change is needed.
 
 The template-interpolation regression fails against the earlier character
 scanner. Its red evidence is in
@@ -127,3 +129,10 @@ Logs are retained under .scratch/reviews/473/guard-parser-20261102/,
 guard-final-rerun-20261102/ and guard-api-one-worker-20261102/; the scanner's
 initial failing template regression is preserved separately. Hosted CI and
 final-source independent reviews remain required after publication.
+
+The final critic found an unresolved shorthand option that the self-test had
+accepted. A new regression defines the shorthand binding as undefined and
+checks both formatter types, including shorthand after a spread. It failed on
+the previous scanner and passes after conservative shorthand rejection. All
+14 scanner tests pass; no production web/API source changed. Red/green logs
+are in .scratch/reviews/473/shorthand-20261102/.
