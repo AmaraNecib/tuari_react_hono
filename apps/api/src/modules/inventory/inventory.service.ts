@@ -25,7 +25,7 @@ import type {
 } from "@tuari/contracts"
 
 import { InventoryError } from "./inventory.errors"
-import { normalizedQuantityMicroUnits, roundQuantity } from "./inventory.helpers"
+import { addQuantity, quantityDifferenceMatches, roundQuantity, subtractQuantity } from "./inventory.helpers"
 import { normalizePageSize } from "../shared/cursor"
 import { StructuredLogger } from "../../infrastructure/observability/logger"
 import { CompanyError } from "../company/company.errors"
@@ -833,8 +833,15 @@ export class InventoryService {
     }
 
     this.repository.withTransaction(() => {
-      const remainingQty = roundQuantity(sourceBalance.quantity - quantity)
-      if (remainingQty <= 0) {
+      const remainingQty = subtractQuantity(sourceBalance.quantity, quantity)
+      if (
+        !Number.isFinite(remainingQty) || remainingQty < 0 ||
+        !quantityDifferenceMatches(sourceBalance.quantity, remainingQty, quantity)
+      ) {
+        throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل خصم الكمية بدقة المخزون.")
+      }
+
+      if (remainingQty === 0) {
         // Delete the zero-balance record to satisfy the quantity > 0 DB constraint
         this.repository.deleteConsumableBalance(sourceBalance.id)
       } else {
@@ -848,7 +855,14 @@ export class InventoryService {
       })
 
       if (targetBalance) {
-        this.repository.updateConsumableBalanceQuantity(targetBalance.id, roundQuantity(targetBalance.quantity + quantity))
+        const nextTargetQuantity = addQuantity(targetBalance.quantity, quantity)
+        if (
+          !Number.isFinite(nextTargetQuantity) ||
+          !quantityDifferenceMatches(nextTargetQuantity, targetBalance.quantity, quantity)
+        ) {
+          throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل إضافة الكمية بدقة المخزون.")
+        }
+        this.repository.updateConsumableBalanceQuantity(targetBalance.id, nextTargetQuantity)
       } else {
         this.repository.createConsumableBalance({
           inventoryEntryId: entry.id,
@@ -1033,8 +1047,8 @@ export class InventoryService {
     note: string
     occurredAt: string
   }) {
-    // A Number sum can lose micro-balances beside large rows. Normalize each row,
-    // then let guarded allocation and the final remainder decide availability.
+    // Normalize legacy sub-quantum noise, but roundQuantity leaves values already
+    // on the six-decimal grid untouched. Guard both deltas before any write.
     const balances = input.balances.map((balance) => ({ ...balance, quantity: roundQuantity(balance.quantity) }))
 
     let remaining = input.quantity
@@ -1045,17 +1059,8 @@ export class InventoryService {
       const consumed = roundQuantity(Math.min(balance.quantity, remaining))
       const left = roundQuantity(balance.quantity - consumed)
       const nextRemaining = roundQuantity(remaining - consumed)
-      // Number subtraction can round a wrong reverse delta back to the consumed amount.
-      // Compare normalized decimal representations as exact micro-units.
-      const balanceMicroUnits = normalizedQuantityMicroUnits(balance.quantity)
-      const leftMicroUnits = normalizedQuantityMicroUnits(left)
-      const consumedMicroUnits = normalizedQuantityMicroUnits(consumed)
-      const remainingMicroUnits = normalizedQuantityMicroUnits(remaining)
-      const nextRemainingMicroUnits = normalizedQuantityMicroUnits(nextRemaining)
-      const stockDeltaMatches = balanceMicroUnits !== null && leftMicroUnits !== null && consumedMicroUnits !== null &&
-        balanceMicroUnits - leftMicroUnits === consumedMicroUnits
-      const requestDeltaMatches = remainingMicroUnits !== null && nextRemainingMicroUnits !== null && consumedMicroUnits !== null &&
-        remainingMicroUnits - nextRemainingMicroUnits === consumedMicroUnits
+      const stockDeltaMatches = quantityDifferenceMatches(balance.quantity, left, consumed)
+      const requestDeltaMatches = quantityDifferenceMatches(remaining, nextRemaining, consumed)
 
       // At large magnitudes subtraction can do nothing or remove the wrong
       // quantum. Reject inside the transaction rather than fund a movement
@@ -1161,10 +1166,9 @@ export class InventoryService {
         }
       }
 
-      // The picker offers DEFINITIONS; `item.itemId` is a definition id, and so
-      // is the outbound transfer item's persisted FK. The availability rule the
-      // picker compiled to SQL is re-evaluated here against the very rows this
-      // gate is about to mutate, so the two accept the same set at a source.
+      // `item.itemId` is the definition FK; V2 also sends `optionId` for the
+      // concrete balance or asset unit selected. Re-evaluate the shared offer
+      // rule against this source before touching either row.
       const source: InventoryItemOfferSource = input.fromType === "WAREHOUSE"
         ? { locationType: "WAREHOUSE", warehouseId: input.fromId }
         : { locationType: "PROJECT", projectId: input.fromId }
@@ -1190,8 +1194,11 @@ export class InventoryService {
 
         const occurredAt = createAlgeriaTimestamp()
         if (definition.itemType === "CONSUMABLE") {
+          const balances = item.optionId
+            ? stockAtSource.consumableBalances.filter((balance) => balance.id === item.optionId)
+            : stockAtSource.consumableBalances
           this.consumeConsumableFromSource({
-            balances: stockAtSource.consumableBalances,
+            balances,
             quantity,
             definitionName: definition.name,
             from,
@@ -1201,7 +1208,10 @@ export class InventoryService {
           continue
         }
 
-        const assets = stockAtSource.assetUnits.slice(0, quantity)
+        const availableAssets = item.optionId
+          ? stockAtSource.assetUnits.filter((asset) => asset.id === item.optionId)
+          : stockAtSource.assetUnits
+        const assets = availableAssets.slice(0, quantity)
         if (assets.length < quantity) {
           throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${definition.name} غير متوفرة.`)
         }
@@ -1227,7 +1237,7 @@ export class InventoryService {
           fromId: input.fromId,
           counterpartyId: input.counterpartyId,
           transferType: input.transferType,
-          items,
+          items: items.map(({ itemId, quantity, unitPriceDzd }) => ({ itemId, quantity, unitPriceDzd })),
           associatedDebtAccountId,
           notes: input.notes,
         },

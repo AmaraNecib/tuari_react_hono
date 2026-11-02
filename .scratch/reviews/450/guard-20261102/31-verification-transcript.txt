@@ -1,0 +1,9 @@
+{
+  "toolName": "heavy_run",
+  "input": {
+    "label": "#450 full API suite",
+    "command": "cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm test:api",
+    "priority": "normal"
+  },
+  "output": "got slot 1 - running: cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm test:api\n\n> tuari_react_hono@ test:api D:\\worktrees\\tuari_react_hono\\t3-b83e09ba\n> pnpm --filter @tuari/contracts build && pnpm --filter @tuari/api test\n\n\n> @tuari/contracts@0.0.0 build D:\\worktrees\\tuari_react_hono\\t3-b83e09ba\\packages\\contracts\n> tsup src/index.ts --format esm --dts --clean --external zod\n\n\u001b[34mCLI\u001b[39m Building entry: src/index.ts\n\u001b[34mCLI\u001b[39m Using tsconfig: tsconfig.json\n\u001b[34mCLI\u001b[39m tsup v8.5.1\n\u001b[34mCLI\u001b[39m Target: es2022\n\u001b[34mCLI\u001b[39m Cleaning output folder\n\u001b[34mESM\u001b[39m Build start\n\u001b[32mESM\u001b[39m \u001b[1mdist\\index.js \u001b[22m\u001b[32m106.78 KB\u001b[39m\n\u001b[32mESM\u001b[39m ⚡️ Build success in 109ms\n\u001b[34mDTS\u001b[39m Build start\n\u001b[32mDTS\u001b[39m ⚡️ Build success in 6054ms\n\u001b[32mDTS\u001b[39m \u001b[1mdist\\index.d.ts \u001b[22m\u001b[32m497.64 KB\u001b[39m\n\n> @tuari/api@0.0.0 test D:\\worktrees\\tuari_react_hono\\t3-b83e09ba\\apps\\api\n> vitest run\n\n\n RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/api\n\n\n Test Files  96 passed (96)\n      Tests  1750 passed | 3 skipped (1753)\n   Start at  17:49:57\n   Duration  163.63s (transform 13.96s, setup 0ms, import 110.67s, tests 135.92s, environment 21ms)\n\n\n[heavy_run] slot 1 released, exit 0"
+}

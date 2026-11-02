@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { normalizedQuantityMicroUnits, QUANTITY_MIN, roundQuantity } from "./inventory.helpers"
+import { addQuantity, normalizedQuantityMicroUnits, quantityDifferenceMatches, QUANTITY_MIN, roundQuantity, subtractQuantity } from "./inventory.helpers"
 
 describe("roundQuantity (#450 round 4)", () => {
   it("snaps float noise while keeping fractional quantities", () => {
@@ -19,6 +19,11 @@ describe("roundQuantity (#450 round 4)", () => {
     expect(roundQuantity(5e-7)).toBe(1e-6)
   })
 
+  it("preserves large values already at storage precision", () => {
+    expect(roundQuantity(1_000_000_000_001)).toBe(1_000_000_000_001)
+    expect(roundQuantity(999_999_999_999)).toBe(999_999_999_999)
+  })
+
   it("is half away from zero for negatives and normalises -0", () => {
     expect(roundQuantity(-0.7 - 0.1)).toBe(-0.8)
     expect(roundQuantity(-5e-7)).toBe(-1e-6)
@@ -34,6 +39,17 @@ describe("roundQuantity (#450 round 4)", () => {
     expect(roundQuantity(1e-7)).toBe(0)
     expect(roundQuantity(1e21)).toBe(1e21)
     expect(roundQuantity(Number.MAX_VALUE)).toBe(Number.MAX_VALUE)
+  })
+
+  it("does exact decimal balance arithmetic and detects unrepresentable micro deltas", () => {
+    expect(addQuantity(0.1, 0.2)).toBe(0.3)
+    expect(subtractQuantity(0.3, 0.1)).toBe(0.2)
+    expect(subtractQuantity(1_000_000_000_000, 1)).toBe(999_999_999_999)
+    expect(quantityDifferenceMatches(1_000_000_000_000, 999_999_999_999, 1)).toBe(true)
+
+    const largeBalanceRemainder = subtractQuantity(1_000_000_000_001, 0.0001)
+    expect(largeBalanceRemainder).toBe(1_000_000_000_000.9999)
+    expect(quantityDifferenceMatches(1_000_000_000_001, largeBalanceRemainder, 0.0001)).toBe(false)
   })
 
   it("converts normalized quantities to exact micro-units, including exponent notation", () => {

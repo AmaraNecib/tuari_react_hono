@@ -1,0 +1,9 @@
+$ cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm --filter @tuari/api exec vitest run src/modules/inventory/inventory.helpers.test.ts src/modules/inventory/outbound-transfer-availability.test.ts
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/api
+
+
+ Test Files  2 passed (2)
+      Tests  69 passed (69)
+   Start at  17:47:06
+   Duration  20.51s (transform 10.92s, setup 0ms, import 18.21s, tests 2.98s, environment 0ms)

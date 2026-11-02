@@ -1,0 +1,9 @@
+$ cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm --filter @tuari/web exec vitest run src/features/inventory/multi-source-item-picker.test.tsx src/features/inventory/outbound-transfer-create-page-v2.test.tsx
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/web
+
+
+ Test Files  2 passed (2)
+      Tests  5 passed (5)
+   Start at  17:47:33
+   Duration  27.85s (transform 13.62s, setup 0ms, import 22.34s, tests 1.98s, environment 18.43s)

@@ -1,0 +1,9 @@
+{
+  "toolName": "heavy_run",
+  "input": {
+    "label": "#450 full web suite",
+    "command": "cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm test:web",
+    "priority": "normal"
+  },
+  "output": "got slot 1 - running: cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm test:web\n\n> tuari_react_hono@ test:web D:\\worktrees\\tuari_react_hono\\t3-b83e09ba\n> pnpm --filter @tuari/web test\n\n\n> @tuari/web@0.0.0 test D:\\worktrees\\tuari_react_hono\\t3-b83e09ba\\apps\\web\n> vitest run\n\n\n RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/web\n\n\n Test Files  104 passed (104)\n      Tests  968 passed (968)\n   Start at  17:52:47\n   Duration  537.90s (transform 10.03s, setup 0ms, import 374.64s, tests 264.23s, environment 332.72s)\n\n\n[heavy_run] slot 1 released, exit 0"
+}

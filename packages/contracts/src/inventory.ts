@@ -478,6 +478,8 @@ export const outboundTransferItemInputSchema = z.object({
    * the transfer's source (#450).
    */
   itemId: entityIdSchema,
+  /** Concrete balance/unit chosen in the source picker; separate from the definition id. */
+  optionId: entityIdSchema.optional(),
   quantity: z.number().positive(),
   unitPriceDzd: z.number().nonnegative().optional(),
 });

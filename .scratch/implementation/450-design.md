@@ -14,11 +14,11 @@ rule and `InventoryItemOfferSource` from `@tuari/contracts`; adds one repository
 **Deviations from architecture**: none. The port/adapter split is kept — the read is a
 `InventoryRepository` method implemented in `adapters/sqlite-inventory.repository.ts`.
 
-**UI scope**: the PR also corrects V2 picker definition IDs, keeps concrete
-balance/unit `optionId` for deduplication, and returns the create-result envelope.
-Render tests cover the V2 picker callback and existing outbound create page.
-No new UX is introduced by this follow-up. Browser/full-suite/build validation
-is deferred to parent scheduling under the aggregate CPU policy.
+**UI scope**: V2 sends definition IDs and a separate concrete balance/unit
+`optionId` to the write gate. The picker uses the shared offer rule, hides
+archived definitions, and distinguishes loading/error states from empty stock.
+Render tests cover picker callbacks and the V2 submission mapping. Browser,
+full-suite and build validation require parent scheduling under the CPU policy.
 
 ## The defect, confirmed
 
@@ -198,12 +198,49 @@ bug.
 
 No global rounding helper, public magnitude bound, schema, or contract change.
 
+## Current remediation decisions
+
+This remote follow-up is based on local HEAD
+`45a9138e201bc58e5598cb858f93d0782c7202b9`. Earlier sections record the scope
+of prior implementation rounds; this section supersedes their statements that
+no contract or shared quantity-helper change is needed.
+
+### Picker identity and source states
+
+`itemId` is the definition ID persisted on the outbound transfer item.
+`optionId` identifies the selected concrete consumable balance or asset unit.
+The contract keeps it optional for definition-level callers. When supplied,
+the write gate restricts allocation to that row after rereading stock at the
+source. Otherwise deterministic definition-level allocation remains available.
+Concrete IDs are request selectors, not new persisted transfer-item fields.
+
+V2 applies the shared outbound offer rule to active definitions. Definitions
+and source-content requests must finish before the UI reports empty stock.
+Either query failure shows an error; pending queries show a loading state.
+Regression tests use the real Arabic resource and cover both states.
+
+### Decimal balance changes
+
+Preserve stored values already on the six-decimal grid. Decimal addition and
+subtraction avoid scaled-float corruption of large balances. Before writing,
+check finite results and both the decimal difference and actual Number delta
+at storage precision. Reject unrepresentable changes inside the transaction.
+This adds no public magnitude ceiling. Legacy sub-quantum normalization remains
+part of outbound allocation.
+
+Inbound consumable transfers also use decimal addition/subtraction and guarded
+deltas. Tests cover exact large-balance movement and rollback when a destination
+cannot represent an addition. Asset transfer identity semantics are unchanged.
+
+A Luna design review of this dirty tree found no actionable design defect.
+It is a design lens only, not independent debate, test-audit, code-review, or
+full guard evidence. The architecture-improvement skill was unavailable.
+Current-SHA evidence and remaining validation are required before publication.
+
 ## Not in this change
 
-- The inbound path does not share a helper with outbound. `transferConsumable`
-  (`inventory.service.ts`) takes an `inventoryEntryId` and calls `getEntryById`
-  before any balance write; `transferAsset` takes an `assetUnitId` and calls
-  `getAssetUnitById`. Neither resolves a definition, so the outbound bug is not
-  shared and there is nothing to fix there. Verified by reading both methods.
+- Inbound transfers do not acquire definition-based selection. Consumables still
+  take an `inventoryEntryId`; assets still take an `assetUnitId`. The inbound
+  arithmetic changes above do not change either public identity contract.
 - Asset-unit identity in `OUTBOUND_SALE` movements for *reports* is unchanged in
   shape (still `OUTBOUND_SALE` from the source, no destination).

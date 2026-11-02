@@ -273,6 +273,66 @@ describe("createOutboundTransfer resolves a definition to its stock rows (#450)"
     expect(movements[0]!.assetUnitId).toBe("asset-tool")
     expect(movements[0]!.inventoryEntryId).toBe("entry-tool")
   })
+
+  it("consumes the selected balance when a definition has multiple source rows", async () => {
+    const env = await openEnv()
+    seedWarehouse(env.db, "wh-1")
+    seedCounterparty(env.db, "buyer")
+    seedGroup(env.db, "g")
+    seedDefinition(env.db, { id: "def-cement", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-first", invoiceGroupId: "g", itemDefinitionId: "def-cement", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-selected", invoiceGroupId: "g", itemDefinitionId: "def-cement", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-first", entryId: "entry-first", itemDefinitionId: "def-cement", warehouseId: "wh-1", quantity: 4, createdAt: NOW })
+    seedBalance(env.db, { id: "balance-selected", entryId: "entry-selected", itemDefinitionId: "def-cement", warehouseId: "wh-1", quantity: 7, createdAt: LATER })
+
+    env.service.createOutboundTransfer(
+      {
+        fromType: "WAREHOUSE",
+        fromId: "wh-1",
+        counterpartyId: "buyer",
+        transferType: "SALE",
+        items: [{ itemId: "def-cement", optionId: "balance-selected", quantity: 2 }],
+      },
+      AUDIT,
+    )
+
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({
+      inventoryEntryId: "entry-first",
+      warehouseId: "wh-1",
+    })?.quantity).toBe(4)
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({
+      inventoryEntryId: "entry-selected",
+      warehouseId: "wh-1",
+    })?.quantity).toBe(5)
+    expect(env.repository.listAllMovements({}).map((movement) => movement.inventoryEntryId)).toEqual(["entry-selected"])
+  })
+
+  it("moves the selected asset unit when sibling units share a definition", async () => {
+    const env = await openEnv()
+    seedWarehouse(env.db, "wh-1")
+    seedCounterparty(env.db, "buyer")
+    seedGroup(env.db, "g")
+    seedDefinition(env.db, { id: "def-drill", itemType: "ASSET" })
+    seedEntry(env.db, { id: "entry-old-drill", invoiceGroupId: "g", itemDefinitionId: "def-drill", itemType: "ASSET" })
+    seedEntry(env.db, { id: "entry-new-drill", invoiceGroupId: "g", itemDefinitionId: "def-drill", itemType: "ASSET" })
+    seedAsset(env.db, { id: "asset-selected", entryId: "entry-old-drill", warehouseId: "wh-1", updatedAt: NOW })
+    seedAsset(env.db, { id: "asset-newest", entryId: "entry-new-drill", warehouseId: "wh-1", updatedAt: LATER })
+
+    env.service.createOutboundTransfer(
+      {
+        fromType: "WAREHOUSE",
+        fromId: "wh-1",
+        counterpartyId: "buyer",
+        transferType: "SALE",
+        items: [{ itemId: "def-drill", optionId: "asset-selected", quantity: 1 }],
+      },
+      AUDIT,
+    )
+
+    expect(env.repository.getAssetUnitById("asset-selected")?.currentWarehouseId).toBeNull()
+    expect(env.repository.getAssetUnitById("asset-newest")?.currentWarehouseId).toBe("wh-1")
+    expect(env.repository.listAllMovements({}).map((movement) => movement.assetUnitId)).toEqual(["asset-selected"])
+  })
 })
 
 describe("the outbound write gate accepts exactly what the picker offers (#450)", () => {
@@ -593,6 +653,70 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
     expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-inbound", projectId: "prj-1" })?.quantity).toBe(0.2)
   })
 
+  it("preserves an exactly representable large balance during inbound transfer", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedProject(env.db, "prj-large")
+    seedDefinition(env.db, { id: "def-large-transfer", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-large-transfer", invoiceGroupId: "g", itemDefinitionId: "def-large-transfer", itemType: "CONSUMABLE" })
+    seedBalance(env.db, {
+      id: "bal-large-transfer",
+      entryId: "e-large-transfer",
+      itemDefinitionId: "def-large-transfer",
+      warehouseId: "wh-1",
+      quantity: 1_000_000_000_000,
+    })
+
+    env.service.transferConsumable(
+      { inventoryEntryId: "e-large-transfer", quantity: 1, fromWarehouseId: "wh-1", toProjectId: "prj-large" },
+      AUDIT,
+    )
+
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({
+      inventoryEntryId: "e-large-transfer",
+      warehouseId: "wh-1",
+    })?.quantity).toBe(999_999_999_999)
+    expect(env.repository.getConsumableBalanceByEntryAndLocation({
+      inventoryEntryId: "e-large-transfer",
+      projectId: "prj-large",
+    })?.quantity).toBe(1)
+    expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([1])
+  })
+
+  it("rejects an unrepresentable addition to a large target balance atomically", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedProject(env.db, "prj-large-target")
+    seedDefinition(env.db, { id: "def-large-target", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-large-target", invoiceGroupId: "g", itemDefinitionId: "def-large-target", itemType: "CONSUMABLE" })
+    seedBalance(env.db, {
+      id: "bal-large-target-source",
+      entryId: "e-large-target",
+      itemDefinitionId: "def-large-target",
+      warehouseId: "wh-1",
+      quantity: 0.0001,
+    })
+    seedBalance(env.db, {
+      id: "bal-large-target-destination",
+      entryId: "e-large-target",
+      itemDefinitionId: "def-large-target",
+      projectId: "prj-large-target",
+      quantity: 1_000_000_000_000,
+    })
+    const before = snapshotWrites(env.db)
+
+    expect(() => env.service.transferConsumable(
+      {
+        inventoryEntryId: "e-large-target",
+        quantity: 0.0001,
+        fromWarehouseId: "wh-1",
+        toProjectId: "prj-large-target",
+      },
+      AUDIT,
+    )).toThrow("لا يمكن تمثيل إضافة الكمية بدقة المخزون.")
+    expect(snapshotWrites(env.db)).toEqual(before)
+  })
+
   it.each(["WAREHOUSE", "PROJECT"] as const)("rolls back a split-balance shortage at a %s instead of completing an underfilled transfer", async (fromType) => {
     const env = await openEnv()
     seedBase(env)
@@ -690,7 +814,7 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
     [2 ** 33, 0.000001, 8_589_934_591.999999],
     [2 ** 34, 0.000002, 17_179_869_183.999998],
     [1e12, 2, 999_999_999_998],
-    [1e12, 0.0001, 999_999_999_999.9999],
+    [1e12, 1, 999_999_999_999],
   ])("allows a representable normalized deduction from %s of %s", async (stock, quantity, expected) => {
     const env = await openEnv()
     seedBase(env)
@@ -709,7 +833,7 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
   it.each([
     [2 ** 34, 0.000001],
     [2 ** 35, 0.000002],
-    [1e12, 1],
+    [1e12, 0.0001],
   ])("rejects a lost or wrong-quantum deduction from %s of %s", async (stock, quantity) => {
     const env = await openEnv()
     seedBase(env)
@@ -1075,6 +1199,30 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
 
     expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" })).toHaveLength(0)
     expect(env.repository.listAllMovements({})[0]!.quantity).toBe(0.3)
+  })
+
+  it("rolls back a large balance when a micro deduction cannot be represented", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-large-precision", itemType: "CONSUMABLE" })
+    seedEntry(env.db, {
+      id: "e-large-precision",
+      invoiceGroupId: "g",
+      itemDefinitionId: "def-large-precision",
+      itemType: "CONSUMABLE",
+    })
+    seedBalance(env.db, {
+      id: "bal-large-precision",
+      entryId: "e-large-precision",
+      itemDefinitionId: "def-large-precision",
+      warehouseId: "wh-1",
+      quantity: 1_000_000_000_001,
+    })
+    const before = snapshotWrites(env.db)
+
+    expect(() => transfer(env, [{ itemId: "def-large-precision", quantity: 0.0001 }]))
+      .toThrow("لا يمكن تمثيل خصم الكمية بدقة المخزون.")
+    expect(snapshotWrites(env.db)).toEqual(before)
   })
 
   it("rejects a request below the storage quantum instead of writing a zero movement", async () => {

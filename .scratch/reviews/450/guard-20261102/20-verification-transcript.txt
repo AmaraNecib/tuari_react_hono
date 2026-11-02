@@ -1,0 +1,9 @@
+$ cd D:/worktrees/tuari_react_hono/t3-b83e09ba && pnpm --filter @tuari/contracts exec vitest run src/inventory-outbound-transfer.test.ts
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/packages/contracts
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  17:46:57
+   Duration  2.39s (transform 433ms, setup 0ms, import 1.17s, tests 9ms, environment 0ms)

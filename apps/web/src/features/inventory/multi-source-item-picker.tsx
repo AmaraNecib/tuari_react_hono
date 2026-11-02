@@ -4,17 +4,23 @@
  */
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import { matchesItemOfferFilter, outboundPickUsage, resolveItemOffer } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
-import { useInventoryWarehousesQuery, useInventoryProjectsQuery, useInventoryLocationContentsQuery } from "./inventory-hooks"
+import {
+  useInventoryItemDefinitionsQuery,
+  useInventoryWarehousesQuery,
+  useInventoryProjectsQuery,
+  useInventoryLocationContentsQuery,
+} from "./inventory-hooks"
 
 export type SelectedItem = {
-  /** The concrete row offered (a balance id or an asset-unit id); used to dedupe. */
+  /** The concrete row selected (a balance id or asset-unit id); sent to the write gate. */
   optionId: string
-  /** The DEFINITION id the outbound write gate resolves — never the row id. */
+  /** The definition id persisted on the transfer item; never the concrete row id. */
   itemId: string
   itemName: string
   itemType: "CONSUMABLE" | "ASSET"
@@ -49,9 +55,27 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
     warehouseId: sourceType === "WAREHOUSE" ? sourceId : undefined,
     projectId: sourceType === "PROJECT" ? sourceId : undefined,
   })
+  const itemDefinitionsQuery = useInventoryItemDefinitionsQuery({ enabled: Boolean(sourceId) })
+  const source = sourceType === "WAREHOUSE"
+    ? { locationType: "WAREHOUSE" as const, warehouseId: sourceId }
+    : { locationType: "PROJECT" as const, projectId: sourceId }
+  const offerFilter = sourceId ? resolveItemOffer(outboundPickUsage(source)) : null
+  const itemDefinitions = new Map((itemDefinitionsQuery.data?.items ?? []).map((definition) => [definition.id, definition]))
+  const definitionIsOffered = (definitionId: string | null | undefined, itemType: "CONSUMABLE" | "ASSET") => {
+    if (!definitionId || !offerFilter) return false
+    const definition = itemDefinitions.get(definitionId)
+    if (!definition || definition.itemType !== itemType) return false
+
+    return matchesItemOfferFilter(offerFilter, {
+      itemType: definition.itemType,
+      isActive: definition.isActive,
+      stockWarehouseIds: sourceType === "WAREHOUSE" ? [sourceId] : [],
+      stockProjectIds: sourceType === "PROJECT" ? [sourceId] : [],
+    })
+  }
 
   const availableAssets = (sourceContentsQuery.data?.assets ?? []).flatMap((asset) =>
-    asset.itemDefinitionId
+    asset.itemDefinitionId && definitionIsOffered(asset.itemDefinitionId, "ASSET")
       ? [{
           optionId: asset.id,
           id: asset.itemDefinitionId,
@@ -63,14 +87,16 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
       : [],
   )
 
-  const availableConsumables = (sourceContentsQuery.data?.consumables ?? []).map((balance) => ({
-    optionId: balance.id,
-    id: balance.itemDefinitionId,
-    name: balance.itemName,
-    type: "CONSUMABLE" as const,
-    quantity: balance.quantity,
-    locationLabel: balance.locationLabel,
-  }))
+  const availableConsumables = (sourceContentsQuery.data?.consumables ?? [])
+    .filter((balance) => definitionIsOffered(balance.itemDefinitionId, "CONSUMABLE"))
+    .map((balance) => ({
+      optionId: balance.id,
+      id: balance.itemDefinitionId,
+      name: balance.itemName,
+      type: "CONSUMABLE" as const,
+      quantity: balance.quantity,
+      locationLabel: balance.locationLabel,
+    }))
 
   const availableItems = [...availableAssets, ...availableConsumables]
 
@@ -180,7 +206,11 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
           <p className="text-sm font-medium text-ink-3">
             {t("inventory.transfer.availableItems")}
           </p>
-          {availableItems.length === 0 ? (
+          {sourceContentsQuery.isError || itemDefinitionsQuery.isError ? (
+            <p role="alert" className="text-sm text-destructive">{t("common.error")}</p>
+          ) : sourceContentsQuery.isPending || itemDefinitionsQuery.isPending ? (
+            <p role="status" className="text-sm text-muted-foreground">{t("common.loading")}</p>
+          ) : availableItems.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               {t("inventory.transfer.noItems")}
             </p>
