@@ -307,6 +307,27 @@ describe("createOutboundTransfer resolves a definition to its stock rows (#450)"
     expect(env.repository.listAllMovements({}).map((movement) => movement.inventoryEntryId)).toEqual(["entry-selected"])
   })
 
+  it("rejects a selected balance shortage even when sibling stock could fill it", async () => {
+    const env = await openEnv()
+    seedWarehouse(env.db, "wh-1")
+    seedCounterparty(env.db, "buyer")
+    seedGroup(env.db, "g")
+    seedDefinition(env.db, { id: "def-cement", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-first", invoiceGroupId: "g", itemDefinitionId: "def-cement", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-selected", invoiceGroupId: "g", itemDefinitionId: "def-cement", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-first", entryId: "entry-first", itemDefinitionId: "def-cement", warehouseId: "wh-1", quantity: 4, createdAt: NOW })
+    seedBalance(env.db, { id: "balance-selected", entryId: "entry-selected", itemDefinitionId: "def-cement", warehouseId: "wh-1", quantity: 7, createdAt: LATER })
+    const before = snapshotWrites(env.db)
+
+    expect(() => env.service.createOutboundTransfer({
+      fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE",
+      items: [{ itemId: "def-cement", optionId: "balance-selected", quantity: 8 }],
+    }, AUDIT)).toThrowError(expect.objectContaining({
+      appError: expect.objectContaining({ code: "BUSINESS_RULE" }),
+    }))
+    expect(snapshotWrites(env.db)).toEqual(before)
+  })
+
   it.each([
     ["CONSUMABLE", "missing"],
     ["CONSUMABLE", "foreign-source"],

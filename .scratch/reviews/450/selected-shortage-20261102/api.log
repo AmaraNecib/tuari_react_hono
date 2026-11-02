@@ -1,0 +1,32 @@
+
+> tuari_react_hono@ test:api D:\worktrees\tuari_react_hono\t3-b83e09ba
+> pnpm --filter @tuari/contracts build && pnpm --filter @tuari/api test
+
+
+> @tuari/contracts@0.0.0 build D:\worktrees\tuari_react_hono\t3-b83e09ba\packages\contracts
+> tsup src/index.ts --format esm --dts --clean --external zod
+
+[34mCLI[39m Building entry: src/index.ts
+[34mCLI[39m Using tsconfig: tsconfig.json
+[34mCLI[39m tsup v8.5.1
+[34mCLI[39m Target: es2022
+[34mCLI[39m Cleaning output folder
+[34mESM[39m Build start
+[32mESM[39m [1mdist\index.js [22m[32m106.78 KB[39m
+[32mESM[39m ⚡️ Build success in 216ms
+[34mDTS[39m Build start
+[32mDTS[39m ⚡️ Build success in 13559ms
+[32mDTS[39m [1mdist\index.d.ts [22m[32m497.64 KB[39m
+
+> @tuari/api@0.0.0 test D:\worktrees\tuari_react_hono\t3-b83e09ba\apps\api
+> vitest run
+
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/api
+
+
+ Test Files  96 passed (96)
+      Tests  1757 passed | 3 skipped (1760)
+   Start at  18:48:57
+   Duration  257.80s (transform 7.99s, setup 0ms, import 80.19s, tests 114.60s, environment 35ms)
+

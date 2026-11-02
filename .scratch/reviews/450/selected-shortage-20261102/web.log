@@ -1,0 +1,17 @@
+
+> tuari_react_hono@ test:web D:\worktrees\tuari_react_hono\t3-b83e09ba
+> pnpm --filter @tuari/web test
+
+
+> @tuari/web@0.0.0 test D:\worktrees\tuari_react_hono\t3-b83e09ba\apps\web
+> vitest run
+
+
+ RUN  v4.1.4 D:/worktrees/tuari_react_hono/t3-b83e09ba/apps/web
+
+
+ Test Files  104 passed (104)
+      Tests  970 passed (970)
+   Start at  18:53:18
+   Duration  457.05s (transform 20.26s, setup 0ms, import 301.26s, tests 324.17s, environment 225.02s)
+

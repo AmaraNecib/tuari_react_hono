@@ -252,6 +252,15 @@ passed all four tasks; full lint reported 1,702 warnings and zero errors. Logs
 and commands are in .scratch/reviews/450/audit-fixes-20261102/. Fixed-head
 independent review and hosted gates still follow this test-only commit.
 
+The next edge review requested one additional case: the selected consumable
+balance holds 7, a sibling holds 4, and the request is 8. The concrete selector
+must not fall back to sibling stock. That test now expects BUSINESS_RULE and
+compares the full write snapshot, including the selected row's partial-write
+rollback. This is a coverage addition; existing production already rejects it.
+The focused file passes 69 tests. Fresh contracts build, typecheck, lint, full
+API with 1,757 passed and 3 skipped, and full web with 970 passed all pass.
+Logs are in .scratch/reviews/450/selected-shortage-20261102/.
+
 ## Not in this change
 
 - Inbound transfers do not acquire definition-based selection. Consumables still
