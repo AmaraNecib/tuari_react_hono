@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,11 +10,14 @@ import {
   SQLITE_HEADER_MAGIC,
   WRITE_ROW_PROBE_SOURCE,
   assertNotPlaintextDatabase,
+  cleanupAfterProof,
+  cleanupProofWorkspace,
   findSnapshotDatabase,
   isPlaintextSqliteFile,
   parseArgs,
   readFileHeader,
   requiredRuntimeFiles,
+  waitForHealth,
 } from "../apps/desktop/scripts/sqlcipher-encryption-proof.mjs";
 
 const withTempDir = (run) => {
@@ -24,6 +28,99 @@ const withTempDir = (run) => {
     rmSync(dir, { recursive: true, force: true });
   }
 };
+
+test("waitForHealth cancels a stalled response at its deadline", { timeout: 2_000 }, async () => {
+  const sockets = new Set();
+  const server = await new Promise((resolve) => {
+    const listener = net.createServer((socket) => {
+      listener.emit("request-accepted");
+      sockets.add(socket);
+      socket.on("close", () => {
+        sockets.delete(socket);
+        listener.emit("request-closed");
+      });
+    });
+    listener.listen(0, "127.0.0.1", () => resolve(listener));
+  });
+  const { port } = server.address();
+  const child = { exitCode: null, signalCode: null };
+  const accepted = new Promise((resolve) => server.once("request-accepted", resolve));
+  const started = Date.now();
+  try {
+    const health = waitForHealth(port, { timeoutMs: 250, child, transcript: () => "stalled" });
+    await accepted;
+    await assert.rejects(health, /did not answer \/health within 250ms/);
+    assert.ok(Date.now() - started < 1000, "accepted but unanswered health requests must be cancelled at the deadline");
+  } finally {
+    for (const socket of sockets) socket.destroy();
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test("cleanup waits for the child and retries transient locks", async () => {
+  const events = [];
+  let attempts = 0;
+  const child = {
+    exitCode: null,
+    once(event, listener) {
+      assert.equal(event, "close");
+      this.exitListener = listener;
+      events.push("waiting");
+      return this;
+    },
+  };
+  const cleanup = cleanupProofWorkspace("/workspace", {
+    child,
+    terminate: () => {
+      events.push("terminate");
+      child.exitCode = 0;
+      child.exitListener(0, null);
+    },
+    remove: () => {
+      attempts += 1;
+      if (attempts < 3) {
+        const error = new Error("locked");
+        error.code = "EPERM";
+        throw error;
+      }
+      events.push("removed");
+    },
+    pause: async () => { events.push("retry"); },
+  });
+  await cleanup;
+  assert.deepEqual(events, ["waiting", "terminate", "retry", "retry", "removed"]);
+  assert.equal(attempts, 3);
+});
+
+test("cleanup-only failure is reported without replacing the proof failure", async () => {
+  const logs = [];
+  const proofError = new Error("runtime failed");
+  const remove = () => {
+    const error = new Error("still locked");
+    error.code = "EPERM";
+    throw error;
+  };
+
+  await assert.rejects(
+    cleanupAfterProof("/workspace", {
+      proofError: null,
+      remove,
+      pause: async () => {},
+      maxRetries: 0,
+    }),
+    (error) => error.message === "proof checks passed, but cleanup failed: still locked"
+      && error.cause.message === "still locked",
+  );
+  await cleanupAfterProof("/workspace", {
+    proofError,
+    remove,
+    pause: async () => {},
+    maxRetries: 0,
+    log: (message) => logs.push(message),
+  });
+  assert.deepEqual(logs, ["[cleanup] could not remove proof workspace: still locked"]);
+  assert.equal(proofError.message, "runtime failed");
+});
 
 test("isPlaintextSqliteFile recognises the SQLite magic", () => {
   withTempDir((dir) => {

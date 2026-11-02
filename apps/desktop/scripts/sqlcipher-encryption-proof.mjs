@@ -331,19 +331,81 @@ function terminateTree(child) {
   child.kill("SIGKILL");
 }
 
-async function waitForHealth(port, { timeoutMs, child, transcript }) {
+function waitForChildExit(child) {
+  if (!child || child.exitCode != null || child.signalCode != null) return Promise.resolve();
+  return new Promise((resolve) => child.once("close", resolve));
+}
+
+const RETRYABLE_CLEANUP_ERRORS = new Set(["EACCES", "EBUSY", "ENOTEMPTY", "EPERM"]);
+
+export async function cleanupProofWorkspace(workspace, {
+  child = null,
+  keep = false,
+  log = console.log,
+  terminate = terminateTree,
+  remove = rmSync,
+  pause = delay,
+  maxRetries = 5,
+  retryDelayMs = 100,
+} = {}) {
+  if (child) {
+    const exited = waitForChildExit(child);
+    terminate(child);
+    await exited;
+  }
+  if (keep) {
+    log(`\nTemp workspace kept at ${workspace}`);
+    return;
+  }
+
+  for (let retry = 0; ; retry += 1) {
+    try {
+      remove(workspace, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (!RETRYABLE_CLEANUP_ERRORS.has(error?.code) || retry >= maxRetries) throw error;
+      await pause(retryDelayMs);
+    }
+  }
+}
+
+export async function cleanupAfterProof(workspace, {
+  child = null,
+  keep = false,
+  log = console.log,
+  proofError = null,
+  ...cleanupOptions
+} = {}) {
+  try {
+    await cleanupProofWorkspace(workspace, { child, keep, log, ...cleanupOptions });
+  } catch (cleanupError) {
+    const detail = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+    if (proofError) {
+      log(`[cleanup] could not remove proof workspace: ${detail}`);
+      return;
+    }
+    throw new Error(`proof checks passed, but cleanup failed: ${detail}`, { cause: cleanupError });
+  }
+}
+
+export async function waitForHealth(port, { timeoutMs, child, transcript }) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(`sidecar exited (${child.exitCode}) before answering /health\n${transcript()}`);
     }
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
     try {
-      const response = await fetch(`http://127.0.0.1:${port}/health`);
-      if (response.ok) return;
+      const response = await fetch(`http://127.0.0.1:${port}/health`, {
+        signal: AbortSignal.timeout(remainingMs),
+      });
+      if (response.ok && Date.now() < deadline) return;
     } catch {
-      // Not listening yet — keep polling until the deadline.
+      // Not listening yet, or this request reached the overall deadline.
     }
-    await delay(250);
+    const pauseMs = Math.min(250, deadline - Date.now());
+    if (pauseMs > 0) await delay(pauseMs);
   }
   throw new Error(`sidecar did not answer /health within ${timeoutMs}ms\n${transcript()}`);
 }
@@ -417,6 +479,7 @@ export async function runProof(options, { log = console.log } = {}) {
 
   const results = [];
   let child = null;
+  let proofError = null;
   let transcriptBuffer = "";
   const transcript = () => (transcriptBuffer.length > 0 ? transcriptBuffer : "(no sidecar output)");
 
@@ -544,10 +607,11 @@ export async function runProof(options, { log = console.log } = {}) {
     results.push(`daily backup ${path.relative(backupsRoot, snapshot)} is ${snapshotSize} encrypted bytes (key-readable)`);
 
     return { cipherVersion, results };
+  } catch (error) {
+    proofError = error;
+    throw error;
   } finally {
-    if (child) terminateTree(child);
-    if (!options.keep) rmSync(workspace, { recursive: true, force: true });
-    else log(`\nTemp workspace kept at ${workspace}`);
+    await cleanupAfterProof(workspace, { child, keep: options.keep, log, proofError });
   }
 }
 

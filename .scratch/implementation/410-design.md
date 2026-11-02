@@ -216,3 +216,21 @@ round 1's files are under `raw/` because they were superseded.
 4. `PRAGMA user_version > 0` in the live-database check, to catch a
    half-migrated keyed database that today passes the schema equality.
 5. Fix the pre-existing `apps/api` load-flaky timeout files on their own.
+
+### Follow-up hardening on #499 head `69a26bbe`
+
+This lane addresses review findings without changing the encryption protocol,
+schema, native binding, or the literal non-empty `PRAGMA cipher_version` gate.
+Health requests receive the remaining deadline as an abort signal. Cleanup waits
+for the sidecar exit, retries transient Windows lock errors, and reports cleanup
+failure distinctly while preserving a prior proof failure. The release-smoke
+paragraph now distinguishes its existing binding-load and cipher-version checks
+from this job's keyed write, read-back, and backup checks.
+
+The regression test was checked against the unmodified #499 script at
+`69a26bbe`: its accepted-but-unanswered health request remained pending after
+250 ms despite a 75 ms timeout. The updated proof suite passes 17/17, including
+stalled-health cancellation, child-exit ordering, lock retries, and cleanup
+failure reporting. The existing 30-second timeout on bundled native probes was
+verified in place and was not duplicated. Native SQLCipher runtime verification
+remains a Windows CI responsibility.

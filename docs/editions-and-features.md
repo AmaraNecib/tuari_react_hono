@@ -223,16 +223,16 @@ the desktop shell enforces it:
   build; the sidecar build drives `node-gyp` itself through its own
   devDependency (the version is pinned by the lockfile).
 - The build loads the copied addon with the copied Node and requires a non-empty
-  `PRAGMA cipher_version` before publishing, and the installer smoke test checks
-  the same capability on the built artifact.
+  `PRAGMA cipher_version` before publishing. The installer smoke test also loads
+  SQLCipher and checks the cipher version on the built artifact.
 - **A keyed write is proven, not asserted.** The `prove-encryption` job in
   `ci.yml` builds the sidecar with the real SQLCipher dependency (no waiver) and
   then proves against that built runtime that `PRAGMA cipher_version` is
   non-empty, that a keyed write leaves a file which is not `SQLite format 3`,
   that reopening it WITH the key reads the row back, and that the daily-backup
   path writes a backup that is encrypted and key-readable too (#410). The
-  release smoke test still only asserts that a native binding is *present*; it
-  does not load it and does not query `cipher_version`, so it is not this proof.
+  smoke test checks loading and `cipher_version`; this job adds the keyed write,
+  read-back, and encrypted-backup checks.
 
 The end-to-end proof that a keyed write lands ciphertext lives in
 `apps/api/src/modules/backup/backup.encrypted.test.ts`: it writes a keyed
