@@ -640,6 +640,20 @@ check "CRLF body exits 0" "0" "$RC"
 assert_not_closed "a CRLF body keeps the negated reference negated (#524)" 524
 assert_closed "a CRLF body still fires the affirmative close (#525)" 525
 
+for affirmative in "didn't just fix" "don't only fix" "hasn't merely fixed" "haven't simply resolved" "hadn't just fixed" "isn't only fixing" "aren't just resolving" "wasn't merely closing" "weren't simply fixing"; do
+  reset_state
+  mk_issue 528 open "affirmative contraction"
+  run_script "This $affirmative #528, it also improves performance."
+  assert_closed "affirmative contraction '$affirmative' closes (#528)" 528
+done
+
+for negative in "can't just fix" "couldn't simply resolve" "won't only fix" "shouldn't merely close" "wouldn't just resolve" "mustn't simply fix" "needn't only close"; do
+  reset_state
+  mk_issue 529 open "negative modal control"
+  run_script "This $negative #529."
+  assert_not_closed "negative modal '$negative' stays open (#529)" 529
+done
+
 for test_locale in C C.utf8; do
   reset_state
   mk_issue 526 open "non-ASCII lowercase after abbreviation"

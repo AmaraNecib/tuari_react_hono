@@ -189,7 +189,9 @@ NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_REF}"
 # the old line filter threw away "…does not fix #443" because "not only"
 # appeared earlier in the same span). Emphasis is allowed between the words
 # and before the verb (round-2 finding 4: `not **only** fixes #N` closes).
-AFFIRMATIVE_NEGATOR='(not|doesn[[:punct:]]t)'
+# Indicative contractions support the affirmative idiom; modal prohibitions
+# such as "can't just fix" must remain negated.
+AFFIRMATIVE_NEGATOR='(not|(don|doesn|didn|hasn|haven|hadn|isn|aren|wasn|weren)[[:punct:]]t)'
 AFFIRMATIVE_IDIOM="^${AFFIRMATIVE_NEGATOR}[[:space:]*_]+(only|just|merely|simply)[[:space:]*_]+${CLOSE_REF}"
 
 # One line, not many: grep is line-based, and "does not\nclose #N" is the same
