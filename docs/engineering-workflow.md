@@ -137,11 +137,11 @@ same-family sessions under the owner's standing approval and record:
 {"independence":{"approvedBy":"owner","reason":"Standing owner approval: OpenCode unavailable; same-family separate-session review"}}
 ```
 
-Record actual reviewer session/model IDs and source SHAs. Never infer a model,
-score or verdict from a clean command. The local `reviewloop` requires a
-current-head 5/5 with no unresolved actionable finding. Hosted review remains
-required when publication is authorized: request Greptile once per pushed
-head. Missing verdicts, including exhausted credit, block merge; do not retry
+Record actual reviewer session/model IDs and source SHAs. Never infer a model
+or verdict from a clean command. No local score or separate confidence
+assessment is required. Greptile is the scored review gate: require its
+current-head 5/5 and resolve actionable findings when publication is authorized.
+Request Greptile once per pushed head. Missing verdicts, including exhausted credit, block merge; do not retry
 to spend more credit on the same head. Preserve existing configured hosted
 requirements rather than claiming they were waived.
 

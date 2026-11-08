@@ -35,8 +35,9 @@ Verify the committed SHA, not an uncommitted draft.
   actual reviewer IDs/models and any same-family exception.
 - A bounded correction has affected proof and one fresh combined-delta review,
   with unchanged conclusions carried forward explicitly.
-- The local reviewloop records current-head 5/5 and no unresolved actionable
-  finding. A passing suite is not a review.
+- Resolve local actionable findings. No local score or separate confidence
+  assessment is required. Greptile is the scored review gate when publication
+  is authorized; a passing suite is not a review.
 - The working tree has no unintended source changes. Ignored logs do not
   require cleanup or another commit.
 

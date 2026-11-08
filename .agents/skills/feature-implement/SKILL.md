@@ -37,7 +37,8 @@ read-only session at the committed HEAD. This repository retains all three
 initial lenses. Give them the actual worktree, base/head, spec, direct callers
 and prior evidence, not an empty fresh checkout.
 
-Use `reviewloop` to record exact-tree executions and finding dispositions.
+Record exact-tree executions and finding dispositions in ignored local reports.
+No local scored review or separate confidence-assessment step is required.
 Verify claims against source. A bounded fix is committed, checked with affected
 proof, and inspected by one fresh combined-delta reviewer. Carry unchanged
 conclusions forward explicitly; rerun another lens only for new risk.

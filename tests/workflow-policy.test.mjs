@@ -25,7 +25,7 @@ test('active lifecycle instructions require affected proof, not automatic full-s
   for (const file of ['.husky/pre-push', '.agents/skills/implement/SKILL.md']) {
     assert.doesNotMatch(read(file), /pnpm test:api|pnpm test:web|full test suite once/);
   }
-  for (const skill of ['feature-implement', 'guard', 'reviewloop']) {
+  for (const skill of ['feature-implement', 'guard']) {
     const content = read(`.agents/skills/${skill}/SKILL.md`);
     assert.match(content, /committed/);
     assert.match(content, /bounded|correction/i);
@@ -34,6 +34,17 @@ test('active lifecycle instructions require affected proof, not automatic full-s
   }
   assert.match(read('docs/ci-final-activation.md'), /15368/);
   assert.match(read('docs/ci-final-activation.md'), /strict\/up-to-date/);
+});
+
+test('Greptile is the scored gate without an extra local confidence step', () => {
+  assert.equal(existsSync(path.join(root, '.agents/skills/reviewloop/SKILL.md')), false);
+  for (const file of ['REVIEW_WORKFLOW.md', 'docs/engineering-workflow.md',
+    '.agents/skills/feature-implement/SKILL.md', '.agents/skills/guard/SKILL.md',
+    '.agents/skills/capture-wisdom/SKILL.md']) {
+    assert.doesNotMatch(read(file), /reviewloop/i);
+  }
+  assert.match(read('docs/engineering-workflow.md'), /Greptile is the scored review gate/);
+  assert.match(read('docs/engineering-workflow.md'), /No local score or separate confidence/);
 });
 
 test('wisdom is indexed by topics and every category link resolves', () => {
@@ -57,7 +68,7 @@ test('wisdom is indexed by topics and every category link resolves', () => {
 
 test('updated skill references and delegation template exist', () => {
   const skills = ['feature-implement', 'guard', 'implement', 'code-review', 'debate', 'test-audit',
-    'reviewloop', 'capture-wisdom', 'crew-dispatch', 'writing-for-agents', 'improve-codebase-architecture'];
+    'capture-wisdom', 'crew-dispatch', 'writing-for-agents', 'improve-codebase-architecture'];
   for (const skill of skills) {
     const content = read(`.agents/skills/${skill}/SKILL.md`);
     assert.match(content, /^---\r?\nname:/);

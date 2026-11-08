@@ -10,8 +10,9 @@ publication until acceptance.
 
 The adoption updates `feature-implement`, `guard`, `implement`,
 `code-review`, `debate`, `test-audit`, `capture-wisdom` and `crew-dispatch`.
-It adds `reviewloop` and `writing-for-agents`, including readable delegation
-instructions. These are adapted phase instructions, not a blind repository
+It adds `writing-for-agents`, including readable delegation instructions.
+The owner excluded the local scored-review step and its skill; Greptile is
+sufficient as the scored review gate. These are adapted phase instructions, not a blind repository
 copy. The source's code-review/test-audit and writing references are retained
 with Tuari execution boundaries.
 

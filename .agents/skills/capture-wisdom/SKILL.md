@@ -18,6 +18,6 @@ Update an existing topic when it recurs and add `Seen in:` references. Preserve
 the failure boundary and a concrete prevention step. Remove obsolete commands
 and duplicated workflow policy only with a documented reason.
 
-Current rules live in the engineering workflow, guard and reviewloop.
+Current rules live in the engineering workflow and guard.
 Wisdom does not add a second review cycle or waive a current gate.
 Use the index to discover topics; do not read every lesson on every task.
