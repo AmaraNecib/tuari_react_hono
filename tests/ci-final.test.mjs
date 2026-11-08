@@ -13,7 +13,8 @@ const success = (outputs = { api: 'false', web: 'false', rust: 'false', e2e_mode
 });
 
 test('unknown, empty, critical and forced CI scopes run every area', () => {
-  for (const files of [[], ['unknown.txt'], ['.github/workflows/ci.yml'], ['pnpm-lock.yaml']]) {
+  for (const files of [[], ['unknown.txt'], ['.github/workflows/ci.yml'], ['pnpm-lock.yaml'],
+    ['scripts/ci/ci-scope.mjs'], ['scripts/ci/ci-acceptance.mjs'], ['tests/ci-final.test.mjs']]) {
     assert.deepEqual(selectCiScope(files), {
       api: 'true', web: 'true', rust: 'true', e2e_mode: 'full', e2e_specs: '',
     });
