@@ -3,6 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.8.1",
   "scripts": {
+    "check:dependency-security": "node --test ./tests/dependency-security.test.mjs",
     "check:web-hygiene": "node --test ./tests/web-hygiene.test.mjs",
     "check:i18n-keys": "node --test ./tests/i18n-keys.test.mjs",
     "check:repo-hygiene": "node --test ./tests/repo-hygiene.test.mjs",
