@@ -24,7 +24,9 @@ test('runtime and tooling lock branches retain vetted security fixes', () => {
     'js-yaml': ['4.3.2'], '@modelcontextprotocol/sdk': ['1.32.0'],
     defu: ['6.1.5'], browserslist: ['4.28.7'], mysql2: ['3.23.1'],
     flatted: ['3.4.2'], 'source-map-js': ['1.2.2'], 'body-parser': ['2.4.0'],
-    'path-to-regexp': ['6.3.0', '8.4.0'],
+    'path-to-regexp': ['6.3.0', '8.4.0'], 'ip-address': ['10.7.4'],
+    jose: ['6.2.13'], '@noble/ciphers': ['1.3.0', '2.4.0'],
+    '@noble/hashes': ['1.8.0', '2.4.0'],
   })) assert.deepEqual(versions(name).sort(), expected.sort(), name);
 });
 
