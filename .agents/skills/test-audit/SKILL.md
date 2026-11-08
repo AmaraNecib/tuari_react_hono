@@ -1,85 +1,30 @@
 ---
 name: test-audit
-description: "Audit test quality using 3 specialized sub-agents: edge case hunter, coverage analyst, and quality reviewer. Use after debate and before code-review — catches shallow test coverage that 'all tests pass' misses. For Standard and High-assurance work."
+description: "Audit whether tests detect reachable contract failures. Use when the risk-selected review calls for a test-quality lens."
 ---
 
-# Test Audit — 3-Agent Test Quality Review
+# Test audit
 
-## Parameters
+This lens assesses test quality; the review tier in `docs/engineering-workflow.md` decides when it runs. One reviewer execution covers the audit. Do not launch a default specialist panel. Ask another reviewer only to resolve a concrete question that source inspection cannot answer.
 
-The caller (feature-implement) provides:
-- **base SHA** — the merge-base commit to diff against
-- **issue ID** — for the evidence file path
-- **head SHA** — current HEAD, for the evidence file path
+## Read and trace
 
-## When to run
+Pin the base and head supplied by the caller. Read changed test files, corresponding source, direct callers and the test-value rubric in `../tdd/SKILL.md`. Follow each acceptance behavior through a realistic caller to the observable result.
 
-After debate (implementation is finalized) and before code-review.
-For Standard and High-assurance work. Skip it only for Lightweight work.
+For each proposed gap, show reachability, the contract at risk, why current tests miss it, and the cheapest adequate test with an independent expected result. For a proposed duplicate, name the surviving test, input, setup and assertion that detect the same failure. Similar syntax, shared code, test counts and line coverage do not prove equivalence.
 
-## How to run
+Check for non-vacuous setup, awaited assertions, isolation, deterministic scheduling and application-level outcomes. Mocks and timers alone are not grounds to remove a test. Treat unproven reachability or missing detection as a hypothesis; preserve existing coverage until evidence proves it redundant.
 
-### 1. Determine what to audit
+## Report
 
-Identify the test files for the changed code using git diff pathspecs:
+Save a concise report to `.scratch/reviews/<issue-id>/<head-sha>-test-audit.md`. Each finding names its test or source location, the consequence and the smallest correction. Keep supported defects separate from hypotheses. Reviewers return findings; the authoring session makes changes and reruns affected tests.
 
-```bash
-git diff <base-sha>...HEAD --name-only -- '*.test.ts'
-git diff <base-sha>...HEAD --name-only -- ':!*.test.ts' ':!__tests__/**'
-```
+## Tuari execution boundary
 
-### 2. Launch all 3 agents in parallel
-
-Each agent reads the test files and corresponding source files.
-
-**Agent 1: Edge Case Hunter**
-```
-You are an EDGE CASE HUNTER. Read the test files and source code.
-Find missing edge cases: empty inputs, boundary values, invalid input,
-error states, overflow, zero values, race conditions.
-
-For each missing edge case:
-- Name it, show where it could break, write a test snippet
-- Rate risk: 🔴 would break, 🟠 subtle bug, 🟡 cosmetic
-```
-
-**Agent 2: Coverage Analyst**
-```
-You are a COVERAGE ANALYST. Read the test files and source code.
-Evaluate:
-1. Does each acceptance criterion have a test?
-2. Are tests diverse or all same pattern?
-3. Any duplicate coverage?
-4. What's missing?
-```
-
-**Agent 3: Quality Reviewer**
-```
-You are a TEST QUALITY REVIEWER. Read the test files.
-Evaluate test names, async handling, setup duplication, assertion quality,
-test isolation, readability.
-Grade: A / B / C / D.
-```
-
-### 3. Wait for all 3 to finish
-
-Collect all outputs.
-
-### 4. Synthesize
-
-| Finding type | Action |
-|-------------|--------|
-| Missing edge case that would break | Fix it |
-| Missing edge case, subtle bug | Fix it |
-| Repetitive tests (duplicate coverage) | Remove duplicates |
-| Poor test names or structure | Fix it |
-| Missing await on async assertions | Fix it |
-
-### 5. Apply fixes, save evidence
-
-Fix all items classified as "Fix it". Commit test fixes.
-
-Save findings to `.scratch/reviews/<issue-id>/<head-sha>-test-audit.md`.
-
-The caller (feature-implement) will publish a summary as a PR comment after
-the PR is opened.
+Read `docs/engineering-workflow.md` for required initial lenses and bounded fix reviews.
+Use a committed, source-frozen HEAD and the actual source-owning worktree.
+Reports stay ignored and local; never commit, attach or post them. Reviewers
+return findings, not source edits or test runs. A worker never starts children
+unless its brief explicitly permits them. Record actual reviewer identities
+and the approved independence exception when needed. A missing or unreadable
+source tree is a blocked execution, never a clean verdict.

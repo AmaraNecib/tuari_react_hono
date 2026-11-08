@@ -1,44 +1,23 @@
 ---
 name: capture-wisdom
-description: "Read and write .agents/wisdom/*.md files. Use at start of a task (read wisdom), after solving a bug (write wisdom), at end of a session (write wisdom)."
-argument-hint: "What lesson to capture or what task you're starting that might benefit from past wisdom"
+description: "Read task-scoped lessons and maintain topic-based wisdom. Workers read and report candidates; only the parent writes repeated lessons."
 ---
 
-# Capture Wisdom
+# Capture wisdom
 
-Read `.agents/wisdom/*.md` at the start of any task. Write to them when
-you learn something worth remembering.
+Read `.agents/wisdom/README.md`, search for the task's symbols or failure mode,
+then read matching lessons. Check their assumptions against current source.
+A historical success does not prove today's cause.
 
-## When to write
+Only the parent writes lessons, after the same failure recurs. Workers report
+applied and deliberately excluded lessons in their commit body, with candidate
+lessons under `Lesson:`. One occurrence is a report, not a new wisdom file.
 
-- A CodeRabbit finding surprised you
-- A bug took more than 15 minutes to diagnose
-- An adversarial review found a real issue
-- You notice the same issue across multiple PRs
-- You're about to end a session
+Use `.agents/wisdom/<category>/<lesson>.md`, without dates in filenames.
+Update an existing topic when it recurs and add `Seen in:` references. Preserve
+the failure boundary and a concrete prevention step. Remove obsolete commands
+and duplicated workflow policy only with a documented reason.
 
-## File conventions
-
-| File | What goes in it |
-|------|----------------|
-| `process.md` | Workflow, tooling, CI, PR conventions, Greptile + CodeRabbit driving, review process |
-| `security.md` | Security patterns, vulnerabilities, contract violations |
-| `testing.md` | Test patterns, common mistakes, coverage advice |
-| `architecture.md` | Design decisions, module boundaries |
-
-## Severity labels
-
-- 🔴 **Critical** — Must-fix, incorrect behavior
-- 🟠 **Major** — Should fix, causes confusion
-- 🟡 **Minor** — Good to know
-- 💡 **Design Principle** — Architectural guidance
-
-## Format
-
-```markdown
-## Finding title (🔴 Severity)
-
-What happened, with enough context for a future agent.
-
-**Always**: What to do next time. Be specific.
-```
+Current rules live in the engineering workflow, guard and reviewloop.
+Wisdom does not add a second review cycle or waive a current gate.
+Use the index to discover topics; do not read every lesson on every task.

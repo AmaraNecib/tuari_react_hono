@@ -92,7 +92,7 @@ test('selectSpecs: an empty diff fails closed to a full run', () => {
 });
 
 test('selectSpecs: docs-only diff is a skip', () => {
-  const scope = selectSpecs(['docs/lessons/x.md', '.agents/wisdom/testing.md', 'README.md']);
+  const scope = selectSpecs(['docs/lessons/x.md', '.agents/wisdom/testing/README.md', 'README.md']);
   assert.equal(scope.mode, 'skip');
   assert.deepEqual(scope.specs, []);
 });

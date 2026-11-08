@@ -1,5 +1,9 @@
-# Review Workflow
+# Review workflow
 
-Commit early and often. Start the next piece of work immediately after pushing — don't wait for review. When review feedback arrives, fix it before your next commit. This keeps velocity high while ensuring review debt never accumulates across commits. The rule is simple: no commit with unresolved review feedback.
+Use [the engineering workflow](docs/engineering-workflow.md), `feature-implement`
+and `reviewloop`. They define affected local proof, committed-source reviews,
+bounded correction rounds and current-head hosted acceptance.
 
-For review comments, use the `code-review` skill which integrates with Greptile to analyze PR feedback.
+Review reports remain ignored and local. Do not commit or post them.
+A worker never publishes or merges. Publication and merge require parent
+authority and the applicable owner acceptance gates.

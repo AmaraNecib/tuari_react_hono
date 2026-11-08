@@ -1,6 +1,10 @@
 # Development Workflow
 
-This document defines the permanent development workflow for the Tuari project. It covers branching, issue tracking, releases, and versioning.
+This document describes planning, issue labels, releases and versioning.
+The [engineering workflow](engineering-workflow.md) is authoritative for agent
+execution, affected local verification, review evidence and CI acceptance.
+Historical branch-protection entries below are intended policy, not verified
+GitHub settings; see [current activation](ci-final-activation.md).
 
 ---
 
