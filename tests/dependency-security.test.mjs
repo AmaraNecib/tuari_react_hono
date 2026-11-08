@@ -20,7 +20,7 @@ test('runtime and tooling lock branches retain vetted security fixes', () => {
     hono: ['4.13.11'], seroval: ['1.6.11'], 'proxy-addr': ['2.0.8'],
     undici: ['7.30.1'], lodash: [], 'fast-uri': ['3.1.9'],
     'brace-expansion': ['1.1.21', '5.0.12'], picomatch: ['2.3.2', '4.0.4'],
-    'deepmerge-ts': [], postcss: ['8.5.23'],
+    'deepmerge-ts': [], postcss: ['8.5.23'], nanoid: ['3.3.20'],
   })) assert.deepEqual(versions(name).sort(), expected.sort(), name);
 });
 
