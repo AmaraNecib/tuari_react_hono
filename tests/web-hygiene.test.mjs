@@ -41,7 +41,19 @@ function formatterName(expression) {
   return null;
 }
 
+function unwrapExpression(expression) {
+  while (expression && (
+    ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) ||
+    ts.isSatisfiesExpression(expression) || ts.isNonNullExpression(expression) ||
+    ts.isTypeAssertionExpression(expression)
+  )) {
+    expression = expression.expression;
+  }
+  return expression;
+}
+
 function hasUsableTimeZoneOption(options) {
+  options = unwrapExpression(options);
   if (!options || !ts.isObjectLiteralExpression(options)) return false;
   let pinned = false;
   for (const property of options.properties) {
@@ -62,10 +74,7 @@ function hasUsableTimeZoneOption(options) {
       pinned = false;
       continue;
     }
-    let value = property.initializer;
-    while (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isNonNullExpression(value)) {
-      value = value.expression;
-    }
+    const value = unwrapExpression(property.initializer);
     pinned = value.kind !== ts.SyntaxKind.NullKeyword &&
       !ts.isVoidExpression(value) &&
       !(ts.isIdentifier(value) && value.text === 'undefined') &&
@@ -337,6 +346,32 @@ test('date formatter scanner recognizes literal computed member names', () => {
     'Intl[`DateTimeFormat`]("ar-DZ", { timeZone: getAlgeriaTimeZone() }).format(date)',
   ].join('\n');
   assert.deepEqual(findUnpinnedDateFormatters(pinned), []);
+});
+
+test('date formatter scanner unwraps options without hiding invalid timezone values', () => {
+  const wrappers = [
+    (options) => `(${options})`,
+    (options) => `${options} as const`,
+    (options) => `${options} satisfies Intl.DateTimeFormatOptions`,
+    (options) => `(${options} as const)!`,
+    (options) => `<Intl.DateTimeFormatOptions>${options}`,
+  ];
+  for (const wrap of wrappers) {
+    for (const formatter of ['date.toLocaleDateString', 'new Intl.DateTimeFormat']) {
+      const scan = (options) => findUnpinnedDateFormatters(
+        `${formatter}("ar-DZ", ${wrap(options)})`, 'source.ts',
+      );
+      assert.deepEqual(scan('{ timeZone: "Africa/Algiers" }'), []);
+      assert.deepEqual(scan('{ timeZone: getAlgeriaTimeZone() }'), []);
+      for (const options of [
+        '{}', '{ timeZone: undefined }', '{ timeZone: null }',
+        '{ timeZone: "" }', '{ timeZone: void 0 }',
+        '{ timeZone: "Africa/Algiers", ...options }',
+      ]) {
+        assert.equal(scan(options).length, 1, `${formatter}: ${wrap(options)}`);
+      }
+    }
+  }
 });
 
 test('date formatter scanner does not trust shorthand timezone values', () => {
