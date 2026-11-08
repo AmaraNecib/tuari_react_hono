@@ -1805,7 +1805,7 @@ fn load_runtime_secrets(app: &AppHandle) -> Result<RuntimeSecrets, String> {
     })
 }
 
-fn ensure_file_exists(file_path: &PathBuf) -> Result<(), String> {
+fn ensure_file_exists(file_path: &Path) -> Result<(), String> {
     if file_path.exists() {
         return Ok(());
     }
@@ -1815,8 +1815,8 @@ fn ensure_file_exists(file_path: &PathBuf) -> Result<(), String> {
 }
 
 fn migrate_legacy_db_if_needed(
-    current_path: &PathBuf,
-    legacy_path: &PathBuf,
+    current_path: &Path,
+    legacy_path: &Path,
 ) -> Result<(), String> {
     if current_path.exists() || !legacy_path.exists() {
         return Ok(());
