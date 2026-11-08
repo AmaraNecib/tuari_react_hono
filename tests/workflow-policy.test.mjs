@@ -40,9 +40,11 @@ test('Greptile is the scored gate without an extra local confidence step', () =>
   assert.match(read('docs/engineering-workflow.md'), /Greptile is the scored review gate/);
   assert.match(read('docs/engineering-workflow.md'), /No local score or separate confidence/);
   const greploop = read('.agents/skills/greploop/SKILL.md');
-  assert.match(greploop, /Run only when the owner explicitly requests local Greptile review/);
-  assert.match(greploop, /not an additional local 5\/5 prerequisite/);
-  assert.doesNotMatch(greploop, /The local clean condition|Local mode \(default|Maximum: \*\*5 iterations/);
+  assert.match(greploop, /Use GitHub PR comments and review threads/);
+  assert.match(greploop, /Never run the Greptile CLI/);
+  assert.match(greploop, /once per pushed\s+head/);
+  assert.match(greploop, /no push, request\s+comment, hosted review/);
+  assert.doesNotMatch(greploop, /Optional local CLI review|The local clean condition|Local mode \(default/);
 });
 
 test('wisdom is indexed by topics and every category link resolves', () => {

@@ -1,48 +1,49 @@
 ---
 name: greploop
-description: "Resolve Greptile findings against a pinned head. Hosted review is the scored gate; local CLI review runs only when explicitly requested."
+description: "Resolve hosted Greptile feedback through GitHub PR comments and review threads. Never run the Greptile CLI."
 license: MIT
 metadata:
   author: greptileai
 ---
 
-# Greptile finding resolution
+# Hosted Greptile review
 
-Read `docs/engineering-workflow.md`. Greptile is the scored review gate when
-publication is authorized. There is no mandatory local scoring loop or extra
-confidence-assessment step. This skill grants no publication authority.
+Read `docs/engineering-workflow.md`. Use GitHub PR comments and review threads,
+not the Greptile CLI. There is no local scoring loop or separate confidence
+assessment. This skill grants no publication authority.
 
-## Hosted review
+## Request and read
 
-1. Confirm the repository, intended base and current head. The authorized
-   parent publishes, links and watches the PR; workers never publish.
-2. Request Greptile once per pushed head. Do not request repeat reviews on the
-   same head. A missing verdict or exhausted credit blocks merge; preserve the
-   watch and report the blocker rather than retrying to spend more credit.
-3. Read findings and threads, not just the status. Verify each claim against
-   current source and direct callers. Fix valid findings with affected proof;
-   explain false positives with source evidence rather than silently dismissing.
-4. Commit named files for bounded corrections. Use the workflow's bounded
-   delta review, not a restart of all initial lenses. A new head needs a new
-   hosted verdict; never relabel old results as current.
-5. Require current-head Greptile 5/5 and no unresolved actionable findings.
-   Separately verify `CI acceptance`, effective protection, owner authority
-   and issue acceptance. This skill never authorizes merge or issue closure.
+1. Confirm the repository, PR, intended base and current head. Only the
+   authorized parent pushes, links and watches the PR; workers never publish.
+2. Request Greptile through the GitHub PR comment mechanism once per pushed
+   head. Check existing requests before posting. Use the repository's configured
+   reviewer mention; do not guess a bot account or request duplicate reviews.
+3. Read GitHub PR comments, reviews and inline review threads. Verify that the
+   verdict covers the current head. A successful comment submission is not a
+   completed review. Missing verdicts or exhausted credit block merge; do not
+   repeat the request to spend more credit on the same head.
+4. Verify findings against current source and direct callers. Fix valid
+   findings with affected proof. Explain false positives with source evidence;
+   never silently dismiss them or treat an outdated thread as resolved.
+5. Commit named files for corrections. Follow the workflow's bounded delta
+   review. After an authorized push, request review once for the new head.
+   Require current-head Greptile 5/5 and no unresolved actionable findings.
 
-No publication, hosted requests or comments run during an owner-requested
-local-only task. Stop at the local handoff without calling it hosted acceptance.
+Use GitHub tools or `gh api` to read and respond to feedback. Keep finding
+replies in their existing threads where possible. Resolve a thread only after
+verifying its fix. Never run `greptile review`, invoke `cli-review`, install
+Greptile, or substitute a local result for the hosted verdict.
 
-## Optional local CLI review
+## Boundaries
 
-Run only when the owner explicitly requests local Greptile review. Load
-`cli-review` for its execution and authentication rules. Pin committed head and
-base; the CLI does not review uncommitted files. Do not install packages or
-start a paid review merely because a command is available.
+Owner-requested local-only work stops at the local handoff: no push, request
+comment, hosted review or claim of hosted acceptance. Do not fall back to a CLI
+because publication is forbidden or a hosted verdict is unavailable.
 
-Report the actual CLI verdict, findings and score if supplied. The result is
-advisory, not an additional local 5/5 prerequisite or a substitute for hosted
-acceptance. Do not automatically repeat the CLI until a score is reached.
+Save operational records under ignored `.scratch/reviews/<scope>/` with exact
+source SHA. Never commit, attach or post report files. Authorized review-request
+comments and concise finding replies are not permission to publish local reports.
 
-Save reports under ignored `.scratch/reviews/<scope>/` with exact source SHA.
-Never commit, post or attach reports. Preserve failed attempts and provenance.
-A green command is not proof that findings were resolved.
+Check `CI acceptance`, effective protection, owner authority and issue
+acceptance separately. This skill never authorizes merge or issue closure.
