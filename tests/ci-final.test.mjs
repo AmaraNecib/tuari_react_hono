@@ -52,6 +52,19 @@ test('aggregate permits only successful checks and selector-proven skips', () =>
   }
 });
 
+test('aggregate accepts GitHub-omitted empty specs only for full or skipped E2E', () => {
+  for (const e2e_mode of ['full', 'skip']) {
+    const needs = success({ api: 'false', web: 'false', rust: 'false', e2e_mode });
+    if (e2e_mode === 'full') needs['test-e2e'].result = 'success';
+    assert.deepEqual(acceptanceErrors(needs), []);
+  }
+  const affected = success({ ...success().detect.outputs, e2e_mode: 'affected' });
+  assert.ok(acceptanceErrors(affected).includes('invalid e2e specs'));
+  for (const e2e_specs of [null, 0, false]) {
+    assert.ok(acceptanceErrors(success({ ...success().detect.outputs, e2e_specs })).includes('invalid e2e specs'));
+  }
+});
+
 test('aggregate rejects missing, malformed or contradictory selector proof', () => {
   for (const outputs of [{}, { api: 'false' }, { ...success().detect.outputs, rust: '0' },
     { ...success().detect.outputs, e2e_mode: 'affected', e2e_specs: '' },

@@ -7,7 +7,9 @@ export function acceptanceErrors(needs) {
     if (!['true', 'false'].includes(output[key])) errors.push(`invalid selector ${key}`);
   }
   if (!['full', 'affected', 'skip'].includes(output.e2e_mode)) errors.push('invalid e2e mode');
-  const specs = output.e2e_specs;
+  // GitHub omits empty job outputs from toJSON(needs).
+  const specs = output.e2e_specs === undefined && ['full', 'skip'].includes(output.e2e_mode)
+    ? '' : output.e2e_specs;
   if (typeof specs !== 'string' ||
       (output.e2e_mode === 'affected'
         ? !/^tests\/e2e\/[\w./-]+\.spec\.[cm]?[jt]sx?( tests\/e2e\/[\w./-]+\.spec\.[cm]?[jt]sx?)*$/.test(specs)
