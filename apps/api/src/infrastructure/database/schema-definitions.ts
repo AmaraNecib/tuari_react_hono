@@ -5,6 +5,8 @@ export const schemaStatements = [
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
     "image" TEXT,
+    "email" TEXT NOT NULL UNIQUE DEFAULT (lower(hex(randomblob(16))) || '@users.invalid'),
+    "emailVerified" INTEGER NOT NULL DEFAULT 0,
     "phoneNumber" TEXT NOT NULL UNIQUE,
     "phoneNumberVerified" INTEGER NOT NULL DEFAULT 0,
     "created_at" DATETIME NOT NULL,

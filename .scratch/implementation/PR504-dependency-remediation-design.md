@@ -22,6 +22,14 @@ Lock resolution ran with ignored scripts. A frozen installation then linked 809 
 
 Run dependency-lock contract checks and existing workflow/selector tests. Build contracts only as the prerequisite for selected auth/app/router tests. Check API/web/contracts types and relevant lint. Exercise API auth construction, dependencies, Hono app/RPC integration and web auth/session callers. Use the existing plain SQLite binding for fixtures; native loading must be proven independently. No local full suite/browser/audit/native cipher build is needed to validate these changed callers. Commit before background committed-head verification and three distinct initial local review sessions.
 
+## Phone-only auth compatibility (owner approved)
+
+Owner approved the required schema migration and then accepted internal temporary addresses because there are no real users. Better Auth 1.7.7 has no supported core-field removal; do not disable its schema validation. Keep email login, OTP delivery and email recovery disabled. Add email/emailVerified compatibility storage with random unique 128-bit identifiers under reserved `users.invalid`, unverified by default. No phone number appears in the placeholder and no address is collected or mailed.
+
+Fresh SQLite tables generate addresses with a database default. Existing tables receive additive columns, missing-address backfill, a unique index and an insert trigger because SQLite cannot ALTER in a nonconstant default. Preserve existing identities, credentials and nonempty email values; repeat initialization leaves generated identities unchanged. The Drizzle adapter receives the explicit application schema, including in tests that intentionally reject invalid phone input before database access. A legacy-password test now uses the production credential accountId=userId invariant instead of its old phone-number accountId fixture; it still verifies whitespace-password recovery and wrong-password rejection. Regression proof: two new schema tests failed before implementation; migration/default uniqueness/idempotence, auth and bootstrap files now pass19/19, API types pass.
+
+Parent also vetted resolved Noble2.4.0 and JOSE; rejected remediation-day JOSE6.2.16 in favor of attested October20 release6.2.13 with no advisories returned by OSV/deps.dev/GitHub. Exact records remain local. This supports auth dependencies only, not SQLCipher database-driver acceptance.
+
 ## Completion
 
 Publish a dependent security PR with exact limitations, measured vetting summary and current-head results. Keep PR #504 watched. Neither PR may merge without the owner. Hosted audit establishes remaining findings; local lock tests only protect the documented dependency-resolution contracts.

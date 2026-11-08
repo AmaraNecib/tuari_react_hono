@@ -65,6 +65,29 @@ async function hasStatusCheckConstraints(db: DbExecutor) {
   return tableSql.every((entry) => entry.hasFragment);
 }
 
+/** Add Better Auth compatibility fields without collecting an email address. */
+async function ensurePhoneOnlyAuthFields(db: DbExecutor) {
+  if (!(await hasColumn(db, "user", "email"))) {
+    await db.$executeRawUnsafe('ALTER TABLE "user" ADD COLUMN "email" TEXT');
+  }
+  if (!(await hasColumn(db, "user", "emailVerified"))) {
+    await db.$executeRawUnsafe('ALTER TABLE "user" ADD COLUMN "emailVerified" INTEGER NOT NULL DEFAULT 0');
+  }
+  await db.$executeRawUnsafe(
+    `UPDATE "user" SET "email" = lower(hex(randomblob(16))) || '@users.invalid', "emailVerified" = 0 WHERE "email" IS NULL OR "email" = ''`,
+  );
+  await db.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "user_email_key" ON "user" ("email")');
+  // SQLite cannot add a nonconstant DEFAULT with ALTER TABLE. Existing tables
+  // get the same generated value after inserts; fresh tables use their default.
+  await db.$executeRawUnsafe(
+    `CREATE TRIGGER IF NOT EXISTS "user_internal_email_insert" AFTER INSERT ON "user"
+      WHEN NEW."email" IS NULL OR NEW."email" = ''
+      BEGIN
+        UPDATE "user" SET "email" = lower(hex(randomblob(16))) || '@users.invalid', "emailVerified" = 0 WHERE "id" = NEW."id";
+      END`,
+  );
+}
+
 /** Migrate legacy camelCase timestamp columns to snake_case. */
 async function syncLegacyTimestampColumns(db: DbExecutor) {
   if ((await hasColumn(db, "user", "createdAt")) || (await hasColumn(db, "user", "updatedAt"))) {
@@ -1727,6 +1750,7 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   await runDebtAccountWorkerDirectionMigration(db);
   await runPaymentAllocationRestrictMigration(db);
 
+  await ensurePhoneOnlyAuthFields(db);
   await syncLegacyTimestampColumns(db);
   await repairLegacyAuthTables(db);
 
