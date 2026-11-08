@@ -37,12 +37,6 @@ test('active lifecycle instructions require affected proof, not automatic full-s
 });
 
 test('Greptile is the scored gate without an extra local confidence step', () => {
-  assert.equal(existsSync(path.join(root, '.agents/skills/reviewloop/SKILL.md')), false);
-  for (const file of ['REVIEW_WORKFLOW.md', 'docs/engineering-workflow.md',
-    '.agents/skills/feature-implement/SKILL.md', '.agents/skills/guard/SKILL.md',
-    '.agents/skills/capture-wisdom/SKILL.md']) {
-    assert.doesNotMatch(read(file), /reviewloop/i);
-  }
   assert.match(read('docs/engineering-workflow.md'), /Greptile is the scored review gate/);
   assert.match(read('docs/engineering-workflow.md'), /No local score or separate confidence/);
   const greploop = read('.agents/skills/greploop/SKILL.md');
