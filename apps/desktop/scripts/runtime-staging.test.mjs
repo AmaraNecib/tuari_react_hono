@@ -117,6 +117,27 @@ test("a successful probe publishes the staged runtime and removes the staging tr
   });
 });
 
+for (const phase of ["build", "probe"]) {
+  test(`a failed ${phase} preserves its error when staging cleanup also fails`, () => {
+    withLayout(({ destinationDir, stagingDir, previousHash }) => {
+      const original = new Error(`${phase} original failure`);
+      const warnings = [];
+      assert.throws(() => buildProbeAndPublishRuntime({
+        stagingDir, destinationDir,
+        build: () => { if (phase === "build") throw original; },
+        probe: () => { if (phase === "probe") throw original; },
+        remove: () => { throw new Error("EBUSY staging locked"); },
+        warn: (message) => warnings.push(message),
+      }), (error) => error === original);
+      assert.equal(hashTree(destinationDir), previousHash);
+      assert.ok(existsSync(stagingDir));
+      assert.equal(warnings.length, 1);
+      assert.match(warnings[0], /EBUSY staging locked/);
+      assert.ok(warnings[0].includes(stagingDir));
+    });
+  });
+}
+
 test("a failed probe leaves the previous runtime byte-for-byte intact", () => {
   withLayout(({ root, destinationDir, stagingDir, previousHash }) => {
     assert.throws(
@@ -1180,10 +1201,13 @@ test("concurrent publishers serialize recovery and swap without stranding the pr
     }
     assert.fail(`Timed out waiting for ${paths.join(" or ")}`);
   };
-  const exitCode = (child) => new Promise((resolve, reject) => {
-    child.once("error", reject);
-    child.once("exit", (code) => resolve(code));
-  });
+  const exitCode = (child) => {
+    if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(child.exitCode);
+    return new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", (code) => resolve(code));
+    });
+  };
 
   writeTree(destinationDir, { "marker.txt": "previous-working-runtime" });
   writeTree(stagingA, { "marker.txt": "runtime-A" });

@@ -725,6 +725,7 @@ export const buildProbeAndPublishRuntime = ({
   lockTimeoutMs = DEFAULT_PUBLISH_LOCK_TIMEOUT_MS,
   onLockWait,
 }) => {
+  let operationFailed = false;
   try {
     build();
     probe();
@@ -749,7 +750,18 @@ export const buildProbeAndPublishRuntime = ({
         onLockWait,
       });
     }
+  } catch (error) {
+    operationFailed = true;
+    throw error;
   } finally {
-    remove(stagingDir, { recursive: true, force: true });
+    try {
+      remove(stagingDir, { recursive: true, force: true });
+    } catch (cleanupError) {
+      if (!operationFailed) throw cleanupError;
+      // Keep the build/probe failure primary even if reporting also fails.
+      try {
+        warn(`Staging cleanup failed; leftover path ${stagingDir}: ${cleanupError.message}`);
+      } catch { /* Preserve the original operation failure. */ }
+    }
   }
 };
