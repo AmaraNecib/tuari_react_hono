@@ -359,6 +359,15 @@ describe("InventoryInvoiceDetailsPage pins the invoice day (#473)", () => {
     restoreTimeZone()
   })
 
+  it("renders a movement instant in Algeria with its time and seconds under a UTC machine", () => {
+    const detail = makeInvoiceGroupDetail()
+    detail.movements[0]!.occurredAt = MIDNIGHT_CROSSING
+    renderPage({ data: detail, isPending: false, isError: false, refetch: vi.fn() })
+
+    expect(screen.getByText("1‏/10‏/2026، 12:00:00 ص")).toBeTruthy()
+    expect(screen.queryByText("30‏/9‏/2026، 11:00:00 م")).toBeNull()
+  })
+
   it("renders the invoice on its Algeria day under a UTC machine", () => {
     expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
     expect(ALGERIA_DAY).not.toBe(UTC_DAY)

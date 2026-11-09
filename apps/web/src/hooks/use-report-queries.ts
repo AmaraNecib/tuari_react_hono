@@ -1,3 +1,4 @@
+import { getAlgeriaTimeZone } from "@/lib/algeria-time";
 /**
  * Hooks for querying report data.
  */
@@ -76,7 +77,7 @@ export function formatReportAsCSV(report: Report): string {
   if (report.type === "INVENTORY") {
     const r = report as InventoryReport;
     lines.push("Inventory Report");
-    lines.push(`Generated: ${new Date(r.generatedAt).toLocaleString("ar-DZ")}`);
+    lines.push(`Generated: ${new Date(r.generatedAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}`);
     lines.push("");
     lines.push("Summary");
     lines.push(`Total Assets (DZD),${r.summary.totalAssetsDzd}`);
@@ -91,7 +92,7 @@ export function formatReportAsCSV(report: Report): string {
   } else if (report.type === "DEBT") {
     const r = report as DebtReport;
     lines.push("Debt Report");
-    lines.push(`Generated: ${new Date(r.generatedAt).toLocaleString("ar-DZ")}`);
+    lines.push(`Generated: ${new Date(r.generatedAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}`);
     lines.push("");
     lines.push("Summary");
     lines.push(`Total Outstanding (DZD),${r.summary.totalOutstandingDzd}`);
@@ -107,7 +108,7 @@ export function formatReportAsCSV(report: Report): string {
   } else if (report.type === "MOVEMENT") {
     const r = report as MovementReport;
     lines.push("Movement Report");
-    lines.push(`Generated: ${new Date(r.generatedAt).toLocaleString("ar-DZ")}`);
+    lines.push(`Generated: ${new Date(r.generatedAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}`);
     lines.push("");
     lines.push("Summary");
     lines.push(`Total Movements,${r.summary.totalMovements}`);

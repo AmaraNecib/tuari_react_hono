@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { getAlgeriaTimeZone } from "@/lib/algeria-time";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import type { SystemLogEntry } from "@tuari/contracts";
@@ -102,7 +103,7 @@ export function AuditLogPage() {
   const handleExportCSV = () => {
     const headers = ["التاريخ", "المستخدم", "النطاق", "الإجراء", "معرف المورد", "التغييرات"];
     const rows = filteredLogs.map((log: AuditLog) => [
-      new Date(log.timestamp).toLocaleString("ar-DZ"),
+      new Date(log.timestamp).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() }),
       log.actor,
       log.domain,
       log.action,
@@ -212,7 +213,7 @@ export function AuditLogPage() {
                       <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                         <span>{auditLog.actor}</span>
                         <span>{auditLog.resourceId}</span>
-                        <span>{new Date(auditLog.timestamp).toLocaleString("ar-DZ")}</span>
+                        <span>{new Date(auditLog.timestamp).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}</span>
                       </div>
                     </div>
                   </div>

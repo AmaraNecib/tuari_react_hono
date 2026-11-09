@@ -11,6 +11,7 @@ import { format } from "date-fns"
 
 import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { AuditLogPage } from "./audit-log-page"
+import { MIDNIGHT_CROSSING, pinUtcTimeZone } from "@/test-utils/algeria-day"
 
 const { systemLogList } = vi.hoisted(() => ({ systemLogList: vi.fn() }))
 
@@ -52,6 +53,38 @@ afterEach(() => {
  * written after 00:00 on the picked end date.
  */
 describe("AuditLogPage end-of-day range boundary", () => {
+  it("renders and exports audit instants in Algeria under a UTC machine", async () => {
+    const restore = pinUtcTimeZone()
+    const createObjectURL = vi.fn((blob: Blob) => {
+      expect(blob.type).toBe("text/csv;charset=utf-8;")
+      return "blob:test-export"
+    })
+    vi.stubGlobal("URL", { createObjectURL })
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    try {
+      systemLogList.mockResolvedValue({ items: [logEntry({
+        id: "midnight-log", createdAt: MIDNIGHT_CROSSING, summary: "حدث اختباري",
+      })] })
+      renderPage()
+      await screen.findByText("1‏/10‏/2026، 12:00:00 ص")
+      expect(screen.queryByText("30‏/9‏/2026، 11:00:00 م")).toBeNull()
+      fireEvent.click(screen.getByRole("button", { name: "تصدير CSV" }))
+      expect(createObjectURL).toHaveBeenCalledTimes(1)
+      const blob = createObjectURL.mock.calls[0]![0] as Blob
+      const csv = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.readAsText(blob)
+      })
+      expect(csv).toContain('"1‏/10‏/2026، 12:00:00 ص"')
+      expect(csv).not.toContain("30‏/9‏/2026، 11:00:00 م")
+    } finally {
+      restore()
+      vi.restoreAllMocks()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it("includes a log written at 23:59 on the picked end date and excludes the next day", async () => {
     // The end picker starts empty, so its calendar opens on the SYSTEM month.
     // Anchor the target day to the system clock, not the Algeria day: near a
