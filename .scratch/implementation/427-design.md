@@ -1,6 +1,6 @@
 # Issue #427 salary domain design
 
-Status: proposed storage and integration design, awaiting owner approval. The owner accepted separating approved wages from actual payments, with the employee's reference salary used as a suggested default rather than a third required entry. That acceptance does not select the proposed debt integration, money storage or legacy writer transition. No source behavior has changed.
+Status: product semantics and reuse of the existing debt ledger approved by the owner. The owner accepted separating approved wages from actual payments, with the employee's reference salary used as a suggested default rather than a third required entry. The owner then confirmed one existing debt source, with salary operations increasing or decreasing it. Money storage and the legacy writer transition remain proposed. No source behavior has changed.
 
 ## Scope and authority
 
@@ -23,7 +23,7 @@ The owner explicitly confirmed these examples in this thread:
 - Reference salary 30,000 DZD and cash 35,000 DZD requires explicit classification of the extra 5,000 DZD. A bonus raises approved earnings to 35,000 DZD. A recoverable advance leaves earnings at 30,000 DZD and records 5,000 DZD owed by the worker separately.
 - Approved wages 35,000 DZD and payment 25,000 DZD leaves 10,000 DZD owed to the worker automatically. An optional debt checkbox cannot erase unpaid approved wages.
 
-These confirmations approve product semantics only. Debt integration, integer-cent storage and legacy-writer transition remain proposed below.
+These confirmations approve product semantics. In a subsequent response, the owner approved reuse of the existing debt source, stating: "sure we have one debt and we can add or minus from it because of the salalry as any real case". This selects existing-ledger integration rather than a separate salary obligation store. It does not override the already approved separation of wages payable and advances receivable or authorize silent netting. Integer-cent storage and the legacy-writer transition remain proposed below.
 
 A project may occur repeatedly. Each segment has stable identity and its own amount, with optional positive whole days. Editing a segment must not change another segment or approved total implicitly. Suggestions remain separate from approval.
 
@@ -45,7 +45,7 @@ Keep existing records. Do not reconstruct earnings from legacy cash or reference
 
 ### One obligation source
 
-Recommend existing debt entries as the sole obligation ledger. New salary records hold approval, covered period, allocations, cash classification, correction provenance and links to the relevant debt entries. They must not create a second independently mutable owed balance.
+Owner-approved direction: use existing debt entries as the sole obligation ledger. New salary records hold approval, covered period, allocations, cash classification, correction provenance and links to the relevant debt entries. They must not create a second independently mutable owed balance.
 
 An approval posts a linked PAYABLE increase. A wage payment posts a linked PAYABLE decrease. An advance posts a linked RECEIVABLE increase. Explicit advance-against-wages settlement posts linked decreases to both directions in one transaction, without cash or labor cost. Salary-specific balances derive only from linked salary entries, not unrelated amounts in the same debt account.
 
@@ -73,7 +73,7 @@ Existing debt entries may already represent a worker's opening wages or advances
 
 ## Owner approval requested
 
-1. Approve the recommended existing-debt-ledger integration, salary links and protection against generic commands bypassing salary semantics, or choose the read-only debt-view alternative.
+1. Approved: reuse the existing debt ledger as the sole obligation source. Salary provenance links and guards against generic commands bypassing salary semantics remain implementation obligations to verify, not permission to silently net directions.
 2. Approve additive integer-cent storage for new salary records and its safe-cent write bound, with legacy REAL records preserved and readable.
 3. Approve the staged compatibility policy: additive support first, then coordinated salary workflow switch and retirement of new cash-only writes. No legacy cash becomes inferred earnings. Existing opening obligations require explicit adoption, never duplicate insertion.
 
