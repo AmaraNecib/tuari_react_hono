@@ -1,6 +1,26 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
+
+// Use the package's own platform/libc selection. A compiled fallback must not
+// mask a missing shipped prebuild in a release artifact.
+export const assertSqlcipherPrebuild = (packageDir) => {
+  const require = createRequire(path.join(packageDir, "package.json"));
+  const { getPrebuildPath } = require(path.join(packageDir, "lib", "binding.js"));
+  const binaryPath = getPrebuildPath();
+  if (!binaryPath || !existsSync(binaryPath)) {
+    throw new Error(`Missing encrypted SQLite shipped prebuild in ${packageDir}; no rebuild or plaintext fallback is allowed.`);
+  }
+  const Database = require(packageDir);
+  const db = new Database(":memory:");
+  try {
+    db.prepare("SELECT 1").get();
+  } finally {
+    db.close();
+  }
+  return binaryPath;
+};
 
 const normalizePath = (value) => path.normalize(path.resolve(value));
 

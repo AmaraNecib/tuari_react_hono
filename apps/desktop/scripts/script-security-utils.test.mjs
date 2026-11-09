@@ -5,6 +5,7 @@ import { rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {
+  assertSqlcipherPrebuild,
   copyValidatedTree,
   resolvePnpmExecution,
   resolveTrustedTarPath,
@@ -112,6 +113,26 @@ test("validateReleaseBinEntries rejects unexpected release files", async () => {
     assert.throws(() => validateReleaseBinEntries(tempDir), /unexpected: extra\.dll/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("assertSqlcipherPrebuild rejects a package with no shipped prebuild", async () => {
+  const packageDir = mkdtempSync(path.join(os.tmpdir(), "tuari-sqlcipher-package-"));
+
+  try {
+    mkdirSync(path.join(packageDir, "lib"), { recursive: true });
+    writeFileSync(path.join(packageDir, "package.json"), "{}\n");
+    writeFileSync(
+      path.join(packageDir, "lib", "binding.js"),
+      "exports.getPrebuildPath = () => null;\n",
+    );
+
+    assert.throws(
+      () => assertSqlcipherPrebuild(packageDir),
+      /Missing encrypted SQLite shipped prebuild.*no rebuild or plaintext fallback/,
+    );
+  } finally {
+    await rm(packageDir, { recursive: true, force: true });
   }
 });
 

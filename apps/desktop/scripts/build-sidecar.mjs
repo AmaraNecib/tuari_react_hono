@@ -2,7 +2,7 @@ import { copyFileSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSyn
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { copyValidatedTree, runPnpmCommand } from "./script-security-utils.mjs";
+import { assertSqlcipherPrebuild, copyValidatedTree, runPnpmCommand } from "./script-security-utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -55,31 +55,9 @@ const ensureBetterSqliteBinary = () => {
 };
 
 const ensureSqlcipherBinary = () => {
-  try {
-    const sqlcipherDir = resolvePackageDir("better-sqlite3-sqlcipher");
-    const binaryPath = path.join(sqlcipherDir, "build", "Release", "better_sqlite3.node");
-
-    if (existsSync(binaryPath)) {
-      console.log("better-sqlite3-sqlcipher native binary found.");
-      return true;
-    }
-
-    // Binary not found — try to build it
-    console.log("Building better-sqlite3-sqlcipher native binary...");
-    runPnpmCommand(["rebuild", "better-sqlite3-sqlcipher"], { cwd: apiRoot });
-
-    if (existsSync(binaryPath)) {
-      console.log("better-sqlite3-sqlcipher built successfully.");
-      return true;
-    }
-
-    console.warn("Warning: Could not build better-sqlite3-sqlcipher. Falling back to better-sqlite3.");
-    return false;
-  } catch (error) {
-    console.warn(`Warning: better-sqlite3-sqlcipher not available: ${error.message}`);
-    console.warn("Falling back to better-sqlite3 (no encryption support).");
-    return false;
-  }
+  const sqlcipherDir = resolvePackageDir("better-sqlite3-multiple-ciphers");
+  const binaryPath = assertSqlcipherPrebuild(sqlcipherDir);
+  console.log(`Encrypted SQLite prebuild loaded: ${binaryPath}`);
 };
 
 rmSync(runtimeDir, { recursive: true, force: true });
@@ -91,23 +69,16 @@ runPnpmCommand(["--filter", "@tuari/api", "build"], {
 });
 
 ensureBetterSqliteBinary();
-const hasSqlcipher = ensureSqlcipherBinary();
+ensureSqlcipherBinary();
 
 copyValidatedTree(apiDistDir, path.resolve(runtimeDir, "dist"));
 
-// Copy the SQLite library: prefer sqlcipher if available, otherwise plain better-sqlite3
-if (hasSqlcipher) {
-  const sqlcipherDir = resolvePackageDir("better-sqlite3-sqlcipher");
-  const targetDir = path.resolve(runtimeDir, "node_modules", "better-sqlite3-sqlcipher");
-  mkdirSync(path.dirname(targetDir), { recursive: true });
-  copyValidatedTree(sqlcipherDir, targetDir);
-  console.log("Copied better-sqlite3-sqlcipher to runtime.");
-} else {
-  const betterSqlite3PackageJson = copyPackage("better-sqlite3");
-  const bindingsPackageJson = copyPackage("bindings", betterSqlite3PackageJson);
-  copyPackage("file-uri-to-path", bindingsPackageJson);
-  console.log("Copied better-sqlite3 to runtime (no encryption).");
-}
+// The factory uses the plain driver without a key and the encrypted driver with one.
+copyPackage("better-sqlite3-multiple-ciphers");
+const betterSqlite3PackageJson = copyPackage("better-sqlite3");
+const bindingsPackageJson = copyPackage("bindings", betterSqlite3PackageJson);
+copyPackage("file-uri-to-path", bindingsPackageJson);
+assertSqlcipherPrebuild(path.join(runtimeDir, "node_modules", "better-sqlite3-multiple-ciphers"));
 
 writeFileSync(
   path.resolve(runtimeDir, "package.json"),
