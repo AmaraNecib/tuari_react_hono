@@ -104,7 +104,13 @@ This sequence compares routes, not chooses the owner's transition policy. It doe
 
 Run from a clean checkout at the pinned application revision or the research commit whose application source is unchanged. Use Node 22 on Windows x64 for the observed baseline, install only the frozen lockfile, and leave `APP_DB_KEY` unset. Other platforms need their own observed proof. The embedded fixture key is public research data, never a production credential.
 
-Save the single `cts` block below as `.scratch/reviews/521-replay/probe.cts`. Run from the repository root:
+From the repository root, create a fresh replay parent directory before saving the script:
+
+```powershell
+New-Item -ItemType Directory -Path .scratch/reviews/521-replay -ErrorAction Stop | Out-Null
+```
+
+Save the single `cts` block below as `.scratch/reviews/521-replay/probe.cts`. The parent now exists; keep `data-1` absent so the probe can create it exclusively. Run from the repository root:
 
 ```powershell
 pnpm install --frozen-lockfile
