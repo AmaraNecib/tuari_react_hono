@@ -1,12 +1,12 @@
 # Issue #427 salary domain design
 
-Status: product semantics and reuse of the existing debt ledger approved by the owner. The owner accepted separating approved wages from actual payments, with the employee's reference salary used as a suggested default rather than a third required entry. The owner then confirmed one existing debt source, with salary operations increasing or decreasing it. Money storage and the legacy writer transition remain proposed. No source behavior has changed.
+Status: product semantics and reuse of the existing debt ledger approved by the owner. The owner accepted separating approved wages from actual payments, with the employee's reference salary used as a suggested default rather than a third required entry. The owner then confirmed one existing debt source, with salary operations increasing or decreasing it. The owner rejected integer-cent persistence and selected DZD-denominated decimal amounts, retaining fractional dinars when needed. The legacy writer transition remains proposed. No source behavior has changed.
 
 ## Scope and authority
 
 - Worktree: `D:/worktrees/tuari_react_hono/feat-issue-427-independ-2565729f7d01eaa8`.
 - Branch: `feat/issue-427-independent`.
-- Inspected base and HEAD: `55a61c8f665b468b8b7a375dc3fbff0f83ab0347`, fresh `origin/develop`, including PR #516.
+- Initial inspected base: `55a61c8f665b468b8b7a375dc3fbff0f83ab0347`, including PR #516. Subsequently merged fresh `origin/develop`, including PR #515 at `31430a1bf426bd25c70ef676b606a90ec2bebad6`, into this branch without reset, rebase or discarded changes. Integration HEAD before this decision update: `fb482c6d5bdc7e6121fc878365bd29e03b7cca5e`.
 - Specification: live issue #427 body and its one comment, read in full. Live #449 body and its owner comment were also read in full. The owner comment on #449 supersedes the older C-only wording.
 - Read local `D:/projects/tuari_react_hono/.scratch/sessions/salary-v1-owner-decisions.md`. Its unresolved-opening-balances and out-of-v1 statements are historical. Current issue and session instructions authorize the expanded scope.
 - High-assurance. Reachable risks include duplicated obligations, incorrect debt direction, duplicate labor cost, lost historical records and partial financial writes.
@@ -23,7 +23,7 @@ The owner explicitly confirmed these examples in this thread:
 - Reference salary 30,000 DZD and cash 35,000 DZD requires explicit classification of the extra 5,000 DZD. A bonus raises approved earnings to 35,000 DZD. A recoverable advance leaves earnings at 30,000 DZD and records 5,000 DZD owed by the worker separately.
 - Approved wages 35,000 DZD and payment 25,000 DZD leaves 10,000 DZD owed to the worker automatically. An optional debt checkbox cannot erase unpaid approved wages.
 
-These confirmations approve product semantics. In a subsequent response, the owner approved reuse of the existing debt source, stating: "sure we have one debt and we can add or minus from it because of the salalry as any real case". This selects existing-ledger integration rather than a separate salary obligation store. It does not override the already approved separation of wages payable and advances receivable or authorize silent netting. Integer-cent storage and the legacy-writer transition remain proposed below.
+These confirmations approve product semantics. In a subsequent response, the owner approved reuse of the existing debt source, stating: "sure we have one debt and we can add or minus from it because of the salalry as any real case". This selects existing-ledger integration rather than a separate salary obligation store. It does not override the already approved separation of wages payable and advances receivable or authorize silent netting. The owner subsequently rejected integer-cent storage: "no i prefer it be in dz so 100.50 saved as 100.50 and showed 100.50 even most of this will be 100 but sometimes things can need decimals". Persist and expose DZD values rather than cent-denominated amounts. Preserve fractional dinars; do not restrict amounts to whole dinars. The legacy-writer transition remains proposed below.
 
 A project may occur repeatedly. Each segment has stable identity and its own amount, with optional positive whole days. Editing a segment must not change another segment or approved total implicitly. Suggestions remain separate from approval.
 
@@ -39,9 +39,9 @@ Keep existing records. Do not reconstruct earnings from legacy cash or reference
 2. `employee_salary_payment` stores reference-derived expected amount and actual cash as REAL. Neither is proof of historical earned wages. Split rows already have a primary identity and no payment/project uniqueness constraint. Raw SQL has `CHECK(days > 0)`; the Drizzle definition omits that check, as the issue comment states.
 3. Worker debt accounts are reused by worker and direction. `FinanceService` distinguishes PAYABLE and RECEIVABLE. Generic accounts can contain unrelated obligations. `SALARY_ADVANCE` is RECEIVABLE. Default debt-payment direction can select an outstanding receivable. A salary writer must always select direction explicitly.
 4. Existing debt voiding recalculates an entire account. Voiding an OPENING also voids all live PAYMENT rows in that account. Existing consolidation supports OPENING entries only and may consolidate whole cases. These operations cannot be reused blindly for salary-linked earnings or corrections.
-5. Shared money schemas allow magnitudes up to `Number.MAX_SAFE_INTEGER` DZD. That is not a safe integer-cent ceiling. PR #515 is still OPEN and owns shared rounding and salary-days changes. Reuse its established helper once landed; do not duplicate or edit it in parallel.
+5. Shared money schemas allow magnitudes up to `Number.MAX_SAFE_INTEGER` DZD. That does not make multiplication by 100 safe at every allowed magnitude. PR #515 is now merged and integrated locally. Reuse `roundToDecimals` and established wrappers, without changing shared money or quantity behavior. New reconciliation logic must demonstrate bounded deterministic arithmetic rather than assume all DZD values can be converted safely to number-based cents.
 
-## Proposed architecture, not yet selected
+## Architecture decisions and remaining proposals
 
 ### One obligation source
 
@@ -51,13 +51,15 @@ An approval posts a linked PAYABLE increase. A wage payment posts a linked PAYAB
 
 A new salary application service coordinates the salary repository and existing debt repository under one synchronous immediate transaction. Keep this module separate from salary UI. Generic payment, void, consolidation and account-settlement commands must reject salary-linked entries/accounts where they could bypass the salary operation, or route through an explicitly approved salary-aware action. Exact restrictions need implementation review before exposing writes.
 
-Alternative: make salary records the obligation source and project them into debt views without persisted debt entries. This avoids dual writes but requires changing existing debt aggregates and all generic settlement paths. Mixing both alternatives is not acceptable.
+Rejected alternative: make salary records a separate obligation source and project them into debt views. The owner selected the existing debt ledger instead. Do not mix these approaches.
 
 ### Additive storage and money
 
 Recommend new approval, segment, cash/classification, opening-review, correction, settlement-link and command-idempotency records. Define exact tables and keys in the first implementation slice after approval. Retain original salary and debt records without rewriting or renaming them.
 
-Recommend integer minor units for new salary amounts, with a documented safe-cent bound at both runtime and wire interfaces. Use established shared rounding at the input boundary; sum and compare cents exactly. Existing REAL columns remain readable. This introduces a new salary write limit and adapter conversion, so the owner must approve it rather than inheriting the larger DZD bound by accident.
+Owner-selected storage unit: DZD with decimal amounts, not integer minor units. For example, a 100.50 DZD amount remains 100.50 DZD in stored and public financial meaning, not 10050 cents. Whole amounts such as 100 are also valid. Preserve existing DZD REAL records and use DZD-denominated amounts for new salary records. Numeric storage does not itself preserve trailing-zero typography; the UI must retain fractional values without truncation and coordinate display formatting with #454. No UI formatting preference is selected here.
+
+Use the landed shared rounding helper at currency boundaries. Reconciliation and obligation updates must handle decimal arithmetic deterministically, validate finite bounded inputs and aggregates, and preserve exact financial totals at the supported currency precision. This owner decision does not authorize changing the shared DZD magnitude bound or applying a new cent-based ceiling. Present any necessary bound or storage-type change with concrete compatibility consequences before selecting it.
 
 A command key identifies one logical operation. Same key and normalized payload returns the original result. Same key with a different payload rejects without writes. All salary records, debt entries, audit information and command receipt commit or roll back together. UUID segment identities permit A, B, A without treating repeated projects as duplicate submits.
 
@@ -74,10 +76,10 @@ Existing debt entries may already represent a worker's opening wages or advances
 ## Owner approval requested
 
 1. Approved: reuse the existing debt ledger as the sole obligation source. Salary provenance links and guards against generic commands bypassing salary semantics remain implementation obligations to verify, not permission to silently net directions.
-2. Approve additive integer-cent storage for new salary records and its safe-cent write bound, with legacy REAL records preserved and readable.
+2. Decided: the owner rejected integer-cent persistence and selected DZD-denominated decimal storage. Preserve fractional dinars and existing records. Any new magnitude bound or different storage type still requires a concrete proposal and owner approval.
 3. Approve the staged compatibility policy: additive support first, then coordinated salary workflow switch and retirement of new cash-only writes. No legacy cash becomes inferred earnings. Existing opening obligations require explicit adoption, never duplicate insertion.
 
-These are proposals, not decisions inferred from feature authorization. No irreversible migration or new published contract will be applied before explicit approval. Merge of any UI or expensive-to-reverse change requires separate owner approval even after design approval.
+Items marked approved or decided record explicit owner responses. Remaining proposals are not decisions inferred from feature authorization. No irreversible migration or new published contract will be applied before explicit approval. Merge of any UI or expensive-to-reverse change requires separate owner approval even after design approval.
 
 ## Proposed reviewable delivery
 
