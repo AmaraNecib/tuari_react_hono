@@ -342,8 +342,15 @@ export function terminateTree(child, {
   if (!child.kill("SIGKILL")) throw new Error("could not send SIGKILL to sidecar");
 }
 
+const closedProofChildren = new WeakSet();
+
+export function trackProofChild(child) {
+  child.once("close", () => closedProofChildren.add(child));
+  return child;
+}
+
 function waitForChildExit(child, timeoutMs = CHILD_CLOSE_TIMEOUT_MS) {
-  if (!child || child.closed === true) return Promise.resolve();
+  if (!child || closedProofChildren.has(child)) return Promise.resolve();
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (error) => {
@@ -358,7 +365,7 @@ function waitForChildExit(child, timeoutMs = CHILD_CLOSE_TIMEOUT_MS) {
     const timer = setTimeout(() => finish(new Error(`sidecar did not close within ${timeoutMs}ms after termination`)), timeoutMs);
     child.once("close", onClose);
     // Close may have fired between the initial state check and subscription.
-    if (child.closed === true) finish();
+    if (closedProofChildren.has(child)) finish();
   });
 }
 
@@ -577,6 +584,7 @@ export async function runProof(options, { log = console.log } = {}) {
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
+    trackProofChild(child);
     child.stdout.on("data", (chunk) => { transcriptBuffer += chunk.toString(); });
     child.stderr.on("data", (chunk) => { transcriptBuffer += chunk.toString(); });
 

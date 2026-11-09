@@ -15,6 +15,7 @@ import {
   cleanupProofWorkspace,
   findSnapshotDatabase,
   terminateTree,
+  trackProofChild,
   isPlaintextSqliteFile,
   parseArgs,
   readFileHeader,
@@ -92,6 +93,22 @@ test("cleanup waits for the child and retries transient locks", async () => {
   await cleanup;
   assert.deepEqual(events, ["waiting", "terminate", "retry", "retry", "removed"]);
   assert.equal(attempts, 3);
+});
+
+test("cleanup remembers close before cleanup subscribes", async () => {
+  const child = trackProofChild(new EventEmitter());
+  child.exitCode = 0;
+  child.signalCode = null;
+  child.emit("close", 0, null);
+  let removed = false;
+  await cleanupProofWorkspace("/workspace", {
+    child,
+    terminate: () => {},
+    closeTimeoutMs: 20,
+    remove: () => { removed = true; },
+  });
+  assert.equal(removed, true);
+  assert.equal(child.listenerCount("close"), 0);
 });
 
 test("cleanup bounds a child that never closes and leaves its workspace intact", { timeout: 1_000 }, async () => {
