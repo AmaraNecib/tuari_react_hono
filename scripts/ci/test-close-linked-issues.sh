@@ -436,6 +436,19 @@ for emphasis in '**' '__' '*' '_'; do
   assert_closed "affirmative contrast after emphasis ($emphasis) still closes" 616
 done
 
+# Supported emphasis can also open a coordinated closing verb.
+for emphasis in '**' '__' '*' '_'; do
+  reset_state
+  mk_issue 614 open "first reference before emphasized verb"
+  mk_issue 615 open "emphasized coordinated verb"
+  mk_issue 616 open "next-sentence affirmative control"
+  run_script "This does not fix #614 or ${emphasis}resolve${emphasis} #615. Closes #616."
+  check "emphasized coordinated verb ($emphasis) exits 0" "0" "$RC"
+  assert_not_closed "first reference before emphasized verb ($emphasis) stays open" 614
+  assert_not_closed "emphasized coordinated verb ($emphasis) stays open" 615
+  assert_closed "next sentence after emphasized verb ($emphasis) still closes" 616
+done
+
 # Round 3: a second reference in a nor-clause is still negated.
 reset_state
 mk_issue 471 open "nor clause, first reference"

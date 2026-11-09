@@ -183,8 +183,8 @@ CLOSE_REF="${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
 # issue while `has not` did not).
 NEGATOR='(\b(not|never|nor|neither|hardly)\b|\bno[[:space:]]+(longer|more)\b|\bno\b[[:space:]]+|\b(won|don|doesn|didn|hasn|haven|hadn|isn|aren|wasn|weren|can|couldn|shouldn|wouldn|mustn|needn)[[:punct:]]t\b|\bcannot\b)'
 # Cross a reference only when it directly coordinates another close with "or".
-# Preserve the supported emphasis closing a reference before that conjunction.
-NEGATED_CLOSE="${NEGATOR}[^#]*(${CLOSE_REF}[*_]*[[:space:]]+or[[:space:]]+)*${CLOSE_REF}"
+# Preserve supported emphasis closing a reference or opening the next verb.
+NEGATED_CLOSE="${NEGATOR}[^#]*(${CLOSE_REF}[*_]*[[:space:]]+or[[:space:]]+[*_]*)*${CLOSE_REF}"
 # "not only/just/merely/simply fixes #N" is AFFIRMATIVE, but only when the
 # close verb follows the idiom DIRECTLY. The test runs per matched SPAN, not
 # per line, so a later real negator in that span survives (round-2 finding 1:

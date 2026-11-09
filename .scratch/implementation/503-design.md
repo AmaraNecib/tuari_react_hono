@@ -31,6 +31,13 @@ regressions with an affirmative contrast control. The focused real-shell
 probe first reported B and the affirmative control as close candidates, exit 1,
 then only the control after the gap correction, exit 0. No new grammar or
 extraction behavior is introduced.
+A second bounded hosted correction also permits supported emphasis before
+coordinated verbs. `or **resolve** #B` is already an affirmative extraction
+form and must remain under the original negator. Add four verb-emphasis
+variants with next-sentence affirmative controls. Its real-shell probe failed
+before this correction and passed afterward. Together the gap supports
+closing emphasis on the previous reference and opening emphasis on the next
+verb, without changing CLOSE_REF, conjunction grammar or sentence splitting.
 `does not close #A, but Closes #B` still closes B. The affirmative extraction,
 sentence splitting, number subtraction and API behavior stay unchanged.
 No broader grammar, comma-or extension, workflow or unrelated changes.
