@@ -7,7 +7,7 @@ Worktree: D:/worktrees/tuari_react_hono/fix-issue-489-independe-dde8dc81563de439
 Live issue #489 is open with no comments. Owner authorizes the named CI addition only.
 Verification mode: focused-local / CI-final-enforced. Ruleset 26837184 was freshly read as active, strict CI acceptance from app 15368, no bypass actors, resolved review threads, deletion and force-push guards. Pending activation prose is historical.
 High-assurance: a broken job or weakened aggregate can let platform-specific failures escape CI.
-The updated owner authority requires explicit approval before merging this CI change. No UI changes.
+The owner's clarified rule requires explicit approval for UI changes or changes expensive to reverse. This additive CI matrix is non-UI and cheap to reverse with a normal workflow revert. It changes no durable data, compatibility or shipped runtime behavior. Existing review, hosted execution, CI and protection gates still apply.
 
 ## Design
 
@@ -26,7 +26,7 @@ Architecture: no seam moved. Parent assessment is limited to the unchanged selec
 
 Add a regression in the already CI-invoked tests/ci-final.test.mjs. Prove the current workflow fails the new matrix expectation, then verify the matrix, unfiltered crate command, Linux-only setup and retained clippy. Existing acceptance tests reject failed, cancelled, missing and unjustified skipped Rust outcomes.
 Focused local checks: node --test tests/ci-final.test.mjs tests/workflow-policy.test.mjs tests/workflow-assets.test.mjs and git diff --check. No TypeScript or Rust source changes, so local typecheck or Rust compilation would not test the changed CI runner. Full suites/builds remain CI-final.
-Static wiring is not hosted execution proof. Require a successful current-head Windows cargo step with the #403 stale_cleanup_matches_only_this_installations_api_sidecar test present in its log, successful CI acceptance, exact-head Greptile 5/5, resolved findings and fresh effective protection before merge approval.
+Static wiring is not hosted execution proof. Require a successful current-head Windows cargo step with the #403 stale_cleanup_matches_only_this_installations_api_sidecar test present in its log, successful CI acceptance, exact-head Greptile 5/5, resolved findings and fresh effective protection before merge.
 Three independent initial Luna sessions: debate, test-audit, code-review, in order at a frozen commit. Bounded fixes receive one fresh combined-delta review.
 
 ## Boundaries and wisdom
