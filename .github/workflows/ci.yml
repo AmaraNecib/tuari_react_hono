@@ -333,7 +333,6 @@ jobs:
   # encryption-relevant change. Otherwise it reports a successful skip.
   prove-encryption:
     name: Prove SQLCipher encryption (built artifact)
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ needs.detect.outputs.encryption == 'true' && 'windows-2022' || 'ubuntu-24.04' }}
     needs: detect
     steps:

@@ -93,6 +93,10 @@ test('CI wiring exposes one always-running acceptance check and force-full event
   assert.match(ci, /e2e:full/);
   assert.match(ci, /encryption: \$\{\{ steps.scope.outputs.encryption \}\}/);
   assert.match(ci, /prove-encryption:\n[\s\S]*needs: detect/);
+  const encryption = ci.slice(ci.indexOf('\n  prove-encryption:'), ci.indexOf('\n  audit:'));
+  assert.doesNotMatch(encryption, /^    if:/m, 'Required encryption proof must run for fork PRs too');
+  assert.doesNotMatch(encryption, /secrets\.|permissions:/);
+  assert.match(ci, /permissions:\n  contents: read\n  pull-requests: read/);
   assert.match(ci, /pnpm audit --audit-level high/);
   assert.doesNotMatch(ci, /continue-on-error: true/);
   const e2e = ci.slice(ci.indexOf('\n  test-e2e:'), ci.indexOf('\n  build:'));
