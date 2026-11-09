@@ -1,13 +1,12 @@
 # #410 — CI proves the release artifact can encrypt
 
-- **mode:** focused-local / CI-final-pending
+- **mode:** focused-local / CI-final-enforced, supplied by the parent
 - **ticket:** GitHub #410 (`CI: prove the release artifact can actually encrypt`)
-- **worktree:** `D:/worktrees/tuari_react_hono/t3-75232878`
-- **stack base:** published #496, `origin/fix/402-encryption-fallback` at
-  `1a160b1b3a132af81a103828d8fa4c5835b91f56`; it descends from #504's current
-  `develop` at `6ba4146475ad3391b4f9f0007d043907a6cb93fe`.
-- **branch:** `fix/encryption-ci-proof-stack`; preserve published #499 `69a26bbe`
-  and its completed correction `9ce23ae0` as ancestors, then integrate #504/#496.
+- **worktree:** `D:/worktrees/tuari_react_hono/t3-9a3a5970`
+- **preserved review head:** #499 integration `6c769f8297132fb234bc8156e432526aabe88d72`
+- **branch:** `fix/sqlcipher-prebuild-proof`; retain published #499 `69a26bbe`,
+  correction `9ce23ae0`, and develop integration `4917fd2c` as ancestors. Latest
+  `origin/develop` is merged normally before the preserved review head.
 - **review tier:** High-assurance — encryption at rest and a release gate.
 - **remaining owner gate:** the literal nonempty `PRAGMA cipher_version`. The
   current driver is SQLite3MultipleCiphers and may return an empty result; this
@@ -17,6 +16,14 @@
   “Base decision” for the original cherry-pick history.
 
 ## Current sequential stack integration
+
+The supplied debate found that the proof's availability helper checked obsolete
+`build/` paths and a Windows DLL that `better-sqlite3-multiple-ciphers@13.0.3`
+does not ship. The proof now calls the same `assertSqlcipherPrebuild` helper as
+packaging. That helper asks the installed package's `getPrebuildPath()` selector
+and loads the selected binary. The synthetic availability tests no longer encode
+the removed build/DLL layout or pretend a compiler fallback is acceptable.
+The literal nonempty `PRAGMA cipher_version` gate remains unchanged.
 
 The implementation is being carried on a branch that preserves #499's published
 head `69a26bbe` and completed timeout/cleanup correction `9ce23ae0`, then #504's
@@ -59,9 +66,9 @@ encrypted too.
    `backup.snapshot.ts` worker take the daily backup. A local re-implementation
    of `VACUUM INTO` would be a second, drifting definition of "the daily backup"
    and would not exercise the code that ships.
-2. **`PRAGMA cipher_version` is single-sourced with the build.** The proof calls
-   `probeSqlcipherBinding` from `sqlcipher-availability.mjs`, so the build and
-   the gate cannot disagree about what "the binding works" means.
+2. **`PRAGMA cipher_version` is a separate capability probe.** The proof calls
+   `assertSqlcipherPrebuild` for package selection and loadability, then calls
+   `probeSqlcipherBinding` for the literal nonempty version requirement.
 3. **The plaintext predicate is deliberately NOT shared with the API.** The API
    owns its own `SQLITE_HEADER_MAGIC` check (`backup.service.ts`). A proof that
    reused the predicate it is proving could not catch a bug in that predicate.

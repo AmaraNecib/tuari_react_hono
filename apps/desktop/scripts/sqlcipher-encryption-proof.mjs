@@ -51,12 +51,8 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-// `./sqlcipher-availability.mjs` is loaded lazily inside `runProof`: it ships
-// with the desktop build, while everything above `runProof` is pure. Keeping it
-// off the import path lets this module's helpers be unit-tested (and
-// `--help` run) on a checkout with no native toolchain and no built runtime.
-const loadSqlcipherHelpers = () => import("./sqlcipher-availability.mjs");
+import { assertSqlcipherPrebuild } from "./script-security-utils.mjs";
+import { probeSqlcipherBinding } from "./sqlcipher-availability.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..", "..");
@@ -465,7 +461,6 @@ export function assertNotPlaintextDatabase(filePath, label) {
 // ─── the proof ────────────────────────────────────────────────────────────
 
 export async function runProof(options, { log = console.log } = {}) {
-  const { inspectSqlcipherArtifact, probeSqlcipherBinding } = await loadSqlcipherHelpers();
   const runtimeDir = options.runtimeDir;
   const nodeExe = options.nodeExe;
   const workspace = mkdtempSync(path.join(os.tmpdir(), "tuari-sqlcipher-proof-"));
@@ -496,16 +491,10 @@ export async function runProof(options, { log = console.log } = {}) {
         throw new Error(`missing ${required.what} at ${required.path}.${hint}`);
       }
     }
-    const availability = inspectSqlcipherArtifact({
-      packageDir: path.join(runtimeDir, SQLCIPHER_PACKAGE_DIR),
-      platform: process.platform,
-    });
-    if (!availability.available) {
-      throw new Error(
-        `the runtime's SQLCipher package is incomplete (missing ${availability.missing.join(", ")})`,
-      );
-    }
-    results.push("runtime carries a complete better-sqlite3-multiple-ciphers package");
+    const prebuildPath = assertSqlcipherPrebuild(
+      path.join(runtimeDir, SQLCIPHER_PACKAGE_DIR),
+    );
+    results.push(`runtime loads its selected SQLCipher prebuild at ${prebuildPath}`);
 
     log("[2/5] PRAGMA cipher_version is non-empty on that binding");
     // Single-sourced with the build's own probe: the build must not use a weaker
