@@ -49,6 +49,7 @@ jobs:
       - run: pnpm test:prose
       - run: pnpm test:ci-scripts
       - run: pnpm check:e2e-selection
+      - run: pnpm check:sqlcipher-proof
       - run: pnpm check:license-signer
 
   typecheck:
@@ -77,6 +78,7 @@ jobs:
       rust: ${{ steps.scope.outputs.rust }}
       e2e_mode: ${{ steps.scope.outputs.e2e_mode }}
       e2e_specs: ${{ steps.scope.outputs.e2e_specs }}
+      encryption: ${{ steps.scope.outputs.encryption }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -328,6 +330,47 @@ jobs:
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo build --filter="!@tuari/desktop"
 
+  # The native proof runs only when the event-SHA selector identifies an
+  # encryption-relevant change. Otherwise it reports a successful skip.
+  prove-encryption:
+    name: Prove SQLCipher encryption (built artifact)
+    runs-on: ${{ needs.detect.outputs.encryption == 'true' && 'windows-2022' || 'ubuntu-24.04' }}
+    needs: detect
+    steps:
+      - uses: actions/checkout@v4
+        if: needs.detect.outputs.encryption == 'true'
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        if: needs.detect.outputs.encryption == 'true'
+      - uses: actions/setup-node@v4
+        if: needs.detect.outputs.encryption == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        if: needs.detect.outputs.encryption == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Build shared contracts
+        if: needs.detect.outputs.encryption == 'true'
+        run: pnpm --filter @tuari/contracts build
+      - name: Build sidecar with SQLCipher
+        if: needs.detect.outputs.encryption == 'true'
+        run: pnpm --filter @tuari/desktop sidecar:build
+      - name: Prove the built runtime encrypts
+        if: needs.detect.outputs.encryption == 'true'
+        run: node apps/desktop/scripts/sqlcipher-encryption-proof.mjs
+      - name: Run the keyed database tests against the built binding
+        if: needs.detect.outputs.encryption == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const fs = require('node:fs'), p = require('node:path'); const built = p.resolve('apps/desktop/src-tauri/bin/api-runtime/node_modules/better-sqlite3-multiple-ciphers'); const target = p.resolve('apps/api/node_modules/better-sqlite3-multiple-ciphers'); fs.rmSync(target, { recursive: true, force: true }); fs.symlinkSync(built, target, 'junction');"
+          pnpm --filter @tuari/api exec vitest run src/infrastructure/database/factory.encryption.test.ts
+      - name: Encryption proof skipped (no relevant paths)
+        if: needs.detect.outputs.encryption != 'true'
+        run: echo "No encryption-relevant changes; required check satisfied by selector-proven skip"
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-24.04
@@ -344,7 +387,7 @@ jobs:
 
   acceptance:
     name: CI acceptance
-    needs: [detect, lint, typecheck, test-rust, test-api, test-web, test-e2e, build, audit]
+    needs: [detect, lint, typecheck, test-rust, test-api, test-web, test-e2e, build, audit, prove-encryption]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 2

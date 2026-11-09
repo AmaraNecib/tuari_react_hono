@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 export function acceptanceErrors(needs) {
   const errors = [];
   const output = needs.detect?.outputs ?? {};
-  for (const key of ['api', 'web', 'rust']) {
+  for (const key of ['api', 'web', 'rust', 'encryption']) {
     if (!['true', 'false'].includes(output[key])) errors.push(`invalid selector ${key}`);
   }
   if (!['full', 'affected', 'skip'].includes(output.e2e_mode)) errors.push('invalid e2e mode');
@@ -22,6 +22,7 @@ export function acceptanceErrors(needs) {
     ['test-web', output.web === 'false'],
     ['test-rust', output.rust === 'false'],
     ['test-e2e', output.e2e_mode === 'skip'],
+    ['prove-encryption', output.encryption === 'false'],
   ]) {
     const result = needs[name]?.result;
     if (result !== 'success' &&

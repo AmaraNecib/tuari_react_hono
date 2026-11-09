@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { globToRegExp, selectAreas } from './e2e-selection.mjs';
 
 const fullScope = () => ({
-  api: 'true', web: 'true', rust: 'true', e2e_mode: 'full', e2e_specs: '',
+  api: 'true', web: 'true', rust: 'true', encryption: 'true', e2e_mode: 'full', e2e_specs: '',
 });
 
 export function selectCiScope(files, { event = 'pull_request', full = false } = {}) {
@@ -14,10 +14,16 @@ export function selectCiScope(files, { event = 'pull_request', full = false } = 
     'apps/desktop/**', 'scripts/generate-license.mjs',
     '.cargo/**', 'rust-toolchain*',
   ].map(globToRegExp);
+  const encryptionPaths = [
+    'apps/desktop/**', 'apps/api/**', 'packages/contracts/**', 'infrastructure/**',
+    'tests/sqlcipher-encryption-proof.test.mjs', 'pnpm-workspace.yaml',
+    'pnpm-lock.yaml', 'package.json', '.github/workflows/ci.yml',
+  ].map(globToRegExp);
   return {
     api: areas.api === '1' ? 'true' : 'false',
     web: areas.web === '1' ? 'true' : 'false',
     rust: files.some((file) => rustPaths.some((pattern) => pattern.test(file))) ? 'true' : 'false',
+    encryption: files.some((file) => encryptionPaths.some((pattern) => pattern.test(file))) ? 'true' : 'false',
     e2e_mode: areas.e2e_mode,
     e2e_specs: areas.e2e_specs.join(' '),
   };
