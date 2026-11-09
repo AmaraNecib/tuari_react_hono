@@ -26,7 +26,11 @@ import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { createRouter } from "./router";
 import { createRpcMiddleware } from "./rpc-middleware";
 import type { RpcContext } from "./context";
-import { ExpenseNotFoundError } from "../modules/expenses/expenses.types";
+import {
+  ExpenseAlreadyVoidedError,
+  ExpenseInvalidAmountError,
+  ExpenseNotFoundError,
+} from "../modules/expenses/expenses.types";
 import { ProjectCostService } from "../modules/project-cost/project-cost.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
@@ -1295,8 +1299,7 @@ describe("RPC router", () => {
 
   it("maps a domain error thrown by an async expense handler to its ORPC code", async () => {
     const harness = createHarness();
-    // The handler is async, so the rejection leaves `withAudit` before its
-    // catch can run; the handler must map its own domain errors.
+    // withAudit must await the async rejection and throw the mapped wire error.
     const router = createTestRouter(harness, undefined, {}, undefined, undefined, {
       update: async () => {
         throw new ExpenseNotFoundError("11111111-1111-4111-8111-111111111111");
@@ -1307,6 +1310,21 @@ describe("RPC router", () => {
     await expect(
       client.expensesUpdate({ id: "11111111-1111-4111-8111-111111111111", amount: 10 }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it.each([
+    ["create", "expensesCreate", { amount: 10, expenseDate: "2026-10-03T10:00:00.000Z" }, new ExpenseInvalidAmountError(0), "BAD_REQUEST"],
+    ["void", "expensesVoid", { id: "11111111-1111-4111-8111-111111111111" }, new ExpenseAlreadyVoidedError("11111111-1111-4111-8111-111111111111"), "CONFLICT"],
+  ])("maps an async expense %s rejection through the audit resolver", async (method, procedure, input, error, code) => {
+    const harness = createHarness();
+    const operation = vi.fn(async () => { throw error; });
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {
+      [method]: operation,
+    });
+    const client = createClient(router, createContext());
+
+    await expect(client[procedure](input)).rejects.toMatchObject({ code, message: error.message });
+    expect(operation).toHaveBeenCalledOnce();
   });
 
   it("serves the project cost through the wire contract and maps a missing project (issue #414)", async () => {
