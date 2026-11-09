@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DebtAccount } from "@tuari/contracts"
 import type { ReactNode } from "react"
+import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { DebtLedgerPanel } from "./debt-ledger-panel"
 import { RecordPaymentDialog } from "./record-payment-dialog"
 import { DebtCasesPanel } from "./debt-cases-panel"
@@ -101,17 +102,27 @@ describe("debt payment form to RPC", () => {
     else renderForm(<DebtCasesPanel accounts={[account]} debtEntriesByAccountId={{}} title="طرف" externalCounterpartyId="external-1" />)
     const amount = (form === "ledger" ? screen.getByRole("textbox", { name: /مبلغ الدفعة/ }) : screen.getByPlaceholderText("0 أو 2500")) as HTMLInputElement
     const note = screen.getAllByRole("textbox", { name: "ملاحظة" })[0] as HTMLTextAreaElement
+    const submittedDay = getAlgeriaDateInputValue()
+    const newerDay = `${submittedDay.slice(0, 7)}-${submittedDay.endsWith("-15") ? "16" : "15"}`
     fireEvent.change(amount, { target: { value: "100" } })
     fireEvent.change(note, { target: { value: "submitted note" } })
     fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
     await waitFor(() => expect(createEntry).toHaveBeenCalledTimes(1))
     fireEvent.change(amount, { target: { value: "200" } })
     fireEvent.change(note, { target: { value: "next note" } })
+    if (form === "cases") {
+      fireEvent.click(screen.getByRole("button", { name: "تاريخ الإنشاء" }))
+      const day = document.querySelector<HTMLElement>(`[data-day="${newerDay}"]`)!
+      fireEvent.click(day.querySelector("button") ?? day)
+    }
     await act(async () => { finish({ success: true, message: "ok", item: { id: "payment-1" } }) })
     await waitFor(() => expect((screen.getAllByRole("button", { name: "تسجيل دفعة" })[0] as HTMLButtonElement).disabled).toBe(false))
     expect(amount.value).toBe("200")
     expect(note.value).toBe("next note")
-    expect(createEntry).toHaveBeenCalledWith(expect.objectContaining({ debtAccountId: "receivable", signedAmountDzd: -100, note: "submitted note" }))
+    expect(createEntry).toHaveBeenCalledWith(expect.objectContaining({ debtAccountId: "receivable", signedAmountDzd: -100, note: "submitted note", entryDate: toAlgeriaDayBoundaryIso(submittedDay, "start") }))
+    if (form === "cases") {
+      expect(screen.getByRole("button", { name: "تاريخ الإنشاء" }).textContent).toContain(newerDay.split("-").reverse().join("/"))
+    }
   })
 
   it.each(["transport", "domain"])("keeps a %s-rejected draft, shows the mutation onError toast and never closes the dialog", async (failure) => {
