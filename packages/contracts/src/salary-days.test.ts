@@ -49,6 +49,23 @@ describe("computeProposedSalaryAmount", () => {
 });
 
 describe("roundMoneyToCents", () => {
+  it.each([
+    [1.005, 1.01], [-1.005, -1.01],
+    [1.0049999999999997, 1], [-1.0049999999999997, -1],
+    [8.575, 8.58], [-8.575, -8.58],
+    [0.145, 0.15], [-0.145, -0.15],
+    [0.004, 0], [-0.004, -0],
+    [0, 0], [-0, 0],
+    [1e-7, 0], [-1e-7, -0],
+    [Number.MIN_VALUE, 0], [-Number.MIN_VALUE, -0],
+    [1e21, 999999999999999900000],
+    [-1e21, -999999999999999900000],
+    [Number.MAX_VALUE, Infinity], [-Number.MAX_VALUE, -Infinity],
+    [Number.MAX_SAFE_INTEGER, 9007199254740991],
+  ])("preserves the existing Number-domain result for %s", (value, expected) => {
+    expect(roundMoneyToCents(value)).toBe(expected);
+  });
+
   it("normalises money to two decimals, rounding half up", () => {
     expect(roundMoneyToCents(100.005)).toBe(100.01);
     expect(roundMoneyToCents(100.004)).toBe(100);
