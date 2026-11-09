@@ -28,29 +28,6 @@ export function sortProjectsByName<T extends { name: string }>(projects: readonl
   return [...projects].sort((a, b) => a.name.localeCompare(b.name, "ar"))
 }
 
-/**
- * A money amount in the table's DZD presentation: Latin digits and grouping,
- * rendered LTR inside the RTL page so the number reads correctly. Split shares
- * pass `maximumFractionDigits={2}` so their sum reconciles with the paid amount.
- */
-export function MoneyCell({
-  value,
-  currencyLabel,
-  maximumFractionDigits = 0,
-}: {
-  value: number
-  currencyLabel: string
-  /** Split shares carry cents so their sum reconciles with the paid amount. */
-  maximumFractionDigits?: number
-}) {
-  return (
-    <span className="font-mono tabular-nums text-ink" dir="ltr">
-      {currencyLabel}{" "}
-      {new Intl.NumberFormat("en-US", { maximumFractionDigits, useGrouping: true }).format(value)}
-    </span>
-  )
-}
-
 /** Search field shared by both salary tables. */
 export function SalarySearchField({
   value,

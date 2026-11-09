@@ -1,3 +1,4 @@
+import { MoneyValue } from "@/features/shared/money-value"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -18,7 +19,6 @@ import {
 } from "@/features/shared/table-primitives"
 
 import {
-  MoneyCell,
   SalaryPeriodFilterField,
   SalaryProjectFilterField,
   SalarySearchField,
@@ -128,7 +128,7 @@ export function SalariedWorkersTable({
                   <td className="px-4 py-3 text-start">
                     {worker.salaryAmountDzd !== null ? (
                       <span className="inline-flex items-baseline gap-1.5">
-                        <MoneyCell value={worker.salaryAmountDzd} currencyLabel={currencyLabel} />
+                        <MoneyValue value={worker.salaryAmountDzd} currencyLabel={currencyLabel} />
                         <span className="text-[11px] text-ink-3">/ {t(getSalaryPeriodLabelKey(worker.salaryPeriod))}</span>
                       </span>
                     ) : (
