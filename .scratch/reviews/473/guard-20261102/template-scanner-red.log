@@ -1,0 +1,53 @@
+TAP version 13
+# Subtest: date formatter scanner inspects template expressions without treating template text as code
+not ok 1 - date formatter scanner inspects template expressions without treating template text as code
+  ---
+  duration_ms: 11.5287
+  type: 'test'
+  location: 'D:\\projects\\tuari_react_hono\\worktrees\\fix-algeria-day-pins\\tests\\web-hygiene.test.mjs:467:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+    
+      [
+        {
+    -     callee: 'toLocaleDateString',
+    -     line: 1
+    -   },
+    -   {
+          callee: 'Intl.DateTimeFormat',
+          line: 4
+        }
+      ]
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0:
+      line: 1
+      callee: 'toLocaleDateString'
+    1:
+      line: 4
+      callee: 'Intl.DateTimeFormat'
+  actual:
+    0:
+      line: 4
+      callee: 'Intl.DateTimeFormat'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///D:/projects/tuari_react_hono/worktrees/fix-algeria-day-pins/tests/web-hygiene.test.mjs:474:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 418.3285

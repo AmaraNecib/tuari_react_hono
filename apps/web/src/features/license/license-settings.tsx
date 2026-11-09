@@ -10,6 +10,7 @@ import { AlertCircle, CheckCircle2, Clock, Crown, KeyRound, ShieldAlert, Star, U
 
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
+import { getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { useLicenseStatus } from "./license-hooks"
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -47,6 +48,7 @@ function formatDate(isoString: string | null): string {
       year: "numeric",
       month: "long",
       day: "numeric",
+      timeZone: getAlgeriaTimeZone(),
     })
   } catch {
     return isoString

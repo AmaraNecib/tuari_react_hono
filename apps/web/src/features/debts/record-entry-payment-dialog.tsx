@@ -18,6 +18,7 @@ import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import {
   useRecordDebtPaymentMutation,
 } from "@/features/app-shell/mock-dashboard"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 import { formatDebtAmount, getDebtAccountBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
@@ -100,7 +101,7 @@ export function RecordEntryPaymentDialog({
             </div>
             <p className={cn("mt-1 text-xs font-medium", openingBalance.textClassName)}>{openingBalance.phrase}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {new Intl.DateTimeFormat("ar-DZ").format(new Date(entry.entryDate))}
+              {formatAlgeriaDate(entry.entryDate)}
               {entry.note?.trim() ? ` — ${entry.note.trim()}` : ""}
             </p>
             <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">

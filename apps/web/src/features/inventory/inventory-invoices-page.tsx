@@ -8,6 +8,7 @@ import { TablePaginationControls } from "@/features/shared/table-pagination-cont
 import { AdvancedSearchBar, type QuickFilter } from "@/features/shared/advanced-search-bar"
 import { BatchOperationsToolbar } from "@/features/shared/batch-operations-toolbar"
 import { useBatchSelection } from "@/hooks/use-batch-selection"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 
 import { useInventoryInvoiceGroupsQuery } from "./inventory-hooks"
 
@@ -130,7 +131,7 @@ export function InventoryInvoicesPage({ onCreate, onOpen }: InventoryInvoicesPag
                       <div className="font-medium text-foreground">{invoice.invoiceNumber || t("inventoryPage.invoices.untitled")}</div>
                       <div className="text-sm text-muted-foreground">{invoice.supplierName || t("inventoryPage.invoices.noSupplier")}</div>
                     </div>
-                    <div className="text-xs text-muted-foreground">{invoice.invoiceDate ? new Date(invoice.invoiceDate).toLocaleDateString("ar-DZ") : t("inventoryPage.invoices.noDate")}</div>
+                    <div className="text-xs text-muted-foreground">{invoice.invoiceDate ? formatAlgeriaDate(invoice.invoiceDate) : t("inventoryPage.invoices.noDate")}</div>
                   </div>
                 </button>
               </div>

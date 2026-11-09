@@ -1,0 +1,44 @@
+
+> tuari_react_hono@ test:web D:\projects\tuari_react_hono\worktrees\fix-algeria-day-pins
+> pnpm --filter @tuari/web test
+
+
+> @tuari/web@0.0.0 test D:\projects\tuari_react_hono\worktrees\fix-algeria-day-pins\apps\web
+> vitest run
+
+
+ RUN  v4.1.4 D:/projects/tuari_react_hono/worktrees/fix-algeria-day-pins/apps/web
+
+ ❯ src/web-hygiene/prod-html.test.ts (2 tests | 1 failed) 478ms
+     × produces a dist/index.html free of dev-livereload markers 464ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/web-hygiene/prod-html.test.ts > web prod-HTML hygiene (#282) > produces a dist/index.html free of dev-livereload markers
+Error: ENOSPC: no space left on device, write
+ ❯ loadConfigFromBundledFile ../../../../node_modules/.pnpm/vite@7.3.2_@types+node@22.1_9ef783d328547447ea9408728bfe5584/node_modules/vite/dist/node/chunks/config.js:35918:3
+ ❯ bundleAndLoadConfigFile ../../../../node_modules/.pnpm/vite@7.3.2_@types+node@22.1_9ef783d328547447ea9408728bfe5584/node_modules/vite/dist/node/chunks/config.js:35808:17
+ ❯ loadConfigFromFile ../../../../node_modules/.pnpm/vite@7.3.2_@types+node@22.1_9ef783d328547447ea9408728bfe5584/node_modules/vite/dist/node/chunks/config.js:35775:42
+ ❯ resolveConfig ../../../../node_modules/.pnpm/vite@7.3.2_@types+node@22.1_9ef783d328547447ea9408728bfe5584/node_modules/vite/dist/node/chunks/config.js:35424:22
+ ❯ createBuilder ../../../../node_modules/.pnpm/vite@7.3.2_@types+node@22.1_9ef783d328547447ea9408728bfe5584/node_modules/vite/dist/node/chunks/config.js:33879:19
+ ❯ build$1 ../../../../node_modules/.pnpm/vite@7.3.2_@types+node@22.1_9ef783d328547447ea9408728bfe5584/node_modules/vite/dist/node/chunks/config.js:33441:18
+ ❯ src/web-hygiene/prod-html.test.ts:71:7
+     69|     "produces a dist/index.html free of dev-livereload markers",
+     70|     async () => {
+     71|       await build({
+       |       ^
+     72|         root: webRoot,
+     73|         build: {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 104 passed (105)
+      Tests  1 failed | 1000 passed (1001)
+   Start at  17:54:07
+   Duration  551.61s (transform 17.32s, setup 0ms, import 417.71s, tests 322.90s, environment 276.72s)
+
+D:\projects\tuari_react_hono\worktrees\fix-algeria-day-pins\apps\web:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @tuari/web@0.0.0 test: `vitest run`
+Exit status 1
+ ELIFECYCLE  Command failed with exit code 1.

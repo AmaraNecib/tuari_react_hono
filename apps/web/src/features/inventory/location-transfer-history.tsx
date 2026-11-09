@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
+import { getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { useLocationTransferHistoryQuery, type TransferHistoryItem } from "./transfer-history-hooks"
 
 /** formatDate - helper function. */
@@ -15,6 +16,7 @@ function formatDate(dateString: string): string {
     year: "numeric",
     month: "short",
     day: "numeric",
+    timeZone: getAlgeriaTimeZone(),
   })
 }
 

@@ -1,0 +1,19 @@
+
+> tuari_react_hono@ test:web D:\projects\tuari_react_hono\worktrees\fix-algeria-day-pins
+> pnpm --filter @tuari/web test
+
+
+> @tuari/web@0.0.0 test D:\projects\tuari_react_hono\worktrees\fix-algeria-day-pins\apps\web
+> vitest run
+
+
+ RUN  v4.1.4 D:/projects/tuari_react_hono/worktrees/fix-algeria-day-pins/apps/web
+
+
+ Test Files  105 passed (105)
+      Tests  1001 passed (1001)
+   Start at  18:17:27
+   Duration  388.55s (transform 6.84s, setup 0ms, import 265.11s, tests 219.56s, environment 227.33s)
+
+
+TEST_WEB_EXIT=0
