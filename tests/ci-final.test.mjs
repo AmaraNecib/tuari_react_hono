@@ -91,4 +91,7 @@ test('CI wiring exposes one always-running acceptance check and force-full event
   assert.doesNotMatch(ci, /continue-on-error: true/);
   const e2e = ci.slice(ci.indexOf('\n  test-e2e:'), ci.indexOf('\n  build:'));
   assert.match(e2e, /runs-on: ubuntu-24\.04/);
+  assert.equal([...e2e.matchAll(/^    if:/gm)].length, 1, 'E2E must have exactly one job condition');
+  assert.match(e2e, /if: \$\{\{ needs\.detect\.outputs\.e2e_mode != 'skip' \}\}/);
+  assert.doesNotMatch(e2e, /head\.repo\.full_name/);
 });

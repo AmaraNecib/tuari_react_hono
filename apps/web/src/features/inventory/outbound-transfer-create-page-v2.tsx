@@ -26,6 +26,15 @@ import {
 type PaymentType = "CASH" | "DEBT"
 type FirstPaymentInputType = "AMOUNT" | "PERCENT"
 
+export function mapSelectedItemToOutboundTransferInput(item: SelectedItem) {
+  return {
+    itemId: item.itemId,
+    optionId: item.optionId,
+    quantity: item.quantity,
+    ...(item.unitPrice > 0 ? { unitPriceDzd: item.unitPrice } : {}),
+  }
+}
+
 /** calculateDebt - helper function. */
 function calculateDebt(
   totalAmount: number,
@@ -126,11 +135,7 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
           fromId: group.sourceId,
           counterpartyId,
           transferType,
-          items: group.items.map((item) => ({
-            itemId: item.itemId,
-            quantity: item.quantity,
-            ...(item.unitPrice > 0 ? { unitPriceDzd: item.unitPrice } : {}),
-          })),
+          items: group.items.map(mapSelectedItemToOutboundTransferInput),
           debtAmountDzd: remainingDebt > 0 ? totalAmount : undefined,
           firstPaymentAmountDzd: remainingDebt > 0 && firstPaymentAmount > 0 ? firstPaymentAmount : undefined,
           notes: notes.trim() || undefined,

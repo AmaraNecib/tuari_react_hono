@@ -23,6 +23,8 @@ import type {
   InventoryOutboundTransferRecord,
   InventoryMovementValuationRow,
   InventoryValuationRow,
+  InventoryItemStockHolding,
+  InventoryItemStockAtSourceQuery,
 } from "./inventory.types"
 
 // ---------------------------------------------------------------------------
@@ -88,6 +90,12 @@ export interface InventoryRepository {
   listConsumableBalancesByInvoiceGroupId(invoiceGroupId: string): InventoryConsumableBalanceRecord[]
   /** listConsumableBalancesByLocation. */
   listConsumableBalancesByLocation(filters: { warehouseId?: string; projectId?: string }): InventoryConsumableBalanceRecord[]
+  /**
+   * The stock a definition currently holds at one source. The write gate reads
+   * this and evaluates the item-offer rule against it, so it accepts exactly
+   * what the picker's `inStockAt` predicate offered.
+   */
+  listItemStockAtSource(query: InventoryItemStockAtSourceQuery): InventoryItemStockHolding
   /** getConsumableBalanceByEntryAndLocation. */
   getConsumableBalanceByEntryAndLocation(filters: { inventoryEntryId: string; warehouseId?: string | null; projectId?: string | null }): InventoryConsumableBalanceRecord | null
   /** updateConsumableBalanceQuantity. */
