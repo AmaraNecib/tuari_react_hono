@@ -1,12 +1,11 @@
 import { expect, test } from "@playwright/test"
 
-import { resetE2eDatabase } from "./helpers/db-isolation"
+import { expectProjectCost, openHistory, openTransfer, readPlacement, seedTransferAsset, transferToProject } from "./helpers/asset-charge"
+
+import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 import { findE2eDatabase, loadDatabaseConstructor } from "./helpers/db-seed"
 import { selectInvoiceLineItem } from "./helpers/invoice-line"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
-
-import { databaseFixturesAvailable } from "./helpers/db-isolation"
-
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 test.describe.configure({ mode: "serial" })
@@ -20,6 +19,69 @@ let projectName = ""
 
 test.beforeAll(() => {
   resetE2eDatabase()
+})
+
+test.describe("inventory asset charge transfers (#426)", () => {
+  test("warehouse to project prefills price and percentage, records history and project cost", async ({ page }) => {
+    await bootstrapOrSignIn(page)
+    const fixture = seedTransferAsset()
+    await transferToProject(page, fixture)
+    const history = await openHistory(page)
+    await expect(history).toContainText(fixture.projectName)
+    await expect(history).toContainText((5000).toLocaleString("ar-DZ"))
+    await expectProjectCost(page, fixture, 5000)
+  })
+
+  test("warehouse destination hides charge fields and records no charge", async ({ page }) => {
+    await bootstrapOrSignIn(page)
+    const fixture = seedTransferAsset()
+    const dialog = await openTransfer(page, fixture)
+    // Switch through PROJECT to catch a stale amount leaking into a
+    // warehouse submission, not just the initial warehouse rendering.
+    await dialog.getByLabel("نوع الوجهة").selectOption("PROJECT")
+    await expect(dialog.getByLabel("مبلغ الاحتساب", { exact: true })).toHaveValue("5000")
+    await dialog.getByLabel("نوع الوجهة").selectOption("WAREHOUSE")
+    await dialog.getByLabel(/^الوجهة/).selectOption(fixture.destinationWarehouseId)
+    await expect(dialog.getByLabel("مبلغ الاحتساب", { exact: true })).toHaveCount(0)
+    await expect(dialog.getByLabel("النسبة من سعر الشراء")).toHaveCount(0)
+    await dialog.getByRole("button", { name: "تأكيد التحويل" }).click()
+    await expect(dialog).toBeHidden()
+    await expect.poll(() => readPlacement(fixture)).toEqual({
+      unit: { warehouseId: fixture.destinationWarehouseId, projectId: null },
+      charges: [],
+    })
+    const history = await openHistory(page)
+    await expect(history).toHaveText("لا توجد احتسابات لهذا الأصل بعد.")
+  })
+
+  test("correct a past charge with its from/to amounts and reason", async ({ page }) => {
+    await bootstrapOrSignIn(page)
+    const fixture = seedTransferAsset()
+    await transferToProject(page, fixture)
+    // Move away first: this corrects a historical project placement.
+    const dialog = await openTransfer(page, fixture)
+    await dialog.getByLabel(/^الوجهة/).selectOption(fixture.destinationWarehouseId)
+    await dialog.getByRole("button", { name: "تأكيد التحويل" }).click()
+    await expect(dialog).toBeHidden()
+    const history = await openHistory(page)
+    await history.getByRole("button", { name: "تعديل", exact: true }).click()
+    await history.getByLabel("المبلغ الجديد").fill("3500")
+    const reason = `تصحيح احتساب ${uniqueSuffix()}`
+    await history.getByLabel("السبب (اختياري)", { exact: true }).fill(reason)
+    await history.getByRole("button", { name: "حفظ", exact: true }).click()
+    const revisions = history.getByRole("list", { name: "سجل التصحيحات" })
+    await expect(revisions.getByRole("listitem")).toHaveCount(1)
+    await expect(revisions).toContainText(`تصحيح من ${(5000).toLocaleString("ar-DZ")} إلى ${(3500).toLocaleString("ar-DZ")}`)
+    await expect(revisions).toContainText(reason)
+    await expect.poll(() => readPlacement(fixture)).toEqual({
+      unit: { warehouseId: fixture.destinationWarehouseId, projectId: null },
+      charges: [{ amountDzd: 3500, projectId: fixture.projectId, status: "LIVE" }],
+    })
+    await page.reload()
+    const persistedHistory = await openHistory(page)
+    await expect(persistedHistory).toContainText(reason)
+    await expectProjectCost(page, fixture, 3500)
+  })
 })
 
 test.describe("inventory asset charge — purchase onto a project", () => {
@@ -85,14 +147,15 @@ test.describe("inventory asset charge — purchase onto a project", () => {
 
   test("the charge is persisted for the placement's project", () => {
     const Database = loadDatabaseConstructor()
-    const db = new Database(findE2eDatabase(), { readonly: true })
+    const db = Database(findE2eDatabase())
     try {
       const rows = db
         .prepare(
           `SELECT c.amount_dzd AS amountDzd, c.status AS status, p.name AS projectName
-           FROM inventory_asset_charge c JOIN project p ON p.id = c.project_id`,
+           FROM inventory_asset_charge c JOIN project p ON p.id = c.project_id
+           WHERE p.name = ?`,
         )
-        .all() as Array<{ amountDzd: number; status: string; projectName: string }>
+        .all(projectName) as Array<{ amountDzd: number; status: string; projectName: string }>
 
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({ amountDzd: 5000, status: "LIVE", projectName })
