@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@/i18n"
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { DebtAccount } from "@tuari/contracts"
@@ -63,9 +63,15 @@ describe("debt payment form to RPC", () => {
 
   it("changes the stat card to the selected ledger rather than the newest account or net", () => {
     renderForm(<DebtCasesPanel accounts={[{ ...account, id: "payable", direction: "PAYABLE", currentBalance: 1000 }, account]} debtEntriesByAccountId={{}} title="طرف" externalCounterpartyId="external-1" />)
-    expect(screen.getAllByText("الرصيد الحالي — مستحقات علينا")).toHaveLength(2)
+    const payableLabels = screen.getAllByText("الرصيد الحالي — مستحقات علينا")
+    expect(payableLabels).toHaveLength(2)
+    const selectedCard = payableLabels[0]!.closest("section")!
+    expect(within(selectedCard).getByText("دج 1,000")).toBeTruthy()
+    expect(within(selectedCard).queryByText("دج 22,500.5")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
     expect(screen.getAllByText("الرصيد الحالي — مستحقات لنا")).toHaveLength(2)
+    expect(within(selectedCard).getByText("دج 22,500.5")).toBeTruthy()
+    expect(within(selectedCard).queryByText("دج 1,000")).toBeNull()
   })
 
   it.each(["transport", "domain"])("keeps a %s-rejected draft, shows the mutation onError toast and never closes the dialog", async (failure) => {
