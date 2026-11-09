@@ -1,6 +1,18 @@
 # Issue #427 salary domain design
 
-Status: product semantics and reuse of the existing debt ledger approved by the owner. The owner accepted separating approved wages from actual payments, with the employee's reference salary used as a suggested default rather than a third required entry. The owner then confirmed one existing debt source, with salary operations increasing or decreasing it. The owner rejected integer-cent persistence and selected DZD-denominated decimal amounts, retaining fractional dinars when needed. The owner confirmed there is no old real/customer data. Historical-customer migration and adoption are therefore not assumed delivery requirements. Code and workflow transition details remain proposed. No source behavior has changed.
+Status: product semantics and reuse of the existing debt ledger approved by the owner. The owner accepted separating approved wages from actual payments, with reference salary as a suggested default rather than a third required entry. The latest owner clarification supersedes the earlier rejection of minor-unit persistence: minor units are acceptable in principle if names and calculations are currency-neutral and allow future non-Algerian customers. Exact schema/contracts, account-currency ownership and financial-write activation remain proposed. The owner confirmed no old real/customer data exists. No historical customer migration/adoption subsystem is assumed. No source behavior has changed.
+
+## Latest money direction, supersedes earlier proposals
+
+Owner clarification verbatim: "we can save it centim but infuture if have clients not algerian i want the app to woth with them without problems thats way i dont like to use da or centims as names or use the culclation only with them".
+
+The owner then-requested focused council is complete. Astra, Sol6.1 medium and Luna all considered this update. They found no inspected salary/debt/project-cost requirement for SQL-side monetary arithmetic. Their converged recommendation is a private non-writing Money module with amountMinor: bigint, currency and explicit currency exponent, plus exact TypeScript calculations and SQLite atomic transactions. Test 0/2/3 exponent cases without activating other currencies. This is not authority to enable FX, mixed-currency totals or multi-currency settings. Initial DZD-only operation remains the proposed activation scope.
+
+Minor-unit persistence is acceptable in principle, not approval of a specific migration. Account currency ownership, exact shared-ledger fields/adapters, public contracts, business bounds and write activation still need concrete proposals and proof. Salary-only exact values cannot make a REAL/Number authoritative ledger exact. Inspect every reachable writer to affected accounts, including invoice and inventory debt adapters, without assuming unrelated storage must be rewritten.
+
+The earlier DZD decimal TEXT recommendation and rejection of cent-denominated persistence below are historical evidence of the discussion, NOT current settled constraints. Preserve fractional monetary meaning and use neutral names rather than hardcoding DZD or centimes into new generic money logic. Internal bigint does not serialize directly in JSON; wire representation remains a proposed integer string plus currency or another explicitly approved exact shape.
+
+Both broad and focused councils remain advisory, not implementation-review verdicts. Initial authorized no-schema/no-UI/non-writing domain work can resume; no financial schema, public contract or currency ownership choice has been silently applied.
 
 ## Scope and authority
 
