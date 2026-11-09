@@ -31,6 +31,7 @@ import {
   useLeaveEmployeeMutation,
 } from "./workspace-mutations"
 import { useHomeViewNavigation } from "./home-view-navigation"
+import { TableQueryState } from "@/features/shared/table-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { type WorkspaceRouteTarget, WorkspaceLink } from "@/router/navigation"
 import { useEmployeesPagedQuery } from "./workspace-queries"
@@ -160,31 +161,33 @@ export function EmployeesSection({
           storageKey="employees-search-filters"
         />
 
-        <EmployeeTable
-            copy={{
-              name: columns.name,
-              role: columns.role,
-              manager: columns.manager,
-              project: columns.project,
-              phone: columns.phone,
-              status: columns.status,
-              actions: columns.actions,
-              empty: emptyLabel,
-              addWorker: addWorkerLabel,
-              view: actionLabels.view,
-              edit: actionLabels.edit,
-              leave: actionLabels.leave,
-              delete: actionLabels.delete,
-            }}
-            rows={rows}
-            projects={projects}
-            projectAssignmentsByEmployeeId={projectAssignmentsByEmployeeId}
-            onAdd={() => void navigation.goToEmployeeCreate()}
-            onDelete={(row) => setPendingAction({ type: "delete", employee: row })}
-            onEdit={(row) => void navigation.goToEmployeeEdit(row.id)}
-            onLeave={(row) => setPendingAction({ type: "leave", employee: row })}
-            onView={(row) => void navigation.goToEmployeeDetails(row.id)}
-        />
+        <TableQueryState query={pagedQuery} resource={title}>
+          <EmployeeTable
+              copy={{
+                name: columns.name,
+                role: columns.role,
+                manager: columns.manager,
+                project: columns.project,
+                phone: columns.phone,
+                status: columns.status,
+                actions: columns.actions,
+                empty: emptyLabel,
+                addWorker: addWorkerLabel,
+                view: actionLabels.view,
+                edit: actionLabels.edit,
+                leave: actionLabels.leave,
+                delete: actionLabels.delete,
+              }}
+              rows={rows}
+              projects={projects}
+              projectAssignmentsByEmployeeId={projectAssignmentsByEmployeeId}
+              onAdd={() => void navigation.goToEmployeeCreate()}
+              onDelete={(row) => setPendingAction({ type: "delete", employee: row })}
+              onEdit={(row) => void navigation.goToEmployeeEdit(row.id)}
+              onLeave={(row) => setPendingAction({ type: "leave", employee: row })}
+              onView={(row) => void navigation.goToEmployeeDetails(row.id)}
+          />
+        </TableQueryState>
       </RecordPageFrame>
 
       <AlertDialog open={Boolean(pendingAction)} onOpenChange={(open) => (!open && !actionPending ? setPendingAction(null) : null)}>

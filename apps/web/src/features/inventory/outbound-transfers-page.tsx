@@ -1,6 +1,7 @@
 /**
  * Outbound transfers listing page.
  */
+import { TableQueryState } from "@/features/shared/table-primitives"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -20,7 +21,6 @@ export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () =
   const [filters, setFilters] = useState<Record<string, unknown>>({})
 
   const transferType = (filters.transferType as string | undefined) ?? null
-  const isLoading = transfersQuery.isLoading
   const normalizedQuery = query.trim().toLowerCase()
   const hasActiveFilters = normalizedQuery.length > 0 || transferType !== null
 
@@ -80,45 +80,45 @@ export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () =
             storageKey="outbound-transfers-search-filters"
             quickFilters={quickFilters}
           />
-          {isLoading ? (
-            <p className="mt-3 text-sm text-muted-foreground">{t("inventoryPage.transfers.loading")}</p>
-          ) : filteredTransfers.length === 0 ? (
-            <div className="flex flex-col items-center gap-3 py-8 text-center">
-              <p className="text-sm text-muted-foreground">
-                {hasActiveFilters
-                  ? t("search.noResults")
-                  : t("inventoryPage.transfers.empty")}
-              </p>
-              {!hasActiveFilters ? (
-                <Button size="sm" onClick={onCreate}>{t("inventoryPage.transfers.createButton")}</Button>
-              ) : null}
-            </div>
-          ) : (
-            <div className="mt-3 grid gap-3">
-              {filteredTransfers.map((transfer) => (
-                <div key={transfer.id} className="rounded-xl border border-border/70 p-4 text-sm">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <div className="font-medium text-foreground">
-                        {transfer.counterpartyId}
+          <TableQueryState query={transfersQuery} resource={t("inventoryPage.transfers.listTitle")}>
+            {filteredTransfers.length === 0 ? (
+              <div className="flex flex-col items-center gap-3 py-8 text-center">
+                <p className="text-sm text-muted-foreground">
+                  {hasActiveFilters
+                    ? t("search.noResults")
+                    : t("inventoryPage.transfers.empty")}
+                </p>
+                {!hasActiveFilters ? (
+                  <Button size="sm" onClick={onCreate}>{t("inventoryPage.transfers.createButton")}</Button>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-3 grid gap-3">
+                {filteredTransfers.map((transfer) => (
+                  <div key={transfer.id} className="rounded-xl border border-border/70 p-4 text-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <div className="font-medium text-foreground">
+                          {transfer.counterpartyId}
+                        </div>
+                        <div className="text-muted-foreground">
+                          {t("inventoryPage.transfers.fromLabel")} {transfer.fromType === "WAREHOUSE" ? t("inventoryPage.transfers.fromWarehouse") : t("inventoryPage.transfers.fromProject")}: {transfer.fromId}
+                        </div>
                       </div>
-                      <div className="text-muted-foreground">
-                        {t("inventoryPage.transfers.fromLabel")} {transfer.fromType === "WAREHOUSE" ? t("inventoryPage.transfers.fromWarehouse") : t("inventoryPage.transfers.fromProject")}: {transfer.fromId}
-                      </div>
-                    </div>
-                    <div className="text-end">
-                      <div className="font-medium text-foreground">
-                        {transfer.transferType === "SALE" ? t("inventoryPage.transfers.typeSale") : transfer.transferType === "GIFT" ? t("inventoryPage.transfers.typeGift") : t("inventoryPage.transfers.typeReturn")}
-                      </div>
-                      <div className="text-muted-foreground">
-                        {formatAlgeriaDate(transfer.transferDate)}
+                      <div className="text-end">
+                        <div className="font-medium text-foreground">
+                          {transfer.transferType === "SALE" ? t("inventoryPage.transfers.typeSale") : transfer.transferType === "GIFT" ? t("inventoryPage.transfers.typeGift") : t("inventoryPage.transfers.typeReturn")}
+                        </div>
+                        <div className="text-muted-foreground">
+                          {formatAlgeriaDate(transfer.transferDate)}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </TableQueryState>
         </PageSurfaceContent>
       </Surface>
     </div>

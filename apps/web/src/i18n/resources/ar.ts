@@ -3,6 +3,13 @@
  */
 export const ar = {
   translation: {
+    tableQuery: {
+      loading: "جارٍ تحميل {{resource}}...",
+      failed: "تعذر تحميل {{resource}}.",
+      reason: "لم يكتمل طلب البيانات. تحقق من الاتصال ثم أعد المحاولة.",
+      retained: "تُعرض آخر بيانات محمّلة، ولم يكتمل تحديثها.",
+      retrying: "جارٍ إعادة المحاولة...",
+    },
     common: {
       cancel: "إلغاء",
       confirm: "تأكيد",

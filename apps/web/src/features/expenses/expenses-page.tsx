@@ -22,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { LoadErrorSurface } from "@/features/shared/load-error-surface"
+import { TableQueryState } from "@/features/shared/table-primitives"
 import { Surface } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { formatAlgeriaDate } from "@/lib/algeria-time"
@@ -157,17 +157,7 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
       action={<Button onClick={openCreate}>{t("expenses.actions.create")}</Button>}
     >
 
-      {query.isPending ? (
-        <Surface variant="panel" className="p-6">
-          <p className="text-sm text-ink-3">{t("common.loading")}</p>
-        </Surface>
-      ) : query.isError ? (
-        <LoadErrorSurface
-          message={t("expenses.loadError")}
-          retryLabel={t("common.retry")}
-          onRetry={() => void query.refetch()}
-        />
-      ) : (
+      <TableQueryState query={query} resource={t("expenses.title")}>
         <>
           {/* B's three KPI cards above the table */}
           <div className="grid gap-4 sm:grid-cols-3">
@@ -397,7 +387,7 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
             </Table>
           )}
         </>
-      )}
+      </TableQueryState>
 
       <ExpenseFormDialog
         open={formOpen}

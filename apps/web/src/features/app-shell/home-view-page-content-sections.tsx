@@ -224,8 +224,7 @@ export function HomeViewPageSectionContent({
         <SystemLogSection
           entries={systemLogState.entries}
           filters={systemLogFilters}
-          isError={systemLogState.isError}
-          isLoading={systemLogState.isLoading}
+          query={systemLogState}
           title={copy.sections.transactions.label}
           onFiltersChange={onSystemLogFiltersChange}
         />,
