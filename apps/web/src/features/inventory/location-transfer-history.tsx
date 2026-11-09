@@ -2,6 +2,7 @@
  * Location-level transfer history component.
  * Embeddable in warehouse/project detail pages to show transfers for that location.
  */
+import { TableQueryState } from "@/features/shared/table-primitives"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -93,7 +94,6 @@ export function LocationTransferHistory({ locationId, locationType }: LocationTr
   const transfersQuery = useLocationTransferHistoryQuery(locationId, locationType)
 
   const transfers = transfersQuery.data?.items ?? []
-  const isLoading = transfersQuery.isLoading
 
   // Limit displayed transfers
   const displayedTransfers = transfers.slice(0, limit)
@@ -106,40 +106,38 @@ export function LocationTransferHistory({ locationId, locationType }: LocationTr
         description={t("inventory.transferHistory.locationDescription")}
       />
 
-      {isLoading ? (
-        <div className="py-4 text-center text-sm text-muted-foreground">
-          {t("common.loading", "جارٍ التحميل...")}
-        </div>
-      ) : transfers.length === 0 ? (
-        <div className="py-4 text-center text-sm text-muted-foreground">
-          {t("inventory.transferHistory.noTransfers")}
-        </div>
-      ) : (
-        <>
-          <div className="space-y-2">
-            {displayedTransfers.map((transfer) => (
-              <LocationTransferItem
-                key={transfer.id}
-                transfer={transfer}
-                locationId={locationId}
-                locationType={locationType}
-              />
-            ))}
+      <TableQueryState query={transfersQuery} resource={t("inventory.transferHistory.locationTitle")}>
+        {transfers.length === 0 ? (
+          <div className="py-4 text-center text-sm text-muted-foreground">
+            {t("inventory.transferHistory.noTransfers")}
           </div>
-
-          {hasMore && (
-            <div className="text-center">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setLimit((prev) => prev + 10)}
-              >
-                {t("inventory.transferHistory.showMore")}
-              </Button>
+        ) : (
+          <>
+            <div className="space-y-2">
+              {displayedTransfers.map((transfer) => (
+                <LocationTransferItem
+                  key={transfer.id}
+                  transfer={transfer}
+                  locationId={locationId}
+                  locationType={locationType}
+                />
+              ))}
             </div>
-          )}
-        </>
-      )}
+
+            {hasMore && (
+              <div className="text-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setLimit((prev) => prev + 10)}
+                >
+                  {t("inventory.transferHistory.showMore")}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </TableQueryState>
     </div>
   )
 }

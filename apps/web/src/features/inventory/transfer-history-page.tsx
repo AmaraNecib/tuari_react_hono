@@ -2,6 +2,7 @@
  * Transfer history page with filters for viewing all inventory movements.
  * Shows internal transfers, sales, gifts, and returns.
  */
+import { TableQueryState } from "@/features/shared/table-primitives"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -80,7 +81,6 @@ export function TransferHistoryPage() {
   const transfersQuery = useTransferHistoryQuery(filters)
 
   const transfers = transfersQuery.data?.items ?? []
-  const isLoading = transfersQuery.isLoading
 
   const updateFilter = (key: keyof TransferHistoryFilters, value: string | undefined) => {
     setFilters((prev) => ({ ...prev, [key]: value || undefined }))
@@ -215,21 +215,19 @@ export function TransferHistoryPage() {
             description={t("inventory.transferHistory.listDescription")}
           />
 
-          {isLoading ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              {t("common.loading", "جارٍ التحميل...")}
-            </div>
-          ) : transfers.length === 0 ? (
-            <div className="py-8 text-center text-sm text-muted-foreground">
-              {t("inventory.transferHistory.empty")}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {transfers.map((transfer) => (
-                <TransferHistoryItem key={transfer.id} transfer={transfer} />
-              ))}
-            </div>
-          )}
+          <TableQueryState query={transfersQuery} resource={t("inventory.transferHistory.list")}>
+            {transfers.length === 0 ? (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                {t("inventory.transferHistory.empty")}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {transfers.map((transfer) => (
+                  <TransferHistoryItem key={transfer.id} transfer={transfer} />
+                ))}
+              </div>
+            )}
+          </TableQueryState>
         </PageSurfaceContent>
       </Surface>
     </div>

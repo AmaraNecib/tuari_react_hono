@@ -1,10 +1,54 @@
 import type { ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { extractRpcIssueMessage } from "@/lib/rpc-error-handling"
 
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+
+export type TableQuery = {
+  data: unknown
+  isPending: boolean
+  isError: boolean
+  isFetching: boolean
+  error: unknown
+  refetch: () => Promise<unknown>
+}
+
+/** Keep query state selection shared without changing successful table markup. */
+export function TableQueryState({ query, resource, children }: {
+  query: TableQuery
+  resource: string
+  children: ReactNode
+}) {
+  const { t } = useTranslation()
+  const hasData = query.data !== undefined
+
+  if (query.isPending && !hasData) {
+    return <div role="status" className="py-8 text-center text-sm text-ink-3" dir="rtl">{t("tableQuery.loading", { resource })}</div>
+  }
+
+  return (
+    <>
+      {query.isError && (
+        <div role="alert" className="flex flex-col items-center gap-3 px-4 py-6 text-center text-sm" dir="rtl">
+          <p className="font-medium text-destructive">{t("tableQuery.failed", { resource })}</p>
+          <p className="max-w-prose whitespace-normal break-words text-ink-2">
+            <bdi>{extractRpcIssueMessage(query.error) ?? t("tableQuery.reason")}</bdi>
+          </p>
+          {hasData && <p className="text-ink-3">{t("tableQuery.retained")}</p>}
+          <Button size="sm" variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}>
+            {query.isFetching ? t("tableQuery.retrying") : t("common.retry")}
+          </Button>
+          {query.isFetching && <span role="status" className="sr-only">{t("tableQuery.retrying")}</span>}
+        </div>
+      )}
+      {(!query.isError || hasData) && children}
+    </>
+  )
+}
 
 /**
  * @description Component
