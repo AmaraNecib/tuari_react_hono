@@ -111,16 +111,21 @@ jobs:
 
   test-rust:
     if: ${{ needs.detect.outputs.rust == 'true' }}
-    name: "Test Rust Core (no tauri:: imports)"
-    runs-on: ubuntu-24.04
+    name: "Test Rust Core (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
     needs: detect
+    strategy:
+      # Keep the Windows proof running even if the Linux leg fails.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
       - name: Install Tauri system deps
-        if: needs.detect.outputs.rust == 'true'
+        if: runner.os == 'Linux'
         run: |
           if pkg-config --exists webkit2gtk-4.1; then
             echo "webkit2gtk-4.1 already present"
@@ -158,7 +163,7 @@ jobs:
           echo "Rust: $(rustc --version)"
 
       - name: "Verify Rust Core boundaries (no bare tauri imports)"
-        if: needs.detect.outputs.rust == 'true'
+        if: runner.os == 'Linux'
         run: |
           echo "Checking for forbidden 'tauri::' imports in Rust Core modules..."
           HAS_TAURI=false
@@ -180,14 +185,11 @@ jobs:
         # The license/trust core gates what a customer can run, so this step
         # runs the whole crate: lib unit tests, the integration suites
         # (including the Node-signer→Rust-verifier interop test), and doctests.
-        if: needs.detect.outputs.rust == 'true'
-        run: |
-          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
-          cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
-      - name: Rust skipped (no src-tauri changes)
-        if: needs.detect.outputs.rust != 'true'
-        run: echo "No Rust changes — skipping cargo test (required check satisfied)"
+      - name: Lint Rust Core
+        if: runner.os == 'Linux'
+        run: cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
 
   test-api:
     if: ${{ needs.detect.outputs.api == 'true' }}
