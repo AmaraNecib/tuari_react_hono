@@ -91,9 +91,9 @@ function normalizeMoney(value: number, field: string) {
  * The module seam for money that must also respect the wire contract's
  * magnitude bound (`MAX_MONEY_DZD`). The wire gate and this seam parse the SAME
  * schema, so a direct caller cannot store an amount the contract rejects
- * (issue #289 defense-in-depth). Used for the asset purchase price (#413),
- * the invoice line/payment inputs (#429), and the record-payment amount
- * (#475).
+ * (issue #289 defense-in-depth). Used for asset purchase prices (#413),
+ * invoice line/payment inputs (#429), record-payment amounts (#475), and
+ * outbound transfer inputs (#478).
  */
 function normalizeMoneyWithinBound(value: number, field: string, message: string) {
   const parsed = nonNegativePaymentAmountSchema.safeParse(value)
@@ -1172,15 +1172,19 @@ export class InventoryService {
 
     validateExternalCounterparty(this.repository, input.counterpartyId, "counterpartyId")
 
+    const moneyMessage = `يجب إدخال مبلغ صالح لا يتجاوز ${MAX_MONEY_DZD}.`
     const items = input.items.map((item, index) => ({
       ...item,
       quantity: normalizeQuantity(item.quantity, `items.${index}.quantity`),
+      unitPriceDzd: item.unitPriceDzd === undefined
+        ? undefined
+        : normalizeMoneyWithinBound(item.unitPriceDzd, `items.${index}.unitPriceDzd`, moneyMessage),
     }))
+    const debtAmountDzd = normalizeMoneyWithinBound(input.debtAmountDzd === undefined ? 0 : input.debtAmountDzd, "debtAmountDzd", moneyMessage)
+    const firstPaymentAmountDzd = normalizeMoneyWithinBound(input.firstPaymentAmountDzd === undefined ? 0 : input.firstPaymentAmountDzd, "firstPaymentAmountDzd", moneyMessage)
 
     return this.repository.withTransaction(() => {
       let associatedDebtAccountId: string | undefined
-      const debtAmountDzd = input.debtAmountDzd ?? 0
-      const firstPaymentAmountDzd = input.firstPaymentAmountDzd ?? 0
 
       if (firstPaymentAmountDzd > debtAmountDzd) {
         throw new InventoryError("VALIDATION", "الدفعة الأولى تتجاوز مبلغ الدين.", [
