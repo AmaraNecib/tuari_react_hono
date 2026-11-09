@@ -32,13 +32,29 @@ const hashTree = (dir) => {
         continue;
       }
 
-      hash.update(`file:${relativePath}:${readFileSync(absolutePath, "utf8")}\n`);
+      const bytes = readFileSync(absolutePath);
+      hash.update(`file:${relativePath}:${bytes.length}:`);
+      hash.update(bytes);
+      hash.update("\n");
     }
   };
 
   walk(dir, "");
   return hash.digest("hex");
 };
+
+test("runtime fingerprints distinguish binary files with identical UTF-8 decoding", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "tuari-binary-fingerprint-"));
+  try {
+    const file = path.join(root, "node.exe");
+    writeFileSync(file, Buffer.from([0x80]));
+    const before = hashTree(root);
+    writeFileSync(file, Buffer.from([0x81]));
+    assert.notEqual(hashTree(root), before);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 const writeTree = (root, files) => {
   for (const [relativePath, contents] of Object.entries(files)) {
@@ -63,6 +79,7 @@ const withLayout = (run) => {
 
   writeTree(destinationDir, {
     "marker.txt": "previous-working-runtime",
+    "node.exe": Buffer.from([0x4d, 0x5a, 0x00, 0x80, 0xff]),
     [path.join("api-runtime", "package.json")]: '{"name":"previous"}',
   });
   writeTree(stagingDir, {
@@ -117,8 +134,8 @@ test("a failed probe leaves the previous runtime byte-for-byte intact", () => {
     // This is the #409 finding: the old runtime must survive a rejected build.
     assert.equal(hashTree(destinationDir), previousHash);
     assert.equal(readFileSync(path.join(destinationDir, "marker.txt"), "utf8"), "previous-working-runtime");
-    // The staged runtime never leaked into the destination.
-    assert.equal(readdirSync(destinationDir).includes("node.exe"), false);
+    // The old executable survives; the staged executable never replaces it.
+    assert.deepEqual(readFileSync(path.join(destinationDir, "node.exe")), Buffer.from([0x4d, 0x5a, 0x00, 0x80, 0xff]));
     // And the staging tree was cleaned up.
     assert.equal(readdirSync(path.join(root, "src-tauri")).some((name) => name.startsWith(".bin-staging")), false);
   });
