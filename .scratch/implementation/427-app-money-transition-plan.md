@@ -2,6 +2,14 @@
 
 Status: proposed plan requested by the owner, not implementation or migration approval. Planning source is `83f32c09330ffc9e20a5ef81ce9041ae061a31ca`, with #480 and #454 integrated. No source behavior, dependency, schema or public contract changes are included. This cross-application prerequisite work should have its own tracking issue linked to #427; creating or publishing that issue is not done by this document.
 
+## Owner release requirement and first-PR boundary
+
+The owner requested the inventory/first-PR scope review and confirmed that this monetary remediation belongs before v1 completion. Treat consistent money storage, arithmetic, transport, presentation and recovery across the identified application paths as a v1 release requirement. Seven PRs remain an initial review split, not an owner-mandated count. This does not require FX, selectable currencies or a general multicurrency product before v1. It does not approve the unresolved physical schema, public API, currency ownership, rounding policy or destructive operations.
+
+The scope check against current schema source reconfirmed the 17 tables and 27 monetary fields, excluding quantities. The payment adapter still uses total_amount/amount rather than the Drizzle amount_dzd names. This is a parent scope inspection, not independent implementation review or production-driver execution.
+
+PR1 is limited to an isolated non-writing Money module, focused tests and production-driver feasibility tests on fresh isolated test databases. No existing production import/wiring, schema initialization, migrations, financial writer, public contract export or UI changes. Currency exponent metadata and exact add/subtract/compare/parse/format may be prototyped. Candidate rounding/allocation behavior stays explicitly provisional until the owner approves financial policy. Treat the proposed module/test paths as internal until the package export decision is reviewed. Passing these tests does not authorize production activation. The exit deliverable is a tested feasibility result and a short concrete decision proposal for schema, wire representation, currency ownership and price/rate rounding.
+
 ## Recommendation and boundaries
 
 Use currency-neutral fixed-scale Money internally, SQLite INTEGER minor units through a proven BigInt adapter, and exact serialized amounts at API boundaries. Keep user input/display in ordinary major currency units. Start production support with DZD; exercise exponent 0/2/3 in module tests without enabling FX, mixed-currency totals or a currency preference switch. Currency must be attached to an owning account/document and inherited unambiguously by children. Exact ownership and immutable currency policy need approval before schema changes.
