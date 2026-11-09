@@ -169,7 +169,7 @@ operational evidence. The integration removes those paths from Git's index and
 keeps local copies ignored, as required by the repository workflow.
 
 Focused pre-commit checks after the contracts build passed: eight web test
-files (40 tests), `pnpm check:web-hygiene` (15 tests), web lint, web typecheck,
+files (40 tests), `pnpm check:web-hygiene` (16 tests), web lint, web typecheck,
 `tests/workflow-policy.test.mjs` (6/6 tests), and
 `apps/desktop/scripts/runtime-staging.test.mjs` (34/34 tests). The initial web test and typecheck attempts failed because the
 contracts package had not been built; the first workflow-policy attempt
