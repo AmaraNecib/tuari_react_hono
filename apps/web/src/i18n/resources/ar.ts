@@ -148,8 +148,7 @@ export const ar = {
       actorUnknown: "غير معروف",
       targetUnknown: "غير محدد",
       entityAccount: "الحساب",
-      loading: "جارٍ تحميل السجل...",
-      loadError: "تعذر تحميل السجل الآن.",
+
       completed: "مكتمل",
       completedFeminine: "مكتملة",
       entryType: "نوع الحركة",
@@ -1107,7 +1106,6 @@ export const ar = {
         createButton: "إنشاء تحويل",
         listTitle: "قائمة التحويلات",
         listDescription: "جميع التحويلات الخارجية المسجلة في النظام",
-        loading: "جاري تحميل التحويلات...",
         empty: "لا توجد تحويلات خارجية بعد.",
         fromWarehouse: "مستودع",
         fromProject: "مشروع",
@@ -1147,7 +1145,6 @@ export const ar = {
       domainEmployees: "الموظفون",
       domainProjects: "المشاريع",
       action: "الإجراء",
-      loadError: "خطأ في تحميل السجل:",
       noResults: "لا توجد عمليات مطابقة للفلاتر",
     },
     batchOperations: {
@@ -1411,7 +1408,6 @@ export const ar = {
       unknownSeller: "مورّد غير معروف",
       noDescription: "بدون بيان",
       none: "—",
-      loadError: "تعذّر تحميل المصروفات. تحقق من الاتصال وحاول مجددًا.",
       actions: {
         create: "+ مصروف جديد",
         void: "إلغاء",
