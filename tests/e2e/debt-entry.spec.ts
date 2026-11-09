@@ -126,6 +126,9 @@ test.describe("debt entry — critical path", () => {
   })
 
   test("ledger previews grouped decimal payments and persists them as PAYMENT entries", async ({ page }, testInfo) => {
+    // The preceding allocation is timestamped now. A date-only payment uses
+    // the start of its picked day, so choose tomorrow to keep ledger ordering.
+    await page.clock.setFixedTime(new Date(Date.now() + 24 * 60 * 60 * 1000))
     await bootstrapOrSignIn(page)
     await page.getByRole("link", { name: "الديون" }).first().click()
     const hubRow = page.getByRole("row", { name: new RegExp(counterpartyName) })
