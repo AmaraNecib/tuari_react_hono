@@ -146,3 +146,40 @@ the fix. The effective-options test now explicitly rejects null. All 15 scanner
 tests pass. Logs are in .scratch/reviews/473/computed-access-20261102/. This does
 not add alias or whole-program data-flow analysis. Production files and
 packages remain unchanged from the full API/web guard.
+
+## Develop integration handoff
+
+Integration worktree: `D:/worktrees/tuari_react_hono/t3-9702c80a`, branch
+`fix/integrate-algeria-day-pins`. Verification mode: `focused-local /
+CI-final-enforced`; the parent supplied current ruleset `26837184`, strict CI
+acceptance `15368`, resolved threads, and no bypass as the current protection
+record. Latest fetched develop before integration was
+`4917fd2cc733be63e21cf3e61d57a9ed7627b7e9`.
+
+The preserved PR head `cd1d616f2df6ba153b59bb4bcefd456091a3e58c` was confirmed
+as an ancestor after merging its source branch. Commit
+`97650564291260b2ae9fe3dc1e8d27e009d84e75` was merged as a normal merge so the
+required debt-test import-order correction remains in history. Develop was then
+merged normally. Conflicts were resolved by retaining develop's CI staging and
+workflow-policy checks, retaining the new runtime-staging helper in the sidecar
+builder/test, and keeping develop's encrypted database byte-preservation check.
+The #483 expenses filter and #484 stored-instant scanner sweep were not added.
+The incoming branch had mistakenly tracked prior `.scratch/reviews/473/`
+operational evidence. The integration removes those paths from Git's index and
+keeps local copies ignored, as required by the repository workflow.
+
+Focused pre-commit checks after the contracts build passed: eight web test
+files (40 tests), `pnpm check:web-hygiene` (15 tests), web lint, web typecheck,
+`tests/workflow-policy.test.mjs` (6/6 tests), and
+`apps/desktop/scripts/runtime-staging.test.mjs` (34/34 tests). The initial web test and typecheck attempts failed because the
+contracts package had not been built; the first workflow-policy attempt
+correctly exposed tracked review evidence. All three conditions were addressed
+before these successful runs. The SQLCipher sidecar integration test was not
+run: pnpm reported its native build script blocked, and no prebuild was
+verified against the pinned version/hash. Evidence: `.scratch/reviews/473/develop-integration-r2-20261103/`.
+
+Applied wisdom: the canonical Algeria date helper remains shared rather than
+recreated per screen. Date-only business-day values remain distinct from numeric
+locale output and stored instants. Range bounds stay in the shared date-range
+helper, with single-day values kept as points. No module interface or seam
+changed; architecture: no seam moved.

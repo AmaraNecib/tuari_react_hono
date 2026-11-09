@@ -1,6 +1,0 @@
-• turbo 2.8.16
-(node:20264) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///D:/projects/tuari_react_hono/worktrees/fix-algeria-day-pins/scripts/prose/check-unslop.ts is not specified and it doesn't parse as CommonJS.
-Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
-To eliminate this warning, add "type": "module" to D:\projects\tuari_react_hono\worktrees\fix-algeria-day-pins\package.json.
-(Use `node --trace-warnings ...` to show where the warning was created)
-• turbo 2.8.16

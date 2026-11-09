@@ -1,9 +1,0 @@
-
- RUN  v4.1.4 D:/projects/tuari_react_hono/worktrees/fix-algeria-day-pins/apps/web
-
-
- Test Files  1 passed (1)
-      Tests  2 passed (2)
-   Start at  18:06:32
-   Duration  30.67s (transform 59ms, setup 0ms, import 618ms, tests 29.57s, environment 0ms)
-
