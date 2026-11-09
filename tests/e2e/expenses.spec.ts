@@ -12,8 +12,7 @@ import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
  *
  * Deterministic: no sleeps. The project/manager rows are seeded directly
  * (project creation through the UI is not part of this spec) and the expense
- * date defaults to today, which is inside the screen's default month-to-date
- * filter.
+ * date defaults to today. The list opens without a date filter.
  */
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
@@ -64,6 +63,19 @@ test("record an expense against a project, group it, then void it out of the tot
   await expect(page.getByRole("cell", { name: whatFor })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText("مجموع المعروض · 1 مصروفات")).toBeVisible()
   await expect(page.getByText("12,500 دج").first()).toBeVisible()
+
+  // The month shortcut changes the period, not the current-month expense.
+  await expect(page.getByText("إجمالي كل الفترات", { exact: true })).toBeVisible()
+  const currentMonth = page.getByRole("button", { name: "الشهر الحالي" })
+  await expect(currentMonth).toHaveAttribute("aria-pressed", "false")
+  await currentMonth.click()
+  await expect(currentMonth).toHaveAttribute("aria-pressed", "true")
+  await expect(page.getByText("إجمالي الفترة", { exact: true })).toBeVisible()
+  await expect(page.getByRole("cell", { name: whatFor })).toBeVisible()
+  await expect(page.getByText("12,500 دج").first()).toBeVisible()
+  await currentMonth.click()
+  await expect(currentMonth).toHaveAttribute("aria-pressed", "false")
+  await expect(page.getByText("إجمالي كل الفترات", { exact: true })).toBeVisible()
 
   // The project is charged the whole amount (the group card carries it).
   await page.getByRole("button", { name: "تجميع حسب المشروع" }).click()

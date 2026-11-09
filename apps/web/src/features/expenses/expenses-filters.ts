@@ -1,6 +1,15 @@
 import type { ExpenseListFilters } from "@tuari/contracts"
 
+import { getAlgeriaDateInputValue } from "@/lib/algeria-time"
 import { resolveDayRangeBounds } from "@/lib/date-range"
+
+/** Calendar-month days in the business timezone, independent of the machine timezone. */
+export function getCurrentMonthExpenseDates(now = new Date()) {
+  const month = getAlgeriaDateInputValue(now).slice(0, 7)
+  const [year, monthNumber] = month.split("-").map(Number)
+  const lastDay = new Date(Date.UTC(year!, monthNumber!, 0)).getUTCDate()
+  return { fromDate: `${month}-01`, toDate: `${month}-${lastDay}` }
+}
 
 export type ExpenseFilterState = {
   projectId: string | null

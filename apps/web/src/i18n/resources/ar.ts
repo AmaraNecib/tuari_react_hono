@@ -1490,6 +1490,7 @@ export const ar = {
         voidedNoEdit: "لا يمكن تعديل مصروف ملغى",
       },
       kpi: {
+        allTimeTotal: "إجمالي كل الفترات",
         periodTotal: "إجمالي الفترة",
         expenseCount: "{{count}} مصروفات",
         taggedToProject: "مقيّد بمشروع",
@@ -1504,6 +1505,7 @@ export const ar = {
         allWorkers: "الكل",
         from: "من",
         to: "إلى",
+        currentMonth: "الشهر الحالي",
         groupByProject: "تجميع حسب المشروع",
       },
       totals: {
