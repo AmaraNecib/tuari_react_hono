@@ -13,7 +13,8 @@ test("packages both SQLite drivers and loads the shipped encrypted prebuild with
   try {
     apiRequire.resolve("better-sqlite3");
     apiRequire.resolve("better-sqlite3-multiple-ciphers");
-  } catch {
+  } catch (error) {
+    assert.ok(!process.env.CI, `CI requires both SQLite native packages: ${error.message}`);
     t.skip("SQLite native packages are not installed in this worktree.");
     return;
   }

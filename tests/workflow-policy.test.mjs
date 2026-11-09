@@ -36,6 +36,13 @@ test('active lifecycle instructions require affected proof, not automatic full-s
   assert.match(read('docs/ci-final-activation.md'), /strict\/up-to-date/);
 });
 
+test('always-running lint gates include the copied encrypted runtime after installation', () => {
+  const lint = read('.github/workflows/ci.yml').split('\n  lint:')[1].split('\n  typecheck:')[0];
+  assert.match(lint, /pnpm install --frozen-lockfile[\s\S]*run: node --test tests\/sidecar-encryption\.test\.mjs/);
+  assert.doesNotMatch(lint, /continue-on-error: true|\n    if:/);
+  assert.match(read('tests/sidecar-encryption.test.mjs'), /assert\.ok\(!process\.env\.CI/);
+});
+
 test('Greptile is the scored gate without an extra local confidence step', () => {
   assert.match(read('docs/engineering-workflow.md'), /Greptile is the scored review gate/);
   assert.match(read('docs/engineering-workflow.md'), /No local score or separate confidence/);

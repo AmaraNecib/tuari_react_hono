@@ -42,6 +42,8 @@ jobs:
       - run: pnpm check:i18n-keys
       - run: pnpm check:repo-hygiene
       - run: pnpm check:dependency-security
+      - name: Verify copied encrypted runtime
+        run: node --test tests/sidecar-encryption.test.mjs
       - run: pnpm check:workflow-assets
       - run: pnpm check:update-metadata
       - run: pnpm test:prose
