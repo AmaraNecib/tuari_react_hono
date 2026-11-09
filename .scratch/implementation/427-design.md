@@ -1,6 +1,6 @@
 # Issue #427 salary domain design
 
-Status: product semantics and reuse of the existing debt ledger approved by the owner. The owner accepted separating approved wages from actual payments, with the employee's reference salary used as a suggested default rather than a third required entry. The owner then confirmed one existing debt source, with salary operations increasing or decreasing it. The owner rejected integer-cent persistence and selected DZD-denominated decimal amounts, retaining fractional dinars when needed. The legacy writer transition remains proposed. No source behavior has changed.
+Status: product semantics and reuse of the existing debt ledger approved by the owner. The owner accepted separating approved wages from actual payments, with the employee's reference salary used as a suggested default rather than a third required entry. The owner then confirmed one existing debt source, with salary operations increasing or decreasing it. The owner rejected integer-cent persistence and selected DZD-denominated decimal amounts, retaining fractional dinars when needed. The owner confirmed there is no old real/customer data. Historical-customer migration and adoption are therefore not assumed delivery requirements. Code and workflow transition details remain proposed. No source behavior has changed.
 
 ## Scope and authority
 
@@ -31,7 +31,7 @@ Cash payment is distinct from earnings. Additional cash requires an explicit ear
 
 Opening balances may be unreviewed, confirmed zero, wages owed, advances owed, or both obligation directions. Unreviewed is not confirmed zero. Its reminder is nonblocking and persists until explicit review, even after payment. Opening balances and corrections never create project labor cost. Corrections retain previous/new values, actor, timestamp and reason.
 
-Keep existing records. Do not reconstruct earnings from legacy cash or reference salary. Monthly presentation belongs to #449. Cross-month attribution and late-payment assignment are not selected here.
+Owner deployment fact: there is NO old real/customer data to preserve. Do not invent historical-customer migration, legacy-payment attribution or adoption work for nonexistent customer records. This does not authorize deleting code, tests, synthetic/dev records or databases, or resetting/discarding any work. Preserve records that do exist unless explicitly authorized otherwise. Never reconstruct earnings from legacy cash or reference salary. Optional opening balances still represent obligations entered by the operator, including obligations originating outside the application. Monthly presentation belongs to #449. Cross-month attribution and late-payment assignment are not selected here.
 
 ## Current implementation findings
 
@@ -55,7 +55,7 @@ Rejected alternative: make salary records a separate obligation source and proje
 
 ### Additive storage and money
 
-Recommend new approval, segment, cash/classification, opening-review, correction, settlement-link and command-idempotency records. Define exact tables and keys in the first implementation slice after approval. Retain original salary and debt records without rewriting or renaming them.
+Recommend approval, segment, cash/classification, opening-review, correction, settlement-link and command-idempotency records. Exact tables, keys and schema evolution remain to be proposed for approval. There is no need to assume a customer-data conversion or legacy-adoption subsystem. The no-customer-data fact is not deletion authority for existing tables or development records.
 
 Owner-selected storage unit: DZD with decimal amounts, not integer minor units. For example, a 100.50 DZD amount remains 100.50 DZD in stored and public financial meaning, not 10050 cents. Whole amounts such as 100 are also valid. Preserve existing DZD REAL records and use DZD-denominated amounts for new salary records. Numeric storage does not itself preserve trailing-zero typography; the UI must retain fractional values without truncation and coordinate display formatting with #454. No UI formatting preference is selected here.
 
@@ -65,19 +65,19 @@ A command key identifies one logical operation. Same key and normalized payload 
 
 Do not add a payment/project unique constraint. Mirror actual SQL checks in Drizzle for changed definitions. A schema-safety slice may fix the existing days-check mismatch without rebuilding legacy tables, subject to its review.
 
-### Legacy compatibility and opening review
+### Workflow transition and opening review
 
-Recommend new earnings-aware commands and unchanged legacy reads. Leave legacy payments visibly legacy/unattributed. They contribute neither inferred new earnings nor inferred new wages owed.
+The owner confirmed no old real/customer records exist. Withdraw the assumption that customer-history migration, legacy-unattributed payment presentation or a historical-debt adoption flow is necessary for this delivery. Existing code, tests and synthetic/dev records remain protected from unapproved deletion.
 
-A transition for the existing cash-only writer is an owner decision. Preferred rollout is to ship additive domain support first, then switch the salary workflow in a coordinated follow-up and reject new writes through the legacy cash-only command. Do not silently reinterpret old payloads as approval or advance classification. A backend-only rejection deployed before its UI caller changes would break payment entry and is not an acceptable first partial PR.
+Reassess the earlier additive-API-then-legacy-retirement proposal. A long-lived parallel writer or customer-migration stage is not justified merely by the existence of the old implementation. Recommend the smallest coherent backend/UI transition, while preserving an operable payment workflow at every shipped stage. A domain-only first slice can remain non-user-facing; a backend rejection deployed before its UI caller changes would still break payment entry. Exact endpoint replacement, coordinated rollout and contract changes remain proposals, not approvals from the absence of customer data. Coordinate overlapping UI work with #454 before edits.
 
-Existing debt entries may already represent a worker's opening wages or advances. Opening review must allow explicit adoption/linking of those existing obligations rather than inserting them again. Do not assume a pre-existing entry is salary-related from its amount or category alone. Corrections post audited deltas instead of voiding an entire mixed account.
+Opening balances, unreviewed reminders and audited corrections remain required product behavior even without pre-existing application records. Prevent duplicate obligations when records do exist, but do not build an adoption interface for hypothetical customer history. Never infer salary provenance from an existing entry's amount or category alone. Corrections must not void unrelated entries in a mixed account.
 
 ## Owner approval requested
 
 1. Approved: reuse the existing debt ledger as the sole obligation source. Salary provenance links and guards against generic commands bypassing salary semantics remain implementation obligations to verify, not permission to silently net directions.
 2. Decided: the owner rejected integer-cent persistence and selected DZD-denominated decimal storage. Preserve fractional dinars and existing records. Any new magnitude bound or different storage type still requires a concrete proposal and owner approval.
-3. Approve the staged compatibility policy: additive support first, then coordinated salary workflow switch and retirement of new cash-only writes. No legacy cash becomes inferred earnings. Existing opening obligations require explicit adoption, never duplicate insertion.
+3. Unselected: exact coordinated backend/UI and cash-only-writer transition. The no-real/customer-data fact removes the assumed need for historical migration/adoption and may simplify staging, but does not approve endpoint replacement or schema/contract/UI changes. Preserve the shipped payment workflow and existing code/tests/dev records.
 
 Items marked approved or decided record explicit owner responses. Remaining proposals are not decisions inferred from feature authorization. No irreversible migration or new published contract will be applied before explicit approval. Merge of any UI or expensive-to-reverse change requires separate owner approval even after design approval.
 
@@ -85,7 +85,7 @@ Items marked approved or decided record explicit owner responses. Remaining prop
 
 1. Domain validation and suggestion rules, then additive approval/allocation persistence and API proof. No public financial contract is frozen before approval. Preserve repeated projects and explicit unallocated amounts. Do not enable a partial writer that can create inconsistent wages.
 2. Atomic earnings/payment/advance coordination and linked debt guards, command replay/conflict protection, read models and labor-cost consumers. Prove payments do not add labor cost again.
-3. Opening review, explicit adoption, correction history and explicit advance settlement, with rollback and history tests.
+3. Opening review, correction history and explicit advance settlement, with rollback and history tests. Historical customer-record adoption is not an assumed feature.
 4. Coordinated salary workflow integration, nonblocking reminder and legacy-writer transition. Contact #454 before any overlapping UI, preferences or localization edits. #449 presentation remains separate.
 
 Each PR says `Part of #427`. Keep the issue open until all acceptance is delivered. Resolve cross-month/late-payment policy with the owner before any implementation that needs it.
@@ -112,4 +112,6 @@ Only this design has been written. No tests, contracts, source behavior, schema 
 
 The immediate gate is the owner's requested advisory council BEFORE implementation. The owner explicitly confirmed the roster as Astra, Sol 6.1 medium and Luna. This is the existing requested council, not a second council. Use three fresh read-only visible delegate sessions and at most one curated cross-examination round. The council is advisory and cannot reopen accepted debt-ledger or DZD-unit decisions as unanswered approvals, authorize implementation, waive precision proof or replace required implementation reviews.
 
-After council synthesis, initial no-schema/no-UI domain work remains authorized within the confirmed product decisions. Legacy-writer transition, precise mixed-account command handling, any proposed magnitude-bound change, exact schema and new published financial contracts remain unselected where not explicitly approved. Do not freeze unrelated obligations in mixed accounts. UI and expensive-to-reverse merge approval gates remain intact.
+After council synthesis, initial no-schema/no-UI domain work remains authorized within the confirmed product decisions. Workflow/writer transition, precise mixed-account command handling, any proposed magnitude-bound change, exact schema and new published financial contracts remain unselected where not explicitly approved. Do not freeze unrelated obligations in mixed accounts. UI and expensive-to-reverse merge approval gates remain intact.
+
+The owner supplied the no-real/customer-data fact while council pass 1 was running. Relay it to those same advisors as an explicit evidence update, not a duplicate council. Reassess historical migration/adoption assumptions and staged-writer complexity against it. Preserve the original pin and identify the updated design revision when evaluating the reports; do not claim an advisor read later evidence unless its response acknowledges that evidence.
