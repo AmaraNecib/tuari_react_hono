@@ -500,7 +500,7 @@ export const outboundTransferItemInputSchema = z.object({
   /** Concrete balance/unit chosen in the source picker; separate from the definition id. */
   optionId: entityIdSchema.optional(),
   quantity: z.number().positive(),
-  unitPriceDzd: z.number().nonnegative().optional(),
+  unitPriceDzd: nonNegativePaymentAmountSchema.optional(),
 });
 
 /** inventoryOutboundTransferCreateInputSchema - Outbound transfer create input schema. */
@@ -517,12 +517,12 @@ export const inventoryOutboundTransferCreateInputSchema = z.object({
    * balance is the amount still on credit. Optional; omitted when nothing is
    * on credit.
    */
-  debtAmountDzd: z.number().nonnegative().optional(),
+  debtAmountDzd: nonNegativePaymentAmountSchema.optional(),
   /**
    * The portion paid at transfer time. Posted as a real `PAYMENT` entry so the
    * ledger shows the first payment instead of dropping it (D8). Defaults to 0.
    */
-  firstPaymentAmountDzd: z.number().nonnegative().optional(),
+  firstPaymentAmountDzd: nonNegativePaymentAmountSchema.optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
 });
 
