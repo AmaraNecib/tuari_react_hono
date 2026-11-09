@@ -30,11 +30,13 @@ test('runtime and tooling lock branches retain vetted security fixes', () => {
   })) assert.deepEqual(versions(name).sort(), expected.sort(), name);
 });
 
-test('contracts and callers use the same Zod 4 release without forcing Zod 3 callers across majors', () => {
+test('contracts and compatible upstream tooling use the vetted Zod 4 release', () => {
   for (const file of ['apps/api/package.json', 'apps/web/package.json', 'packages/contracts/package.json']) {
     assert.equal(manifest(file).dependencies.zod, '4.6.6', file);
   }
-  assert.deepEqual(versions('zod').sort(), ['3.25.76', '4.6.6']);
+  assert.deepEqual(versions('zod'), ['4.6.6']);
+  assert.equal(manifest('apps/web/package.json').devDependencies.shadcn, '4.22.1');
+  assert.deepEqual(versions('puppeteer'), ['25.14.0']);
 });
 
 test('unused Next integration disappears without a cross-major crypto override', () => {
@@ -44,6 +46,8 @@ test('unused Next integration disappears without a cross-major crypto override',
   assert.deepEqual(versions('@prisma/client'), []);
   const workspace = read('pnpm-workspace.yaml');
   assert.doesNotMatch(workspace, /^\s+['"]?(?:tar|better-sqlite3-sqlcipher)@/m);
-  // The legacy native driver remains a declared blocker, not a claimed fix.
-  assert.equal(manifest('apps/api/package.json').dependencies['better-sqlite3-sqlcipher'], '5.4.3-3');
+  assert.equal(manifest('apps/api/package.json').dependencies['better-sqlite3-sqlcipher'], undefined);
+  assert.equal(manifest('apps/api/package.json').dependencies['better-sqlite3-multiple-ciphers'], '13.0.3');
+  assert.deepEqual(versions('tar'), []);
+  assert.deepEqual(versions('better-sqlite3-sqlcipher'), []);
 });
