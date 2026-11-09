@@ -243,9 +243,6 @@ jobs:
   test-e2e:
     if: ${{ needs.detect.outputs.e2e_mode != 'skip' }}
     name: Test E2E
-    if: >-
-      needs.detect.outputs.e2e_mode != 'skip' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     # Playwright 1.58.2 rejects the current ubuntu-latest image (26.04).
     runs-on: ubuntu-24.04
     needs: detect
