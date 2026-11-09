@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest"
 
-import { buildExpenseFilters } from "./expenses-filters"
+import { buildExpenseFilters, getCurrentMonthExpenseDates } from "./expenses-filters"
+
+describe("getCurrentMonthExpenseDates", () => {
+  it.each([
+    ["2026-09-30T23:30:00.000Z", "2026-10-01", "2026-10-31"],
+    ["2026-12-31T23:30:00.000Z", "2027-01-01", "2027-01-31"],
+    ["2024-02-15T12:00:00.000Z", "2024-02-01", "2024-02-29"],
+    ["2026-02-15T12:00:00.000Z", "2026-02-01", "2026-02-28"],
+    ["2026-04-15T12:00:00.000Z", "2026-04-01", "2026-04-30"],
+    ["2026-12-15T12:00:00.000Z", "2026-12-01", "2026-12-31"],
+  ])("uses the whole Algeria month at %s", (instant, fromDate, toDate) => {
+    expect(getCurrentMonthExpenseDates(new Date(instant))).toEqual({ fromDate, toDate })
+  })
+})
 
 describe("buildExpenseFilters", () => {
   it("expands the date inputs to inclusive Algeria day boundaries", () => {

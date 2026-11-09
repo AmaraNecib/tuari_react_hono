@@ -107,6 +107,7 @@ describe("ExpensesPage", () => {
     cleanup()
     useExpensesListQuery.mockReset()
     voidMutateAsync.mockClear()
+    vi.useRealTimers()
   })
 
   it("renders the KPI totals, the total strip and the dense table", () => {
@@ -120,7 +121,7 @@ describe("ExpensesPage", () => {
     renderPage()
 
     // KPI cards
-    expect(screen.getByText("إجمالي الفترة")).toBeTruthy()
+    expect(screen.getByText("إجمالي كل الفترات")).toBeTruthy()
     // 22,000 appears in both the KPI card and the total strip.
     expect(screen.getAllByText("22,000 دج").length).toBeGreaterThan(1)
     expect(screen.getByText("مقيّد بمشروع")).toBeTruthy()
@@ -175,6 +176,94 @@ describe("ExpensesPage", () => {
     // A filter opens EMPTY — empty means "everything". A seeded range silently
     // hid every expense older than it, which is the opposite of a filter's job.
     expect(filters).toEqual({})
+  })
+
+  it("toggles the current Algeria month without changing project or worker filters", () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-09-30T23:30:00.000Z"))
+    useExpensesListQuery.mockReturnValue({ data: DATA, isPending: false, isError: false })
+    renderPage()
+
+    fireEvent.change(screen.getByRole("combobox", { name: "المشروع" }), {
+      target: { value: "project-1" },
+    })
+    fireEvent.change(screen.getByRole("combobox", { name: "المسؤول" }), {
+      target: { value: "worker-1" },
+    })
+    expect(screen.getByText("إجمالي كل الفترات")).toBeTruthy()
+    const toggle = screen.getByRole("button", { name: "الشهر الحالي" })
+    expect(toggle.getAttribute("aria-pressed")).toBe("false")
+    fireEvent.click(toggle)
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith({
+      projectId: "project-1",
+      responsibleWorkerId: "worker-1",
+      fromDate: "2026-09-30T23:00:00.000Z",
+      toDate: "2026-10-31T22:59:59.999Z",
+    })
+    expect(screen.getByText("إجمالي الفترة")).toBeTruthy()
+    expect(toggle.getAttribute("aria-pressed")).toBe("true")
+    expect(screen.getByRole("button", { name: "من" }).textContent).toContain("01/10/2026")
+    expect(screen.getByRole("button", { name: "إلى" }).textContent).toContain("31/10/2026")
+
+    fireEvent.click(toggle)
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith({
+      projectId: "project-1",
+      responsibleWorkerId: "worker-1",
+    })
+    expect(toggle.getAttribute("aria-pressed")).toBe("false")
+    expect(screen.getByText("إجمالي كل الفترات")).toBeTruthy()
+  })
+
+  it.each(["من", "إلى"])("uses period wording for a manually selected %s bound", (label) => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-15T12:00:00.000Z"))
+    useExpensesListQuery.mockReturnValue({ data: DATA, isPending: false, isError: false })
+    renderPage()
+
+    fireEvent.click(screen.getByRole("button", { name: label }))
+    const day = document.querySelector('[data-day="2026-10-15"] button')
+    expect(day).not.toBeNull()
+    fireEvent.click(day!)
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith(label === "من"
+      ? { fromDate: "2026-10-14T23:00:00.000Z" }
+      : { toDate: "2026-10-15T22:59:59.999Z" })
+    expect(screen.getByText("إجمالي الفترة")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "الشهر الحالي" }).getAttribute("aria-pressed")).toBe("false")
+  })
+
+  it("tracks manual changes to the month range and restores it in one click", () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-15T12:00:00.000Z"))
+    useExpensesListQuery.mockReturnValue({ data: DATA, isPending: false, isError: false })
+    renderPage()
+    const toggle = screen.getByRole("button", { name: "الشهر الحالي" })
+    fireEvent.click(toggle)
+    fireEvent.click(screen.getByRole("button", { name: "من" }))
+    fireEvent.click(document.querySelector('[data-day="2026-10-15"] button')!)
+    expect(toggle.getAttribute("aria-pressed")).toBe("false")
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith({
+      fromDate: "2026-10-14T23:00:00.000Z",
+      toDate: "2026-10-31T22:59:59.999Z",
+    })
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute("aria-pressed")).toBe("true")
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith({
+      fromDate: "2026-09-30T23:00:00.000Z",
+      toDate: "2026-10-31T22:59:59.999Z",
+    })
+  })
+
+  it("computes the month when clicked even if the page opened before midnight", () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-09-30T22:30:00.000Z"))
+    useExpensesListQuery.mockReturnValue({ data: DATA, isPending: false, isError: false })
+    renderPage()
+    vi.setSystemTime(new Date("2026-09-30T23:30:00.000Z"))
+    fireEvent.click(screen.getByRole("button", { name: "الشهر الحالي" }))
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith({
+      fromDate: "2026-09-30T23:00:00.000Z",
+      toDate: "2026-10-31T22:59:59.999Z",
+    })
   })
 
   it("switches the same list into project-grouped cards", () => {

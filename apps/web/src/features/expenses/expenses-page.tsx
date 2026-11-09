@@ -28,7 +28,7 @@ import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { formatAlgeriaDate } from "@/lib/algeria-time"
 
 import { ExpenseFormDialog, type ExpenseLookupOption } from "./expense-form-dialog"
-import { buildExpenseFilters } from "./expenses-filters"
+import { buildExpenseFilters, getCurrentMonthExpenseDates } from "./expenses-filters"
 import { useExpensesListQuery, useVoidExpenseMutation } from "./expenses-queries"
 
 const NO_SELECTION = "ALL"
@@ -76,6 +76,15 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
     () => buildExpenseFilters({ projectId, responsibleWorkerId, fromDate, toDate }),
     [projectId, responsibleWorkerId, fromDate, toDate],
   )
+
+  const currentMonth = getCurrentMonthExpenseDates()
+  const isCurrentMonth = fromDate === currentMonth.fromDate && toDate === currentMonth.toDate
+  const toggleCurrentMonth = () => {
+    const month = getCurrentMonthExpenseDates()
+    const selected = fromDate === month.fromDate && toDate === month.toDate
+    setFromDate(selected ? "" : month.fromDate)
+    setToDate(selected ? "" : month.toDate)
+  }
 
   const query = useExpensesListQuery(filters)
   const voidMutation = useVoidExpenseMutation()
@@ -163,7 +172,9 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
           {/* B's three KPI cards above the table */}
           <div className="grid gap-4 sm:grid-cols-3">
             <Surface variant="card" className="p-4">
-              <p className="text-xs text-ink-3">{t("expenses.kpi.periodTotal")}</p>
+              <p className="text-xs text-ink-3">
+                {t(filters.fromDate || filters.toDate ? "expenses.kpi.periodTotal" : "expenses.kpi.allTimeTotal")}
+              </p>
               <p className="mt-1 text-xl font-semibold text-ink">{money(totals?.total ?? 0)}</p>
               <p className="mt-1 text-xs text-ink-4">
                 {t("expenses.kpi.expenseCount", { count: totals?.count ?? 0 })}
@@ -226,21 +237,31 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
                 </NativeSelect>
               </label>
 
-              <label className="flex min-w-[9rem] flex-col gap-1.5">
+              <label htmlFor="expenses-from-date" className="flex min-w-[9rem] flex-col gap-1.5">
                 <span className="text-xs font-medium text-ink-3">{t("expenses.filters.from")}</span>
                 <DatePicker
+                  id="expenses-from-date"
                   value={fromDate}
                   onChange={setFromDate}
                 />
               </label>
 
-              <label className="flex min-w-[9rem] flex-col gap-1.5">
+              <label htmlFor="expenses-to-date" className="flex min-w-[9rem] flex-col gap-1.5">
                 <span className="text-xs font-medium text-ink-3">{t("expenses.filters.to")}</span>
                 <DatePicker
+                  id="expenses-to-date"
                   value={toDate}
                   onChange={setToDate}
                 />
               </label>
+
+              <Button
+                variant={isCurrentMonth ? "default" : "outline"}
+                aria-pressed={isCurrentMonth}
+                onClick={toggleCurrentMonth}
+              >
+                {t("expenses.filters.currentMonth")}
+              </Button>
 
               <Button
                 variant={groupByProject ? "default" : "outline"}
