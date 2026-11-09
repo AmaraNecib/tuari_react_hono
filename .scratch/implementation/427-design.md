@@ -49,7 +49,7 @@ Owner-approved direction: use existing debt entries as the sole obligation ledge
 
 An approval posts a linked PAYABLE increase. A wage payment posts a linked PAYABLE decrease. An advance posts a linked RECEIVABLE increase. Explicit advance-against-wages settlement posts linked decreases to both directions in one transaction, without cash or labor cost. Salary-specific balances derive only from linked salary entries, not unrelated amounts in the same debt account.
 
-A new salary application service coordinates the salary repository and existing debt repository under one synchronous immediate transaction. Keep this module separate from salary UI. Generic payment, void, consolidation and account-settlement commands must reject salary-linked entries/accounts where they could bypass the salary operation, or route through an explicitly approved salary-aware action. Exact restrictions need implementation review before exposing writes.
+A new salary application service is proposed to coordinate the salary repository and existing debt repository under one synchronous immediate transaction. Keep this module separate from salary UI. Generic payment, void, consolidation and account-settlement paths need salary-aware handling where they could bypass salary invariants. Exact restrictions remain proposals, not owner-approved blanket account freezes. Preserve settlement of unrelated obligations in mixed accounts. Any guard must distinguish the affected salary operation and linked entries rather than reject an entire account merely because it contains salary history.
 
 Rejected alternative: make salary records a separate obligation source and project them into debt views. The owner selected the existing debt ledger instead. Do not mix these approaches.
 
@@ -90,13 +90,13 @@ Items marked approved or decided record explicit owner responses. Remaining prop
 
 Each PR says `Part of #427`. Keep the issue open until all acceptance is delivered. Resolve cross-month/late-payment policy with the owner before any implementation that needs it.
 
-## Proposed test seams, awaiting confirmation
+## Proposed test seams
 
 Test domain approval/allocation validation through its caller-facing interface. Test real SQLite-backed salary application commands and corresponding RPC contracts for references, atomic rollback, idempotency conflicts, linked obligations and preserved legacy reads. Do not test private calculation steps as a substitute for transaction proof.
 
 Use issue literals as expected results: A 10,000, B 37,500, A 15,000 totals 62,500, with A labor cost 25,000. Earnings 35,000 and cash 25,000 leaves wages owed 10,000. Cash 40,000 must classify the extra 5,000 explicitly. Opening wages 5,000 plus earnings 35,000 less cash 30,000 leaves 10,000 owed without opening labor cost.
 
-Negative cases include NaN/infinity/overflow, invalid references, invalid supplied days, inconsistent allocation totals, same command key with changed payload, injected mid-write failures, unrelated debt entries in the same account, generic void/settlement bypass, unreviewed status after first payment and unchanged legacy payment history. Use focused red-first cycles after seams are approved. Full checks remain CI-final.
+Negative cases include NaN/infinity/overflow, invalid references, invalid supplied days, inconsistent allocation totals, same command key with changed payload, injected mid-write failures, unrelated debt entries in the same account, generic void/settlement bypass, unreviewed status after first payment and unchanged legacy payment history. The owner authorized initial no-schema/no-UI domain work, then explicitly required the council before implementation. Council findings will refine the proposed interfaces and proof before the first red-first cycle. This is not blanket approval of future storage or public-contract choices. Full checks remain CI-final.
 
 ## Review and architecture obligations
 
@@ -108,4 +108,8 @@ Applied lessons: money bounds must cover inputs and aggregates; allocation sugge
 
 ## Current handoff boundary
 
-Only this proposed design has been written. No tests, contracts, source behavior, schema or databases have changed. No local or hosted implementation verdict is claimed. Owner design approval and confirmation of the proposed test seams are the next gate.
+Only this design has been written. No tests, contracts, source behavior, schema or databases have changed. No local or hosted implementation verdict is claimed.
+
+The immediate gate is the owner's requested advisory council BEFORE implementation. The owner explicitly confirmed the roster as Astra, Sol 6.1 medium and Luna. This is the existing requested council, not a second council. Use three fresh read-only visible delegate sessions and at most one curated cross-examination round. The council is advisory and cannot reopen accepted debt-ledger or DZD-unit decisions as unanswered approvals, authorize implementation, waive precision proof or replace required implementation reviews.
+
+After council synthesis, initial no-schema/no-UI domain work remains authorized within the confirmed product decisions. Legacy-writer transition, precise mixed-account command handling, any proposed magnitude-bound change, exact schema and new published financial contracts remain unselected where not explicitly approved. Do not freeze unrelated obligations in mixed accounts. UI and expensive-to-reverse merge approval gates remain intact.
