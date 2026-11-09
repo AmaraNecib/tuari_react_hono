@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Field } from "@/components/ui/field"
+import { MoneyFormatSetting } from "@/features/preferences/money-format-setting"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
 import { formatDateTimeInAlgeria } from "@/lib/algeria-time"
@@ -382,6 +383,7 @@ export function SettingsSection({
               {themeValueLabel}
             </Button>
           </div>
+          <MoneyFormatSetting />
         </div>
       )}
 

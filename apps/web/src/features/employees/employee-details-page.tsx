@@ -1,3 +1,4 @@
+import { MoneyValue } from "@/features/shared/money-value"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
@@ -29,7 +30,6 @@ import {
   RecordTabs,
 } from "@/features/shared/record-page-frame"
 import { formatAlgeriaDate, getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
-import { cn } from "@/lib/utils"
 import { computeProposedSalaryAmount } from "@tuari/contracts"
 
 import type { EmployeeTableRow } from "./employee-table"
@@ -64,33 +64,6 @@ function getSalaryDifferenceMeta(expectedAmountDzd: number, actualAmountDzd: num
     className: "text-muted-foreground",
     value: difference,
   }
-}
-
-function renderMoneyValue(
-  value: number,
-  currencyLabel: string,
-  options?: {
-    signed?: boolean
-    toneClassName?: string
-    zeroAsDash?: boolean
-  },
-) {
-  if (options?.zeroAsDash && value === 0) {
-    return <span className={cn("text-muted-foreground", options?.toneClassName)}>—</span>
-  }
-
-  const formattedNumber = new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-    signDisplay: options?.signed ? "always" : "auto",
-    useGrouping: false,
-  }).format(value)
-
-  return (
-    <span className={cn("inline-flex items-baseline gap-1.5 font-mono", options?.toneClassName)} dir="ltr">
-      <span>{currencyLabel}</span>
-      <span>{formattedNumber}</span>
-    </span>
-  )
 }
 
 /** Employee detail page with tabs for personal, work, and finance. */
@@ -342,22 +315,18 @@ export function EmployeeDetailsPage({
           <RecordInfoGrid>
             <RecordInfoCard
               label={t("detailPages.employee.financeCurrentSalary")}
-              value={employee.salaryAmountDzd !== null ? renderMoneyValue(employee.salaryAmountDzd, currencyLabel) : t("detailPages.salary.notSpecified")}
+              value={employee.salaryAmountDzd !== null ? <MoneyValue value={employee.salaryAmountDzd} currencyLabel={currencyLabel} variant="detail" /> : t("detailPages.salary.notSpecified")}
             />
             <RecordInfoCard
               label={t("detailPages.employee.financeSalaryPeriod")}
               value={salaryPeriodLabel(employee.salaryPeriod)}
             />
             <RecordInfoCard label={t("detailPages.employee.financePaymentCount")} value={String(salaryPayments.length)} />
-            <RecordInfoCard label={t("detailPages.employee.financeTotalExpected")} value={renderMoneyValue(totalExpectedAmount, currencyLabel)} />
-            <RecordInfoCard label={t("detailPages.employee.financeTotalPaid")} value={renderMoneyValue(totalActualAmount, currencyLabel)} />
+            <RecordInfoCard label={t("detailPages.employee.financeTotalExpected")} value={<MoneyValue value={totalExpectedAmount} currencyLabel={currencyLabel} variant="detail" />} />
+            <RecordInfoCard label={t("detailPages.employee.financeTotalPaid")} value={<MoneyValue value={totalActualAmount} currencyLabel={currencyLabel} variant="detail" />} />
             <RecordInfoCard
               label={t("detailPages.employee.financeCumulativeDifference")}
-              value={renderMoneyValue(totalDifferenceMeta.value, currencyLabel, {
-                signed: true,
-                toneClassName: totalDifferenceMeta.className,
-                zeroAsDash: true,
-              })}
+              value={<MoneyValue value={totalDifferenceMeta.value} currencyLabel={currencyLabel} variant="detail" signed toneClassName={totalDifferenceMeta.className} zeroAsDash />}
             />
           </RecordInfoGrid>
 
@@ -517,14 +486,10 @@ export function EmployeeDetailsPage({
                         <tr key={payment.id} className="border-t border-border/60 bg-sidebar dark:bg-background">
                           <td className="px-4 py-4 text-start text-foreground">{formatAlgeriaDate(payment.paymentDate)}</td>
                           <td className="px-4 py-4 text-start font-mono tabular-nums text-foreground" dir="ltr">{payment.days}</td>
-                          <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.expectedAmountDzd, currencyLabel)}</td>
-                          <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.actualAmountDzd, currencyLabel)}</td>
+                          <td className="px-4 py-4 text-start text-foreground"><MoneyValue value={payment.expectedAmountDzd} currencyLabel={currencyLabel} variant="detail" /></td>
+                          <td className="px-4 py-4 text-start text-foreground"><MoneyValue value={payment.actualAmountDzd} currencyLabel={currencyLabel} variant="detail" /></td>
                           <td className="px-4 py-4 text-start font-medium">
-                            {renderMoneyValue(difference.value, currencyLabel, {
-                              signed: true,
-                              toneClassName: difference.className,
-                              zeroAsDash: true,
-                            })}
+                            <MoneyValue value={difference.value} currencyLabel={currencyLabel} variant="detail" signed toneClassName={difference.className} zeroAsDash />
                           </td>
                           <td className="px-4 py-4 text-start text-muted-foreground">{payment.note?.trim() ? payment.note : noNotesLabel}</td>
                         </tr>
