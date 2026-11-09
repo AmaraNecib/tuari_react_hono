@@ -7,6 +7,8 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  NEGATIVE_READ_PROBE_SOURCE,
+  PLAIN_READ_PROBE_SOURCE,
   READ_ROWS_PROBE_SOURCE,
   SQLITE_HEADER_MAGIC,
   WRITE_ROW_PROBE_SOURCE,
@@ -334,6 +336,11 @@ test("the probes apply the key before they touch the database", () => {
   }
   assert.match(WRITE_ROW_PROBE_SOURCE, /INSERT INTO proof/);
   assert.match(READ_ROWS_PROBE_SOURCE, /process\.env\.TUARI_PROOF_SQL/);
+  assert.match(NEGATIVE_READ_PROBE_SOURCE, /db\.prepare\(process\.env\.TUARI_PROOF_SQL\)\.all\(\)/);
+  assert.match(NEGATIVE_READ_PROBE_SOURCE, /not a database\|file is encrypted/);
+  assert.match(PLAIN_READ_PROBE_SOURCE, /require\("better-sqlite3"\)/);
+  assert.match(PLAIN_READ_PROBE_SOURCE, /db\.prepare\(process\.env\.TUARI_PROOF_SQL\)\.all\(\)/);
+  assert.doesNotMatch(NEGATIVE_READ_PROBE_SOURCE, /cipher_version/);
   // Presence is not enough: moving the key pragma after the write would still
   // match the checks above, so pin the order too.
   assert.ok(
@@ -344,6 +351,17 @@ test("the probes apply the key before they touch the database", () => {
     READ_ROWS_PROBE_SOURCE.indexOf('db.pragma("key = ') < READ_ROWS_PROBE_SOURCE.indexOf("process.env.TUARI_PROOF_SQL"),
     "the read probe must apply the key before it prepares the query",
   );
+});
+
+test("negative probes query the proof data and fail closed outside the expected database-read errors", () => {
+  assert.match(NEGATIVE_READ_PROBE_SOURCE, /TUARI_PROOF_MODE === "wrong-key"/);
+  assert.match(NEGATIVE_READ_PROBE_SOURCE, /db\.prepare\(process\.env\.TUARI_PROOF_SQL\)\.all\(\)/);
+  assert.match(NEGATIVE_READ_PROBE_SOURCE, /not a database\|file is encrypted/);
+  assert.match(NEGATIVE_READ_PROBE_SOURCE, /negative reader unexpectedly returned SQL data/);
+  assert.match(PLAIN_READ_PROBE_SOURCE, /require\("better-sqlite3"\)/);
+  assert.match(PLAIN_READ_PROBE_SOURCE, /db\.prepare\(process\.env\.TUARI_PROOF_SQL\)\.all\(\)/);
+  assert.match(PLAIN_READ_PROBE_SOURCE, /plain SQLite unexpectedly returned encrypted SQL data/);
+  assert.doesNotMatch(NEGATIVE_READ_PROBE_SOURCE, /cipher_version/);
 });
 
 test("requiredRuntimeFiles names the shipped binding, entry point and interpreter", () => {

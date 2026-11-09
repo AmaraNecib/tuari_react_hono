@@ -2,14 +2,11 @@
 /**
  * sqlcipher-encryption-proof.mjs — prove the BUILT sidecar runtime encrypts.
  *
- * `build-sidecar.mjs` proves the copied SQLCipher binding *loads* and reports a
- * `PRAGMA cipher_version` (#402/#409). That is not the same claim as "a keyed
- * write produces a file that is not a plaintext SQLite database", and it is not
- * the same claim as "the daily backup is encrypted too". This script proves the
- * three claims end to end, against the runtime that would ship:
+ * The availability check confirms the packaged SQLite3MultipleCiphers binding
+ * can complete a keyed temporary-file roundtrip. This script proves the data
+ * protection contract end to end, against the runtime that would ship:
  *
- *   1. the built runtime holds a loadable SQLCipher binding (cipher_version
- *      non-empty, probed with the bundled `node.exe`);
+ *   1. the built runtime completes a keyed temporary-file roundtrip;
  *   2. a keyed open + write + close leaves a file that is NOT plaintext (it does
  *      not start with the SQLite magic), and reopening it WITH the key reads the
  *      row back — a plain better-sqlite3 build accepts `PRAGMA key` as a no-op
@@ -233,8 +230,8 @@ export function parseArgs(argv) {
 
 export function usage() {
   return [
-    "Prove the built sidecar runtime encrypts (SQLCipher cipher_version, keyed",
-    "write, non-plaintext file, keyed read, keyed daily backup).",
+    "Prove the built sidecar runtime encrypts through keyed and negative reads,",
+    "non-plaintext files, and the actual daily backup.",
     "",
     "Usage: node apps/desktop/scripts/sqlcipher-encryption-proof.mjs [options]",
     "",
@@ -283,6 +280,40 @@ export const READ_ROWS_PROBE_SOURCE = [
   "  db.close();",
   "}",
 ].join("\n");
+
+export const NEGATIVE_READ_PROBE_SOURCE = [
+  'const Database = require("better-sqlite3-multiple-ciphers");',
+  'const db = new Database(process.env.TUARI_PROOF_DB);',
+  'db.pragma("cipher = \'sqlcipher\'");',
+  'db.pragma("legacy = 4");',
+  'if (process.env.TUARI_PROOF_MODE === "wrong-key") db.pragma("key = \'" + String(process.env.TUARI_PROOF_KEY).replace(/\'/g, "\'\'") + "\'");',
+  'try {',
+  '  db.prepare(process.env.TUARI_PROOF_SQL).all();',
+  '  throw new Error("negative reader unexpectedly returned SQL data");',
+  '} catch (error) {',
+  '  if (!/not a database|file is encrypted/i.test(String(error.message))) throw error;',
+  '  process.stdout.write("expected database-read rejection");',
+  '} finally { db.close(); }',
+].join("\n");
+
+export const PLAIN_READ_PROBE_SOURCE = [
+  'const Database = require("better-sqlite3");',
+  'const db = new Database(process.env.TUARI_PROOF_DB);',
+  'try {',
+  '  db.prepare(process.env.TUARI_PROOF_SQL).all();',
+  '  throw new Error("plain SQLite unexpectedly returned encrypted SQL data");',
+  '} catch (error) {',
+  '  if (!/not a database|file is encrypted/i.test(String(error.message))) throw error;',
+  '  process.stdout.write("expected plaintext-reader rejection");',
+  '} finally { db.close(); }',
+].join("\n");
+
+function requireExpectedReadFailure(nodeExe, runtimeDir, source, env, label) {
+  const output = runBundledNode(nodeExe, runtimeDir, source, env);
+  if (output !== "expected database-read rejection" && output !== "expected plaintext-reader rejection") {
+    throw new Error(`${label} did not reach and reject the SQL data read`);
+  }
+}
 
 // ─── process helpers ──────────────────────────────────────────────────────
 
@@ -524,7 +555,7 @@ export async function runProof(options, { log = console.log } = {}) {
   const transcript = () => (transcriptBuffer.length > 0 ? transcriptBuffer : "(no sidecar output)");
 
   try {
-    log("[1/5] The built runtime holds a loadable SQLCipher binding");
+    log("[1/4] The built runtime holds a loadable SQLite3MultipleCiphers binding");
     for (const required of requiredRuntimeFiles(runtimeDir, nodeExe)) {
       if (!existsSync(required.path)) {
         const hint = required.path.includes(SQLCIPHER_PACKAGE_DIR)
@@ -537,15 +568,10 @@ export async function runProof(options, { log = console.log } = {}) {
     const prebuildPath = assertSqlcipherPrebuild(
       path.join(runtimeDir, SQLCIPHER_PACKAGE_DIR),
     );
-    results.push(`runtime loads its selected SQLCipher prebuild at ${prebuildPath}`);
+    results.push(`runtime loads its selected SQLite3MultipleCiphers prebuild at ${prebuildPath}`);
+    results.push(probeSqlcipherBinding({ nodeExecPath: nodeExe, runtimeDir }));
 
-    log("[2/5] PRAGMA cipher_version is non-empty on that binding");
-    // Single-sourced with the build's own probe: the build must not use a weaker
-    // capability test than this gate.
-    const cipherVersion = probeSqlcipherBinding({ nodeExecPath: nodeExe, runtimeDir });
-    results.push(`cipher_version=${cipherVersion}`);
-
-    log("[3/5] A keyed write + close leaves a NON-plaintext file");
+    log("[2/4] A keyed write + close leaves a NON-plaintext file");
     runBundledNode(nodeExe, runtimeDir, WRITE_ROW_PROBE_SOURCE, {
       TUARI_PROOF_DB: roundTripDb,
       TUARI_PROOF_KEY: key,
@@ -554,7 +580,7 @@ export async function runProof(options, { log = console.log } = {}) {
     const roundTripSize = assertNotPlaintextDatabase(roundTripDb, "keyed write");
     results.push(`keyed write produced ${roundTripSize} encrypted bytes`);
 
-    log("[4/5] Reopening WITH the key reads the row back");
+    log("[3/4] Reopening WITH the key reads the row back");
     const readBack = JSON.parse(
       runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
         TUARI_PROOF_DB: roundTripDb,
@@ -567,7 +593,33 @@ export async function runProof(options, { log = console.log } = {}) {
     }
     results.push("keyed reopen returned the written row");
 
-    log("[5/5] The shipped runtime boots with a key and its daily backup is encrypted too");
+    const proofSql = `SELECT marker FROM proof WHERE marker = '${marker}'`;
+    for (const [mode, probeKey, label] of [
+      ["wrong-key", `wrong-${randomBytes(16).toString("hex")}`, "wrong key"],
+      ["no-key", "", "no key"],
+    ]) {
+      requireExpectedReadFailure(nodeExe, runtimeDir, NEGATIVE_READ_PROBE_SOURCE, {
+        TUARI_PROOF_DB: roundTripDb,
+        TUARI_PROOF_KEY: probeKey,
+        TUARI_PROOF_MODE: mode,
+        TUARI_PROOF_SQL: proofSql,
+      }, `${label} reader`);
+      results.push(`${label} reader reached SQL data and was rejected`);
+    }
+    requireExpectedReadFailure(nodeExe, runtimeDir, PLAIN_READ_PROBE_SOURCE, {
+      TUARI_PROOF_DB: roundTripDb,
+      TUARI_PROOF_SQL: proofSql,
+    }, "plain SQLite reader");
+    results.push("plain SQLite reader reached SQL data and was rejected");
+
+    log("[4/4] The shipped runtime boots with a key and its daily backup is encrypted too");
+    // Seed a known row before startup schedules its real snapshot, so the actual
+    // backup must carry this exact row rather than merely matching the schema.
+    runBundledNode(nodeExe, runtimeDir, WRITE_ROW_PROBE_SOURCE, {
+      TUARI_PROOF_DB: liveDb,
+      TUARI_PROOF_KEY: key,
+      TUARI_PROOF_MARKER: marker,
+    });
     const port = await freePort();
     child = spawn(nodeExe, [SIDECAR_ENTRY], {
       cwd: runtimeDir,
@@ -604,10 +656,15 @@ export async function runProof(options, { log = console.log } = {}) {
       ).map((row) => row.name);
 
     const liveTables = keyedTableNames(liveDb);
-    if (liveTables.length === 0) {
-      throw new Error("the keyed sidecar database holds no tables — nothing was written under the key");
+    const liveMarker = JSON.parse(runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
+      TUARI_PROOF_DB: liveDb,
+      TUARI_PROOF_KEY: key,
+      TUARI_PROOF_SQL: `SELECT marker FROM proof WHERE marker = '${marker}'`,
+    }) || "[]");
+    if (liveTables.length === 0 || liveMarker.length !== 1 || liveMarker[0].marker !== marker) {
+      throw new Error("the keyed sidecar database did not return the exact proof row");
     }
-    results.push(`sidecar wrote ${liveSize} encrypted bytes (${liveTables.length} tables, key-readable)`);
+    results.push(`sidecar wrote ${liveSize} encrypted bytes and returned the exact proof row (${liveTables.length} tables)`);
 
     const snapshot = await waitForSnapshot(backupsRoot, {
       timeoutMs: options.backupTimeoutMs,
@@ -616,8 +673,13 @@ export async function runProof(options, { log = console.log } = {}) {
     });
     const snapshotSize = assertNotPlaintextDatabase(snapshot, "daily backup");
     const snapshotTables = keyedTableNames(snapshot);
-    if (snapshotTables.length === 0) {
-      throw new Error("the keyed daily backup holds no tables — the backup is not key-readable");
+    const snapshotMarker = JSON.parse(runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
+      TUARI_PROOF_DB: snapshot,
+      TUARI_PROOF_KEY: key,
+      TUARI_PROOF_SQL: `SELECT marker FROM proof WHERE marker = '${marker}'`,
+    }) || "[]");
+    if (snapshotTables.length === 0 || snapshotMarker.length !== 1 || snapshotMarker[0].marker !== marker) {
+      throw new Error("the keyed daily backup did not return the exact proof row");
     }
     // The backup is a `VACUUM INTO` copy of the live database, so every table
     // the live database had at backup time must be present in the backup. A
@@ -640,8 +702,26 @@ export async function runProof(options, { log = console.log } = {}) {
       );
     }
     results.push(`daily backup ${path.relative(backupsRoot, snapshot)} is ${snapshotSize} encrypted bytes (key-readable)`);
+    const backupSql = `SELECT marker FROM proof WHERE marker = '${marker}'`;
+    for (const [mode, probeKey, label] of [
+      ["wrong-key", `wrong-${randomBytes(16).toString("hex")}`, "wrong key"],
+      ["no-key", "", "no key"],
+    ]) {
+      requireExpectedReadFailure(nodeExe, runtimeDir, NEGATIVE_READ_PROBE_SOURCE, {
+        TUARI_PROOF_DB: snapshot,
+        TUARI_PROOF_KEY: probeKey,
+        TUARI_PROOF_MODE: mode,
+        TUARI_PROOF_SQL: backupSql,
+      }, `backup ${label} reader`);
+      results.push(`daily backup ${label} reader reached SQL data and was rejected`);
+    }
+    requireExpectedReadFailure(nodeExe, runtimeDir, PLAIN_READ_PROBE_SOURCE, {
+      TUARI_PROOF_DB: snapshot,
+      TUARI_PROOF_SQL: backupSql,
+    }, "backup plain SQLite reader");
+    results.push("daily backup plain SQLite reader reached SQL data and was rejected");
 
-    return { cipherVersion, results };
+    return { results };
   } catch (error) {
     proofError = error;
     throw error;
@@ -658,11 +738,10 @@ async function main() {
   }
 
   const started = Date.now();
-  const { cipherVersion, results } = await runProof(options);
+  const { results } = await runProof(options);
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
 
   console.log("\nSQLCipher encryption proof PASSED");
-  console.log(`  cipher_version: ${cipherVersion}`);
   for (const result of results) console.log(`  - ${result}`);
   console.log(`  (${seconds}s, runtime: ${options.runtimeDir})`);
 }

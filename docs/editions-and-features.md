@@ -210,13 +210,14 @@ implementation and its remaining release gates are distinct:
   SQLCipher 4 fixture. The packaging test executes the copied Node and drivers
   on Windows x64. These checks are not a real installer or cross-platform
   release validation.
-- #410 still requires built-artifact proof, including a non-empty
-  `PRAGMA cipher_version`, a keyed write/reopen, and a file header other than
-  `SQLite format 3`. The current fixture and keyed tests do not establish that
-  literal version-probe criterion. Do not replace it with `PRAGMA cipher` or
-  claim #410 is complete. The proof uses the driver's `cipher='sqlcipher'`,
-  `legacy=4`, then key ordering; its bounded health deadline and process cleanup
-  do not change this acceptance gate.
+- #410's built-artifact acceptance is behavioral. On the copied Windows
+  runtime, proof must write known data, close and reopen with the correct key,
+  and verify the exact row. Wrong-key and no-key readers must fail on that SQL
+  read, and plain SQLite must not read it. The actual runtime-created backup
+  must pass the same checks. A non-plaintext header is supplementary only.
+  `PRAGMA cipher_version` is not required because SQLite3MultipleCiphers is the
+  existing engine and that pragma is SQLCipher-specific. The independent SQLCipher
+  4 fixture compatibility test remains required.
 - The new `legacy=4` configuration does not migrate or retry files written with
   `legacy=0`. The owner reports no user deployment of the earlier build, so
   migration is not included. Wrong-format files still fail closed. Reassess

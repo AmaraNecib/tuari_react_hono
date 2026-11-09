@@ -1,5 +1,8 @@
 # #410 — CI proves the release artifact can encrypt
 
+> Historical implementation record below retains its original decisions and
+> evidence. The current owner-approved acceptance is recorded at the end.
+
 - **mode:** focused-local / CI-final-enforced, supplied by the parent
 - **ticket:** GitHub #410 (`CI: prove the release artifact can actually encrypt`)
 - **worktree:** `D:/worktrees/tuari_react_hono/t3-9a3a5970`
@@ -305,3 +308,27 @@ review. No native Windows proof or literal `cipher_version` acceptance waiver.
 - The literal nonempty `PRAGMA cipher_version` remains unmet by the observed
   Windows job, which failed while configuring the in-memory database. Only the
   next Windows CI run can establish the native result.
+
+## Owner-approved correction
+
+The owner explicitly approved replacing the SQLCipher-specific
+`cipher_version` acceptance criterion with behavioral encryption proof for the
+existing SQLite3MultipleCiphers driver. This approval does not change the
+engine, key handling, database format, or release scope.
+
+Old acceptance required a nonempty `PRAGMA cipher_version`, plus write/read and
+file-header checks. New acceptance requires the built Windows runtime to write
+known data, close, reopen with the correct key, and return the exact data; wrong
+key, no key, and plain SQLite must fail when reading that same SQL data. The
+actual runtime-created backup must return that exact data with the correct key
+and reject the same negative readers. A non-plaintext header is supplementary,
+not sufficient. The proof must fail when any behavior fails. It must not
+manufacture a version, ignore a failed read, or treat `PRAGMA cipher` success as
+encryption proof. The independent SQLCipher 4 fixture compatibility test stays
+in place.
+
+The proof's temporary-file availability probe now performs a keyed write and
+read rather than checking `cipher_version`. Existing deadlines, actual child
+close tracking, cleanup error precedence, and retention of a possibly live
+workspace remain unchanged. Native Windows execution remains hosted proof; the
+local source tests do not establish native encryption.

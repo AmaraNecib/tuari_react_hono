@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
 
 /**
- * Probe the package through the bundled Node that ships beside it. The
- * availability check itself uses `assertSqlcipherPrebuild` from
- * `script-security-utils.mjs`, which follows the package's prebuild selector.
+ * Exercise the packaged binding through bundled Node on a temporary file.
+ * Acceptance of encryption still comes from the built-runtime proof, which
+ * checks positive and negative readers against real database data.
  */
 export const SQLCIPHER_PROBE_SOURCE = [
   'const Database = require("better-sqlite3-multiple-ciphers");',
@@ -12,17 +12,23 @@ export const SQLCIPHER_PROBE_SOURCE = [
   'const path = require("node:path");',
   'const probeDir = fs.mkdtempSync(path.join(os.tmpdir(), "tuari-sqlcipher-probe-"));',
   'const probeFile = path.join(probeDir, "probe.sqlite");',
-  'let db;',
+  'const key = "tuari-build-probe";',
+  "let db;",
   "try {",
   '  db = new Database(probeFile);',
   '  db.pragma("cipher = \'sqlcipher\'");',
   '  db.pragma("legacy = 4");',
-  '  db.pragma("key = \'tuari-build-probe\'");',
-  '  const version = db.pragma("cipher_version", { simple: true });',
-  '  if (typeof version !== "string" || version.trim() === "") {',
-  '    throw new Error("PRAGMA cipher_version returned no version");',
-  "  }",
-  "  process.stdout.write(String(version));",
+  '  db.pragma("key = \'" + key + "\'");',
+  '  db.exec("CREATE TABLE probe (value TEXT NOT NULL)");',
+  '  db.prepare("INSERT INTO probe VALUES (?)").run("binding-ready");',
+  '  db.close(); db = null;',
+  '  db = new Database(probeFile);',
+  '  db.pragma("cipher = \'sqlcipher\'");',
+  '  db.pragma("legacy = 4");',
+  '  db.pragma("key = \'" + key + "\'");',
+  '  const row = db.prepare("SELECT value FROM probe").get();',
+  '  if (row?.value !== "binding-ready") throw new Error("keyed temporary-file readback failed");',
+  '  process.stdout.write("keyed temporary-file readback passed");',
   "} finally {",
   '  try { db?.close(); } finally { fs.rmSync(probeDir, { recursive: true, force: true }); }',
   "}",
@@ -32,9 +38,8 @@ export const SQLCIPHER_PROBE_SOURCE = [
 export const SQLCIPHER_PROBE_TIMEOUT_MS = 30_000;
 
 /**
- * Load the packaged binding with the bundled Node and require a nonempty
- * cipher_version. Prebuild selection and loading are checked separately by
- * `assertSqlcipherPrebuild` before this capability probe runs.
+ * Load and exercise the packaged binding with the bundled Node. The full
+ * encryption proof checks wrong-key, no-key and plain-SQLite rejection.
  */
 export const probeSqlcipherBinding = ({
   nodeExecPath,
@@ -53,15 +58,15 @@ export const probeSqlcipherBinding = ({
     const stderr = error && error.stderr ? String(error.stderr).trim() : "";
     const detail = stderr || (error instanceof Error ? error.message : String(error));
     throw new Error(
-      `SQLCipher binding could not be loaded by ${nodeExecPath} from ${runtimeDir}: ${detail}`,
+      `SQLite3MultipleCiphers binding could not complete a keyed file roundtrip in ${nodeExecPath} from ${runtimeDir}: ${detail}`,
     );
   }
 
-  const version = typeof stdout === "string" ? stdout.trim() : "";
-  if (version === "") {
+  const result = typeof stdout === "string" ? stdout.trim() : "";
+  if (result !== "keyed temporary-file readback passed") {
     throw new Error(
-      `SQLCipher binding loaded by ${nodeExecPath} but reported no cipher_version; it cannot encrypt.`,
+      `SQLite3MultipleCiphers binding in ${nodeExecPath} did not confirm its keyed file roundtrip.`,
     );
   }
-  return version;
+  return result;
 };

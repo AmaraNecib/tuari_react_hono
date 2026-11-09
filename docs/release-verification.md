@@ -312,8 +312,10 @@ packaging behavior and remaining release gaps are separate:
   driver's shipped prebuild before packaging and checks the copied prebuild.
   Missing native support fails the build; it does not warn and fall back to a
   plain-only runtime. This fixes the packaging omission identified by the
-  original smoke-test lane. It does not complete #410's built-artifact proof
-  or its literal nonempty `PRAGMA cipher_version` acceptance criterion.
+  original smoke-test lane. The built-artifact proof still must pass on the
+  Windows runner: exact correct-key readback, wrong-key/no-key/plain-SQLite
+  rejection, and those same checks against the actual runtime-created backup.
+  `PRAGMA cipher_version` is not part of acceptance; it is SQLCipher-specific.
 - The shell migrates a legacy database from `Documents/Tuari` into the data dir
   with `std::fs::copy`, which preserves the source mtime. That is deliberate
   product behaviour, but it means a first-run check must neutralize the source
