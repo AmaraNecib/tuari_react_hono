@@ -876,10 +876,13 @@ export class InventoryService {
     }
 
     this.repository.withTransaction(() => {
-      const remainingQty = subtractQuantity(sourceBalance.quantity, quantity)
+      // Reject a real shortage against the stored value above, then remove
+      // sub-quantum legacy noise before validating the six-decimal balance move.
+      const normalizedSourceQuantity = roundQuantity(sourceBalance.quantity)
+      const remainingQty = roundQuantity(subtractQuantity(normalizedSourceQuantity, quantity))
       if (
         !Number.isFinite(remainingQty) || remainingQty < 0 ||
-        !quantityDifferenceMatches(sourceBalance.quantity, remainingQty, quantity)
+        !quantityDifferenceMatches(normalizedSourceQuantity, remainingQty, quantity)
       ) {
         throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل خصم الكمية بدقة المخزون.")
       }
@@ -898,10 +901,11 @@ export class InventoryService {
       })
 
       if (targetBalance) {
-        const nextTargetQuantity = addQuantity(targetBalance.quantity, quantity)
+        const normalizedTargetQuantity = roundQuantity(targetBalance.quantity)
+        const nextTargetQuantity = roundQuantity(addQuantity(normalizedTargetQuantity, quantity))
         if (
           !Number.isFinite(nextTargetQuantity) ||
-          !quantityDifferenceMatches(nextTargetQuantity, targetBalance.quantity, quantity)
+          !quantityDifferenceMatches(nextTargetQuantity, normalizedTargetQuantity, quantity)
         ) {
           throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل إضافة الكمية بدقة المخزون.")
         }
@@ -1108,8 +1112,8 @@ export class InventoryService {
       if (balance.quantity <= 0) continue
 
       const consumed = roundQuantity(Math.min(balance.quantity, remaining))
-      const left = roundQuantity(balance.quantity - consumed)
-      const nextRemaining = roundQuantity(remaining - consumed)
+      const left = roundQuantity(subtractQuantity(balance.quantity, consumed))
+      const nextRemaining = roundQuantity(subtractQuantity(remaining, consumed))
       const stockDeltaMatches = quantityDifferenceMatches(balance.quantity, left, consumed)
       const requestDeltaMatches = quantityDifferenceMatches(remaining, nextRemaining, consumed)
 

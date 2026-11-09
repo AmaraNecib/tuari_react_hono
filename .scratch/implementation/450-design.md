@@ -261,6 +261,25 @@ The focused file passes 69 tests. Fresh contracts build, typecheck, lint, full
 API with 1,757 passed and 3 skipped, and full web with 970 passed all pass.
 Logs are in .scratch/reviews/450/selected-shortage-20261102/.
 
+## Hosted precision corrections after integration
+
+The current hosted review exposed two reachable arithmetic defects on legacy and
+large stock values. Inbound transfers now compare the raw source quantity for
+shortage first, then normalize old sub-quantum floating noise before validating
+six-decimal source and destination changes. This keeps a true `0.4999996` source
+short of a `0.5` request while allowing a legacy `0.49999999999999994` balance
+to move `0.2` without rejecting a representable result. Outbound allocation
+uses `subtractQuantity` for both the stock remainder and request remainder;
+binary subtraction at `4294967296.1 - 1` can select the wrong representable
+Number and trip the existing guard.
+
+The red-first regressions use the real SQLite inventory service. They cover
+noisy legacy rows at both ends of an inbound transfer and a large outbound
+balance, with movement quantities checked against stored balances. Existing
+shortage rollback, conservation, unrepresentable-deduction and selected-source
+no-sibling tests remain unchanged. No tolerance was widened, and no global
+rounding extraction or public magnitude bound was added.
+
 ## Not in this change
 
 - Inbound transfers do not acquire definition-based selection. Consumables still

@@ -696,6 +696,40 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
     expect(env.repository.listAllMovements({})[0]!.quantity).toBe(0.2)
   })
 
+  it("normalizes legacy binary noise at both ends of an inbound transfer", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedProject(env.db, "prj-legacy-noise")
+    seedDefinition(env.db, { id: "def-legacy-noise", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-legacy-noise", invoiceGroupId: "g", itemDefinitionId: "def-legacy-noise", itemType: "CONSUMABLE" })
+    seedBalance(env.db, {
+      id: "bal-legacy-source",
+      entryId: "e-legacy-noise",
+      itemDefinitionId: "def-legacy-noise",
+      warehouseId: "wh-1",
+      quantity: 0.49999999999999994,
+    })
+    seedBalance(env.db, {
+      id: "bal-legacy-target",
+      entryId: "e-legacy-noise",
+      itemDefinitionId: "def-legacy-noise",
+      projectId: "prj-legacy-noise",
+      quantity: 0.49999999999999994,
+    })
+
+    env.service.transferConsumable(
+      { inventoryEntryId: "e-legacy-noise", quantity: 0.2, fromWarehouseId: "wh-1", toProjectId: "prj-legacy-noise" },
+      AUDIT,
+    )
+
+    const sourceRemainder = env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-legacy-noise", warehouseId: "wh-1" })!.quantity
+    const targetBalance = env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-legacy-noise", projectId: "prj-legacy-noise" })!.quantity
+    expect(sourceRemainder).toBe(0.3)
+    expect(targetBalance).toBe(0.7)
+    expect(sourceRemainder + targetBalance).toBe(1)
+    expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([0.2])
+  })
+
   it("keeps an inbound consumable transfer's fractional remainder exact", async () => {
     const env = await openEnv()
     seedBase(env)
@@ -713,6 +747,26 @@ describe("fractional consumable quantities round through one rule (#450 round 4)
 
     expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-inbound", warehouseId: "wh-1" })?.quantity).toBe(0.5)
     expect(env.repository.getConsumableBalanceByEntryAndLocation({ inventoryEntryId: "e-inbound", projectId: "prj-1" })?.quantity).toBe(0.2)
+  })
+
+  it("uses decimal subtraction for representable large outbound deductions", async () => {
+    const env = await openEnv()
+    seedBase(env)
+    seedDefinition(env.db, { id: "def-large-outbound", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "e-large-outbound", invoiceGroupId: "g", itemDefinitionId: "def-large-outbound", itemType: "CONSUMABLE" })
+    seedBalance(env.db, {
+      id: "bal-large-outbound",
+      entryId: "e-large-outbound",
+      itemDefinitionId: "def-large-outbound",
+      warehouseId: "wh-1",
+      quantity: 4_294_967_296.1,
+    })
+
+    transfer(env, [{ itemId: "def-large-outbound", quantity: 1 }])
+
+    expect(env.repository.listConsumableBalancesByLocation({ warehouseId: "wh-1" }).find((balance) => balance.id === "bal-large-outbound")?.quantity)
+      .toBe(4_294_967_295.1)
+    expect(env.repository.listAllMovements({}).map((movement) => movement.quantity)).toEqual([1])
   })
 
   it("preserves an exactly representable large balance during inbound transfer", async () => {
