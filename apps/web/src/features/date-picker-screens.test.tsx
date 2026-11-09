@@ -193,7 +193,7 @@ describe("DebtLedgerPanel submits the picked day for a ledger entry (#428)", () 
     const entries: DebtEntry[] = []
     render(<DebtLedgerPanel debtAccount={ACCOUNT} debtEntries={entries} title="حساب" />)
 
-    fireEvent.change(screen.getByPlaceholderText("مثال: 2500 أو -2500"), {
+    fireEvent.change(screen.getByRole("textbox", { name: /مبلغ الدفعة/ }), {
       target: { value: "100" },
     })
     pickDate()
@@ -201,7 +201,8 @@ describe("DebtLedgerPanel submits the picked day for a ledger entry (#428)", () 
 
     await waitFor(() => expect(mocks.createDebtEntry).toHaveBeenCalledTimes(1))
     expect(mocks.createDebtEntry).toHaveBeenCalledWith(
-      expect.objectContaining({ entryDate: PICKED_ISO }),
+      expect.objectContaining({ entryDate: PICKED_ISO, entryType: "PAYMENT", signedAmountDzd: -100 }),
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
     )
   })
 })
