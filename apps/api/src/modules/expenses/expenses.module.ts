@@ -214,6 +214,13 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
       if (changedFields.length === 0) return existing;
 
       const now = new Date().toISOString();
+      const revisions = await repo.listRevisionsByExpenseId(input.id);
+      const latestRevisionAt = revisions.at(-1)?.createdAt;
+      const revisionCreatedAt = latestRevisionAt
+        ? new Date(
+            Math.max(Date.now(), Date.parse(latestRevisionAt) + 1),
+          ).toISOString()
+        : now;
 
       const updated = await repo.update(
         {
@@ -233,7 +240,7 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
           newAmount: next.amount,
           changedFields,
           reason: input.reason ?? null,
-          createdAt: now,
+          createdAt: revisionCreatedAt,
         },
         audit,
       );

@@ -6,7 +6,7 @@
  * persistence, revision history, void guard and transaction rollback are
  * pinned against real SQL.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 
 import { schemaStatements } from "../../infrastructure/database/schema-definitions";
@@ -48,6 +48,10 @@ describe("ExpensesModule (sqlite adapter)", () => {
     expensesModule = env.expensesModule;
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("persists and reads back every optional field", async () => {
     await expensesModule.create(
       {
@@ -78,6 +82,9 @@ describe("ExpensesModule (sqlite adapter)", () => {
   });
 
   it("persists the revision history across edits", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-09T10:00:00.000Z"));
+
     await expensesModule.create(
       { id: "e-1", amount: 50000, expenseDate: "2026-10-03T10:00:00.000Z" },
       AUDIT,
@@ -95,6 +102,8 @@ describe("ExpensesModule (sqlite adapter)", () => {
     const fetched = await expensesModule.get("e-1");
     expect(fetched?.amount).toBe(46000);
     expect(fetched?.revisions).toHaveLength(2);
+    expect(fetched?.revisions[0]!.createdAt).toBe("2026-11-09T10:00:00.000Z");
+    expect(fetched?.revisions[1]!.createdAt).toBe("2026-11-09T10:00:00.001Z");
     expect(fetched?.revisions.map((revision) => revision.newAmount)).toEqual([
       45000, 46000,
     ]);
