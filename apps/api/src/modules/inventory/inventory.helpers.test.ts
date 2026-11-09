@@ -3,6 +3,23 @@ import { describe, expect, it } from "vitest"
 import { addQuantity, normalizedQuantityMicroUnits, quantityDifferenceMatches, QUANTITY_MIN, roundQuantity, subtractQuantity } from "./inventory.helpers"
 
 describe("roundQuantity (#450 round 4)", () => {
+  it.each([
+    [1.2345675, 1.234568], [-1.2345675, -1.234568],
+    [1.2345674999999998, 1.234567], [-1.2345674999999998, -1.234567],
+    [4.999999999999999e-7, 0], [-4.999999999999999e-7, 0],
+    [5e-7, 0.000001], [-5e-7, -0.000001],
+    [0, 0], [-0, 0],
+    [Number.MIN_VALUE, 0], [-Number.MIN_VALUE, 0],
+    [8589934592.000011, 8589934592.000011],
+    [-8589934592.000011, -8589934592.000011],
+    [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER],
+    [1e21, 1e21], [-1e21, -1e21],
+    [Number.MAX_VALUE, Number.MAX_VALUE], [-Number.MAX_VALUE, -Number.MAX_VALUE],
+    [-Infinity, -Infinity],
+  ])("preserves the existing Number-domain result for %s", (value, expected) => {
+    expect(roundQuantity(value)).toBe(expected)
+  })
+
   it("snaps float noise while keeping fractional quantities", () => {
     // The equality the outbound write gate needs: a sum that misses 0.8 by one
     // float epsilon must round back to 0.8, not force integer cents.
