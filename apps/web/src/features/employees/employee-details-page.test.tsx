@@ -66,6 +66,7 @@ vi.mock("@/components/ui/date-picker", async (importOriginal) => {
 })
 
 import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
 
 import { EmployeeDetailsPage } from "./employee-details-page"
 import type { EmployeeTableRow } from "./employee-table"
@@ -342,5 +343,40 @@ describe("EmployeeDetailsPage salary payments (#412)", () => {
         paymentDate: toAlgeriaDayBoundaryIso("2026-03-15", "start"),
       }),
     )
+  })
+})
+
+describe("stored business day timezone (#473)", () => {
+  let restoreTimeZone: () => void
+
+  beforeEach(() => {
+    restoreTimeZone = pinUtcTimeZone()
+  })
+
+  afterEach(() => {
+    cleanup()
+    restoreTimeZone()
+  })
+
+  it("runs under UTC so the assertions are not vacuous", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
+    expect(ALGERIA_DAY).not.toBe(UTC_DAY)
+  })
+
+  it("renders the salary payment history date on its Algeria day, not the ambient UTC day", () => {
+    renderDetails(monthlyWorker(), [
+      {
+        id: "payment-1",
+        paymentDate: MIDNIGHT_CROSSING,
+        days: 15,
+        expectedAmountDzd: 15000,
+        actualAmountDzd: 15000,
+        periodType: "MONTHLY",
+        note: null,
+      },
+    ])
+
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
   })
 })
