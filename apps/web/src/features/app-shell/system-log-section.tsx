@@ -18,6 +18,8 @@ import {
   AppShellTableHeaderCell,
   AppShellTableRow,
   usePaginatedRows,
+  TableQueryState,
+  type TableQuery,
 } from "@/features/shared/table-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
@@ -154,8 +156,7 @@ function SystemLogDetailsCell({ detail }: { detail: string | null | undefined })
 export function SystemLogSection({
   entries,
   filters,
-  isError = false,
-  isLoading = false,
+  query,
   onFiltersChange,
   title,
 }: {
@@ -176,8 +177,7 @@ export function SystemLogSection({
     fromDate?: string
     toDate?: string
   }) => void
-  isError?: boolean
-  isLoading?: boolean
+  query: TableQuery
   title: string
 }) {
   const { t } = useTranslation()
@@ -261,6 +261,7 @@ export function SystemLogSection({
           />
         </AppShellFilterShell>
 
+        <TableQueryState query={query} resource={t("systemLog.title")}>
         <AppShellTableFrame>
             <table className="min-w-full text-sm">
               <AppShellTableHead>
@@ -275,11 +276,7 @@ export function SystemLogSection({
                 </tr>
               </AppShellTableHead>
               <tbody>
-                {isLoading ? (
-                  <AppShellEmptyStateRow colSpan={7}>{t("systemLog.loading")}</AppShellEmptyStateRow>
-                ) : isError ? (
-                  <AppShellEmptyStateRow colSpan={7}>{t("systemLog.loadError")}</AppShellEmptyStateRow>
-                ) : pagedEntries.length > 0 ? (
+                {pagedEntries.length > 0 ? (
                   pagedEntries.map((entry) => (
                     <AppShellTableRow key={entry.id} className="align-top">
                       <td className="px-4 py-4 text-start text-muted-foreground">{formatDateTimeInAlgeria(new Date(entry.createdAt))}</td>
@@ -314,6 +311,7 @@ export function SystemLogSection({
             setPageSize(nextPageSize)
           }}
         />
+        </TableQueryState>
     </RecordPageFrame>
   )
 }

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
-import { AppShellFilterShell, DateRangeFilter, usePaginatedRows } from "@/features/shared/table-primitives";
+import { AppShellFilterShell, DateRangeFilter, TableQueryState, usePaginatedRows } from "@/features/shared/table-primitives";
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls";
 import { isInstantWithinBounds, resolveDayRangeBounds } from "@/lib/date-range";
 import { rpcClient } from "@/lib/orpc-client";
@@ -35,7 +35,7 @@ export function AuditLogPage() {
   const [endDate, setEndDate] = useState("");
 
   // Fetch audit logs from API
-  const { data: apiResponse, isLoading, error } = useQuery({
+  const logsQuery = useQuery({
     queryKey: ["systemLogList"],
     queryFn: async () => {
       const result = await rpcClient.systemLogList({});
@@ -43,6 +43,7 @@ export function AuditLogPage() {
     },
   });
 
+  const apiResponse = logsQuery.data;
   const logs = useMemo(() => {
     if (!apiResponse) return [];
 
@@ -175,66 +176,57 @@ export function AuditLogPage() {
           />
         </AppShellFilterShell>
 
-        {isLoading && (
-          <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
-            <p className="text-muted-foreground">{t("systemLog.loading", "جاري تحميل السجل...")}</p>
-          </div>
-        )}
 
-        {error && (
-          <div className="rounded-lg border border-destructive/60 bg-destructive/10 p-4 text-sm text-destructive">
-            {t("auditLog.loadError")} {error instanceof Error ? error.message : t("common.error")}
-          </div>
-        )}
-
-        {!isLoading && !error && filteredLogs.length === 0 ? (
-          <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
-            <p className="text-muted-foreground">{t("auditLog.noResults")}</p>
-          </div>
-        ) : (!isLoading && !error) && (
-          <div className="space-y-3">
-            {pagedLogs.map((log: unknown) => {
-              const auditLog = log as AuditLog;
-              return (
-                <div key={auditLog.id} className="rounded-lg border border-border/60 bg-surface p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 space-y-2">
-                      <div className="flex flex-wrap gap-2">
-                        <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
-                          {auditLog.domain}
-                        </span>
-                        <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
-                          {auditLog.action === "create" && t("historyEvent.created")}
-                          {auditLog.action === "update" && t("historyEvent.updated")}
-                          {auditLog.action === "delete" && t("common.delete")}
-                        </span>
-                      </div>
-                      <div className="text-sm font-medium">{auditLog.changes}</div>
-                      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                        <span>{auditLog.actor}</span>
-                        <span>{auditLog.resourceId}</span>
-                        <span>{new Date(auditLog.timestamp).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}</span>
+        <TableQueryState query={logsQuery} resource={t("systemLog.title")}>
+          {filteredLogs.length === 0 ? (
+            <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
+              <p className="text-muted-foreground">{t("auditLog.noResults")}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pagedLogs.map((log: unknown) => {
+                const auditLog = log as AuditLog;
+                return (
+                  <div key={auditLog.id} className="rounded-lg border border-border/60 bg-surface p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
+                            {auditLog.domain}
+                          </span>
+                          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
+                            {auditLog.action === "create" && t("historyEvent.created")}
+                            {auditLog.action === "update" && t("historyEvent.updated")}
+                            {auditLog.action === "delete" && t("common.delete")}
+                          </span>
+                        </div>
+                        <div className="text-sm font-medium">{auditLog.changes}</div>
+                        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                          <span>{auditLog.actor}</span>
+                          <span>{auditLog.resourceId}</span>
+                          <span>{new Date(auditLog.timestamp).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
 
-        {filteredLogs.length > pageSize && (
-          <TablePaginationControls
-            page={page}
-            pageSize={pageSize}
-            totalCount={filteredLogs.length}
-            onPageChange={setPage}
-            onPageSizeChange={(nextPageSize: number) => {
-              setPage(1);
-              setPageSize(nextPageSize);
-            }}
-          />
-        )}
+          {filteredLogs.length > pageSize && (
+            <TablePaginationControls
+              page={page}
+              pageSize={pageSize}
+              totalCount={filteredLogs.length}
+              onPageChange={setPage}
+              onPageSizeChange={(nextPageSize: number) => {
+                setPage(1);
+                setPageSize(nextPageSize);
+              }}
+            />
+          )}
+        </TableQueryState>
       </PageSurfaceContent>
     </Surface>
   );

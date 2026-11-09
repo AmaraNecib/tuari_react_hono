@@ -36,6 +36,11 @@ function makeEntry(overrides: Partial<SystemLogEntry>): SystemLogEntry {
   };
 }
 
+const query = {
+  data: { items: [] }, isPending: false, isError: false, isFetching: false,
+  error: null, refetch: vi.fn().mockResolvedValue(undefined),
+};
+
 describe("SystemLogSection detail tokenizer", () => {
   it("splits a server-shaped debt detail line into structured chips (no raw keys)", () => {
     const entries = [
@@ -50,6 +55,7 @@ describe("SystemLogSection detail tokenizer", () => {
     render(
       <SystemLogSection
         entries={entries}
+        query={query}
         filters={{}}
         title="السجل"
         onFiltersChange={vi.fn()}
@@ -81,6 +87,7 @@ describe("SystemLogSection detail tokenizer", () => {
     render(
       <SystemLogSection
         entries={entries}
+        query={query}
         filters={{}}
         title="السجل"
         onFiltersChange={vi.fn()}
@@ -97,6 +104,7 @@ describe("SystemLogSection detail tokenizer", () => {
     render(
       <SystemLogSection
         entries={entries}
+        query={query}
         filters={{}}
         title="السجل"
         onFiltersChange={vi.fn()}
@@ -113,6 +121,7 @@ describe("SystemLogSection detail tokenizer", () => {
     render(
       <SystemLogSection
         entries={[]}
+        query={query}
         filters={{}}
         title="السجل"
         onFiltersChange={vi.fn()}

@@ -59,6 +59,39 @@ afterEach(() => {
  * its rows through the shared `usePaginatedRows` + `TablePaginationControls`
  * primitives instead of rendering every definition.
  */
+describe("InventoryItemDefinitionsPage query states", () => {
+  it("shows a failed catalog read with its reason and recovers through retry", () => {
+    const refetch = vi.fn().mockResolvedValue({})
+    mocks.itemDefinitionsQuery.mockReturnValue({ data: undefined, isError: true, error: new Error("انقطع الاتصال بالخادم"), refetch })
+    const { rerender } = render(<InventoryItemDefinitionsPage />)
+    expect(screen.getByRole("alert").textContent).toContain("تعذر تحميل دليل العناصر.")
+    expect(screen.getByText("انقطع الاتصال بالخادم")).toBeTruthy()
+    expect(screen.queryByText("لا توجد تعريفات عناصر حتى الآن.")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }))
+    expect(refetch).toHaveBeenCalledTimes(1)
+    mocks.itemDefinitionsQuery.mockReturnValue({ data: { items: FIXTURE }, isError: false })
+    rerender(<InventoryItemDefinitionsPage />)
+    expect(screen.getByText("عنصر 01")).toBeTruthy()
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("preserves loaded catalog rows when a background refresh fails", () => {
+    mocks.itemDefinitionsQuery.mockReturnValue({ data: { items: FIXTURE }, isError: true, error: new Error("انقطع الاتصال"), refetch: vi.fn() })
+    render(<InventoryItemDefinitionsPage />)
+    expect(screen.getByText("عنصر 01")).toBeTruthy()
+    expect(screen.getByRole("alert").textContent).toContain("تُعرض آخر بيانات محمّلة")
+    expect(screen.getByText("1-10 من 34")).toBeTruthy()
+  })
+
+  it("announces loading instead of claiming the catalog is empty", () => {
+    mocks.itemDefinitionsQuery.mockReturnValue({ data: undefined, isPending: true, isFetching: true })
+    render(<InventoryItemDefinitionsPage />)
+    expect(screen.getByRole("status").textContent).toContain("جارٍ تحميل")
+    expect(screen.queryByText("لا توجد تعريفات عناصر حتى الآن.")).toBeNull()
+    expect(screen.queryByRole("table")).toBeNull()
+  })
+})
+
 describe("InventoryItemDefinitionsPage pagination", () => {
   it("renders only the first page of rows with the shared range copy", () => {
     render(<InventoryItemDefinitionsPage />)

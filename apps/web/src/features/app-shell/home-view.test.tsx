@@ -16,6 +16,7 @@ import {
 } from "./__test-utils__/workspace-fixtures"
 import type { WorkspaceMocks } from "./__test-utils__/workspace-fixtures"
 import { HomeView } from "./home-view"
+import * as workspaceQueries from "./workspace-queries"
 import { AppPreferencesProvider } from "@/features/preferences/preferences"
 
 // Spy on the splashscreen-readiness hook so the wiring seam between the
@@ -662,6 +663,46 @@ describe("HomeView workspace shell", () => {
     expect(
       screen.getByText("تم إسناد علي بن حميد إلى المشروع مبنى الإدارة الجديد"),
     ).toBeTruthy()
+  })
+
+  it("keeps system-log filters focused and editable through pending and failed reads", async () => {
+    const refetch = vi.fn().mockResolvedValue(undefined)
+    let query = {
+      data: { items: [] } as { items: never[] } | undefined,
+      isPending: false,
+      isError: false,
+      isFetching: false,
+      error: null as Error | null,
+      refetch,
+    }
+    const spy = vi.spyOn(workspaceQueries, "useSystemLogQuery").mockImplementation(
+      () => query as unknown as ReturnType<typeof workspaceQueries.useSystemLogQuery>,
+    )
+    try {
+      renderWorkspace("transactions", { sessionUser: demoUser })
+      const input = await screen.findByPlaceholderText("اكتب اسم الحساب أو معرّفه")
+      input.focus()
+      query = { ...query, data: undefined, isPending: true, isFetching: true }
+      fireEvent.change(input, { target: { value: "أ" } })
+      expect(input.isConnected).toBe(true)
+      expect(document.activeElement).toBe(input)
+      expect(screen.getByRole("status").textContent).toContain("جارٍ تحميل")
+      expect(screen.queryByText("لا توجد عمليات مسجلة بعد.")).toBeNull()
+
+      query = { ...query, isPending: false, isFetching: false, isError: true, error: new Error("تعذر الاتصال التجريبي") }
+      fireEvent.change(input, { target: { value: "أح" } })
+      expect(document.activeElement).toBe(input)
+      expect(screen.getByRole("alert").textContent).toContain("تعذر الاتصال التجريبي")
+      fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }))
+      expect(refetch).toHaveBeenCalledTimes(1)
+
+      query = { ...query, data: { items: [] }, isError: false, error: null }
+      fireEvent.change(input, { target: { value: "" } })
+      expect(input.isConnected).toBe(true)
+      expect(screen.getByText("لا توجد عمليات مسجلة بعد.")).toBeTruthy()
+    } finally {
+      spy.mockRestore()
+    }
   })
 
   it("renders the salaries page with recent payments and worker shortcuts", async () => {

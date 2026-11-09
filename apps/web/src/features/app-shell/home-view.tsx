@@ -28,6 +28,7 @@ import {
 } from "./workspace-mutations"
 import { useCompositeWorkspaceQuery, useSystemLogQuery } from "./workspace-queries"
 import type { HomeViewPage } from "./home-view-types"
+import { TableQueryState } from "@/features/shared/table-primitives"
 import { ErrorBoundary } from "@/components/error-boundary"
 
 export type { HomeViewPage } from "./home-view-types"
@@ -213,41 +214,42 @@ export function HomeView({
       onThemeToggle={shell.handleThemeToggle}
     >
       <ErrorBoundary key={contentBoundaryKey}>
-        <HomeViewPageContent
-          copy={copy}
-          derived={derived}
-          detailTab={detailTab}
-          invoiceId={invoiceId}
-          page={page}
-          paginationCursor={paginationCursor}
-          paginationLimit={paginationLimit}
-          paginationPrevCursors={paginationPrevCursors}
-          selectedCounterparty={selectedCounterparty}
-          selectedEmployee={selectedEmployee}
-          selectedProject={selectedProject}
-          selectedWarehouse={selectedWarehouse}
-          session={auth.session}
-          systemLogFilters={shell.systemLogFilters}
-          systemLogState={{
-            entries: systemLogQuery.data?.items ?? [],
-            isError: Boolean(systemLogQuery.error),
-            isLoading: systemLogQuery.isPending,
-          }}
-          t={t}
-          theme={theme}
-          resetWorkspacePending={resetWorkspaceMutation.isPending}
-          updateAccountPending={updateAccountSettingsMutation.isPending}
-          workspace={ws}
-          navigation={navigation}
-          onAddProject={() => void navigation.goToProjectCreate()}
-          onAddWarehouse={() => void navigation.goToWarehouseCreate()}
-          onResetWorkspace={() => shell.handleResetWorkspace()}
-          onSaveAccount={(payload) => updateAccountSettingsMutation.mutateAsync(payload)}
-          onUpdateApplied={() => shell.setShowRestartModal(true)}
-          onSetPendingDelete={shell.setPendingDelete}
-          onSystemLogFiltersChange={shell.setSystemLogFilters}
-          onThemeToggle={toggleTheme}
-        />
+        <TableQueryState query={workspaceQuery} resource={t("shell.workspace")}>
+          <HomeViewPageContent
+            copy={copy}
+            derived={derived}
+            detailTab={detailTab}
+            invoiceId={invoiceId}
+            page={page}
+            paginationCursor={paginationCursor}
+            paginationLimit={paginationLimit}
+            paginationPrevCursors={paginationPrevCursors}
+            selectedCounterparty={selectedCounterparty}
+            selectedEmployee={selectedEmployee}
+            selectedProject={selectedProject}
+            selectedWarehouse={selectedWarehouse}
+            session={auth.session}
+            systemLogFilters={shell.systemLogFilters}
+            systemLogState={{
+              ...systemLogQuery,
+              entries: systemLogQuery.data?.items ?? [],
+            }}
+            t={t}
+            theme={theme}
+            resetWorkspacePending={resetWorkspaceMutation.isPending}
+            updateAccountPending={updateAccountSettingsMutation.isPending}
+            workspace={ws}
+            navigation={navigation}
+            onAddProject={() => void navigation.goToProjectCreate()}
+            onAddWarehouse={() => void navigation.goToWarehouseCreate()}
+            onResetWorkspace={() => shell.handleResetWorkspace()}
+            onSaveAccount={(payload) => updateAccountSettingsMutation.mutateAsync(payload)}
+            onUpdateApplied={() => shell.setShowRestartModal(true)}
+            onSetPendingDelete={shell.setPendingDelete}
+            onSystemLogFiltersChange={shell.setSystemLogFilters}
+            onThemeToggle={toggleTheme}
+          />
+        </TableQueryState>
       </ErrorBoundary>
     </HomeViewSignedInShell>
   )
