@@ -32,6 +32,9 @@ Thumbs.db
 
 /tmp/*
 
+# Local evidence and session logs never enter source commits
+/.scratch/reviews/
+
 # Temporary session logs (daily lessons that can be deleted)
 /.scratch/sessions/
 
@@ -42,7 +45,6 @@ Thumbs.db
 /.scratch/*.md
 /.scratch/*/
 !/.scratch/implementation/
-!/.scratch/reviews/
 !/.scratch/planning/
 
 .claude/

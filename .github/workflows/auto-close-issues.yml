@@ -17,7 +17,7 @@ name: Auto-close issues on merge to develop
 # Convention (enforced by review, not by this workflow):
 #   - A PR that delivers PART of an issue must say "Part of #N" — never "Closes #N".
 #   - Only the PR that finishes the issue says "Closes #N" / "Fixes #N".
-# See docs/lessons/gh-pr-merge-squash-issue-close.md and .agents/wisdom/process.md.
+# See docs/lessons/gh-pr-merge-squash-issue-close.md and .agents/wisdom/process/README.md.
 
 on:
   pull_request:

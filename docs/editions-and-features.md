@@ -53,7 +53,7 @@ Authoritative map: `editionToMinEdition` in
 | `multi_user` | professional | More than one user account | No. `maxUsers` is displayed but never enforced (section 5). |
 | `advanced_reports` | professional | Advanced reporting | No consumer outside the feature enum and the min-edition map. |
 | `external_api` | professional | External API access | No consumer. The RPC API exists for the bundled UI, with no license gate and no API-key auth. |
-| `encrypted_db` | enterprise | SQLCipher-encrypted workspace database | **Parked.** The shell checks this feature flag before setting `APP_DB_KEY`, but no released build can encrypt yet, so the licence must not sell it (section 6c). |
+| `encrypted_db` | enterprise | SQLCipher-encrypted workspace database | **Parked.** The shell checks this flag before setting `APP_DB_KEY`. Runtime support exists, but release acceptance is incomplete; do not sell it as delivered (section 6c). |
 | `multi_site_sync` | enterprise | Multi-site data sync | No consumer. |
 | `audit_export` | enterprise | Export the audit log | No consumer. The audit log itself is ungated and available in every edition. |
 | `priority_support` | enterprise | Priority support | Process, not code. `docs/licensing-architecture.md:286` classifies it as "Support process (not code)". |
@@ -188,54 +188,47 @@ Consequence: `lan_server`, `multi_user`, `advanced_reports`, `external_api`,
 
 ### 6c. Database encryption — parked
 
-`[parked]` `encrypted_db` is the one feature with a runtime code path, and that
-path exists — but **no released build can encrypt today**, so the feature is
-parked and must not be sold or advertised. What exists and what does not:
+`[parked]` `encrypted_db` has a runtime implementation, but release acceptance
+is incomplete. Do not sell or advertise it as a delivered capability. The
+implementation and its remaining release gates are distinct:
 
 - The shell sets `APP_DB_KEY` on the API sidecar only when
   `manager.has_feature("encrypted_db")` is true
   (`apps/desktop/src-tauri/src/lib.rs:2058`). The sidecar environment is cleared
   first (`:2025`), so a system-level `APP_DB_KEY` cannot leak in.
-- The API database factory uses the key when present: it loads
-  `better-sqlite3-sqlcipher` and runs `PRAGMA key` plus
-  `cipher_compatibility = 4` (`apps/api/src/infrastructure/database/factory.ts:51`,
-  `:27`, `:56`). With no key it returns plain `better-sqlite3`
-  (`apps/api/src/infrastructure/database/factory.ts:23`).
-- If a key is present but the sqlcipher binding is not built, the factory
-  throws rather than opening an unencrypted database
-  (`apps/api/src/infrastructure/database/factory.ts:29`).
-- **What is missing:** the SQLCipher native addon is not built into the shipped
-  artifact, and **nothing prevents that** — the desktop build does not refuse to
-  package a plaintext database. When the addon is unavailable it warns and copies
-  plain `better-sqlite3` (`apps/desktop/scripts/build-sidecar.mjs`). No publish
-  workflow sets a waiver, because there is no gate to waive: an earlier attempt
-  to add one (the build refuses unless explicitly waived, plus the
-  `cipher_version` probe and the factory's refusal to open an encrypted file
-  without a key) is preserved on the **closed #409 branch** for whoever revives
-  the feature. **Adding that gate is a condition for shipping encryption** — a
-  plaintext artifact must be impossible *by accident* before a licence can
-  promise encryption.
-- Nothing has proven a keyed write actually encrypts. Two different checks are
-  easy to confuse, so state them separately:
-  - **Today**, the release smoke test only asserts that a native SQLite binding
-    is *present* in the bundle (either the plain one or the SQLCipher fork). It
-    does not load it and does not query `cipher_version`.
-  - **After #409 lands**, the build gate loads the copied addon with the copied
-    Node and requires a non-empty `PRAGMA cipher_version`, which rules out plain
-    better-sqlite3 but still does not prove a keyed write encrypts — a binding
-    that reports a version while failing to encrypt would pass.
-  - The only real proof would be a CI job that builds the native fork, writes
-    with a key, asserts the file is not `SQLite format 3`, and reads it back:
-    tracked as #410 and deliberately parked with the rest of the feature.
+- The API factory loads `better-sqlite3-multiple-ciphers` for keyed databases.
+  It selects `cipher='sqlcipher'`, sets `legacy=4`, and then applies the key.
+  Backup workers receive the same ordered configuration. Unkeyed databases
+  use plain `better-sqlite3`. Setup failures close the connection and propagate
+  the error rather than opening a plaintext replacement.
+- Desktop packaging requires both drivers. It resolves the encrypted driver's
+  shipped prebuild, copies it with the runtime, and fails if native support is
+  missing. It no longer treats a missing encrypted driver as permission to
+  publish a plain-only runtime. See `apps/desktop/scripts/build-sidecar.mjs`.
+- Focused tests cover keyed writes and reopening, rejection of wrong or absent
+  keys, encrypted worker snapshots, and reading an independently produced
+  SQLCipher 4 fixture. The packaging test executes the copied Node and drivers
+  on Windows x64. These checks are not a real installer or cross-platform
+  release validation.
+- #410 still requires built-artifact proof, including a non-empty
+  `PRAGMA cipher_version`, a keyed write/reopen, and a file header other than
+  `SQLite format 3`. The current fixture and keyed tests do not establish that
+  literal version-probe criterion. Do not replace it with `PRAGMA cipher` or
+  claim #410 is complete.
+- The new `legacy=4` configuration does not migrate or retry files written with
+  `legacy=0`. The owner reports no user deployment of the earlier build, so
+  migration is not included. Wrong-format files still fail closed. Reassess
+  compatibility before release if that deployment assumption changes.
 
 Without `encrypted_db`, the workspace opens a plain, unencrypted SQLite file,
 regardless of edition. That is the entire practical difference the licence makes
 today.
 
-**Shipping the feature later** means, in order: build the addon in CI, prove the
-keyed write (#410), add the build gate so a plaintext release cannot happen by
-accident (the closed #409 branch has one), and only then add `encrypted_db` to a
-licence. Until all four happen, the matrix says parked.
+Shipping requires current-head validation of the packaged runtime, completion
+of #410's acceptance criteria, and an approved compatibility policy for any
+existing encrypted files. #496 and #499 still own downstream release gates;
+#499's owner-only acceptance decision remains open. Until those gates pass,
+the matrix stays parked.
 
 The flag is not reversible for an existing workspace. If a database was created
 while the license carried `encrypted_db`, a later launch whose license lacks the
@@ -256,7 +249,7 @@ but no code checks it, so any edition currently gets the capability.
 | More than one user account | Per license (`maxUsers`), not tied to the edition in code | Per license | Per license | Yes. Seats are never counted. |
 | Advanced reports | No | Intended | Intended | Yes. |
 | External API access | No | Intended | Intended | Yes. |
-| Encrypted workspace database | Feature `encrypted_db` only | Feature `encrypted_db` only | Feature `encrypted_db` only | **Parked.** The shell checks the flag, but no released build can encrypt yet, so nothing may sell it (6c). |
+| Encrypted workspace database | Feature `encrypted_db` only | Feature `encrypted_db` only | Feature `encrypted_db` only | **Parked.** Runtime support exists, but release proof and compatibility acceptance remain open. Do not sell it as delivered (6c). |
 | Multi-site sync | No | No | Intended | Yes. No sync code exists. |
 | Audit-log export | No | No | Intended | Yes. The audit log itself is ungated. |
 | Priority support | No | No | Yes | Not code; a support commitment. |

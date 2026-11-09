@@ -25,7 +25,7 @@
 import { createRequire } from "node:module";
 import { Worker } from "node:worker_threads";
 
-import { escapeSqliteString } from "../../infrastructure/database/factory";
+import { escapeSqliteString, SQLCIPHER_CONFIG_PRAGMAS } from "../../infrastructure/database/factory";
 
 import type { BackupSnapshotResult, BackupSnapshotter } from "./backup.types";
 
@@ -36,8 +36,8 @@ const post = (message) => parentPort.postMessage(message);
 
 const applyKey = (db) => {
   if (!workerData.databaseKey) return;
+  for (const pragma of workerData.cipherConfigPragmas) db.pragma(pragma);
   db.pragma("key = '" + String(workerData.databaseKey).replace(/'/g, "''") + "'");
-  db.pragma("cipher_compatibility = 4");
 };
 
 try {
@@ -128,7 +128,7 @@ export const createWorkerSnapshotter = (
   options: SnapshotWorkerOptions,
 ): BackupSnapshotter => {
   const modulePath = resolveDriverModule(
-    options.databaseKey ? "better-sqlite3-sqlcipher" : "better-sqlite3",
+    options.databaseKey ? "better-sqlite3-multiple-ciphers" : "better-sqlite3",
   );
   const timeoutMs = options.timeoutMs ?? DEFAULT_SNAPSHOT_TIMEOUT_MS;
 
@@ -139,7 +139,9 @@ export const createWorkerSnapshotter = (
         workerData: {
           modulePath,
           databasePath: options.databasePath,
+          outputPath,
           databaseKey: options.databaseKey ?? null,
+          cipherConfigPragmas: SQLCIPHER_CONFIG_PRAGMAS,
           vacuumSql: `VACUUM INTO '${escapeSqliteString(outputPath)}'`,
         },
       });

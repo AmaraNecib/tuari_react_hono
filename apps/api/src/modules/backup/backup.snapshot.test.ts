@@ -4,17 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createDatabaseConnection } from "../../infrastructure/database/factory";
 import { createWorkerSnapshotter } from "./backup.snapshot";
 
-/**
- * Scope: PLAIN SQLite only.
- *
- * The `better-sqlite3-sqlcipher` native binding is not built in this workspace
- * (`#410`), so the encrypted path cannot be exercised here. The keyed test at
- * the bottom only proves the keyed branch resolves the SQLCipher module and
- * reports a rejection; it is NOT proof that an encrypted copy is openable.
- * The skipped test in `backup.service.test.ts` records what real coverage needs.
- */
+// Exercise both plain SQLite and the shipped encrypted prebuild in real workers.
 describe("createWorkerSnapshotter", () => {
   let tempRoot: string;
   let databasePath: string;
@@ -113,23 +106,46 @@ describe("createWorkerSnapshotter", () => {
     await expect(snapshot(outputPath)).rejects.toThrow(/timed out after 0ms/);
   });
 
-  it("routes the keyed path through the SQLCipher binding", async () => {
-    // Scope note: the SQLCipher binding is not built (#410), so the worker
-    // cannot open the database. This only pins that the keyed branch resolves
-    // the SQLCipher module and reports the failure as a rejected snapshot
-    // rather than an unhandled worker crash. It is NOT an encryption test.
+  it("copies a keyed WAL database and rejects wrong or missing keys", async () => {
+    const databaseKey = "it's a secret";
+    const source = createDatabaseConnection(databasePath, databaseKey);
+    try {
+      source.exec("CREATE TABLE items (label TEXT NOT NULL)");
+      source.prepare("INSERT INTO items VALUES (?)").run("encrypted row");
+      source.pragma("user_version = 42");
+      // Leave the source open: committed rows may still be in its WAL.
+      const outputPath = join(tempRoot, "encrypted.sqlite");
+      await expect(createWorkerSnapshotter({ databasePath, databaseKey })(outputPath))
+        .resolves.toEqual({ schemaVersion: 42, encrypted: true });
+      const copy = createDatabaseConnection(outputPath, databaseKey);
+      try {
+        expect(copy.pragma("integrity_check")).toEqual([{ integrity_check: "ok" }]);
+        expect(copy.prepare("SELECT label FROM items").get()).toEqual({ label: "encrypted row" });
+      } finally {
+        copy.close();
+      }
+      expect(() => createDatabaseConnection(outputPath, "wrong")).toThrow(/not a database/i);
+      expect(() => createDatabaseConnection(outputPath, null)).toThrow(/not a database/i);
+      await expect(createWorkerSnapshotter({ databasePath, databaseKey: "wrong" })(
+        join(tempRoot, "wrong.sqlite"),
+      )).rejects.toThrow(/not a database/i);
+      await expect(createWorkerSnapshotter({ databasePath })(
+        join(tempRoot, "no-key.sqlite"),
+      )).rejects.toThrow(/not a database/i);
+    } finally {
+      source.close();
+    }
+  });
+
+  it("rejects a keyed open of a plaintext source", async () => {
     seedDatabase(1);
     const snapshot = createWorkerSnapshotter({
       databasePath,
       databaseKey: "secret",
     });
 
-    // On a workspace without the SQLCipher native binding the module resolves
-    // but its `.node` is missing; where the binding exists the keyed open of a
-    // plaintext file fails. Either way the worker must report a rejection, not
-    // crash, and it must be about the keyed path.
     await expect(snapshot(join(tempRoot, "out.sqlite"))).rejects.toThrow(
-      /better_sqlite3\.node|sqlcipher|not a database|cannot open|unable to open/i,
+      /not a database/i,
     );
   });
 });

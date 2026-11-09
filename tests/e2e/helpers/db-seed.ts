@@ -398,7 +398,7 @@ export async function seedLegacyPasswordUser(input: {
     db.prepare(
       `INSERT INTO "account" (id, "accountId", "providerId", "userId", password, "createdAt", "updatedAt")
        VALUES (?, ?, 'credential', ?, ?, ?, ?)`,
-    ).run(randomUUID(), input.phone, userId, hash, now, now)
+    ).run(randomUUID(), userId, userId, hash, now, now)
 
     // ── Bootstrap-owner handoff ───────────────────────────────────────────
     // Record the current owner state BEFORE mutating it. This is the last

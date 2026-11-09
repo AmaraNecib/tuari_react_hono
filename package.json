@@ -3,6 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.8.1",
   "scripts": {
+    "check:dependency-security": "node --test ./tests/dependency-security.test.mjs",
     "check:web-hygiene": "node --test ./tests/web-hygiene.test.mjs",
     "check:i18n-keys": "node --test ./tests/i18n-keys.test.mjs",
     "check:repo-hygiene": "node --test ./tests/repo-hygiene.test.mjs",
@@ -10,6 +11,7 @@
     "check:update-metadata": "node --test ./tests/update-channel-metadata.test.mjs",
     "check:license-signer": "node --test ./tests/generate-license.test.mjs",
     "check:e2e-selection": "node --test ./tests/e2e-selection.test.mjs",
+    "check:ci-final": "node --test ./tests/ci-final.test.mjs ./tests/workflow-policy.test.mjs",
     "check:unslop": "node ./scripts/prose/check-unslop.ts",
     "test:ci-scripts": "bash ./scripts/ci/test-close-linked-issues.sh",
     "test:prose": "node --test ./tests/unslop-prose.test.ts",
@@ -45,6 +47,6 @@
     "vitest": "^4.1.4"
   },
   "dependencies": {
-    "puppeteer-core": "^25.2.1"
+    "puppeteer-core": "25.14.0"
   }
 }

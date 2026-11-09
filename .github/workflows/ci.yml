@@ -2,6 +2,9 @@ name: CI
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  push:
+    branches: [develop]
   workflow_dispatch:
 
 # Auto-cancel older CI runs on the same PR — only the latest commit runs
@@ -11,7 +14,7 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: read  # dorny/paths-filter queries the PR diff via the API
+  pull-requests: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -19,8 +22,7 @@ env:
 jobs:
   lint:
     name: Lint
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,6 +37,15 @@ jobs:
       # Root-level gates turbo never runs: turbo has no root lint task, so the
       # prose gate and the issue-closing harness would silently pass CI.
       - run: pnpm check:unslop
+      - run: node --test tests/ci-final.test.mjs tests/workflow-policy.test.mjs
+      - run: pnpm check:web-hygiene
+      - run: pnpm check:i18n-keys
+      - run: pnpm check:repo-hygiene
+      - run: pnpm check:dependency-security
+      - name: Verify copied encrypted runtime
+        run: node --test tests/sidecar-encryption.test.mjs
+      - run: pnpm check:workflow-assets
+      - run: pnpm check:update-metadata
       - run: pnpm test:prose
       - run: pnpm test:ci-scripts
       - run: pnpm check:e2e-selection
@@ -42,8 +53,7 @@ jobs:
 
   typecheck:
     name: Type Check
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,78 +67,50 @@ jobs:
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo typecheck --filter="!@tuari/desktop"
 
-  # ── Path-gated jobs ─────────────────────────────────────────────
-  # Each job ALWAYS runs (so its required status check always reports)
-  # but its expensive steps are skipped when no relevant file changed.
-  # Change detection uses dorny/paths-filter (compares base..head) —
-  # NOT hashFiles, which hashes files that EXIST (always non-empty).
-
-  # Shared change-detection job: computes which areas this PR touches.
   detect:
     name: Detect changed areas
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
-      rust: ${{ steps.resolve.outputs.rust }}
-      api: ${{ steps.resolve.outputs.api }}
-      web: ${{ steps.resolve.outputs.web }}
-      e2e: ${{ steps.resolve.outputs.e2e }}
+      api: ${{ steps.scope.outputs.api }}
+      web: ${{ steps.scope.outputs.web }}
+      rust: ${{ steps.scope.outputs.rust }}
+      e2e_mode: ${{ steps.scope.outputs.e2e_mode }}
+      e2e_specs: ${{ steps.scope.outputs.e2e_specs }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: dorny/paths-filter@v3
-        id: filter
+      - uses: actions/setup-node@v4
         with:
-          filters: |
-            rust:
-              - 'apps/desktop/src-tauri/**'
-              # The Node signer defines the wire format the Rust verifier
-              # enforces, so a signer-only change must re-run the Rust suite
-              # (tests/license_signer_interop.rs mints with it).
-              - 'scripts/generate-license.mjs'
-            api:
-              - 'apps/api/**'
-              - 'packages/contracts/**'
-              - 'infrastructure/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-            web:
-              - 'apps/web/**'
-              - 'packages/contracts/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-            e2e:
-              - 'apps/api/**'
-              - 'apps/web/**'
-              - 'packages/contracts/**'
-              - 'tests/e2e/**'
-              - 'package.json'
-              - 'pnpm-lock.yaml'
-              - 'playwright.config.ts'
-
-      # Manual dispatch (workflow_dispatch) has no PR diff to compare —
-      # paths-filter would see "no changes" and skip every test, defeating
-      # the escape hatch. Force all areas to run on manual dispatch.
-      - name: Resolve areas (manual dispatch = run everything)
-        id: resolve
+          node-version: 22
+      - name: Compute scope from event commits
+        id: scope
+        env:
+          CI_EVENT: ${{ github.event_name }}
+          CI_BASE: ${{ github.event.pull_request.base.sha }}
+          CI_HEAD: ${{ github.event.pull_request.head.sha }}
+          CI_FULL: ${{ contains(github.event.pull_request.labels.*.name, 'e2e:full') }}
+        shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "rust=true" >> "$GITHUB_OUTPUT"
-            echo "api=true" >> "$GITHUB_OUTPUT"
-            echo "web=true" >> "$GITHUB_OUTPUT"
-            echo "e2e=true" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          # Unknown history is a full run. --no-renames keeps both move sides.
+          if [ "$CI_EVENT" = pull_request ] &&
+             git merge-base "$CI_BASE" "$CI_HEAD" > scope-base.txt &&
+             git diff --no-renames --name-only "$(cat scope-base.txt)" "$CI_HEAD" > changed.txt; then
+            :
           else
-            echo "rust=${{ steps.filter.outputs.rust }}" >> "$GITHUB_OUTPUT"
-            echo "api=${{ steps.filter.outputs.api }}" >> "$GITHUB_OUTPUT"
-            echo "web=${{ steps.filter.outputs.web }}" >> "$GITHUB_OUTPUT"
-            echo "e2e=${{ steps.filter.outputs.e2e }}" >> "$GITHUB_OUTPUT"
+            printf '*\n' > changed.txt
           fi
+          node scripts/ci/ci-scope.mjs changed.txt > scope.txt
+          cat scope.txt >> "$GITHUB_OUTPUT"
+          { echo '### CI scope'; cat scope.txt; } >> "$GITHUB_STEP_SUMMARY"
 
   test-rust:
+    if: ${{ needs.detect.outputs.rust == 'true' }}
     name: "Test Rust Core (no tauri:: imports)"
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: detect
     steps:
       - uses: actions/checkout@v4
@@ -163,6 +145,9 @@ jobs:
         with:
           node-version: 22
 
+      - uses: pnpm/action-setup@v4
+        if: needs.detect.outputs.rust == 'true'
+
       - name: "Verify tool versions"
         if: needs.detect.outputs.rust == 'true'
         run: |
@@ -194,16 +179,18 @@ jobs:
         # runs the whole crate: lib unit tests, the integration suites
         # (including the Node-signer→Rust-verifier interop test), and doctests.
         if: needs.detect.outputs.rust == 'true'
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+          cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
 
       - name: Rust skipped (no src-tauri changes)
         if: needs.detect.outputs.rust != 'true'
         run: echo "No Rust changes — skipping cargo test (required check satisfied)"
 
   test-api:
+    if: ${{ needs.detect.outputs.api == 'true' }}
     name: Test API
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: detect
     steps:
       - uses: actions/checkout@v4
@@ -220,6 +207,7 @@ jobs:
         if: needs.detect.outputs.api == 'true'
         run: |
           pnpm --filter @tuari/contracts build
+          pnpm --filter @tuari/contracts test
           pnpm --filter @tuari/api test:coverage
 
       - name: API skipped (no api/contracts changes)
@@ -227,9 +215,9 @@ jobs:
         run: echo "No API changes — skipping tests (required check satisfied)"
 
   test-web:
+    if: ${{ needs.detect.outputs.web == 'true' }}
     name: Test Web
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: detect
     steps:
       - uses: actions/checkout@v4
@@ -253,9 +241,9 @@ jobs:
         run: echo "No Web changes — skipping tests (required check satisfied)"
 
   test-e2e:
+    if: ${{ needs.detect.outputs.e2e_mode != 'skip' }}
     name: Test E2E
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: detect
     steps:
       - uses: actions/checkout@v4
@@ -293,37 +281,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-playwright-
 
-      - name: Select E2E scope (PR diff, fails closed)
-        id: e2e-scope
-        if: needs.detect.outputs.e2e == 'true'
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            {
-              echo "mode=full"
-              echo "specs="
-              echo "reason=manual dispatch — run everything"
-            } >> "$GITHUB_OUTPUT"
-          else
-            # Fail closed: if the base ref cannot be fetched the changed-file
-            # list is empty and the selector returns mode=full (whole suite).
-            git fetch --no-tags origin "${{ github.base_ref }}" || true
-            git diff --name-only --no-renames "origin/${{ github.base_ref }}...HEAD" > /tmp/e2e-changed.txt || true
-            node scripts/ci/e2e-selection.mjs --mode e2e --files /tmp/e2e-changed.txt >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Test E2E
-        if: needs.detect.outputs.e2e == 'true' && steps.e2e-scope.outputs.mode != 'skip'
+        if: needs.detect.outputs.e2e_mode != 'skip'
         env:
           # Passed through the environment, not interpolated into the script:
           # map-derived, but never splice shipped data into shell source.
-          E2E_SPECS: ${{ steps.e2e-scope.outputs.specs }}
+          E2E_SPECS: ${{ needs.detect.outputs.e2e_specs }}
         run: |
           pnpm exec playwright install --with-deps chromium
           # shellcheck disable=SC2086  # E2E_SPECS is an intentional space-separated list
           pnpm test:e2e $E2E_SPECS
 
       - name: Upload Playwright HTML report
-        if: needs.detect.outputs.e2e == 'true' && steps.e2e-scope.outputs.mode != 'skip' && !cancelled()
+        if: needs.detect.outputs.e2e_mode != 'skip' && !cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 (immutable SHA, matching the cache action pinning practice)
         with:
           name: playwright-report
@@ -331,23 +301,18 @@ jobs:
           retention-days: 7
 
       - name: E2E skipped (no browser-reachable path changed)
-        if: needs.detect.outputs.e2e == 'true' && steps.e2e-scope.outputs.mode == 'skip'
+        if: needs.detect.outputs.e2e_mode == 'skip'
         run: echo "No browser-reachable changes — scoped e2e skipped (required check satisfied)"
 
       - name: E2E skipped (no api/web/contracts/e2e changes)
-        if: needs.detect.outputs.e2e != 'true'
+        if: needs.detect.outputs.e2e_mode == 'skip'
         run: echo "No E2E-relevant changes — skipping (required check satisfied)"
 
   build:
     name: Build
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-latest
-    # Runs CONCURRENTLY with the test jobs (issue #333): previously this waited
-    # on all five test jobs, so every PR paid test-time PLUS build-time
-    # sequentially (~1.5 min of pure tail latency). Branch protection still
-    # requires `Build`, so the merge gate is unchanged — the PR just stops
-    # waiting twice. Cost: a red-test PR also spends ~50s on a cached build;
-    # accepted for the latency win (no new runner minutes, only overlap).
+    runs-on: ubuntu-24.04
+    # Build overlaps applicable tests. CI acceptance requires both outcomes;
+    # effective branch protection is an owner rollout, not a claim in this file.
     needs: detect
     steps:
       - uses: actions/checkout@v4
@@ -361,3 +326,35 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @tuari/contracts build
       - run: pnpm turbo build --filter="!@tuari/desktop"
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm audit --audit-level high
+
+  acceptance:
+    name: CI acceptance
+    needs: [detect, lint, typecheck, test-rust, test-api, test-web, test-e2e, build, audit]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Require successful applicable checks
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node scripts/ci/ci-acceptance.mjs

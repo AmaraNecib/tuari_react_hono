@@ -13,21 +13,25 @@ import { createAlgeriaTimestamp } from "../../modules/company/company-time"
  */
 export const escapeSqliteString = (value: string): string => value.replace(/'/g, "''")
 
+// SQLite3MultipleCiphers options, not SQLCipher's cipher_compatibility pragma.
+// Factory and snapshot workers apply them before the key.
+export const SQLCIPHER_CONFIG_PRAGMAS = ["cipher = 'sqlcipher'", "legacy = 4"] as const
+
 /**
  * Resolve the SQLite constructor to use.
- * When a database key is configured, use better-sqlite3-sqlcipher for encryption.
+ * When a database key is configured, use better-sqlite3-multiple-ciphers for encryption.
  * Falls back to plain better-sqlite3 when no key is needed.
- * @throws Error if encryption is required but better-sqlite3-sqlcipher is unavailable.
+ * @throws Error if encryption is required but better-sqlite3-multiple-ciphers is unavailable.
  */
 function resolveDatabaseConstructor(key: string | null): typeof Database {
   if (!key) return Database
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require("better-sqlite3-sqlcipher") as typeof Database
+    return require("better-sqlite3-multiple-ciphers") as typeof Database
   } catch {
     throw new Error(
-      "Database encryption requires better-sqlite3-sqlcipher, which is not installed. "
+      "Database encryption requires better-sqlite3-multiple-ciphers, which is not installed. "
       + "Install it or remove APP_DB_KEY to use an unencrypted database."
     )
   }
@@ -46,26 +50,36 @@ export function createDatabaseConnection(
   dbKey?: string | null,
 ): BetterSqliteDatabase {
   const resolvedPath = databasePath ?? resolveDatabaseEnv().databasePath
-  mkdirSync(dirname(resolvedPath), { recursive: true })
-
   const resolvedKey = dbKey ?? process.env.APP_DB_KEY ?? null
+  // Escape the key before creating directories or opening the database file.
+  const escapedKey = resolvedKey ? escapeSqliteString(resolvedKey) : null
   const SqliteConstructor = resolveDatabaseConstructor(resolvedKey)
+  mkdirSync(dirname(resolvedPath), { recursive: true })
   const sqlite = new SqliteConstructor(resolvedPath)
 
-  if (resolvedKey) {
-    sqlite.pragma(`key = '${escapeSqliteString(resolvedKey)}'`)
-    sqlite.pragma("cipher_compatibility = 4")
-  }
+  try {
+    if (escapedKey !== null) {
+      for (const pragma of SQLCIPHER_CONFIG_PRAGMAS) sqlite.pragma(pragma)
+      sqlite.pragma(`key = '${escapedKey}'`)
+    }
 
-  sqlite.pragma("journal_mode = WAL")
-  sqlite.pragma("foreign_keys = ON")
-  // Wait (rather than fail immediately) when ANOTHER process holds the
-  // SQLite write lock. Single-process today, but the transaction model
-  // uses BEGIN IMMEDIATE (write reservation up front), so a second process
-  // (dev tool, future host) touching the same file would otherwise surface
-  // an instant SQLITE_BUSY as a spurious 500. 5s matches SQLite's typical
-  // interactive wait; the error still propagates if the lock is held longer.
-  sqlite.pragma("busy_timeout = 5000")
+    sqlite.pragma("journal_mode = WAL")
+    sqlite.pragma("foreign_keys = ON")
+    // Wait (rather than fail immediately) when ANOTHER process holds the
+    // SQLite write lock. Single-process today, but the transaction model
+    // uses BEGIN IMMEDIATE (write reservation up front), so a second process
+    // (dev tool, future host) touching the same file would otherwise surface
+    // an instant SQLITE_BUSY as a spurious 500. 5s matches SQLite's typical
+    // interactive wait; the error still propagates if the lock is held longer.
+    sqlite.pragma("busy_timeout = 5000")
+  } catch (error) {
+    try {
+      sqlite.close()
+    } catch {
+      // Preserve the setup error if the native handle is already unusable.
+    }
+    throw error
+  }
 
   // Wrap prepare() to normalise values before they reach better-sqlite3.
   // - Boolean → 1/0 (better-sqlite3 rejects true/false)

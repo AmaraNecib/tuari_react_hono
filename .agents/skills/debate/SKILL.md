@@ -1,104 +1,39 @@
 ---
 name: debate
-description: "Run an adversarial review with critic + defender sub-agents on an implementation, design, or PR diff. The critic finds every flaw, the defender argues for the design. The parent agent synthesizes both and decides what to fix, defer, or dismiss."
+description: "One adversarial reviewer session on a pinned diff. Present critic and defender cases; add a separate specialist only for a concrete unanswered question."
 ---
 
-# Debate — Adversarial Review (Critic + Defender)
+# Debate
 
-Run two parallel reviewer sub-agents with opposing goals, then synthesize.
+Follow the initial lens requirements and bounded-fix rule in
+`docs/engineering-workflow.md`. This is one lens execution, distinct from
+test-audit and code-review, not two independently executed reviews.
 
-## Parameters
+Read the committed base/head diff, complete changed modules, direct callers,
+acceptance spec and author account in one source-frozen worktree.
 
-The caller (feature-implement) provides:
-- **base SHA** — the merge-base commit to diff against
-- **issue ID** — for the evidence file path
-- **head SHA** — current HEAD, for the evidence file path
+## Critic
 
-## When to run
+Identify reachable defects, unnecessary complexity and concrete failure paths.
+For each finding cite severity, file:line, triggering scenario and smallest fix.
+Treat unproven reachability as a hypothesis, not an automatic test demand.
 
-After implementation is complete but before local verification and code-review.
-For Standard and High-assurance work — anything that alters behaviour, including
-code, tests, config, skills, and workflow. Skip it only for Lightweight work
-(truly non-reviewable files). Authz core, permissions, denial, and security still
-get the closest reading.
+## Defender
 
-## How to run
+Test each criticism against the implementation and existing evidence. Explain
+the load-bearing decisions and cite counterexamples when disproving a claim.
+State remaining uncertainty rather than defending an unsafe path.
 
-### 1. Launch both sub-agents in parallel
+## Parent disposition
 
-Both agents read the same context: the diff between base SHA and HEAD, the
-full changed files, the issue/spec, and any design doc.
+The parent checks source and resolves every actionable finding. A false
+positive needs code evidence. A nonblocking follow-up needs reviewer acceptance,
+scope and destination; never silently defer a correctness dependency.
 
-**Critic task:**
-```
-You are a HARSH CRITIC. Find every flaw, risk, over-engineering, missing edge
-case, and design problem. Score each 1-10 (1=minor nit, 10=must-fix blocker).
-Be ruthless.
+Reviewers edit nothing. The author commits bounded corrections and refreshes
+affected proof. The workflow decides whether one fresh delta review or another
+specific lens is needed. Do not restart a full round automatically.
 
-Read: git diff <base-sha>...HEAD -- packages/,
-      full changed files, the issue spec,
-      .scratch/implementation/<issue-id>-design.md if it exists.
-
-Note: Test quality is evaluated separately by the test-audit skill.
-Focus this review on the implementation code itself.
-
-Report each finding with: severity, location (file:line), explanation.
-```
-
-**Defender task:**
-```
-You are a CHARITABLE DEFENDER. Argue FOR the implementation. Find what it does
-RIGHT. Defend every design decision. Show why the complexity is justified.
-
-Read: git diff <base-sha>...HEAD -- packages/,
-      full changed files, the issue spec,
-      .scratch/implementation/<issue-id>-design.md if it exists.
-
-Cite file paths and line numbers. Give a confidence score (1-10) for each
-defense.
-```
-
-### 2. Wait for both to finish
-
-Collect both outputs.
-
-### 3. Synthesize
-
-Go through each critic finding and classify:
-
-| Finding severity | In scope? | Action |
-|---|---|---|
-| Blocker (8-10) | Yes | **Fix it** — regardless of cost |
-| Major (5-7) | Yes | **Fix it** |
-| Minor (1-4) | Cheap to fix | **Fix it** |
-| Minor (1-4) | Expensive to fix | **Create issue, defer** |
-| Any | Out of scope | **Create issue, document in PR** |
-| Any | Defender disproved (false alarm) | **Dismiss** — note in PR it was considered |
-
-### 4. Apply fixes
-
-Fix all items classified as "Fix it" above. Commit fixes.
-
-### 5. Document remaining items
-
-For everything deferred or dismissed, each non-dismissed item needs a path
-forward — either a fix now, a GitHub issue, or a wisdom entry.
-
-| Decision | Required action |
-|----------|----------------|
-| Fixed | Committed — no further action |
-| Deferred (expensive or out of scope) | **Create a GitHub issue.** Reference it in the PR. |
-| Dismissed (false alarm) | Note in PR that it was considered and dismissed. |
-| Pattern worth remembering | **Write to `.agents/wisdom/`** using capture-wisdom. |
-
-### 6. Save evidence
-
-Save the full findings to `.scratch/reviews/<issue-id>/<head-sha>-debate.md`.
-This file is used by guard to verify review completeness before push.
-
-The caller (feature-implement) will publish a summary as a PR comment after
-the PR is opened.
-
-### 7. Proceed
-
-After fixes are committed and deferred items are documented, proceed.
+Save exact base/head, actual reviewer model/session and findings in ignored
+`.scratch/reviews/<scope>/<HEAD>-debate.md`. Do not commit, attach or post it.
+Publication authority is separate; a review cannot create that authority.
