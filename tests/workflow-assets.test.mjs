@@ -57,6 +57,15 @@ test('CI/CD workflow files exist and have correct triggers', async () => {
   const release = await readRepoFile('.github/workflows/release.yml');
   const nightly = await readRepoFile('.github/workflows/nightly.yml');
   const beta = await readRepoFile('.github/workflows/beta.yml');
+  const ci = await readRepoFile('.github/workflows/ci.yml');
+  const e2eJob = ci.split(/^  test-e2e:\s*$/m)[1]?.split(/^  [\w-]+:\s*$/m)[0];
+
+  assert.ok(e2eJob, 'CI must define the test-e2e job');
+  assert.match(
+    e2eJob,
+    /^    runs-on: ubuntu-24\.04\s*$/m,
+    'Playwright 1.58.2 requires the supported Ubuntu 24.04 runner',
+  );
 
   // Release: tag push trigger
   assert.match(release, /on:/);
