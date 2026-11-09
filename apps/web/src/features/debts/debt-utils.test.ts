@@ -17,7 +17,7 @@ import {
 } from "./debt-utils"
 
 it("labels an ADVANCE entry instead of exposing the wire enum", () => {
-  expect(getDebtEntryTypeLabel("ADVANCE")).toBe(ar.translation.debts.employee.advance)
+  expect(getDebtEntryTypeLabel("ADVANCE")).toBe("سلفة")
 })
 
 const ARABIC_STATES = {
