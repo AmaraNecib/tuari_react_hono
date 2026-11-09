@@ -423,6 +423,19 @@ check "affirmative or-coordinated idiom exits 0" "0" "$RC"
 assert_closed "not only remains affirmative for the first reference" 614
 assert_closed "not only remains affirmative for the coordinated reference" 615
 
+# Hosted review: supported emphasis around an issue must not break coordination.
+for emphasis in '**' '__' '*' '_'; do
+  reset_state
+  mk_issue 614 open "emphasized coordinated reference"
+  mk_issue 615 open "negated second reference after emphasis"
+  mk_issue 616 open "affirmative contrast after emphasis"
+  run_script "This does not fix ${emphasis}#614${emphasis} or resolve #615, but Closes #616."
+  check "emphasized coordination ($emphasis) exits 0" "0" "$RC"
+  assert_not_closed "emphasized first reference ($emphasis) stays open" 614
+  assert_not_closed "second reference after emphasis ($emphasis) stays open" 615
+  assert_closed "affirmative contrast after emphasis ($emphasis) still closes" 616
+done
+
 # Round 3: a second reference in a nor-clause is still negated.
 reset_state
 mk_issue 471 open "nor clause, first reference"

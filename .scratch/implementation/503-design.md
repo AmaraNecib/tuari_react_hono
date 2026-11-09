@@ -24,6 +24,13 @@ Tests assert literal expected issue-state effects, not a copied matcher.
 Extend only the NEGATED_CLOSE gap to cross complete closing references when
 each is immediately followed by whitespace, `or`, and whitespace. Repetition
 allows a chain without admitting arbitrary issue markers or contrast prose.
+A bounded hosted-review correction permits the existing `*` and `_` emphasis
+markers after each crossed reference. Without this, `fix **#A** or resolve #B`
+incorrectly closes B. All four supported emphasis spellings get state-effect
+regressions with an affirmative contrast control. The focused real-shell
+probe first reported B and the affirmative control as close candidates, exit 1,
+then only the control after the gap correction, exit 0. No new grammar or
+extraction behavior is introduced.
 `does not close #A, but Closes #B` still closes B. The affirmative extraction,
 sentence splitting, number subtraction and API behavior stay unchanged.
 No broader grammar, comma-or extension, workflow or unrelated changes.
