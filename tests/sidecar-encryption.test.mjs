@@ -26,7 +26,7 @@ test("packages both SQLite drivers and loads the shipped encrypted prebuild with
     const api = join(fixture, "apps", "api");
     mkdirSync(scripts, { recursive: true });
     mkdirSync(api, { recursive: true });
-    for (const file of ["build-sidecar.mjs", "script-security-utils.mjs"]) {
+    for (const file of ["build-sidecar.mjs", "script-security-utils.mjs", "runtime-staging.mjs"]) {
       copyFileSync(join(root, "apps", "desktop", "scripts", file), join(scripts, file));
     }
     writeFileSync(join(api, "package.json"), "{}");

@@ -38,7 +38,7 @@ test('active lifecycle instructions require affected proof, not automatic full-s
 
 test('always-running lint gates include the copied encrypted runtime after installation', () => {
   const lint = read('.github/workflows/ci.yml').split('\n  lint:')[1].split('\n  typecheck:')[0];
-  assert.match(lint, /pnpm install --frozen-lockfile[\s\S]*run: node --test tests\/sidecar-encryption\.test\.mjs/);
+  assert.match(lint, /pnpm install --frozen-lockfile[\s\S]*run: node --test apps\/desktop\/scripts\/runtime-staging\.test\.mjs tests\/sidecar-encryption\.test\.mjs/);
   assert.doesNotMatch(lint, /continue-on-error: true|\n    if:/);
   assert.match(read('tests/sidecar-encryption.test.mjs'), /assert\.ok\(!process\.env\.CI/);
 });
