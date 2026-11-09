@@ -2,13 +2,17 @@
 
 import "@/i18n"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MoneyFormatSetting } from "@/features/preferences/money-format-setting"
 import { setMoneyGrouping } from "@/features/preferences/money-format-preference"
 import { MoneyValue } from "./money-value"
 
 beforeEach(() => window.localStorage.clear())
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.restoreAllMocks()
+  setMoneyGrouping(true)
+})
 
 describe("MoneyValue", () => {
   it.each([
@@ -58,6 +62,37 @@ describe("MoneyValue", () => {
     expect(screen.getByText("DZD 1234")).toBeTruthy()
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "grouped" } })
     expect(screen.getByText("DZD 1,234")).toBeTruthy()
+  })
+
+  it("keeps the selected format for this session when storage is full", () => {
+    const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Full", "QuotaExceededError")
+    })
+    const view = render(<><MoneyFormatSetting /><MoneyValue value={1234.56} currencyLabel="DZD" /></>)
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "plain" } })
+    expect(screen.getByText("DZD 1234.56")).toBeTruthy()
+    expect(screen.getByText("1234.56 / 1234")).toBeTruthy()
+    view.unmount()
+    render(<><MoneyFormatSetting /><MoneyValue value={1234.56} currencyLabel="DZD" /></>)
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("plain")
+    expect(screen.getByText("DZD 1234.56")).toBeTruthy()
+    write.mockRestore()
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "grouped" } })
+    expect(screen.getByText("DZD 1,234.56")).toBeTruthy()
+    expect(window.localStorage.getItem("tuari.moneyGrouping")).toBe("grouped")
+  })
+
+  it("renders safely and changes format when storage access is denied", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new DOMException("Denied", "SecurityError")
+    })
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("Denied", "SecurityError")
+    })
+    render(<><MoneyFormatSetting /><MoneyValue value={1234.56} currencyLabel="DZD" /></>)
+    expect(screen.getByText("DZD 1,234.56")).toBeTruthy()
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "plain" } })
+    expect(screen.getByText("DZD 1234.56")).toBeTruthy()
   })
 
   it("uses grouped defaults for invalid storage and follows cross-tab changes and clearing", () => {

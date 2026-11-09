@@ -28,6 +28,12 @@ The selector returns full scope because the Arabic resource file is a critical p
 
 Run distinct initial debate, test-audit and code-review sessions at the committed source-owning tree; freeze source while they read. Bounded fixes get one fresh combined-delta review. Same-family separate-session review uses standing owner approval if no enabled alternative family. Parent assesses changed seams only. Publish authorized PR, link/watch, request Greptile once per head; require current-head 5/5, CI acceptance and resolved findings. Ask owner for explicit UI merge approval with actual evidence.
 
+## Bounded hosted-review correction
+
+Greptile at a011455d identified a reachable quota failure: localStorage.setItem throws before notifying mounted views. Retain a session-only grouping override on failed writes and catch denied reads; still attempt persistence on each later selection. Successful writes clear the override. Relevant cross-tab storage updates clear it so the latest shared setting wins. No new UI or financial policy is introduced. Regression tests simulate QuotaExceededError and SecurityError and assert actual Settings/renderer updates, remount retention and recovery. Normal stored/default behavior remains covered.
+
+Safely integrated owner-confirmed PR515 / issue480 at31430a1bf426bd25c70ef676b606a90ec2bebad6 through a normal merge (494e701c), preserving existing local corrections. Its shared rounding extraction is upstream source, not modified here. Since salary-days is an imported dependency of affected forms, refresh focused salary/rounding and browser proof after compiling contracts. Carry unchanged renderer/layout conclusions forward; one fresh combined-delta review covers the persistence correction and this integration.
+
 ## Wisdom
 
 Applied: deterministic money strings require an explicit locale and literal expectations. The historical ar-DZ display recommendation does not match current en-US salary/detail rendering, so preserve Latin digits here. Employee UI creation limitations inform synthetic database fixtures. Money-bound and allocation lessons are outside this display-only scope; no validators or allocation code change.
