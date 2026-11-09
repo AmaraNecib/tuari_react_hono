@@ -151,7 +151,8 @@
         "inventory-asset-charge.spec.ts",
         "inventory-invoice-create.spec.ts",
         "inventory-invoice-progressive-disclosure.spec.ts",
-        "inventory-transfer.spec.ts"
+        "inventory-transfer.spec.ts",
+        "table-query-states.spec.ts"
       ]
     },
     {
@@ -186,6 +187,7 @@
         "inventory-invoice-create.spec.ts",
         "inventory-invoice-progressive-disclosure.spec.ts",
         "inventory-transfer.spec.ts",
+        "table-query-states.spec.ts",
         "legacy-password-recovery.spec.ts",
         "mobile-drawer.spec.ts",
         "projects.spec.ts",
