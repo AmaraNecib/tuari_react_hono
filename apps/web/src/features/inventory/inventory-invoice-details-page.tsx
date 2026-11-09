@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { formatAlgeriaDate } from "@/lib/algeria-time"
+import { formatAlgeriaDate, getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { downloadDesktopApiFile } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { resolveApiUrl } from "@/lib/runtime-config"
@@ -180,7 +180,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
             {detail?.movements.map((movement) => (
               <div key={movement.id} className="rounded-xl border border-border/70 px-4 py-3 text-sm">
                 <div className="font-medium text-foreground">{movement.movementType === "PURCHASE" ? "شراء" : "تحويل"} - {movement.itemType === "ASSET" ? "أصل" : "مادة"}</div>
-                <div className="text-muted-foreground">{new Date(movement.occurredAt).toLocaleString("ar-DZ")}</div>
+                <div className="text-muted-foreground">{new Date(movement.occurredAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}</div>
               </div>
             ))}
             {detail && detail.movements.length === 0 ? <p className="text-sm text-muted-foreground">لا توجد حركات مسجلة بعد.</p> : null}

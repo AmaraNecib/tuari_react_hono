@@ -1,4 +1,5 @@
 import { useId, useState } from "react"
+import { getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -153,7 +154,7 @@ export function AssetChargeHistory({ assetUnitId }: { assetUnitId: string }) {
                               })}
                         </span>
                         <span> · {revision.actorLabel ?? t("inventory.chargeHistory.unknownActor")}</span>
-                        <span> · {new Date(revision.createdAt).toLocaleString("ar-DZ")}</span>
+                        <span> · {new Date(revision.createdAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}</span>
                         {revision.reason ? <span> · {revision.reason}</span> : null}
                       </li>
                     ))}

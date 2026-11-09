@@ -10,6 +10,9 @@ import { format } from "date-fns"
 
 import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { ReportBuilder } from "./report-builder"
+import { formatReportAsCSV } from "@/hooks/use-report-queries"
+import { MIDNIGHT_CROSSING, pinUtcTimeZone } from "@/test-utils/algeria-day"
+import type { Report } from "@tuari/contracts"
 
 const { reportsGenerate } = vi.hoisted(() => ({ reportsGenerate: vi.fn() }))
 
@@ -47,6 +50,38 @@ afterEach(() => {
  * month near a month boundary).
  */
 describe("ReportBuilder range boundary", () => {
+  it("renders and exports report generation instants in Algeria under a UTC machine", async () => {
+    const restore = pinUtcTimeZone()
+    try {
+      const inventory: Report = {
+        type: "INVENTORY", generatedAt: MIDNIGHT_CROSSING,
+        summary: { totalAssetsDzd: 100, totalConsumablesDzd: 50, totalValueDzd: 150 },
+        byLocation: [], byItemType: [], agingAnalysis: [],
+      }
+      reportsGenerate.mockResolvedValue(inventory)
+      renderPage()
+      fireEvent.click(screen.getByRole("button", { name: "إنشاء التقرير" }))
+      await screen.findByText(/1‏\/10‏\/2026، 12:00:00 ص/)
+      expect(screen.queryByText(/30‏\/9‏\/2026، 11:00:00 م/)).toBeNull()
+
+      const reports: Report[] = [inventory, {
+        type: "DEBT", generatedAt: MIDNIGHT_CROSSING,
+        summary: { totalOutstandingDzd: 5000, totalSettledDzd: 1000, overdueDzd: 2000, partyCount: 2 },
+        agingBreakdown: [], byParty: [], topDebtors: [],
+      }, {
+        type: "MOVEMENT", generatedAt: MIDNIGHT_CROSSING,
+        summary: { totalMovements: 1, assetTransfers: 1, consumableTransfers: 0, outboundSales: 0 },
+        byType: [], byPeriod: [], topDestinations: [],
+      }]
+      for (const report of reports) {
+        expect(formatReportAsCSV(report).split("\n")[1]).toBe("Generated: 1‏/10‏/2026، 12:00:00 ص")
+      }
+      expect(formatReportAsCSV(inventory)).toContain("Total Value (DZD),150")
+    } finally {
+      restore()
+    }
+  })
+
   it(
     "sends the picked range as inclusive start/end-of-day instants",
     async () => {

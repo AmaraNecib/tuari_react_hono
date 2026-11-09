@@ -32,6 +32,16 @@ function formatterName(expression) {
     return null;
   }
   if (memberName === 'toLocaleDateString') return 'toLocaleDateString';
+  // Receiver-shape guard, not type analysis: unknown bindings remain allowed
+  // because numbers use the same method for money. All current instant sites
+  // construct their Date inline. Aliases and factory returns are not inferred.
+  const receiver = unwrapExpression(expression.expression);
+  if (memberName === 'toLocaleString' && ts.isNewExpression(receiver)) {
+    const constructor = unwrapExpression(receiver.expression);
+    if (ts.isIdentifier(constructor) && constructor.text === 'Date') {
+      return 'Date.toLocaleString';
+    }
+  }
   if (
     memberName === 'DateTimeFormat' &&
     ts.isIdentifier(expression.expression) &&
@@ -202,7 +212,7 @@ test('root package scripts keep web hygiene validation in normal checks', async 
   assert.match(packageJson.scripts.test, /check:web-hygiene/);
 });
 
-test('production web source never calls toLocaleDateString() or Intl.DateTimeFormat() unpinned', async () => {
+test('production web source pins date formatters, including constructed Date.toLocaleString()', async () => {
   const files = await listProductionWebSources();
   // Guard against a silent filter drift (an empty list would pass vacuously).
   assert.ok(files.length > 0, 'the production web scan must find source files');
@@ -302,6 +312,32 @@ test('date formatter scanner self-test: pinned passes, unpinned flags, comments 
     findUnpinnedDateFormatters(nestedInner).map((violation) => violation.callee),
     ['toLocaleDateString'],
   );
+});
+
+test('date formatter scanner distinguishes constructed Date receivers from money, including templates', () => {
+  const source = [
+    'new Date(stamp).toLocaleString("ar-DZ")',
+    'const csv = `Generated: ${new Date(stamp).toLocaleString("ar-DZ")}`',
+    '(new Date(stamp))["toLocaleString"]("ar-DZ")',
+    'new Date(stamp)?.toLocaleString("ar-DZ")',
+    'new Date(stamp).toLocaleString("ar-DZ", { timeZone: undefined })',
+    'new Date(stamp).toLocaleString("ar-DZ", { timeZone: "Africa/Algiers", ...options })',
+  ].join(';\n');
+  assert.deepEqual(
+    findUnpinnedDateFormatters(source).map(({ line, callee }) => ({ line, callee })),
+    [1, 2, 3, 4, 5, 6].map((line) => ({ line, callee: 'Date.toLocaleString' })),
+  );
+  const allowed = [
+    'new Date(stamp).toLocaleString("ar-DZ", { timeZone: "Africa/Algiers" })',
+    'const csv = `Generated: ${new Date(stamp).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}`',
+    '(100_000).toLocaleString("ar-DZ")',
+    'amount.toLocaleString("ar-DZ")',
+    'charge.amountDzd.toLocaleString("ar-DZ")',
+    'Number(value).toLocaleString("ar-DZ")',
+    'const note = `new Date(stamp).toLocaleString("ar-DZ")`',
+    '// new Date(stamp).toLocaleString("ar-DZ")',
+  ].join('\n');
+  assert.deepEqual(findUnpinnedDateFormatters(allowed), []);
 });
 
 test('date formatter scanner inspects template expressions without treating template text as code', () => {
