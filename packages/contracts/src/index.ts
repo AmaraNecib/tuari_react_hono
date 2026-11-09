@@ -2,6 +2,7 @@ export * from "./core";
 export * from "./auth";
 export * from "./workforce";
 export * from "./salary-days";
+export * from "./round-to-decimals";
 export * from "./projects";
 export * from "./warehouses";
 export * from "./debts";
