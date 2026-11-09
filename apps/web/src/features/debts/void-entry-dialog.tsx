@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/form-controls"
 import { useVoidDebtEntryMutation } from "@/features/app-shell/mock-dashboard"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 import { formatDebtAmount, formatDebtMoney, getDebtAccountBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
@@ -103,7 +104,7 @@ export function VoidEntryDialog({
               </p>
             ) : null}
             <p className="mt-1 text-xs text-muted-foreground">
-              {new Intl.DateTimeFormat("ar-DZ").format(new Date(entry.entryDate))}
+              {formatAlgeriaDate(entry.entryDate)}
               {entry.note?.trim() ? ` — ${entry.note.trim()}` : ""}
             </p>
           </div>

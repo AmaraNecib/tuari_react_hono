@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { InventoryInvoiceGroupDetail } from "@tuari/contracts"
 
 import { InventoryInvoiceDetailsPage } from "./inventory-invoice-details-page"
+import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
 
 const mocks = vi.hoisted(() => ({
   invoiceGroupQuery: vi.fn(),
@@ -344,5 +345,29 @@ describe("InventoryInvoiceDetailsPage error surface (issue #34)", () => {
     expect(screen.getByTestId("asset-charge-history")).toBeTruthy()
     // The history read is scoped to the rendered unit, not an arbitrary one.
     expect(mocks.chargeQueryIds).toContain(asset.id)
+  })
+})
+
+describe("InventoryInvoiceDetailsPage pins the invoice day (#473)", () => {
+  let restoreTimeZone: () => void
+
+  beforeEach(() => {
+    restoreTimeZone = pinUtcTimeZone()
+  })
+
+  afterEach(() => {
+    restoreTimeZone()
+  })
+
+  it("renders the invoice on its Algeria day under a UTC machine", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
+    expect(ALGERIA_DAY).not.toBe(UTC_DAY)
+
+    const detail = makeInvoiceGroupDetail()
+    detail.group.invoiceDate = MIDNIGHT_CROSSING
+    renderPage({ data: detail, isPending: false, isError: false, refetch: vi.fn() })
+
+    expect(screen.getByText(`تاريخ الفاتورة: ${ALGERIA_DAY}`)).toBeTruthy()
+    expect(screen.queryByText(`تاريخ الفاتورة: ${UTC_DAY}`)).toBeNull()
   })
 })

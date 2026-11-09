@@ -1,4 +1,4 @@
-import { toAlgeriaDayBoundaryIso } from "./algeria-time"
+import { isAlgeriaCalendarDay, toAlgeriaDayBoundaryIso } from "./algeria-time"
 
 /**
  * A day-range selection as held by the screens: canonical `yyyy-MM-dd` days
@@ -17,29 +17,6 @@ export type DayRangeSelection = {
 export type DayRangeInstantBounds = {
   fromDate?: string
   toDate?: string
-}
-
-const CANONICAL_DAY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
-
-/**
- * Whether `day` is a real calendar day in canonical `yyyy-MM-dd` form.
- *
- * The pattern alone is not enough: `2026-02-30` matches it but is not a day,
- * and `toAlgeriaDayBoundaryIso` would silently roll it over to `2026-03-02`
- * via `Date.UTC`. The round-trip rejects the rollover.
- */
-function isCanonicalDay(day: string): boolean {
-  const match = CANONICAL_DAY_PATTERN.exec(day)
-  if (!match) return false
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const dayOfMonth = Number(match[3])
-  const date = new Date(Date.UTC(year, month - 1, dayOfMonth))
-  return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === dayOfMonth
-  )
 }
 
 /**
@@ -66,7 +43,7 @@ export function resolveDayRangeBounds(range: DayRangeSelection): DayRangeInstant
 
 function resolveBound(day: string | undefined, boundary: "start" | "end"): string | undefined {
   if (!day) return undefined
-  if (!isCanonicalDay(day)) {
+  if (!isAlgeriaCalendarDay(day)) {
     throw new Error(
       `resolveDayRangeBounds expects a canonical yyyy-MM-dd day or a blank value, received "${day}"`,
     )

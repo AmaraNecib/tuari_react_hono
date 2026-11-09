@@ -3,6 +3,7 @@ import {
   invoiceLineUsage,
   matchesItemOfferFilter,
   nonNegativePaymentAmountSchema,
+  outboundPickUsage,
   resolveItemOffer,
 } from "@tuari/contracts"
 import type {
@@ -17,12 +18,15 @@ import type {
   InventoryItemDefinitionCreateInput,
   InventoryItemDefinitionUpdateInput,
   InventoryOutboundTransferCreateInput,
+  InventoryItemOfferSource,
   InventoryItemUsage,
   InventoryReport,
+  ItemOfferCandidate,
   MovementReport,
 } from "@tuari/contracts"
 
 import { InventoryError } from "./inventory.errors"
+import { addQuantity, quantityDifferenceMatches, roundQuantity, subtractQuantity } from "./inventory.helpers"
 import { normalizePageSize } from "../shared/cursor"
 import { StructuredLogger } from "../../infrastructure/observability/logger"
 import { CompanyError } from "../company/company.errors"
@@ -31,7 +35,9 @@ import { accumulateReportMoney, ageInDays, REPORT_MONEY_OVERFLOW_MESSAGE, resolv
 import type { MutationAuditContext } from "../company/company.types"
 import type {
   InventoryAssetUnitCreateData,
+  InventoryConsumableBalanceRecord,
   InventoryItemDefinitionRecord,
+  InventoryItemStockHolding,
   InventoryUploadFile,
   InventoryStoredUpload,
 } from "./inventory.types"
@@ -136,6 +142,24 @@ function normalizePositive(value: number, field: string) {
   return value
 }
 
+/**
+ * Validate and round a requested quantity to the storage quantum.
+ *
+ * A request below the quantum (`0.0000004`) rounds to zero, which would write
+ * an empty balance or a zero-quantity movement the schema forbids, so it is
+ * refused as validation rather than silently consumed.
+ */
+function normalizeQuantity(value: number, field: string) {
+  const quantity = roundQuantity(normalizePositive(value, field))
+  if (quantity <= 0) {
+    throw new InventoryError("VALIDATION", "الكمية أصغر من الدقة المسموح بها.", [
+      { field, message: "الكمية أصغر من الدقة المسموح بها." },
+    ])
+  }
+
+  return quantity
+}
+
 function validateWarehouse(repository: InventoryRepository, warehouseId: string | null | undefined, field: string) {
   if (warehouseId && !repository.warehouseExists(warehouseId)) {
     throw new InventoryError("VALIDATION", "المستودع المحدد غير موجود.", [{ field, message: "المستودع المحدد غير موجود." }])
@@ -174,6 +198,36 @@ function generateNextInvoiceNumber(latestInvoiceNumber: string | null) {
 
 function resolveOccurredAt(value?: string | null) {
   return value ?? createAlgeriaTimestamp()
+}
+
+/** The `from*` columns an outbound movement leaves from, for one source. */
+function outboundFromLocation(source: InventoryItemOfferSource) {
+  return source.locationType === "WAREHOUSE"
+    ? { fromWarehouseId: source.warehouseId, fromProjectId: undefined }
+    : { fromWarehouseId: undefined, fromProjectId: source.projectId }
+}
+
+/**
+ * The offer-rule evidence for a definition, projected from the stock rows the
+ * gate read. Both stock tables are read regardless of the definition's type, so
+ * this is the same evidence the picker's SQL `inStockAt` predicate sees.
+ */
+function itemOfferCandidate(
+  definition: InventoryItemDefinitionRecord,
+  holding: InventoryItemStockHolding,
+): ItemOfferCandidate {
+  return {
+    itemType: definition.itemType,
+    isActive: definition.isActive,
+    stockWarehouseIds: [
+      ...holding.consumableBalances.flatMap((balance) => (balance.warehouseId ? [balance.warehouseId] : [])),
+      ...holding.assetUnits.flatMap((asset) => (asset.currentWarehouseId ? [asset.currentWarehouseId] : [])),
+    ],
+    stockProjectIds: [
+      ...holding.consumableBalances.flatMap((balance) => (balance.projectId ? [balance.projectId] : [])),
+      ...holding.assetUnits.flatMap((asset) => (asset.currentProjectId ? [asset.currentProjectId] : [])),
+    ],
+  }
 }
 
 const ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES = new Set([
@@ -792,7 +846,7 @@ export class InventoryService {
   transferConsumable(input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 
-    normalizePositive(input.quantity, "quantity")
+    const quantity = normalizeQuantity(input.quantity, "quantity")
     validateSingleDestination(input.fromWarehouseId ?? null, input.fromProjectId ?? null, "fromWarehouseId")
     validateSingleDestination(input.toWarehouseId ?? null, input.toProjectId ?? null, "toWarehouseId")
     validateWarehouse(this.repository, input.fromWarehouseId ?? null, "fromWarehouseId")
@@ -815,12 +869,24 @@ export class InventoryService {
       throw new InventoryError("BUSINESS_RULE", "المصدر والوجهة متطابقان، لا توجد حركة مطلوبة.")
     }
 
-    if (!sourceBalance || sourceBalance.quantity < input.quantity) {
+    // Raw compare, not a rounded balance: a stored 0.4999996 must not satisfy a
+    // 0.5 request. The request is already rounded to the quantum above.
+    if (!sourceBalance || sourceBalance.quantity < quantity) {
       throw new InventoryError("BUSINESS_RULE", "الكمية المطلوبة غير متوفرة في الموقع الحالي.")
     }
 
     this.repository.withTransaction(() => {
-      const remainingQty = sourceBalance.quantity - input.quantity
+      // Reject a real shortage against the stored value above, then remove
+      // sub-quantum legacy noise before validating the six-decimal balance move.
+      const normalizedSourceQuantity = roundQuantity(sourceBalance.quantity)
+      const remainingQty = roundQuantity(subtractQuantity(normalizedSourceQuantity, quantity))
+      if (
+        !Number.isFinite(remainingQty) || remainingQty < 0 ||
+        !quantityDifferenceMatches(normalizedSourceQuantity, remainingQty, quantity)
+      ) {
+        throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل خصم الكمية بدقة المخزون.")
+      }
+
       if (remainingQty === 0) {
         // Delete the zero-balance record to satisfy the quantity > 0 DB constraint
         this.repository.deleteConsumableBalance(sourceBalance.id)
@@ -835,14 +901,22 @@ export class InventoryService {
       })
 
       if (targetBalance) {
-        this.repository.updateConsumableBalanceQuantity(targetBalance.id, targetBalance.quantity + input.quantity)
+        const normalizedTargetQuantity = roundQuantity(targetBalance.quantity)
+        const nextTargetQuantity = roundQuantity(addQuantity(normalizedTargetQuantity, quantity))
+        if (
+          !Number.isFinite(nextTargetQuantity) ||
+          !quantityDifferenceMatches(nextTargetQuantity, normalizedTargetQuantity, quantity)
+        ) {
+          throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل إضافة الكمية بدقة المخزون.")
+        }
+        this.repository.updateConsumableBalanceQuantity(targetBalance.id, nextTargetQuantity)
       } else {
         this.repository.createConsumableBalance({
           inventoryEntryId: entry.id,
           itemDefinitionId: entry.itemDefinitionId,
           warehouseId: input.toWarehouseId ?? null,
           projectId: input.toProjectId ?? null,
-          quantity: input.quantity,
+          quantity,
         })
       }
 
@@ -850,7 +924,7 @@ export class InventoryService {
         movementType: "TRANSFER",
         itemType: "CONSUMABLE",
         inventoryEntryId: entry.id,
-        quantity: input.quantity,
+        quantity,
         fromWarehouseId: input.fromWarehouseId ?? null,
         fromProjectId: input.fromProjectId ?? null,
         toWarehouseId: input.toWarehouseId ?? null,
@@ -1014,7 +1088,73 @@ export class InventoryService {
     })
   }
 
-/** Create an outbound transfer. */
+/**
+   * Consume `quantity` of a definition from the balances at one source, oldest
+   * stock first. One `OUTBOUND_SALE` movement is written per balance consumed,
+   * so every movement names the inventory entry it actually drew from — never
+   * the definition id the operator picked.
+   */
+  private consumeConsumableFromSource(input: {
+    balances: InventoryConsumableBalanceRecord[]
+    quantity: number
+    definitionName: string
+    from: { fromWarehouseId?: string; fromProjectId?: string }
+    note: string
+    occurredAt: string
+  }) {
+    // Normalize legacy sub-quantum noise, but roundQuantity leaves values already
+    // on the six-decimal grid untouched. Guard both deltas before any write.
+    const balances = input.balances.map((balance) => ({ ...balance, quantity: roundQuantity(balance.quantity) }))
+
+    let remaining = input.quantity
+    for (const balance of balances) {
+      if (remaining <= 0) break
+      if (balance.quantity <= 0) continue
+
+      const consumed = roundQuantity(Math.min(balance.quantity, remaining))
+      const left = roundQuantity(subtractQuantity(balance.quantity, consumed))
+      const nextRemaining = roundQuantity(subtractQuantity(remaining, consumed))
+      const stockDeltaMatches = quantityDifferenceMatches(balance.quantity, left, consumed)
+      const requestDeltaMatches = quantityDifferenceMatches(remaining, nextRemaining, consumed)
+
+      // At large magnitudes subtraction can do nothing or remove the wrong
+      // quantum. Reject inside the transaction rather than fund a movement
+      // with stock or request remainder that did not decrease by its normalized quantity.
+      if (
+        !Number.isFinite(left) || !Number.isFinite(nextRemaining) ||
+        left < 0 || nextRemaining < 0 ||
+        left >= balance.quantity || nextRemaining >= remaining ||
+        !stockDeltaMatches || !requestDeltaMatches
+      ) {
+        throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل خصم الكمية بدقة المخزون.")
+      }
+      if (left > 0) {
+        this.repository.updateConsumableBalanceQuantity(balance.id, left)
+      } else {
+        this.repository.deleteConsumableBalance(balance.id)
+      }
+
+      this.repository.createMovement({
+        movementType: "OUTBOUND_SALE",
+        itemType: "CONSUMABLE",
+        inventoryEntryId: balance.inventoryEntryId,
+        quantity: consumed,
+        ...input.from,
+        note: input.note,
+        occurredAt: input.occurredAt,
+      })
+
+      remaining = nextRemaining
+    }
+
+    // Throw inside the outbound transaction so no partial stock or transfer
+    // writes survive if allocation cannot fulfill the normalized request.
+    if (remaining > 0) {
+      throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${input.definitionName} غير متوفرة.`)
+    }
+  }
+
+  /** Create an outbound transfer. */
   createOutboundTransfer(input: InventoryOutboundTransferCreateInput, auditContext?: MutationAuditContext) {
     if (!this.debtService) {
       throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
@@ -1031,6 +1171,11 @@ export class InventoryService {
     }
 
     validateExternalCounterparty(this.repository, input.counterpartyId, "counterpartyId")
+
+    const items = input.items.map((item, index) => ({
+      ...item,
+      quantity: normalizeQuantity(item.quantity, `items.${index}.quantity`),
+    }))
 
     return this.repository.withTransaction(() => {
       let associatedDebtAccountId: string | undefined
@@ -1076,54 +1221,69 @@ export class InventoryService {
         }
       }
 
-      for (const item of input.items) {
-        const itemDef = this.repository.getItemDefinitionById(item.itemId)
-        if (!itemDef) {
+      // `item.itemId` is the definition FK; V2 also sends `optionId` for the
+      // concrete balance or asset unit selected. Re-evaluate the shared offer
+      // rule against this source before touching either row.
+      const source: InventoryItemOfferSource = input.fromType === "WAREHOUSE"
+        ? { locationType: "WAREHOUSE", warehouseId: input.fromId }
+        : { locationType: "PROJECT", projectId: input.fromId }
+      const from = outboundFromLocation(source)
+      const note = `تحويل خارجي إلى ${input.counterpartyId}`
+
+      for (const item of items) {
+        const quantity = item.quantity
+
+        const definition = this.repository.getItemDefinitionById(item.itemId)
+        if (!definition) {
           throw new InventoryError("NOT_FOUND", `العنصر ${item.itemId} غير موجود.`)
         }
 
-        if (itemDef.itemType === "CONSUMABLE") {
-          const balance = this.repository.getConsumableBalanceByEntryAndLocation({
-            inventoryEntryId: item.itemId,
-            warehouseId: input.fromType === "WAREHOUSE" ? input.fromId : null,
-            projectId: input.fromType === "PROJECT" ? input.fromId : null,
-          })
+        const stockAtSource = this.repository.listItemStockAtSource({
+          itemDefinitionId: definition.id,
+          source,
+        })
 
-          if (!balance || balance.quantity < item.quantity) {
-            throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${itemDef.name} غير متوفرة.`)
-          }
-
-          const newQuantity = balance.quantity - item.quantity
-          if (newQuantity > 0) {
-            this.repository.updateConsumableBalanceQuantity(balance.id, newQuantity)
-          } else {
-            this.repository.deleteConsumableBalance(balance.id)
-          }
-        } else {
-          const assets = this.repository.listAssetUnitsByLocation({
-            warehouseId: input.fromType === "WAREHOUSE" ? input.fromId : undefined,
-            projectId: input.fromType === "PROJECT" ? input.fromId : undefined,
-          }).slice(0, item.quantity)
-
-          if (assets.length < item.quantity) {
-            throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${itemDef.name} غير متوفرة.`)
-          }
-
-          for (const asset of assets) {
-            this.repository.updateAssetUnitLocation(asset.id, { currentWarehouseId: null, currentProjectId: null })
-          }
+        if (!matchesItemOfferFilter(resolveItemOffer(outboundPickUsage(source)), itemOfferCandidate(definition, stockAtSource))) {
+          throw new InventoryError("BUSINESS_RULE", `العنصر ${definition.name} غير متوفر في الموقع المحدد.`)
         }
 
-        this.repository.createMovement({
-          movementType: "OUTBOUND_SALE",
-          itemType: itemDef.itemType,
-          inventoryEntryId: itemDef.itemType === "CONSUMABLE" ? item.itemId : undefined,
-          quantity: item.quantity,
-          fromWarehouseId: input.fromType === "WAREHOUSE" ? input.fromId : undefined,
-          fromProjectId: input.fromType === "PROJECT" ? input.fromId : undefined,
-          note: `تحويل خارجي إلى ${input.counterpartyId}`,
-          occurredAt: createAlgeriaTimestamp(),
-        })
+        const occurredAt = createAlgeriaTimestamp()
+        if (definition.itemType === "CONSUMABLE") {
+          const balances = item.optionId
+            ? stockAtSource.consumableBalances.filter((balance) => balance.id === item.optionId)
+            : stockAtSource.consumableBalances
+          this.consumeConsumableFromSource({
+            balances,
+            quantity,
+            definitionName: definition.name,
+            from,
+            note,
+            occurredAt,
+          })
+          continue
+        }
+
+        const availableAssets = item.optionId
+          ? stockAtSource.assetUnits.filter((asset) => asset.id === item.optionId)
+          : stockAtSource.assetUnits
+        const assets = availableAssets.slice(0, quantity)
+        if (assets.length < quantity) {
+          throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${definition.name} غير متوفرة.`)
+        }
+
+        for (const asset of assets) {
+          this.repository.updateAssetUnitLocation(asset.id, { currentWarehouseId: null, currentProjectId: null })
+          this.repository.createMovement({
+            movementType: "OUTBOUND_SALE",
+            itemType: "ASSET",
+            inventoryEntryId: asset.inventoryEntryId,
+            assetUnitId: asset.id,
+            quantity: 1,
+            ...from,
+            note,
+            occurredAt,
+          })
+        }
       }
 
       const transfer = this.repository.createOutboundTransfer(
@@ -1132,14 +1292,17 @@ export class InventoryService {
           fromId: input.fromId,
           counterpartyId: input.counterpartyId,
           transferType: input.transferType,
-          items: input.items,
+          items: items.map(({ itemId, quantity, unitPriceDzd }) => ({ itemId, quantity, unitPriceDzd })),
           associatedDebtAccountId,
           notes: input.notes,
         },
         auditContext,
       )
 
-      return transfer
+      // The create contract is `createEntityResultSchema`; the client's
+      // `requireEntitySuccess` reads `.item`, so the bare record here failed
+      // ORPC output validation after a successful write.
+      return successResult("تم إنشاء التحويل الخارجي بنجاح.", transfer)
     })
   }
 
