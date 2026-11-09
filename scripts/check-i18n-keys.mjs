@@ -6,9 +6,8 @@
  * apps/web/src/i18n/resources/ar.ts (single "translation" namespace).
  *
  * Exit codes:
- *   0 – no missing keys (fallback-only gaps and dynamic keys are warnings)
- *   1 – at least one literal key is missing WITHOUT a fallback arg
- *        (i18next returns the key itself → raw key rendered in the UI)
+ *   0 – no missing or unused keys (dynamic keys are reported for review)
+ *   1 – missing literal keys or unused resource leaves
  *   2 – usage error / cannot parse resources
  *
  * Usage:
@@ -22,27 +21,23 @@ import { readFileSync, readdirSync, statSync } from "node:fs"
 import { join, relative, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import ts from "typescript"
+import { findUnusedKeys } from "./i18n-usage.mjs"
 
-const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)))
+// --root selects an isolated repository fixture using the same CLI as CI.
+const rootIndex = process.argv.indexOf("--root")
+if (rootIndex !== -1 && (!process.argv[rootIndex + 1] || process.argv[rootIndex + 1].startsWith("--"))) {
+  console.error("check-i18n-keys: --root requires a directory")
+  process.exit(2)
+}
+const rootDir = rootIndex === -1
+  ? resolve(fileURLToPath(new URL("..", import.meta.url)))
+  : resolve(process.argv[rootIndex + 1])
 const resourcesPath = join(rootDir, "apps/web/src/i18n/resources/ar.ts")
 const scanDir = join(rootDir, "apps/web/src")
-const ignoreDirs = new Set(["i18n"])
+const ignoreDirs = new Set(["__tests__", "__test-utils__"])
 
-// Known top-level translation namespaces (must stay in sync with ar.ts).
-const KNOWN_NAMESPACES = [
-  "common", "shell", "debts", "detailPages", "systemLog", "inventory", "inventoryPage",
-  "auth", "workspace", "appShell", "sections", "search", "license", "dashboardPage",
-  "dashboard", "validation", "reports", "externals", "externalsPage", "auditLog",
-  "toasts", "shortcuts", "columns", "status", "tables", "historyEvent", "systemRoles",
-  "employeeForm", "salaries", "metrics", "mockData", "batchOperations", "exportImport",
-  "debtsHub", "debtLedger", "debtCases", "tour", "update",
-]
-const NAMESPACE_ALT = KNOWN_NAMESPACES.join("|")
-
-// A string literal that looks like a dotted i18n key under a known namespace.
-// Used to catch keys referenced through lookup maps (e.g. statusLabelKeys[status]
-// -> "status.stopped") — computed t() calls the call-site scan can't resolve.
-const KEY_SHAPED_LITERAL = new RegExp(`^(?:${NAMESPACE_ALT})\\.[a-zA-Z][a-zA-Z0-9]*(?:\\.[a-zA-Z][a-zA-Z0-9]*)*$`)
+// Resource-derived namespaces keep indirect-map checking current as features grow.
+let keyShapedLiteral
 
 // ── 1. Parse resources ──────────────────────────────────────────────────────
 function parseResources(filePath) {
@@ -125,7 +120,7 @@ function extractKey(arg) {
     // t(`literal.${x}.more`) — only constant if every span is a literal
     const head = arg.head.text
     const tail = arg.templateSpans.every((span) => ts.isLiteralExpression(span.expression))
-      ? arg.templateSpans.map((span) => span.literal.text).join("")
+      ? arg.templateSpans.map((span) => span.expression.text + span.literal.text).join("")
       : null
     if (tail !== null) {
       return head + tail
@@ -137,7 +132,7 @@ function extractKey(arg) {
 function walkKeyShapedLiterals(sourceFile, results) {
   const visit = (node) => {
     if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-      if (KEY_SHAPED_LITERAL.test(node.text)) {
+      if (keyShapedLiteral.test(node.text)) {
         const sourcePos = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
         results.push({
           key: node.text,
@@ -190,7 +185,7 @@ function collectTsFiles(dir, out = []) {
     const stat = statSync(full)
     if (stat.isDirectory()) {
       collectTsFiles(full, out)
-    } else if (/\.(ts|tsx)$/.test(entry)) {
+    } else if (full !== resourcesPath && /\.(ts|tsx)$/.test(entry) && !/\.(test|spec)\.[^.]+$/.test(entry)) {
       out.push(full)
     }
   }
@@ -257,15 +252,20 @@ function main() {
     process.exit(2)
   }
 
+  const namespaces = Object.keys(resource).map((key) => key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  keyShapedLiteral = new RegExp(`^(?:${namespaces.join("|")})\\.[a-zA-Z][a-zA-Z0-9_]*(?:\\.[a-zA-Z][a-zA-Z0-9_]*)*$`)
   const calls = []
   const mapKeys = []
+  const sources = []
   for (const file of collectTsFiles(scanDir)) {
     const sourceText = readFileSync(file, "utf8")
+    sources.push({ fileName: file, text: sourceText })
     const sourceFile = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS)
     walkSourceFile(sourceFile, calls)
     walkKeyShapedLiterals(sourceFile, mapKeys)
   }
 
+  const unusedKeys = findUnusedKeys(resource, sources)
   const { missing, fallbackGaps, redundantFallbacks, dynamic, present } = summarize(calls, resource)
   // Greptile finding (#271): computed t() calls (lookup-map values) are not
   // statically resolvable, so their keys must be verified via the literal scan.
@@ -275,6 +275,7 @@ function main() {
     console.log(
       JSON.stringify(
         {
+          unusedKeys,
           totalCalls: calls.length,
           presentKeys: present.size,
           keyShapedLiterals: mapKeys.length,
@@ -295,8 +296,10 @@ function main() {
     console.log(`  fallback-only gaps (warn): ${fallbackGaps.length}`)
     console.log(`  redundant fallbacks (key exists, warn): ${redundantFallbacks.length}`)
     console.log(`  dynamic keys (manual review): ${dynamic.length}`)
+    console.log(`  unused resource keys: ${unusedKeys.length}`)
 
     if (wantReport) {
+      if (unusedKeys.length) console.log(`\n[unused resource keys]\n${unusedKeys.map((key) => `  ${key}`).join("\n")}`)
       const byPrefix = (list) => {
         const groups = new Map()
         for (const c of list) {
@@ -333,7 +336,7 @@ function main() {
     }
   }
 
-  process.exit(missing.length > 0 || missingMapKeys.length > 0 ? 1 : 0)
+  process.exit(missing.length > 0 || missingMapKeys.length > 0 || unusedKeys.length > 0 ? 1 : 0)
 }
 
 main()
