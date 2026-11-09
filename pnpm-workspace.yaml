@@ -1,6 +1,9 @@
 packages:
   - apps/*
   - packages/*
+# The multiple-ciphers package ships platform prebuilds. Do not add it to this
+# list: its binding.gyp triggers an unnecessary node-gyp build and toolchain dependency.
+# Packaging loads and verifies the shipped prebuild instead of compiling it.
 onlyBuiltDependencies:
   - better-sqlite3
   - prisma

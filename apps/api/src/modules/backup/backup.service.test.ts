@@ -29,10 +29,10 @@ import type { BackupSnapshotter } from "./backup.types";
  *
  * `createDatabaseConnection` is called without a key, so every snapshot here is
  * an unencrypted database and is verified with a plain better-sqlite3 reader.
- * The encrypted (SQLCipher) path is NOT exercised: the native binding is not
- * built in this workspace (see docs/backups.md, #410), so this file must not be
- * read as proof that the encrypted copy is verifiable. The skipped test at the
- * bottom records what an encrypted-path test needs.
+ * This service suite uses plain connections. Real keyed WAL snapshots,
+ * integrity and wrong/no-key rejection are covered in backup.snapshot.test.ts
+ * using the shipped encrypted prebuild. The skipped test below records the
+ * separate service-level key-rotation scenario still not exercised here.
  */
 
 // Force a specific fs call to fail on demand (a genuinely unreadable root is
@@ -987,15 +987,10 @@ describe("createBackupService", () => {
     );
   });
 
-  // NOT COVERED — skipped on purpose, not a passing test.
-  //
-  // The SQLCipher native binding is not built in this workspace (#410), so an
-  // encrypted snapshot cannot be opened here; the two worker tests in
-  // `backup.snapshot.test.ts` only prove the keyed branch resolves the SQLCipher
-  // module. Nothing in this file is evidence that an encrypted copy is usable,
-  // and encryption at rest is parked (#435). Unskip only once the binding is
-  // built and the steps below can actually run.
-  it.skip("NOT COVERED: encrypted snapshot openable with the key in force — needs the SQLCipher binding (#410)", () => {
+  // Service-level rotation is not covered by this plain-connection suite.
+  // Worker-level keyed backup/readback runs in backup.snapshot.test.ts with
+  // the shipped prebuild, without compilation. Do not count it as rotation proof.
+  it.skip("NOT COVERED: service backup remains openable with its pre-rotation key", () => {
     // 1. open the live DB with `databaseKey` (createDatabaseConnection(path, key));
     // 2. run `runDueBackup()`;
     // 3. assert the copy opens with the SAME key and `PRAGMA integrity_check` is ok;

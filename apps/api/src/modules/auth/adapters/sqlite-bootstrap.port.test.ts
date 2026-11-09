@@ -216,9 +216,13 @@ describe("SqliteBootstrapPort", () => {
     const rawA = new Database(dbPath, { timeout: 0 })
     const rawB = new Database(dbPath, { timeout: 0 })
     try {
-      for (const stmt of schemaStatements) {
-        rawA.exec(stmt)
-      }
+      // Commit the fixture schema once; per-statement fsyncs can consume the
+      // test deadline before the cross-connection lock assertion runs.
+      rawA.transaction(() => {
+        for (const stmt of schemaStatements) {
+          rawA.exec(stmt)
+        }
+      })()
       const portA = new SqliteBootstrapPort(createDrizzleFromSqlite(rawA), rawA, createFifoLock())
       const portB = new SqliteBootstrapPort(createDrizzleFromSqlite(rawB), rawB, createFifoLock())
 
