@@ -61,8 +61,17 @@ function hasUsableTimeZoneOption(options) {
       pinned = false;
       continue;
     }
-    const name = property.name;
-    if (!name || (!ts.isIdentifier(name) && !ts.isStringLiteral(name)) || name.text !== 'timeZone') {
+    let name = property.name;
+    if (name && ts.isComputedPropertyName(name)) {
+      name = unwrapExpression(name.expression);
+      if (!ts.isStringLiteral(name) && !ts.isNoSubstitutionTemplateLiteral(name)) {
+        // An unknown key may overwrite a previous timezone option.
+        pinned = false;
+        continue;
+      }
+    }
+    if (!name || (!ts.isIdentifier(name) && !ts.isStringLiteral(name) &&
+      !ts.isNoSubstitutionTemplateLiteral(name)) || name.text !== 'timeZone') {
       continue;
     }
     if (ts.isShorthandPropertyAssignment(property)) {
@@ -384,6 +393,26 @@ test('date formatter scanner does not trust shorthand timezone values', () => {
     findUnpinnedDateFormatters(source).map(({ line }) => line),
     [2, 3],
   );
+});
+
+test('date formatter scanner handles computed timezone overrides in source order', () => {
+  const scan = (options) => findUnpinnedDateFormatters(`date.toLocaleDateString("ar-DZ", ${options})`);
+  for (const options of [
+    '{ timeZone: "Africa/Algiers", ["timeZone"]: undefined }',
+    '{ timeZone: "Africa/Algiers", [`timeZone`]: null }',
+    '{ timeZone: "Africa/Algiers", [key]: value }',
+    '{ ["timeZone"]: "Africa/Algiers", timeZone: undefined }',
+  ]) {
+    assert.equal(scan(options).length, 1, options);
+  }
+  for (const options of [
+    '{ ["timeZone"]: "Africa/Algiers" }',
+    '{ timeZone: undefined, [`timeZone`]: "Africa/Algiers" }',
+    '{ [key]: value, timeZone: "Africa/Algiers" }',
+    '{ timeZone: "Africa/Algiers", ["year"]: "numeric" }',
+  ]) {
+    assert.equal(scan(options).length, 0, options);
+  }
 });
 
 test('fonts are self-hosted: index.html has no Google Fonts links or preconnects', async () => {
