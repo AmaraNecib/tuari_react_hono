@@ -19,6 +19,8 @@ import { cn } from "@/lib/utils"
 
 import { formatDebtAmount, formatDebtMoney, getDebtAccountBalanceDisplay, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
 import { RecordEntryPaymentDialog } from "./record-entry-payment-dialog"
+import { resolveDebtPaymentAction } from "./debt-payment"
+import { DebtPaymentPreview } from "./debt-payment-preview"
 import { VoidEntryDialog } from "./void-entry-dialog"
 
 function DebtStatCard({ label, value, valueClassName, phrase }: { label: string; value: string; valueClassName?: string; phrase?: string }) {
@@ -60,9 +62,8 @@ export function DebtLedgerPanel({
   // balance into a positive amount plus a phrase, so a negative balance can
   // never contradict the direction words.
   const balance = getDebtAccountBalanceDisplay(debtAccount)
-  const normalizedAmount = signedAmount.trim()
-  const signedAmountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : null
-  const hasValidAmount = signedAmountValue !== null && Number.isFinite(signedAmountValue) && signedAmountValue !== 0
+  const paymentAction = resolveDebtPaymentAction(debtAccount, signedAmount)
+  const paymentBlockedReason = !paymentAction ? "debts.cases.amountInvalid" : createDebtEntryMutation.isPending ? "debts.cases.saving" : null
 
   useEffect(() => {
     setEntryDate(getAlgeriaDateInputValue())
@@ -85,9 +86,7 @@ export function DebtLedgerPanel({
 
       <Surface className="p-5" variant="card">
         <SurfaceHeader
-          description={
-            "أدخل مبلغًا موجبًا إذا زاد ما لنا عند الطرف، وأدخل مبلغًا سالبًا إذا نزل الرصيد. مثال: +5000 دين جديد، -2000 دفعة وصلت إلينا، +2000 دفعة دفعناها لطرف كنا مدينين له."
-          }
+          description={t("debts.cases.recordPaymentDescription")}
           title={title}
         />
 
@@ -97,27 +96,31 @@ export function DebtLedgerPanel({
             <DatePicker value={entryDate} onChange={setEntryDate} />
           </label>
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">المبلغ الموقّع</span>
-            <CurrencyInput placeholder="مثال: 2500 أو -2500" value={signedAmount} onChange={(event) => setSignedAmount(event.target.value)} />
+            <span className="text-sm font-medium text-foreground">{t("debts.payment.amount")}</span>
+            <CurrencyInput placeholder={t("debts.payment.groupedAmountPlaceholder")} value={signedAmount} onChange={(event) => setSignedAmount(event.target.value)} />
           </label>
           <label className="flex flex-col gap-2 md:col-span-2 xl:col-span-2">
             <span className="text-sm font-medium text-foreground">ملاحظة</span>
-            <Textarea placeholder="وصف مختصر للحركة" value={note} onChange={(event) => setNote(event.target.value)} />
+            <Textarea placeholder={t("debts.payment.ledgerNotePlaceholder")} value={note} onChange={(event) => setNote(event.target.value)} />
           </label>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">المبلغ يغيّر الرصيد مباشرة: موجب يرفع الرصيد، وسالب يخفضه.</p>
+        <div className="mt-4 space-y-3">
+          {paymentAction ? <DebtPaymentPreview action={paymentAction} direction={debtAccount.direction} /> : null}
+          {paymentBlockedReason ? <p className="text-sm text-destructive" aria-live="polite">{t(paymentBlockedReason)}</p> : null}
           <Button
-            disabled={!hasValidAmount || createDebtEntryMutation.isPending}
-            onClick={() =>
+            disabled={!paymentAction || createDebtEntryMutation.isPending}
+            onClick={() => {
+              if (!paymentAction) return
               createDebtEntryMutation.mutate({
-                debtAccountId: debtAccount.id,
+                ...paymentAction.input,
                 entryDate: entryDate ? toAlgeriaDayBoundaryIso(entryDate, "start") : undefined,
                 note: note.trim() || null,
-                signedAmountDzd: signedAmountValue!,
-              })
-            }
+              }, { onSuccess: () => {
+                setSignedAmount((current) => current === signedAmount ? "" : current)
+                setNote((current) => current === note ? "" : current)
+              } })
+            }}
           >
             {t("debts.terminology.buttons.recordPayment")}
           </Button>

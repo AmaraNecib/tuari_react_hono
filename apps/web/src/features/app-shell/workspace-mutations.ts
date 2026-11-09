@@ -5,6 +5,7 @@ import {
   algerianPhoneSchema,
   type AppError,
   type AuthBootstrapInput,
+  type DebtEntryCreateInput,
   type Employee,
   type EmployeeBatchCreateInput,
   type EmployeeSaveInput,
@@ -708,7 +709,7 @@ export function useCreateDebtEntryMutation() {
       debtAccountId: string
       signedAmountDzd: number
       /** Defaults to ADJUSTMENT; the cases form posts a PAYMENT. */
-      entryType?: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE"
+      entryType?: DebtEntryCreateInput["entryType"]
       entryDate?: string
       note?: string | null
     }) => {

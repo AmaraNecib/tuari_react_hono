@@ -9,11 +9,16 @@ import {
   getConsolidationRemainder,
   getDebtAccountBalanceDisplay,
   getDebtDirectionLabel,
+  getDebtEntryTypeLabel,
   getNetDebtBalanceDisplay,
   matchesDebtHubFilter,
   resolveDebtCasesFormAction,
   sortDebtAccounts,
 } from "./debt-utils"
+
+it("labels an ADVANCE entry instead of exposing the wire enum", () => {
+  expect(getDebtEntryTypeLabel("ADVANCE")).toBe(ar.translation.debts.employee.advance)
+})
 
 const ARABIC_STATES = {
   owedToUs: "مستحق لنا",
@@ -220,6 +225,10 @@ describe("formatDebtAmount", () => {
 })
 
 describe("formatDebtMoney (signed movement formatter)", () => {
+  it("preserves centimes in ledger movements instead of displaying a rounded payment", () => {
+    expect(formatDebtMoney(-2000.5)).toBe("-2000.5")
+    expect(formatDebtMoney(-0.01)).toBe("-0.01")
+  })
   it("formats entry deltas with an explicit sign (useGrouping is disabled)", () => {
     expect(formatDebtMoney(1500)).toBe("+1500")
     expect(formatDebtMoney(-300)).toBe("-300")

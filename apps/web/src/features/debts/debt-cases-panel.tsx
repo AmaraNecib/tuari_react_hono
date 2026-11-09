@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next"
 import { useMemo, useState } from "react"
-import { getNetDebtBalance } from "@tuari/contracts"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
@@ -14,12 +13,14 @@ import { cn } from "@/lib/utils"
 
 import { ConsolidationDialog } from "./consolidation-dialog"
 import { DebtLedgerPanel } from "./debt-ledger-panel"
+import { parseDebtAmount, resolveDebtPaymentAction } from "./debt-payment"
+import { DebtPaymentPreview } from "./debt-payment-preview"
 import {
   debtDirectionFromAlias,
   formatDebtAmount,
+  findAccountByDirection,
   getDebtAccountBalanceDisplay,
   getDebtDirectionLabel,
-  getNetDebtBalanceDisplay,
   resolveDebtCasesFormAction,
   sortDebtAccounts,
   type DebtDirectionAlias,
@@ -59,12 +60,11 @@ export function DebtCasesPanel({
   const [createDate, setCreateDate] = useState(() => getAlgeriaDateInputValue())
   const [amount, setAmount] = useState("")
   const [note, setNote] = useState("")
-  const [direction, setDirection] = useState<DebtDirectionAlias>("owed-by-us")
+  const [selectedDirection, setDirection] = useState<DebtDirectionAlias | null>(null)
+  const direction = selectedDirection ?? (accounts.length === 1 && accounts[0]?.direction === "RECEIVABLE" ? "owed-to-us" : "owed-by-us")
   const [consolidationDialogOpen, setConsolidationDialogOpen] = useState(false)
   const sortedAccounts = useMemo(() => sortDebtAccounts(accounts), [accounts])
-  const debtAccount = sortedAccounts[0] ?? null
-  const normalizedAmount = amount.trim()
-  const amountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : 0
+  const amountValue = amount.trim().length === 0 ? 0 : parseDebtAmount(amount)
   // The direction carries the meaning; the opening amount is always a positive
   // magnitude (a signed balance is never stored or shown).
   const accountDirection = debtDirectionFromAlias(direction)
@@ -73,11 +73,13 @@ export function DebtCasesPanel({
   // that account. One resolver feeds all four.
   const accountAction = resolveDebtCasesFormAction(sortedAccounts, accountDirection)
   const isRecordingPayment = accountAction.kind === "record-payment"
+  const debtAccount = accountAction.kind === "record-payment" ? accountAction.account : null
+  const paymentAction = debtAccount ? resolveDebtPaymentAction(debtAccount, amount) : null
   // One rule names the block, feeds the disabled state and the on-screen reason.
   // An unparseable amount is invalid in both modes; a payment additionally needs
   // a non-zero magnitude. An opening amount is optional on the create path, so
   // an empty one is a legitimate account with no opening entry.
-  const amountBlockedReasonKey = !Number.isFinite(amountValue)
+  const amountBlockedReasonKey = amountValue === null
     ? "debts.cases.amountInvalid"
     : isRecordingPayment && amountValue === 0
       ? "debts.cases.paymentAmountRequired"
@@ -96,36 +98,19 @@ export function DebtCasesPanel({
   const saveBlockedReasonKey =
     amountBlockedReasonKey ?? (isSubmitDisabled ? "debts.cases.saving" : null)
 
-  // Aggregate stats across all accounts
-  const totalEntryCount = useMemo(
-    () =>
-      sortedAccounts.reduce(
-        (sum, a) => sum + (debtEntriesByAccountId[a.id] ?? []).length,
-        0,
-      ),
-    [sortedAccounts, debtEntriesByAccountId],
+  // Balance and entry count describe the ledger selected by the form.
+  const selectedEntryCount = useMemo(
+    () => debtAccount ? (debtEntriesByAccountId[debtAccount.id] ?? []).length : 0,
+    [debtAccount, debtEntriesByAccountId],
   )
-  const totalBalanceDzd = useMemo(
-    () => getNetDebtBalance(sortedAccounts),
-    [sortedAccounts],
-  )
-  const hasPayable = sortedAccounts.some((a) => a.direction === "PAYABLE")
-  const hasReceivable = sortedAccounts.some((a) => a.direction === "RECEIVABLE")
-  const isBidirectional = hasPayable && hasReceivable
-  const balance = useMemo(
-    () =>
-      isBidirectional || !debtAccount
-        ? getNetDebtBalanceDisplay(totalBalanceDzd)
-        : getDebtAccountBalanceDisplay(debtAccount),
-    [isBidirectional, totalBalanceDzd, debtAccount],
-  )
+  const balance = getDebtAccountBalanceDisplay(debtAccount ?? { currentBalance: 0, direction: accountDirection })
 
   const payableAccount = useMemo(
-    () => sortedAccounts.find((a) => a.direction === "PAYABLE") ?? null,
+    () => findAccountByDirection(sortedAccounts, "PAYABLE"),
     [sortedAccounts],
   )
   const receivableAccount = useMemo(
-    () => sortedAccounts.find((a) => a.direction === "RECEIVABLE") ?? null,
+    () => findAccountByDirection(sortedAccounts, "RECEIVABLE"),
     [sortedAccounts],
   )
   const hasBothDirections = payableAccount !== null && receivableAccount !== null
@@ -150,18 +135,17 @@ export function DebtCasesPanel({
   // payment and the opening cannot drift.
   const entryDateIso = createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined
   const trimmedNote = note.trim() || null
-  const signedPaymentAmount = -Math.abs(amountValue)
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <CasesStatCard
-          label={isBidirectional ? t("debts.cases.netBalance") : debtAccount ? `${t("debts.cases.currentBalance")} — ${getDebtDirectionLabel(debtAccount.direction)}` : t("debts.cases.currentBalance")}
+          label={`${t("debts.cases.currentBalance")} — ${getDebtDirectionLabel(accountDirection)}`}
           phrase={balance.phrase}
           value={`دج ${formatDebtAmount(balance.amount)}`}
           valueClassName={balance.textClassName}
         />
         <CasesStatCard label={t("debts.cases.accountCount")} value={String(sortedAccounts.length)} />
-        <CasesStatCard label={t("debts.cases.entryCount")} value={String(totalEntryCount)} />
+        <CasesStatCard label={t("debts.cases.entryCount")} value={String(selectedEntryCount)} />
       </div>
 
       {hasBothDirections ? (
@@ -237,16 +221,17 @@ export function DebtCasesPanel({
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label={t("common.createDate", "التاريخ")}>
-            <DatePicker value={createDate} onChange={setCreateDate} />
+            <DatePicker value={createDate} onChange={(value) => { setDirection(direction); setCreateDate(value) }} />
           </Field>
           <Field label={t("debts.cases.amount")}>
-            <CurrencyInput placeholder="0 أو 2500" value={amount} onChange={(event) => setAmount(event.target.value)} />
+            <CurrencyInput placeholder={t("debts.cases.amountPlaceholder")} value={amount} onChange={(event) => { setDirection(direction); setAmount(event.target.value) }} />
           </Field>
           <Field label={t("debts.cases.note")} className="md:col-span-2">
-            <Textarea placeholder="مثال: دين جديد، دفعة وصلت، دفعة خرجت" value={note} onChange={(event) => setNote(event.target.value)} />
+            <Textarea placeholder={t("debts.cases.notePlaceholder")} value={note} onChange={(event) => { setDirection(direction); setNote(event.target.value) }} />
           </Field>
         </div>
 
+        {paymentAction ? <div className="mt-4"><DebtPaymentPreview action={paymentAction} direction={accountDirection} /></div> : null}
         <PageFooterActions className="mt-4">
           {saveBlockedReasonKey ? (
             <p aria-live="polite" className="self-center text-sm text-destructive" role="status">
@@ -256,36 +241,34 @@ export function DebtCasesPanel({
           <Button
             disabled={isSubmitDisabled}
             onClick={async () => {
-              if (accountAction.kind === "record-payment") {
-                // A payment reduces the balance on either ledger, so the typed
-                // magnitude becomes a negative movement; the sign is the
-                // payment's, never inferred from the direction. The direction
-                // selected which ledger's account receives it. This posts a
-                // signed movement (like the ledger form), not a capped
-                // allocation, so it can deepen an existing credit.
-                await createDebtEntryMutation.mutateAsync({
-                  debtAccountId: accountAction.account.id,
-                  entryType: "PAYMENT",
-                  signedAmountDzd: signedPaymentAmount,
-                  entryDate: entryDateIso,
-                  note: trimmedNote,
-                })
-              } else {
-                await createDebtAccountMutation.mutateAsync({
-                  externalCounterpartyId: externalCounterpartyId ?? null,
-                  note: trimmedNote,
-                  direction: accountDirection,
-                  openingBalanceDzd: amountValue === 0 ? undefined : Math.abs(amountValue),
-                  openingEntryDate: entryDateIso,
-                  openingEntryNote: trimmedNote,
-                  partyType: workerId ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY",
-                  workerId: workerId ?? null,
-                })
-              }
+              if (isSubmitDisabled || amountValue === null) return
+              try {
+                if (accountAction.kind === "record-payment") {
+                  if (!paymentAction) return
+                  await createDebtEntryMutation.mutateAsync({
+                    ...paymentAction.input,
+                    entryDate: entryDateIso,
+                    note: trimmedNote,
+                  })
+                } else {
+                  await createDebtAccountMutation.mutateAsync({
+                    externalCounterpartyId: externalCounterpartyId ?? null,
+                    note: trimmedNote,
+                    direction: accountDirection,
+                    openingBalanceDzd: amountValue === 0 ? undefined : Math.abs(amountValue),
+                    openingEntryDate: entryDateIso,
+                    openingEntryNote: trimmedNote,
+                    partyType: workerId ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY",
+                    workerId: workerId ?? null,
+                  })
+                }
 
-              setCreateDate(getAlgeriaDateInputValue())
-              setAmount("")
-              setNote("")
+                setCreateDate((current) => current === createDate ? getAlgeriaDateInputValue() : current)
+                setAmount((current) => current === amount ? "" : current)
+                setNote((current) => current === note ? "" : current)
+              } catch {
+                // The mutation's onError toast reports failure; preserve the draft.
+              }
             }}
           >
             {isRecordingPayment ? t("debts.cases.recordPaymentButton") : t("debts.cases.createAccountButton")}

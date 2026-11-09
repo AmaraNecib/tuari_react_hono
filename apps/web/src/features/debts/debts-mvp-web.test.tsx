@@ -193,11 +193,12 @@ describe("debts MVP web UI", () => {
     expect(screen.getAllByText("رصيد مستحق لنا").length).toBeGreaterThan(0)
     expect(screen.getAllByText(/700/).length).toBeGreaterThan(0)
 
-    fireEvent.change(screen.getByPlaceholderText("مثال: 2500 أو -2500"), { target: { value: "500" } })
+    fireEvent.change(screen.getByPlaceholderText("مثال: 2 500.50"), { target: { value: "500" } })
     fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[1]!)
 
     expect(createDebtEntryMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ debtAccountId: "debt-2", signedAmountDzd: 500 }),
+      expect.objectContaining({ debtAccountId: "debt-2", entryType: "PAYMENT", signedAmountDzd: -500 }),
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
     )
 
     fireEvent.click(screen.getByRole("button", { name: "تسوية إلى صفر" }))
@@ -301,7 +302,7 @@ describe("debts MVP web UI", () => {
 
       // The label and the description name the action the submit performs.
       expect(screen.getByText("تسجيل دفعة على الحساب")).toBeTruthy()
-      expect(screen.getByText(/لا يُنشأ حساب جديد/)).toBeTruthy()
+      expect(screen.getAllByText(/لا يُنشأ حساب جديد/).length).toBeGreaterThan(0)
 
       fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "1200" } })
       fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), {
