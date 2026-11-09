@@ -214,7 +214,9 @@ implementation and its remaining release gates are distinct:
   `PRAGMA cipher_version`, a keyed write/reopen, and a file header other than
   `SQLite format 3`. The current fixture and keyed tests do not establish that
   literal version-probe criterion. Do not replace it with `PRAGMA cipher` or
-  claim #410 is complete.
+  claim #410 is complete. The proof uses the driver's `cipher='sqlcipher'`,
+  `legacy=4`, then key ordering; its bounded health deadline and process cleanup
+  do not change this acceptance gate.
 - The new `legacy=4` configuration does not migrate or retry files written with
   `legacy=0`. The owner reports no user deployment of the earlier build, so
   migration is not included. Wrong-format files still fail closed. Reassess

@@ -27,7 +27,14 @@ export type BackupRetentionPolicy = {
   monthly: number;
 };
 
-/** Folder name of one backup: the period the backup covers (`YYYY-MM-DD`). */
+/**
+ * Folder name of one backup: the period the backup covers (`YYYY-MM-DD`).
+ *
+ * Mirrored by `apps/desktop/scripts/sqlcipher-encryption-proof.mjs`
+ * (`findSnapshotDatabase`), together with the `tuari.sqlite` and
+ * `snapshot.json` names owned by `backup.service.ts`. Change both sides: the
+ * proof fails closed, so a rename here turns the encryption gate red.
+ */
 export const BACKUP_DIRECTORY_NAME_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Steps taken by a run in progress; ignored by listing and retention. */
