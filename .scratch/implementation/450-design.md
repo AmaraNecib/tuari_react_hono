@@ -268,3 +268,34 @@ Logs are in .scratch/reviews/450/selected-shortage-20261102/.
   arithmetic changes above do not change either public identity contract.
 - Asset-unit identity in `OUTBOUND_SALE` movements for *reports* is unchanged in
   shape (still `OUTBOUND_SALE` from the source, no destination).
+
+## Integration with current develop
+
+This integration starts from preserved commit
+`587c6e872292288057572e232636c7d8ee7f7327`. The preserved commit's parent is
+`19284f46a78c8ab47a5cb803d2a3c135420c8e6b`; the published PR #477 head
+`aab149fde4ace78767befccd927bddea8425e330` is its ancestor. The branch also
+merges fetched `origin/develop` at
+`4917fd2cc733be63e21cf3e61d57a9ed7627b7e9`.
+
+The selected `optionId` remains authoritative. If that concrete balance cannot
+fulfill the requested quantity, the service throws `BUSINESS_RULE` and the
+transaction rolls back. It does not consume a sibling balance. The regression
+asserts the selected-shortage failure and a full before/after write snapshot.
+Existing precision, selected-entry identity, shared picker/write availability,
+web selection and create-envelope behavior remain in scope. No #478 money bound
+was added.
+
+The merges retained develop's auth, driver, dependency and CI updates. Routine
+conflicts were resolved by keeping its runtime-staging implementation and tests,
+adding the encrypted snapshot byte-preservation assertion, and combining the
+E2E selector with the fork-PR guard. The obsolete architecture wisdom file was
+kept deleted to match develop's migrated wisdom layout. Historical 450 design
+and ignored reports were read where present; their prior full API/web totals are
+not current proof.
+
+Current focused proof is recorded in
+`.scratch/reviews/450/integration-2852279a/`. Contracts build and the focused
+contracts, API, web, typecheck and package-lint checks passed after the frozen
+integration source was committed. The branch has not received independent
+reviews; the parent owns the three HIGH-ASSURANCE lenses.
