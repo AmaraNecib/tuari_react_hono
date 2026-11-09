@@ -64,8 +64,9 @@ pnpm --filter @tuari/desktop portable:only
 ```
 
 `@tuari/desktop build` runs `build-sidecar.mjs` first. That script builds the
-API, copies `dist/` plus the `better-sqlite3` (or `better-sqlite3-sqlcipher`)
-native binding into `apps/desktop/src-tauri/bin/api-runtime`, and copies the
+API, copies `dist/` plus both `better-sqlite3` and
+`better-sqlite3-multiple-ciphers` into `apps/desktop/src-tauri/bin/api-runtime`,
+requires their native binaries to load, and copies the
 current Node binary to `apps/desktop/src-tauri/bin/node.exe`. Tauri then compiles
 the Rust shell and runs `pnpm --filter @tuari/web build` for the frontend.
 
@@ -86,6 +87,7 @@ Tuari-portable/
       package.json
       dist/index.cjs
       node_modules/better-sqlite3/build/Release/better_sqlite3.node
+      node_modules/better-sqlite3-multiple-ciphers/prebuilds/win32-x64.node
 ```
 
 The smoke script adds one file of its own to a directory it extracts into:
@@ -223,7 +225,7 @@ manual:
 - The desktop IPC bridge (`desktop_api_request`, `activate_license`,
   `check_for_updates`). These need the webview.
 - The encrypted-database path. It needs a license with `encrypted_db` and a
-  build that includes the `better-sqlite3-sqlcipher` native binding.
+  build that includes the `better-sqlite3-multiple-ciphers` native binding.
 - Update download, signature verification, and restart.
 - Codesigning and notarisation. The local build is unsigned.
 
@@ -303,15 +305,15 @@ written by this run, and clean shutdown. `cargo test` and
 
 ## Known gaps
 
-These are real but out of scope for the smoke-test lane. They are reported to the
-parent as separate issues.
+The smoke-test result above records its original verification run. Current
+packaging behavior and remaining release gaps are separate:
 
-- The sidecar build falls back to plain `better-sqlite3` when the
-  `better-sqlite3-sqlcipher` native binding is not present, and it prints a
-  warning rather than failing. The portable artifact then ships without
-  encryption support, so a customer with the `encrypted_db` feature would get
-  `APP_DB_KEY` set and a driver that cannot use it. The build should fail, or at
-  least the packaging step should record which driver was bundled.
+- The sidecar build now requires both SQLite drivers. It loads the encrypted
+  driver's shipped prebuild before packaging and checks the copied prebuild.
+  Missing native support fails the build; it does not warn and fall back to a
+  plain-only runtime. This fixes the packaging omission identified by the
+  original smoke-test lane. It does not complete #410's built-artifact proof
+  or its literal nonempty `PRAGMA cipher_version` acceptance criterion.
 - The shell migrates a legacy database from `Documents/Tuari` into the data dir
   with `std::fs::copy`, which preserves the source mtime. That is deliberate
   product behaviour, but it means a first-run check must neutralize the source
