@@ -4,7 +4,7 @@
 
 Consolidated workflow PR #504, based on integrated PR505 source at `2d539044463cfa608064995f2c67e940c5fd8f2d`. High-assurance crypto, native packaging and supply chain. Mode: focused-local / CI-final-pending. The owner explicitly authorized one consolidated PR and this cipher fix. The parent owns dependency vetting, publication and hosted checks. The owner forbids merge.
 
-Port only the reviewed SQLCipher/runtime/packaging source and tests from historical PR501 commits `32a10d4bb426134f2deb947f9ab72b81203307dd` and `3329f64de105b1c4dfecbbb72d93bcff5074f3b3`. Do not revive other PR lanes or port unrelated historical auth, schema, SQLite bootstrap transaction, fixture, reports, wisdom or workflow changes. Preserve the integrated auth/schema source and the current dependency-security/workflow changes.
+Port only the reviewed SQLCipher/runtime/packaging source and tests from historical PR501 commits `32a10d4bb426134f2deb947f9ab72b81203307dd` and `3329f64de105b1c4dfecbbb72d93bcff5074f3b3`. Do not revive other PR lanes or overwrite newer auth, schema or workflow changes. The owner subsequently requested preservation of all #501 work: include its SQLite bootstrap test-fixture transaction, backup service coverage clarifications and engineering lessons in the topic-based wisdom layout. Preserve the integrated auth/schema source and current dependency-security/workflow changes. Keep historical operational reports local and ignored rather than reintroducing tracked evidence.
 
 ## SQLCipher decision
 
