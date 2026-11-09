@@ -1,6 +1,6 @@
 # Issue #427 salary domain design
 
-Status: proposed, awaiting owner approval. No implementation or data migration is authorized by this document. No source behavior has changed.
+Status: proposed storage and integration design, awaiting owner approval. The owner accepted separating approved wages from actual payments, with the employee's reference salary used as a suggested default rather than a third required entry. That acceptance does not select the proposed debt integration, money storage or legacy writer transition. No source behavior has changed.
 
 ## Scope and authority
 
@@ -16,6 +16,14 @@ Status: proposed, awaiting owner approval. No implementation or data migration i
 ## Confirmed product semantics
 
 Reference salary suggests an amount only. It does not establish wages owed, debt, a ceiling or a monthly uniqueness rule. Explicit approval establishes earnings for a stated covered period. Explicit allocation amounts plus explicit unallocated earnings must equal that approved total.
+
+The owner explicitly confirmed these examples in this thread:
+
+- Reference salary 30,000 DZD, final approved wages 25,000 DZD and payment 25,000 DZD leaves no wages owed. The reference difference is not debt. Reducing previously approved wages requires an explicit recorded correction, not merely a smaller payment. This does not authorize automatic penalties or a statutory deductions engine.
+- Reference salary 30,000 DZD and cash 35,000 DZD requires explicit classification of the extra 5,000 DZD. A bonus raises approved earnings to 35,000 DZD. A recoverable advance leaves earnings at 30,000 DZD and records 5,000 DZD owed by the worker separately.
+- Approved wages 35,000 DZD and payment 25,000 DZD leaves 10,000 DZD owed to the worker automatically. An optional debt checkbox cannot erase unpaid approved wages.
+
+These confirmations approve product semantics only. Debt integration, integer-cent storage and legacy-writer transition remain proposed below.
 
 A project may occur repeatedly. Each segment has stable identity and its own amount, with optional positive whole days. Editing a segment must not change another segment or approved total implicitly. Suggestions remain separate from approval.
 
