@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 import type { SalaryPeriodType, SalaryProjectAssignmentWindow } from "@tuari/contracts"
 
 import {
@@ -136,7 +137,7 @@ export function SalariedWorkersTable({
                   </td>
                   <td className="px-4 py-3 text-start text-[13px] text-ink-3">
                     {worker.lastPaymentDate
-                      ? new Intl.DateTimeFormat("ar-DZ").format(new Date(worker.lastPaymentDate))
+                      ? formatAlgeriaDate(worker.lastPaymentDate)
                       : <span className="text-ink-4">—</span>}
                   </td>
                   <td className="px-4 py-3 text-end">

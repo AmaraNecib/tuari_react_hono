@@ -14,7 +14,7 @@ import {
   useCreateDebtEntryMutation,
   useSettleDebtAccountMutation,
 } from "@/features/app-shell/mock-dashboard"
-import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { formatAlgeriaDate, getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 
 import { formatDebtAmount, formatDebtMoney, getDebtAccountBalanceDisplay, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
@@ -189,7 +189,7 @@ export function DebtLedgerPanel({
                   return (
                     <tr key={entry.id} className={cn("border-t border-border/60", !isLive && "opacity-50")}>
                       <td className="px-4 py-4 text-start text-foreground">
-                        {new Intl.DateTimeFormat("ar-DZ").format(new Date(entry.entryDate))}
+                        {formatAlgeriaDate(entry.entryDate)}
                       </td>
                       <td className="px-4 py-4 text-start text-muted-foreground">
                         {getDebtEntryTypeLabel(entry.entryType)}

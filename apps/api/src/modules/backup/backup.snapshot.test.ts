@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -125,7 +125,9 @@ describe("createWorkerSnapshotter", () => {
         copy.close();
       }
       expect(() => createDatabaseConnection(outputPath, "wrong")).toThrow(/not a database/i);
+      const encryptedBytesBeforeMissingKeyOpen = readFileSync(outputPath);
       expect(() => createDatabaseConnection(outputPath, null)).toThrow(/not a database/i);
+      expect(readFileSync(outputPath).equals(encryptedBytesBeforeMissingKeyOpen)).toBe(true);
       await expect(createWorkerSnapshotter({ databasePath, databaseKey: "wrong" })(
         join(tempRoot, "wrong.sqlite"),
       )).rejects.toThrow(/not a database/i);
