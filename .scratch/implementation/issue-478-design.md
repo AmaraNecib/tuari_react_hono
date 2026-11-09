@@ -10,7 +10,7 @@
 
 ## Design
 
-Use `nonNegativePaymentAmountSchema.optional()` for `unitPriceDzd`, `debtAmountDzd`, and `firstPaymentAmountDzd`. Enforce the same schema with the existing `normalizeMoneyWithinBound` at `InventoryService.createOutboundTransfer`, before transaction writes. Keep zero legal and optional inputs optional. Keep the first-payment versus opening-balance comparison.
+Use `nonNegativePaymentAmountSchema.optional()` for `unitPriceDzd`, `debtAmountDzd`, and `firstPaymentAmountDzd`. Enforce the same schema with the existing `normalizeMoneyWithinBound` at `InventoryService.createOutboundTransfer`, before transaction writes. Keep zero legal and optional inputs optional. Only undefined defaults to zero for debt and first payment; explicit null must reach the shared schema and fail for direct callers just as it does at the RPC contract. Keep the first-payment versus opening-balance comparison.
 
 The domain terms are unchanged. Debt amount is the full transfer value posted as OPENING; first payment is posted separately as PAYMENT. Unit price is an optional stored transfer-item price. This work adds no aggregate-price calculation, response restriction, database migration, or finance-module policy.
 

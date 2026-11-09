@@ -13,7 +13,7 @@ const baseInput = {
 
 const moneyFields = ["unitPriceDzd", "debtAmountDzd", "firstPaymentAmountDzd"] as const;
 
-function withMoney(field: typeof moneyFields[number], amount: number) {
+function withMoney(field: typeof moneyFields[number], amount: unknown) {
   return field === "unitPriceDzd"
     ? { ...baseInput, items: [{ ...baseInput.items[0], unitPriceDzd: amount }] }
     : { ...baseInput, [field]: amount };
@@ -35,7 +35,7 @@ describe("inventoryOutboundTransferCreateInputSchema", () => {
       expect(field === "unitPriceDzd" ? result.items[0]?.unitPriceDzd : result[field]).toBe(amount);
     });
 
-    it.each([-1, NaN, Infinity, -Infinity])("rejects invalid money %s", (amount) => {
+    it.each([-1, NaN, Infinity, -Infinity, null])("rejects invalid money %s", (amount) => {
       expect(inventoryOutboundTransferCreateInputSchema.safeParse(withMoney(field, amount)).success).toBe(false);
     });
   });

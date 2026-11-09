@@ -191,11 +191,12 @@ describe("createOutboundTransfer money bounds (#478)", () => {
   }
 
   describe.each(moneyFields)("%s", (field) => {
-    it.each([MAX_MONEY_DZD + 1, -1, NaN, Infinity, -Infinity])("rejects invalid money %s without any writes", async (amount) => {
+    it.each([MAX_MONEY_DZD + 1, -1, NaN, Infinity, -Infinity, null])("rejects invalid money %s without any writes", async (amount) => {
       const env = await moneyEnv()
       const before = snapshotWrites(env.db)
 
-      expect(() => env.service.createOutboundTransfer(moneyInput(field, amount), AUDIT))
+      // Direct JavaScript callers can bypass the compile-time number type.
+      expect(() => env.service.createOutboundTransfer(moneyInput(field, amount as number), AUDIT))
         .toThrowError(expect.objectContaining({ appError: expect.objectContaining({
           code: "VALIDATION",
           message: expect.stringContaining(String(MAX_MONEY_DZD)),

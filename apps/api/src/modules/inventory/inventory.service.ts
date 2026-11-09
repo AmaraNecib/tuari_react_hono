@@ -1180,8 +1180,8 @@ export class InventoryService {
         ? undefined
         : normalizeMoneyWithinBound(item.unitPriceDzd, `items.${index}.unitPriceDzd`, moneyMessage),
     }))
-    const debtAmountDzd = normalizeMoneyWithinBound(input.debtAmountDzd ?? 0, "debtAmountDzd", moneyMessage)
-    const firstPaymentAmountDzd = normalizeMoneyWithinBound(input.firstPaymentAmountDzd ?? 0, "firstPaymentAmountDzd", moneyMessage)
+    const debtAmountDzd = normalizeMoneyWithinBound(input.debtAmountDzd === undefined ? 0 : input.debtAmountDzd, "debtAmountDzd", moneyMessage)
+    const firstPaymentAmountDzd = normalizeMoneyWithinBound(input.firstPaymentAmountDzd === undefined ? 0 : input.firstPaymentAmountDzd, "firstPaymentAmountDzd", moneyMessage)
 
     return this.repository.withTransaction(() => {
       let associatedDebtAccountId: string | undefined
