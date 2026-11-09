@@ -13,7 +13,7 @@ import type { DebtAccount, DebtBalanceAccount, DebtBalanceState, DebtEntry } fro
  */
 export function formatDebtMoney(value: number) {
   return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
+    maximumFractionDigits: 2,
     signDisplay: "always",
     useGrouping: false,
   }).format(value)
@@ -169,8 +169,12 @@ export function resolveDebtCasesFormAction(
 ): DebtCasesFormAction {
   // The server's create path keeps at most one account per (party, direction),
   // so a direction has one account and `find` is not a choice between two.
-  const account = accounts.find((candidate) => candidate.direction === direction)
+  const account = findAccountByDirection(accounts, direction)
   return account ? { kind: "record-payment", account } : { kind: "create-account" }
+}
+
+export function findAccountByDirection(accounts: DebtAccount[], direction: DebtAccount["direction"]) {
+  return accounts.find((account) => account.direction === direction) ?? null
 }
 
 /**
@@ -243,6 +247,8 @@ export function getDebtEntryTypeLabel(entryType: DebtEntry["entryType"]) {
       return "دفعة"
     case "ADJUSTMENT":
       return "تعديل"
+    case "ADVANCE":
+      return "سلفة"
     case "SETTLEMENT":
       return "تسوية"
     default:

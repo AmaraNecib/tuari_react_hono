@@ -17,7 +17,9 @@ import { useCreateDebtEntryMutation, useSettleDebtAccountMutation } from "@/feat
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { formatDebtAmount, getDebtAccountBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
-import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
+import { useDateField } from "@/features/shared/use-form-amount"
+import { resolveDebtPaymentAction } from "./debt-payment"
+import { DebtPaymentPreview } from "./debt-payment-preview"
 
 /** Dialog for recording a debt payment. */
 /**
@@ -37,7 +39,8 @@ export function RecordPaymentDialog({
   const { t } = useTranslation()
   const createDebtEntryMutation = useCreateDebtEntryMutation()
   const settleDebtAccountMutation = useSettleDebtAccountMutation()
-  const { amount, setAmount, value: amountValue, isValid: hasValidAmount, reset: resetAmount } = useFormAmount()
+  const [amount, setAmount] = useState("")
+  const paymentAction = debtAccount ? resolveDebtPaymentAction(debtAccount, amount) : null
   const { date: paymentDate, setDate: setPaymentDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
   const [note, setNote] = useState("")
   const [showSettlePrompt, setShowSettlePrompt] = useState(false)
@@ -49,19 +52,20 @@ export function RecordPaymentDialog({
   }
 
   const handleSubmit = async () => {
-    if (!debtAccount || !hasValidAmount) return
+    if (!debtAccount || !paymentAction || createDebtEntryMutation.isPending) return
 
-    const signedAmount = balance > 0 ? -amountValue! : amountValue!
-    const balanceAfter = balance + signedAmount
+    try {
+      await createDebtEntryMutation.mutateAsync({
+        ...paymentAction.input,
+        entryDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
+        note: note.trim() || null,
+      })
+    } catch {
+      // The mutation's onError toast reports failure; preserve the draft.
+      return
+    }
 
-    await createDebtEntryMutation.mutateAsync({
-      debtAccountId: debtAccount.id,
-      signedAmountDzd: signedAmount,
-      entryDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
-      note: note.trim() || null,
-    })
-
-    if (balanceAfter === 0) {
+    if (paymentAction.balanceAfterDzd === 0) {
       setShowSettlePrompt(true)
     } else {
       resetForm()
@@ -72,11 +76,15 @@ export function RecordPaymentDialog({
 
   const handleSettle = async () => {
     if (!debtAccount) return
-    await settleDebtAccountMutation.mutateAsync({
-      debtAccountId: debtAccount.id,
-      entryDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
-      note: note.trim() || null,
-    })
+    try {
+      await settleDebtAccountMutation.mutateAsync({
+        debtAccountId: debtAccount.id,
+        entryDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
+        note: note.trim() || null,
+      })
+    } catch {
+      return
+    }
     resetForm()
     setShowSettlePrompt(false)
     onOpenChange(false)
@@ -84,7 +92,7 @@ export function RecordPaymentDialog({
   }
 
   const resetForm = () => {
-    resetAmount()
+    setAmount("")
     setNote("")
     resetDate()
     setShowSettlePrompt(false)
@@ -128,7 +136,10 @@ export function RecordPaymentDialog({
               <CurrencyInput placeholder={t("detailPages.debt.zeroPlaceholder")} value={amount} onChange={(e) => setAmount(e.target.value)} />
             </label>
 
-            <Button size="sm" variant="outline" className="w-full" onClick={handlePayFull} disabled={createDebtEntryMutation.isPending}>
+            {paymentAction ? <DebtPaymentPreview action={paymentAction} direction={debtAccount.direction} /> : null}
+            {!paymentAction ? <p className="text-sm text-destructive" role="status">{t("debts.cases.amountInvalid")}</p> : null}
+
+            <Button size="sm" variant="outline" className="w-full" onClick={handlePayFull} disabled={balance <= 0 || createDebtEntryMutation.isPending}>
               {t("detailPages.debt.payment.payFull")}
             </Button>
 
@@ -159,7 +170,7 @@ export function RecordPaymentDialog({
             {t("common.cancel")}
           </Button>
           {!showSettlePrompt ? (
-            <Button disabled={!hasValidAmount || createDebtEntryMutation.isPending} onClick={handleSubmit}>
+            <Button disabled={!paymentAction || createDebtEntryMutation.isPending} onClick={handleSubmit}>
               {t("detailPages.debt.payment.confirm")}
             </Button>
           ) : (
