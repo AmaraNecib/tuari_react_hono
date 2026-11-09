@@ -7,19 +7,24 @@ import { execFileSync } from "node:child_process";
  */
 export const SQLCIPHER_PROBE_SOURCE = [
   'const Database = require("better-sqlite3-multiple-ciphers");',
-  'const db = new Database(":memory:");',
+  'const fs = require("node:fs");',
+  'const os = require("node:os");',
+  'const path = require("node:path");',
+  'const probeDir = fs.mkdtempSync(path.join(os.tmpdir(), "tuari-sqlcipher-probe-"));',
+  'const probeFile = path.join(probeDir, "probe.sqlite");',
+  'let db;',
   "try {",
+  '  db = new Database(probeFile);',
   '  db.pragma("cipher = \'sqlcipher\'");',
   '  db.pragma("legacy = 4");',
   '  db.pragma("key = \'tuari-build-probe\'");',
   '  const version = db.pragma("cipher_version", { simple: true });',
   '  if (typeof version !== "string" || version.trim() === "") {',
-  '    console.error("PRAGMA cipher_version returned no version");',
-  "    process.exit(3);",
+  '    throw new Error("PRAGMA cipher_version returned no version");',
   "  }",
   "  process.stdout.write(String(version));",
   "} finally {",
-  "  db.close();",
+  '  try { db?.close(); } finally { fs.rmSync(probeDir, { recursive: true, force: true }); }',
   "}",
 ].join("\n");
 

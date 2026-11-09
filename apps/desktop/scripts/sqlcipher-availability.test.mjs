@@ -12,6 +12,12 @@ test("the bundled-Node probe selects SQLCipher and legacy mode before the key", 
   const key = SQLCIPHER_PROBE_SOURCE.indexOf('db.pragma("key = ');
   assert.ok(cipher >= 0 && cipher < legacy && legacy < key);
   assert.match(SQLCIPHER_PROBE_SOURCE, /cipher_version/);
+  assert.ok(!SQLCIPHER_PROBE_SOURCE.includes('new Database(":memory:")'));
+  assert.ok(SQLCIPHER_PROBE_SOURCE.includes('mkdtempSync'));
+  assert.ok(SQLCIPHER_PROBE_SOURCE.includes('new Database(probeFile)'));
+  assert.ok(SQLCIPHER_PROBE_SOURCE.includes('fs.rmSync(probeDir, { recursive: true, force: true })'));
+  assert.match(SQLCIPHER_PROBE_SOURCE, /cipher_version returned no version/);
+  assert.ok(cipher < key, "the probe must keep cipher selection before key application");
 });
 
 test("probeSqlcipherBinding runs the bundled Node with the runtime as cwd", () => {

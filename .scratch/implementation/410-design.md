@@ -271,3 +271,37 @@ stalled-health cancellation, child-exit ordering, lock retries, and cleanup
 failure reporting. The existing 30-second timeout on bundled native probes was
 verified in place and was not duplicated. Native SQLCipher runtime verification
 remains a Windows CI responsibility.
+
+### PR #499 hosted correction follow-up
+
+This bounded correction starts from published #499 head
+`4b57930a3bd2ce21cb9361d6fba8be2240d785cf` in
+`D:/worktrees/tuari_react_hono/t3-6cf5ae2b`; latest `origin/develop`
+(`4917fd2cc733be63e21cf3e61d57a9ed7627b7e9`) was already an ancestor. Mode:
+`focused-local / CI-final-enforced`; review tier: High-assurance because this
+changes the crypto proof and CI coverage. Parent owns the fresh combined-delta
+review. No native Windows proof or literal `cipher_version` acceptance waiver.
+
+- Hosted #4511363802: `check:sqlcipher-proof` now runs both the proof and
+  availability suites. `tests/ci-final.test.mjs` pins the package command and
+  both CI invocations, so this test executes through CI's policy-test step.
+- Hosted #4511363824: `taskkill` has a 5-second timeout and nonzero/error
+  results fail cleanup; waiting for child close is bounded to 5 seconds.
+  Cleanup leaves the workspace intact if termination or close is unconfirmed.
+  Existing proof errors remain primary while cleanup failure is logged.
+- Additional CI run 42596551365 / job 129090550319 failed before the literal
+  version check because the driver rejects keys on `:memory:`. The availability
+  probe now uses a unique temporary file and removes its directory in `finally`;
+  cipher selection, legacy mode, key ordering and the nonempty version gate are
+  unchanged. Regression tests protect the temp-file cleanup and reject the
+  in-memory path.
+- Historical Greptile claims 4300570703, 4436995808 and 4436995812 are already
+  addressed in current source: the bundled probe uses `spawnSync` with a
+  30-second timeout; health fetch has `AbortSignal.timeout(remainingMs)`;
+  cleanup now has bounded termination/close, checked taskkill status, and
+  primary-error precedence. Claim 4436995814 is not stale: release-verification
+  says the smoke checks binding presence but does not prove keyed writes or
+  backups, and explicitly retains the cipher-version limitation.
+- The literal nonempty `PRAGMA cipher_version` remains unmet by the observed
+  Windows job, which failed while configuring the in-memory database. Only the
+  next Windows CI run can establish the native result.

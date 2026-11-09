@@ -78,6 +78,8 @@ const DEFAULT_BACKUP_TIMEOUT_MS = 120_000;
 // reaches its own error checks or cleanup, and the Windows runner stays
 // occupied until GitHub cancels it. Same bound as `probeSqlcipherBinding`.
 const BUNDLED_NODE_TIMEOUT_MS = 30_000;
+const TERMINATION_TIMEOUT_MS = 5_000;
+const CHILD_CLOSE_TIMEOUT_MS = 5_000;
 
 // ─── pure helpers (unit-tested without a native toolchain) ─────────────────
 
@@ -320,18 +322,44 @@ function freePort() {
   });
 }
 
-function terminateTree(child) {
+export function terminateTree(child, {
+  platform = process.platform,
+  runSync = spawnSync,
+  timeoutMs = TERMINATION_TIMEOUT_MS,
+} = {}) {
   if (child.exitCode !== null || child.signalCode !== null) return;
-  if (process.platform === "win32") {
-    spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
+  if (platform === "win32") {
+    const result = runSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], {
+      stdio: "ignore",
+      timeout: timeoutMs,
+    });
+    if (result.error || result.status !== 0) {
+      const detail = result.error?.message ?? `taskkill exited ${result.status ?? "without a status"}`;
+      throw new Error(`could not terminate sidecar process tree: ${detail}`);
+    }
     return;
   }
-  child.kill("SIGKILL");
+  if (!child.kill("SIGKILL")) throw new Error("could not send SIGKILL to sidecar");
 }
 
-function waitForChildExit(child) {
-  if (!child || child.exitCode != null || child.signalCode != null) return Promise.resolve();
-  return new Promise((resolve) => child.once("close", resolve));
+function waitForChildExit(child, timeoutMs = CHILD_CLOSE_TIMEOUT_MS) {
+  if (!child || child.closed === true) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.removeListener("close", onClose);
+      if (error) reject(error);
+      else resolve();
+    };
+    const onClose = () => finish();
+    const timer = setTimeout(() => finish(new Error(`sidecar did not close within ${timeoutMs}ms after termination`)), timeoutMs);
+    child.once("close", onClose);
+    // Close may have fired between the initial state check and subscription.
+    if (child.closed === true) finish();
+  });
 }
 
 const RETRYABLE_CLEANUP_ERRORS = new Set(["EACCES", "EBUSY", "ENOTEMPTY", "EPERM"]);
@@ -345,10 +373,18 @@ export async function cleanupProofWorkspace(workspace, {
   pause = delay,
   maxRetries = 5,
   retryDelayMs = 100,
+  closeTimeoutMs = CHILD_CLOSE_TIMEOUT_MS,
 } = {}) {
   if (child) {
-    const exited = waitForChildExit(child);
-    terminate(child);
+    const exited = waitForChildExit(child, closeTimeoutMs);
+    try {
+      terminate(child);
+    } catch (error) {
+      // A live process may still hold files in the workspace. Never remove
+      // those files unless termination and close have both been observed.
+      await exited.catch(() => {});
+      throw error;
+    }
     await exited;
   }
   if (keep) {

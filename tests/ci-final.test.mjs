@@ -80,6 +80,16 @@ test('aggregate rejects missing, malformed or contradictory selector proof', () 
   assert.ok(acceptanceErrors({}).length);
 });
 
+test('the CI-invoked SQLCipher proof command includes the availability regressions', () => {
+  const rootPackage = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const proofCommand = rootPackage.scripts['check:sqlcipher-proof'];
+  assert.ok(proofCommand.includes('./tests/sqlcipher-encryption-proof.test.mjs'));
+  assert.ok(proofCommand.includes('./apps/desktop/scripts/sqlcipher-availability.test.mjs'));
+  assert.ok(ci.includes('- run: pnpm check:sqlcipher-proof'));
+  assert.ok(ci.includes('- run: node --test tests/ci-final.test.mjs tests/workflow-policy.test.mjs'));
+});
+
 test('CI wiring exposes one always-running acceptance check and force-full events', () => {
   const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(ci, /types: \[opened, synchronize, reopened, labeled\]/);

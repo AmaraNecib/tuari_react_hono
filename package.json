@@ -12,7 +12,7 @@
     "check:license-signer": "node --test ./tests/generate-license.test.mjs",
     "check:e2e-selection": "node --test ./tests/e2e-selection.test.mjs",
     "check:ci-final": "node --test ./tests/ci-final.test.mjs ./tests/workflow-policy.test.mjs",
-    "check:sqlcipher-proof": "node --test ./tests/sqlcipher-encryption-proof.test.mjs",
+    "check:sqlcipher-proof": "node --test ./tests/sqlcipher-encryption-proof.test.mjs ./apps/desktop/scripts/sqlcipher-availability.test.mjs",
     "check:unslop": "node ./scripts/prose/check-unslop.ts",
     "test:ci-scripts": "bash ./scripts/ci/test-close-linked-issues.sh",
     "test:prose": "node --test ./tests/unslop-prose.test.ts",

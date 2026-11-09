@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -13,6 +14,7 @@ import {
   cleanupAfterProof,
   cleanupProofWorkspace,
   findSnapshotDatabase,
+  terminateTree,
   isPlaintextSqliteFile,
   parseArgs,
   readFileHeader,
@@ -60,21 +62,21 @@ test("waitForHealth cancels a stalled response at its deadline", { timeout: 2_00
 test("cleanup waits for the child and retries transient locks", async () => {
   const events = [];
   let attempts = 0;
-  const child = {
-    exitCode: null,
-    once(event, listener) {
-      assert.equal(event, "close");
-      this.exitListener = listener;
-      events.push("waiting");
-      return this;
-    },
+  const child = new EventEmitter();
+  child.exitCode = null;
+  child.signalCode = null;
+  const originalOnce = child.once.bind(child);
+  child.once = (event, listener) => {
+    assert.equal(event, "close");
+    events.push("waiting");
+    return originalOnce(event, listener);
   };
   const cleanup = cleanupProofWorkspace("/workspace", {
     child,
     terminate: () => {
       events.push("terminate");
       child.exitCode = 0;
-      child.exitListener(0, null);
+      child.emit("close", 0, null);
     },
     remove: () => {
       attempts += 1;
@@ -90,6 +92,38 @@ test("cleanup waits for the child and retries transient locks", async () => {
   await cleanup;
   assert.deepEqual(events, ["waiting", "terminate", "retry", "retry", "removed"]);
   assert.equal(attempts, 3);
+});
+
+test("cleanup bounds a child that never closes and leaves its workspace intact", { timeout: 1_000 }, async () => {
+  const child = new EventEmitter();
+  child.exitCode = 0;
+  child.signalCode = null;
+  let removed = false;
+  await assert.rejects(cleanupProofWorkspace("/workspace", {
+    child,
+    terminate: () => {},
+    closeTimeoutMs: 20,
+    remove: () => { removed = true; },
+  }), /did not close within 20ms/);
+  assert.equal(removed, false);
+  assert.equal(child.listenerCount("close"), 0);
+});
+
+test("Windows taskkill is bounded and nonzero termination is surfaced", () => {
+  let options;
+  assert.throws(() => terminateTree({ pid: 42, exitCode: null, signalCode: null }, {
+    platform: "win32",
+    timeoutMs: 1234,
+    runSync: (_command, _args, received) => {
+      options = received;
+      return { status: 1, stderr: "denied" };
+    },
+  }), /taskkill exited 1/);
+  assert.equal(options.timeout, 1234);
+  assert.throws(() => terminateTree({ pid: 42, exitCode: null, signalCode: null }, {
+    platform: "win32",
+    runSync: () => ({ status: null, error: Object.assign(new Error("timed out"), { code: "ETIMEDOUT" }) }),
+  }), /timed out/);
 });
 
 test("cleanup-only failure is reported without replacing the proof failure", async () => {
