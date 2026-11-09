@@ -95,6 +95,8 @@ export async function expectProjectCost(page: Page, fixture: TransferFixture, am
   await page.getByRole("tab", { name: "التكلفة", exact: true }).click()
   const panel = page.getByRole("tabpanel", { name: "التكلفة", exact: true })
   const money = `${amount.toLocaleString("en-US")} دج`
+  const total = panel.locator("section").filter({ has: page.getByRole("heading", { name: "الإجمالي", exact: true }) })
+  await expect(total.locator("p")).toHaveText(money)
   await expect(panel.getByRole("listitem").filter({ hasText: "عتاد مخصّص" })).toContainText(money)
   const stock = panel.locator("section").filter({ has: page.getByRole("heading", { name: "عتاد على المشروع", exact: true }) })
   await expect(stock.getByRole("listitem").filter({ hasText: fixture.assetName })).toContainText(money)
