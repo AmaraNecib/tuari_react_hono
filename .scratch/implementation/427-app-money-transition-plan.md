@@ -2,6 +2,10 @@
 
 Status: proposed plan requested by the owner, not implementation or migration approval. Planning source is `83f32c09330ffc9e20a5ef81ce9041ae061a31ca`, with #480 and #454 integrated. No source behavior, dependency, schema or public contract changes are included. This cross-application prerequisite work should have its own tracking issue linked to #427; creating or publishing that issue is not done by this document.
 
+## Tracking drafts requested by the owner
+
+The owner requested wayfinder, to-spec and to-tickets, with Salary v1 as the origin and all monetary tables converted before v1. Current local drafts are [the Wayfinder map](427-money-wayfinder.md), [the behavioral specification](427-money-spec.md) and [the decision/implementation tickets](427-money-tickets.md). Their proposed ten-ticket dependency graph replaces the seven-PR outline as the current planning proposal, pending owner approval of test seams, granularity and edges. Ticket count and PR count are not equivalent. No GitHub issues are published and no parent issue is modified by these drafts. The newly checked encrypted-runtime issue is a feasibility constraint, not a package-change approval.
+
 ## Owner release requirement and first-PR boundary
 
 The owner requested the inventory/first-PR scope review and confirmed that this monetary remediation belongs before v1 completion. Treat consistent money storage, arithmetic, transport, presentation and recovery across the identified application paths as a v1 release requirement. Seven PRs remain an initial review split, not an owner-mandated count. This does not require FX, selectable currencies or a general multicurrency product before v1. It does not approve the unresolved physical schema, public API, currency ownership, rounding policy or destructive operations.
