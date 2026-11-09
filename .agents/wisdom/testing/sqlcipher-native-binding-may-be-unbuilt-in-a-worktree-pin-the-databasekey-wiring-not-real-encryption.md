@@ -1,13 +1,16 @@
-## sqlcipher native binding may be unbuilt in a worktree: pin the databaseKey WIRING, not real encryption (🟠 Major)
+## Exercise encryption with the shipped prebuilds (Major)
 
-`createDatabaseConnection(path, key)` requires the `better-sqlite3-sqlcipher`
-native binding (`require("better-sqlite3-sqlcipher")` → `build/better_sqlite3.node`).
-On a Windows worktree the package files exist but the `.node` binary is often NOT
-compiled → passing any `databaseKey` throws "Database encryption requires
-better-sqlite3-sqlcipher". So a test that passes `databaseKey` and expects a real
-encrypted connection fails in such environments. Fix pattern (issue #198): mock
-the factory module (`vi.mock("../infrastructure/database/factory", importOriginal)`)
-to capture the key argument and strip it (delegate with `undefined`), asserting
-`createDatabaseConnection` received the injected key. Deterministic everywhere.
-Reserve real-encryption assertions for environments where the binding is built.
+`better-sqlite3-multiple-ciphers@13.0.3` ships native binaries in
+`prebuilds/<platform>-<arch>.node`, including Windows x64. A frozen install
+provides them without compiling. Its loader also distinguishes Linux musl.
+Do not add it to `onlyBuiltDependencies` or run a rebuild to find the addon.
 
+**Always**: use real keyed factory and snapshot tests on supported hosts.
+Do not strip a configured key to make an encryption test pass. Wiring-only
+mocks are not encryption evidence. Configure `cipher='sqlcipher'`, then
+`legacy=4`, then the key on every connection. `cipher_compatibility=4` is
+ignored by this driver. Configuration readback and self-roundtrips do not prove
+interoperability; the independent upstream SQLCipher 4 fixture test does prove
+known-file reading. Packaging must load the copied prebuild, not just find it.
+
+Seen in: #501; retained in #504.

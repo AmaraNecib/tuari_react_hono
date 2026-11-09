@@ -4,6 +4,7 @@ Historical source: `process.md`. Read only matching topics. Current policy
 lives in the engineering workflow; these retained reports do not add gates.
 
 - [Process Wisdom](overview.md)
+- [Pass PowerShell scripts by file across Bash (Critical)](pass-powershell-scripts-by-file-across-bash.md)
 - [Re-fetch develop before finalizing: concurrent agents may have fixed the same bug (🟠 Major)](re-fetch-develop-before-finalizing-concurrent-agents-may-have-fixed-the-same-bug.md)
 - [Evidence SHA must track the final reviewed commit (🟠 Major)](evidence-sha-must-track-the-final-reviewed-commit.md)
 - [Scoped v8 coverage without the repo's thresholds (🟡 Minor)](scoped-v8-coverage-without-the-repo-s-thresholds.md)

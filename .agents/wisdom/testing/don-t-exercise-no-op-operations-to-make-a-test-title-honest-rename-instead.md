@@ -2,18 +2,12 @@
 
 Issue #228: the recovery-key e2e test "recovery keys survive simulated
 password change" claimed a rekey that never happened. The password change
-was only a comment. The tempting fix, "exercise a real rekey", is a trap:
-`DatabaseKeyManager.changeKey` (`PRAGMA key`/`rekey`) is a **documented
-no-op** on the plain better-sqlite3 the workspace tests use (the
-`better-sqlite3-sqlcipher` binding is deliberately not built:
-`pnpm-workspace.yaml` `onlyBuiltDependencies` lists only `better-sqlite3`
-and `prisma`). Calling it would succeed silently and the test would still
-lie. Enabling the sqlcipher build is a workspace-wide change (node-gyp
-source build, CI compile time) disproportionate to a test-title fix.
+was only a comment. `PRAGMA key` and `rekey` on plain better-sqlite3 are no-ops,
+so invoking them on that connection would still not test encryption.
 
-**Always**: before "exercising" a DB operation in a test, verify it
-actually does something on the connection type under test. If the only
-honest options are rename-vs-heavy-infra, rename the test to what it
-asserts (issue acceptance offered exactly this) and state the coverage
-boundary in the module doc comment, citing the no-op documentation.
+**Always**: verify the driver under test. The encrypted successor now ships
+prebuilds and real file-backed rekey tests need no SQLCipher compilation.
+Use a keyed factory connection for encryption behavior; keep a plain-driver
+test named for the narrower behavior it actually exercises.
 
+Seen in: #501; retained in #504.

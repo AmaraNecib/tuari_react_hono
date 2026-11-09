@@ -25,7 +25,7 @@ lives in the engineering workflow; these retained reports do not add gates.
 - [ORPC wire envelope is { json: input } / { json: output } (🟡 Minor)](orpc-wire-envelope-is-json-input-json-output.md)
 - [E2E `page.goto` is a full reload: it wipes the React Query cache and cannot pin an invalidation seam (🟡 Minor)](e2e-page-goto-is-a-full-reload-it-wipes-the-react-query-cache-and-cannot-pin-an-invalidation-seam.md)
 - [A too-broad invalidation fallback masks a broken key: the E2E suite caught it (🟠 Major)](a-too-broad-invalidation-fallback-masks-a-broken-key-the-e2e-suite-caught-it.md)
-- [sqlcipher native binding may be unbuilt in a worktree: pin the databaseKey WIRING, not real encryption (🟠 Major)](sqlcipher-native-binding-may-be-unbuilt-in-a-worktree-pin-the-databasekey-wiring-not-real-encryption.md)
+- [Exercise encryption with the shipped prebuilds (Major)](sqlcipher-native-binding-may-be-unbuilt-in-a-worktree-pin-the-databasekey-wiring-not-real-encryption.md)
 - [Migrations inside the composition root kill the schema-less-db trick (🟡 Minor)](migrations-inside-the-composition-root-kill-the-schema-less-db-trick.md)
 - [Port result types should mirror the wire output shape (💡 Design Principle)](port-result-types-should-mirror-the-wire-output-shape.md)
 - [Negative contract-surface tests: use `in`, not `as Record<string, unknown>` (🟡 Minor)](negative-contract-surface-tests-use-in-not-as-record-string-unknown.md)
