@@ -8,7 +8,6 @@ test.beforeAll(() => { resetE2eDatabase() })
 // Delay a real catalog read, fail it, then let the retry reach the API.
 // The empty database is synthetic and belongs to this Playwright run.
 test("catalog loading and API failure never claim an empty result, and retry recovers", async ({ page }) => {
-  await bootstrapOrSignIn(page)
   let releaseRead!: () => void
   const heldRead = new Promise<void>((resolve) => { releaseRead = resolve })
   let fail = true
@@ -22,6 +21,7 @@ test("catalog loading and API failure never claim an empty result, and retry rec
     })
   })
 
+  await bootstrapOrSignIn(page)
   await page.getByRole("link", { name: "دليل العناصر", exact: true }).first().click()
   await expect(page.getByRole("status").filter({ hasText: "جارٍ تحميل دليل العناصر" })).toBeVisible()
   await expect(page.getByText("لا توجد تعريفات عناصر حتى الآن.", { exact: true })).toBeHidden()

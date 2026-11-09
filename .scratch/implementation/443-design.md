@@ -2,7 +2,7 @@
 
 ## Scope and authority
 
-Own worktree `D:/worktrees/tuari_react_hono/fix-v1-issue-443`, branch `fix/v1-issue-443`, target `develop`. Initial base was `043b928d01966ef085e8ca59846d5b8a59fbf7d3`. Safely fast-forwarded to `fa0788548ad2a7c2d88791820d3bf4033142e844` after peer PR510 merged, preserving its asset-charge E2E work. The owner authorized implementation, publication, UI self-acceptance and merge after all gates pass.
+Own worktree `D:/worktrees/tuari_react_hono/fix-v1-issue-443`, branch `fix/v1-issue-443`, target `develop`. Initial base was `043b928d01966ef085e8ca59846d5b8a59fbf7d3`. Safely fast-forwarded to `fa0788548ad2a7c2d88791820d3bf4033142e844` after peer PR510 merged, preserving its asset-charge E2E work. Merged peer PR511 at `149e1183c80ea15a71983c5d4c690eaa08669d98` without rewriting history. The audit list conflict keeps the shared query wrapper and the peer's explicit Algeria timezone in its date display. The owner authorized implementation, publication, UI self-acceptance and merge after all gates pass.
 
 Verification mode is focused-local / CI-final-enforced. Live ruleset 26837184 is active on develop, requires strict CI acceptance from app 15368, forbids deletion and non-fast-forward, and has no bypass actors. Historical activation docs remain unchanged.
 
@@ -24,7 +24,7 @@ The wrapper is the shared seam. Removing it would duplicate query-state selectio
 
 ## Proof
 
-The issue explicitly requests shared and consumer state tests. Test the shared exported component and the real InventoryItemDefinitionsPage through rendered roles, content and retry interactions. Include pending, error reason/retry, successful empty/populated and retained-data refresh paths. Run affected consumer tests, ESLint, web typecheck and i18n checks. A new catalog browser integration case holds a real RPC, returns a synthetic 503, retries with Enter and creates a synthetic item after recovery. The selector chooses full scope because ar.ts is critical. Local browser scope stays on this changed behavior and its real API path; full browser scope, full suites and production builds remain CI-final.
+The issue explicitly requests shared and consumer state tests. Test the shared exported component and the real InventoryItemDefinitionsPage through rendered roles, content and retry interactions. Include pending, error reason/retry, successful empty/populated and retained-data refresh paths. Run affected consumer tests, ESLint, web typecheck and i18n checks. A new catalog browser integration case holds a real RPC, returns a synthetic 503, retries with Enter and creates a synthetic item after recovery. Register the route before bootstrap because dashboard summaries may prefetch the catalog; otherwise a cached success can bypass the intended initial-loading assertion. The selector chooses full scope because ar.ts is critical. Local browser scope stays on this changed behavior and its real API path; full browser scope, full suites and production builds remain CI-final.
 
 Use real pinned before/after rendering with synthetic data, cropped element PNGs and a complete interaction recording. Inspect all media. Browser work uses heavy_run. Media is public only after checking that it contains no real data or auth state.
 
