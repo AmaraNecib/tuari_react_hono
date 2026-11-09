@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyValidatedTree, resolveTrustedTarPath, validateReleaseBinEntries } from "./script-security-utils.mjs";
+import { parseArgs, runProof } from "./sqlcipher-encryption-proof.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,15 +31,6 @@ let finalZipPath = zipPath;
 
 rmSync(tempPortableDir, { recursive: true, force: true });
 
-try {
-  rmSync(portableDir, { recursive: true, force: true });
-} catch {
-  finalPortableDir = path.resolve(portableRoot, `${basePortableName}-new`);
-  finalZipPath = path.resolve(portableRoot, `${basePortableName}-new.zip`);
-  rmSync(finalPortableDir, { recursive: true, force: true });
-}
-
-rmSync(finalZipPath, { force: true });
 mkdirSync(tempPortableDir, { recursive: true });
 
 copyFileSync(appExePath, path.resolve(tempPortableDir, "Tuari.exe"));
@@ -52,6 +44,22 @@ if (existsSync(resourcesDir)) {
   copyValidatedTree(resourcesDir, path.resolve(tempPortableDir, "resources"));
 }
 
+// Prove the exact copied runtime, including its loader, before publishing it.
+// A stale --allow-plaintext build must not replace a previously valid artifact.
+await runProof(parseArgs([
+  "--runtime", path.resolve(tempPortableDir, "bin", "api-runtime"),
+  "--node", path.resolve(tempPortableDir, "bin", "node.exe"),
+]));
+
+try {
+  rmSync(portableDir, { recursive: true, force: true });
+} catch {
+  finalPortableDir = path.resolve(portableRoot, `${basePortableName}-new`);
+  finalZipPath = path.resolve(portableRoot, `${basePortableName}-new.zip`);
+  rmSync(finalPortableDir, { recursive: true, force: true });
+}
+
+rmSync(finalZipPath, { force: true });
 renameSync(tempPortableDir, finalPortableDir);
 
 const tarExecutable = resolveTrustedTarPath();
