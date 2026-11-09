@@ -221,13 +221,13 @@ export function DebtCasesPanel({
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <Field label={t("common.createDate", "التاريخ")}>
-            <DatePicker value={createDate} onChange={setCreateDate} />
+            <DatePicker value={createDate} onChange={(value) => { setDirection(direction); setCreateDate(value) }} />
           </Field>
           <Field label={t("debts.cases.amount")}>
-            <CurrencyInput placeholder={t("debts.cases.amountPlaceholder")} value={amount} onChange={(event) => setAmount(event.target.value)} />
+            <CurrencyInput placeholder={t("debts.cases.amountPlaceholder")} value={amount} onChange={(event) => { setDirection(direction); setAmount(event.target.value) }} />
           </Field>
           <Field label={t("debts.cases.note")} className="md:col-span-2">
-            <Textarea placeholder={t("debts.cases.notePlaceholder")} value={note} onChange={(event) => setNote(event.target.value)} />
+            <Textarea placeholder={t("debts.cases.notePlaceholder")} value={note} onChange={(event) => { setDirection(direction); setNote(event.target.value) }} />
           </Field>
         </div>
 
@@ -263,9 +263,9 @@ export function DebtCasesPanel({
                   })
                 }
 
-                setCreateDate(getAlgeriaDateInputValue())
-                setAmount("")
-                setNote("")
+                setCreateDate((current) => current === createDate ? getAlgeriaDateInputValue() : current)
+                setAmount((current) => current === amount ? "" : current)
+                setNote((current) => current === note ? "" : current)
               } catch {
                 // The mutation's onError toast reports failure; preserve the draft.
               }

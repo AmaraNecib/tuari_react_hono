@@ -116,7 +116,10 @@ export function DebtLedgerPanel({
                 ...paymentAction.input,
                 entryDate: entryDate ? toAlgeriaDayBoundaryIso(entryDate, "start") : undefined,
                 note: note.trim() || null,
-              }, { onSuccess: () => { setSignedAmount(""); setNote("") } })
+              }, { onSuccess: () => {
+                setSignedAmount((current) => current === signedAmount ? "" : current)
+                setNote((current) => current === note ? "" : current)
+              } })
             }}
           >
             {t("debts.terminology.buttons.recordPayment")}

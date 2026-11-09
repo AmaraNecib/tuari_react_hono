@@ -20,6 +20,12 @@ Use vertical failing-first regression slices, then affected web tests including 
 
 Commit the complete scope, then obtain distinct debate, test-audit and code-review sessions at the pinned head. Use the owner-approved same-family separate-session exception when no enabled non-author route is available. Review reports and verification logs stay ignored under .scratch/reviews/issues-488-482/.
 
+## Hosted-review corrections
+
+The first draft edit (amount, note or date) pins the cases form's currently displayed direction. Until an edit, defaults may follow asynchronously loaded accounts. After editing, a refetch that adds the opposite ledger must not retarget the draft. Explicit direction choices still take precedence.
+
+A successful save clears only fields whose current raw values still equal the submitted values. Newer amount, note and cases-date edits survive older responses. This stays inside the existing form modules; no interface or payment resolver seam moved. Deferred-RPC tests cover ledger and cases forms, and rerender tests add PAYABLE after a RECEIVABLE draft begins.
+
 ## Applied lessons
 
 Wire every new translation key in the same change. Default the ledger from the existing account but never overwrite a user's choice. Explain invalid or pending saves on screen. Preserve CRLF-aware diff checks and named-path staging.
