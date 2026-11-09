@@ -415,7 +415,7 @@ export async function cleanupAfterProof(workspace, {
   } catch (cleanupError) {
     const detail = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
     if (proofError) {
-      log(`[cleanup] could not remove proof workspace: ${detail}`);
+      log(`[cleanup] cleanup failed: ${detail}`);
       return;
     }
     throw new Error(`proof checks passed, but cleanup failed: ${detail}`, { cause: cleanupError });

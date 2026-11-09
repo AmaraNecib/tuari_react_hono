@@ -126,6 +126,27 @@ test("Windows taskkill is bounded and nonzero termination is surfaced", () => {
   }), /timed out/);
 });
 
+test("failed termination is reported separately without deleting a live child's workspace", async () => {
+  const child = new EventEmitter();
+  child.exitCode = null;
+  child.signalCode = null;
+  const logs = [];
+  let removed = false;
+  const proofError = new Error("proof failed first");
+  await cleanupAfterProof("/workspace", {
+    child,
+    proofError,
+    closeTimeoutMs: 20,
+    terminate: () => { throw new Error("could not terminate sidecar process tree: taskkill exited 5"); },
+    remove: () => { removed = true; },
+    log: (message) => logs.push(message),
+  });
+  assert.equal(removed, false);
+  assert.deepEqual(logs, ["[cleanup] cleanup failed: could not terminate sidecar process tree: taskkill exited 5"]);
+  assert.equal(proofError.message, "proof failed first");
+  assert.equal(child.listenerCount("close"), 0);
+});
+
 test("cleanup-only failure is reported without replacing the proof failure", async () => {
   const logs = [];
   const proofError = new Error("runtime failed");
@@ -152,7 +173,7 @@ test("cleanup-only failure is reported without replacing the proof failure", asy
     maxRetries: 0,
     log: (message) => logs.push(message),
   });
-  assert.deepEqual(logs, ["[cleanup] could not remove proof workspace: still locked"]);
+  assert.deepEqual(logs, ["[cleanup] cleanup failed: still locked"]);
   assert.equal(proofError.message, "runtime failed");
 });
 
