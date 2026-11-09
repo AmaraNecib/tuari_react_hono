@@ -17,6 +17,7 @@ async function readRepoFile(relativePath) {
 }
 
 function formatterName(expression) {
+  expression = unwrapExpression(expression);
   if (ts.isIdentifier(expression) && expression.text === 'toLocaleDateString') {
     return 'toLocaleDateString';
   }
@@ -52,6 +53,17 @@ function unwrapExpression(expression) {
   return expression;
 }
 
+function hasUsableTimeZoneValue(value) {
+  value = unwrapExpression(value);
+  if (ts.isConditionalExpression(value)) {
+    return hasUsableTimeZoneValue(value.whenTrue) && hasUsableTimeZoneValue(value.whenFalse);
+  }
+  return value.kind !== ts.SyntaxKind.NullKeyword &&
+    !ts.isVoidExpression(value) &&
+    !(ts.isIdentifier(value) && value.text === 'undefined') &&
+    !((ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) && value.text.trim() === '');
+}
+
 function hasUsableTimeZoneOption(options) {
   options = unwrapExpression(options);
   if (!options || !ts.isObjectLiteralExpression(options)) return false;
@@ -83,11 +95,7 @@ function hasUsableTimeZoneOption(options) {
       pinned = false;
       continue;
     }
-    const value = unwrapExpression(property.initializer);
-    pinned = value.kind !== ts.SyntaxKind.NullKeyword &&
-      !ts.isVoidExpression(value) &&
-      !(ts.isIdentifier(value) && value.text === 'undefined') &&
-      !((ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) && value.text.trim() === '');
+    pinned = hasUsableTimeZoneValue(property.initializer);
   }
   return pinned;
 }
@@ -413,6 +421,23 @@ test('date formatter scanner handles computed timezone overrides in source order
   ]) {
     assert.equal(scan(options).length, 0, options);
   }
+});
+
+test('date formatter scanner checks wrapped callees and conditional timezone branches', () => {
+  for (const callee of ['(date.toLocaleDateString)', '((date.toLocaleDateString))', 'new (Intl.DateTimeFormat)', '(date.toLocaleDateString as Function)']) {
+    assert.equal(findUnpinnedDateFormatters(`${callee}("ar-DZ")`).length, 1, callee);
+    assert.equal(findUnpinnedDateFormatters(`${callee}("ar-DZ", { timeZone: "Africa/Algiers" })`).length, 0, callee);
+  }
+  for (const value of [
+    'flag ? "Africa/Algiers" : undefined',
+    'flag ? null : "Africa/Algiers"',
+    'flag ? "Africa/Algiers" : void 0',
+    'flag ? "" : "Africa/Algiers"',
+    'flag ? "Africa/Algiers" : (other ? "UTC" : undefined)',
+  ]) {
+    assert.equal(findUnpinnedDateFormatters(`date.toLocaleDateString("ar-DZ", { timeZone: ${value} })`).length, 1, value);
+  }
+  assert.equal(findUnpinnedDateFormatters('date.toLocaleDateString("ar-DZ", { timeZone: flag ? "Africa/Algiers" : "UTC" })').length, 0);
 });
 
 test('fonts are self-hosted: index.html has no Google Fonts links or preconnects', async () => {
