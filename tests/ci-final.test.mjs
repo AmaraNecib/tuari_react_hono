@@ -90,6 +90,23 @@ test('the CI-invoked SQLCipher proof command includes the availability regressio
   assert.ok(ci.includes('- run: node --test tests/ci-final.test.mjs tests/workflow-policy.test.mjs'));
 });
 
+test('Rust CI requires both Linux and Windows crate tests under the same acceptance result', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const rust = ci.slice(ci.indexOf('\n  test-rust:'), ci.indexOf('\n  test-api:'));
+  assert.match(rust, /if: \$\{\{ needs\.detect\.outputs\.rust == 'true' \}\}/);
+  assert.match(rust, /needs: detect/);
+  assert.match(rust, /runs-on: \$\{\{ matrix\.os \}\}/);
+  assert.match(rust, /fail-fast: false/);
+  assert.match(rust, /os: \[ubuntu-24\.04, windows-2022\]/);
+  assert.doesNotMatch(rust, /continue-on-error|--no-run|--lib(?=\s*\n)/);
+  assert.match(rust, /name: Install Tauri system deps\n\s+if: runner\.os == 'Linux'/);
+  assert.match(rust, /name: "Verify Rust Core boundaries \(no bare tauri imports\)"\n\s+if: runner\.os == 'Linux'/);
+  assert.match(rust, /uses: actions\/setup-node@v4/);
+  assert.match(rust, /uses: dtolnay\/rust-toolchain@stable/);
+  assert.match(rust, /name: Test Rust Core\n(?:\s*#[^\n]*\n)*\s+run: cargo test --manifest-path apps\/desktop\/src-tauri\/Cargo\.toml\n/);
+  assert.match(rust, /name: Lint Rust Core\n\s+if: runner\.os == 'Linux'\n\s+run: cargo clippy --manifest-path apps\/desktop\/src-tauri\/Cargo\.toml --lib -- -D warnings/);
+});
+
 test('CI wiring exposes one always-running acceptance check and force-full events', () => {
   const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(ci, /types: \[opened, synchronize, reopened, labeled\]/);
