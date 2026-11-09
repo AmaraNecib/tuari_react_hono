@@ -21,6 +21,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import Database from "better-sqlite3"
 
 import {
+  MAX_MONEY_DZD,
   outboundPickUsage,
   resolveItemOffer,
   type InventoryItemOfferSource,
@@ -166,6 +167,69 @@ async function openEnv(): Promise<Env> {
   envs.push(env.db)
   return env
 }
+
+describe("createOutboundTransfer money bounds (#478)", () => {
+  async function moneyEnv() {
+    const env = await openEnv()
+    seedWarehouse(env.db, "wh-1")
+    seedCounterparty(env.db, "buyer")
+    seedGroup(env.db, "g")
+    seedDefinition(env.db, { id: "def-money", itemType: "CONSUMABLE" })
+    seedEntry(env.db, { id: "entry-money", invoiceGroupId: "g", itemDefinitionId: "def-money", itemType: "CONSUMABLE" })
+    seedBalance(env.db, { id: "balance-money", entryId: "entry-money", itemDefinitionId: "def-money", warehouseId: "wh-1", quantity: 2 })
+    return env
+  }
+
+  const moneyFields = ["unitPriceDzd", "debtAmountDzd", "firstPaymentAmountDzd"] as const
+  function moneyInput(field: typeof moneyFields[number], amount: number) {
+    return {
+      fromType: "WAREHOUSE" as const, fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE" as const,
+      items: [{ itemId: "def-money", quantity: 1, unitPriceDzd: field === "unitPriceDzd" ? amount : 100 }],
+      debtAmountDzd: field === "debtAmountDzd" ? amount : MAX_MONEY_DZD,
+      firstPaymentAmountDzd: field === "firstPaymentAmountDzd" ? amount : 0,
+    }
+  }
+
+  describe.each(moneyFields)("%s", (field) => {
+    it.each([MAX_MONEY_DZD + 1, -1, NaN, Infinity, -Infinity])("rejects invalid money %s without any writes", async (amount) => {
+      const env = await moneyEnv()
+      const before = snapshotWrites(env.db)
+
+      expect(() => env.service.createOutboundTransfer(moneyInput(field, amount), AUDIT))
+        .toThrowError(expect.objectContaining({ appError: expect.objectContaining({
+          code: "VALIDATION",
+          message: expect.stringContaining(String(MAX_MONEY_DZD)),
+          fieldErrors: [expect.objectContaining({ field: field === "unitPriceDzd" ? "items.0.unitPriceDzd" : field })],
+        }) }))
+      expect(snapshotWrites(env.db)).toEqual(before)
+    })
+  })
+
+  it.each([0, 12.5, MAX_MONEY_DZD, undefined])("preserves valid and omitted money %s", async (amount) => {
+    const env = await moneyEnv()
+    const result = env.service.createOutboundTransfer({
+      fromType: "WAREHOUSE", fromId: "wh-1", counterpartyId: "buyer", transferType: "SALE",
+      items: [{ itemId: "def-money", quantity: 1, unitPriceDzd: amount }],
+      debtAmountDzd: amount,
+      firstPaymentAmountDzd: amount,
+    }, AUDIT)
+
+    expect(result.success).toBe(true)
+    expect(env.db.prepare("SELECT quantity FROM inventory_consumable_balance WHERE id = 'balance-money'").get()).toEqual({ quantity: 1 })
+    expect(env.db.prepare("SELECT unit_price_dzd FROM inventory_outbound_transfer_item WHERE transfer_id = ?").get(result.item.id))
+      .toEqual({ unit_price_dzd: amount ?? null })
+    const accounts = env.company.listDebtAccounts({ externalCounterpartyId: "buyer" }).items
+    if (amount !== undefined && amount > 0) {
+      expect(accounts).toHaveLength(1)
+      expect(accounts[0]!.currentBalance).toBe(0)
+      const entries = env.company.listDebtEntries({ debtAccountId: accounts[0]!.id }).items
+      expect(entries.find((entry) => entry.entryType === "OPENING")?.signedAmountDzd).toBe(amount)
+      expect(entries.find((entry) => entry.entryType === "PAYMENT")?.signedAmountDzd).toBe(-amount)
+    } else {
+      expect(accounts).toEqual([])
+    }
+  })
+})
 
 describe("createOutboundTransfer resolves a definition to its stock rows (#450)", () => {
   it("decrements the balance of the picked definition, not an entry that shares its id", async () => {
