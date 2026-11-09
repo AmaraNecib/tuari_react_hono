@@ -8,23 +8,23 @@ Port only the reviewed SQLCipher/runtime/packaging source and tests from histori
 
 ## SQLCipher decision
 
-Use `better-sqlite3-multiple-ciphers@13.0.3`, pending parent vetting and manifest/lock integration. Configure the `sqlcipher` cipher and `legacy = 4` before setting the escaped key in both the API connection factory and snapshot workers. This driver supports SQLCipher 4 compatibility without SQLCipher's unsupported `cipher_compatibility` pragma. Escape the key before directory creation or database open. Close the connection if setup fails.
+Use `better-sqlite3-multiple-ciphers@13.0.3`. Parent vetting and manifest/lock integration are complete; the old driver and its tar dependency are absent from the resolved graph. Configure the `sqlcipher` cipher and `legacy = 4` before setting the escaped key in both the API connection factory and snapshot workers. This driver supports SQLCipher 4 compatibility without SQLCipher's unsupported `cipher_compatibility` pragma. Escape the key before directory creation or database open. Close the connection if setup fails.
 
 Packaging must copy the multiple-ciphers driver and its selected prebuild into the runtime, then verify the copied runtime loads that prebuild and performs a real encrypted round trip. Missing native prebuilds fail packaging. Do not compile during packaging or fall back to plaintext. Keep the plain SQLite driver for unkeyed connections.
 
 The official upstream SQLCipher 4 fixture independently proves that the factory can open an existing encrypted file using the supported key. It does not prove an independent reader can open files Tuari writes. The runtime round-trip proves the packaged driver works; it is not independent interoperability evidence. No schema or user-format migration is part of this change.
 
-The existing `#410`/`#499` literal nonempty `PRAGMA cipher_version` acceptance criterion remains owner-only and is not waived by the driver choice, fixture or self-read test. Preserve that exact limitation. The parent must vet the selected package and replace the old `better-sqlite3-sqlcipher` and deprecated tar dependency through the authorized dependency lane; this worker does not edit package manifests, lockfiles or workspace configuration.
+The existing `#410`/`#499` literal nonempty `PRAGMA cipher_version` acceptance criterion remains owner-only and is not waived by the driver choice, fixture or self-read test. Preserve that exact limitation. The parent replaced `better-sqlite3-sqlcipher` through the authorized dependency lane. Lifecycle compilation for the replacement is not enabled: its shipped platform prebuild is used and packaging verifies that copy.
 
 ## Package vetting
 
-The parent owns package vetting: registry identity, release history, maintainers, downloads, build attestations, OSV, deps.dev and GitHub advisories. No package was installed or added in this worktree. The existing dependency-security changes and auth compatibility work remain untouched. No native crypto compatibility claim follows from the dependency changes already present on the base.
+The parent owns package vetting: registry identity, release history, maintainers, downloads, build attestations, OSV, deps.dev and GitHub advisories. The parent completed frozen installation and loaded the shipped Windows x64 prebuild. Package measurements are not native compatibility proof. The cipher package has one maintainer; the Chromium BiDi package lacks an attestation. Advisory-query absence is not a safety guarantee. Shadcn 4.22.1 and Puppeteer 25.14.0 adopt upstream Zod 4 support rather than forcing a major upgrade into old callers. The SDK and JSON-schema adapter declare Zod 4 support; scoped overrides select 4.6.6. No Zod 3 remains in the graph.
 
 ## Focused proof
 
 Run the factory encryption and snapshot worker tests, desktop script-security tests, and the packaged-runtime encryption test. The factory tests check ciphertext bytes, wrong/missing-key rejection, the official SQLCipher 4 fixture, and plain unkeyed SQLite. Snapshot tests exercise an encrypted WAL source, escaped keys, copied rows, integrity, schema version and wrong-key rejection. The package test uses a stubbed API build command, a 120-second subprocess timeout, the real copied runtime and an injected missing-prebuild failure.
 
-Native package availability is not assumed in this worktree. If `better-sqlite3-multiple-ciphers` is absent or unbuilt, report those tests as blocked by the parent-owned vetted dependency/native install; do not claim encryption proof from stubs or the old binding. Focused script tests remain runnable without the native package. The parent owns native installation, committed-head verification and CI acceptance. Do not run full suites, builds, audits or browser tests absent a concrete coverage gap.
+Native verification at committed head `d98180098edebe11fb51ae81e3a3492351ef4b14` passed: 173 focused API tests, the copied packaged-runtime test, and the legacy-password recovery browser test. API and web types passed after the contracts build prerequisite. The browser test covers the hosted failure caused by the old accountId fixture. Operational command records remain local and ignored. These results do not establish hosted CI acceptance or the literal cipher-version criterion.
 
 ## Phone-only auth compatibility (owner approved)
 
@@ -36,4 +36,4 @@ Parent also vetted resolved Noble2.4.0 and JOSE; rejected remediation-day JOSE6.
 
 ## Completion
 
-This worker supplies the reviewed-source port and focused local evidence only. Parent integrates the vetted package and lockfile, installs/builds the native driver, verifies the committed head and CI, then publishes the single consolidated PR. The owner forbids merge. The literal `cipher_version` acceptance gate remains open and owner-controlled.
+The reviewed-source port, dependency integration and affected local verification are complete. The parent publishes the single consolidated PR after resolving review findings; current-head hosted audit, review and CI acceptance remain pending. The owner forbids merge. The literal `cipher_version` acceptance gate remains open and owner-controlled.
