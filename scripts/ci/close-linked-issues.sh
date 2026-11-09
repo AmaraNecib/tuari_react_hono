@@ -182,7 +182,8 @@ CLOSE_REF="${CLOSE_VERBS}${CLOSE_SEP}#[0-9]+"
 # because grep -E has no lookaround (round-2 finding 2: `hasn't` closed its
 # issue while `has not` did not).
 NEGATOR='(\b(not|never|nor|neither|hardly)\b|\bno[[:space:]]+(longer|more)\b|\bno\b[[:space:]]+|\b(won|don|doesn|didn|hasn|haven|hadn|isn|aren|wasn|weren|can|couldn|shouldn|wouldn|mustn|needn)[[:punct:]]t\b|\bcannot\b)'
-NEGATED_CLOSE="${NEGATOR}[^#]*${CLOSE_REF}"
+# Cross a reference only when it directly coordinates another close with "or".
+NEGATED_CLOSE="${NEGATOR}[^#]*(${CLOSE_REF}[[:space:]]+or[[:space:]]+)*${CLOSE_REF}"
 # "not only/just/merely/simply fixes #N" is AFFIRMATIVE, but only when the
 # close verb follows the idiom DIRECTLY. The test runs per matched SPAN, not
 # per line, so a later real negator in that span survives (round-2 finding 1:
@@ -243,9 +244,10 @@ numbers=$(
 #     exactly the same, so nothing else about extraction changes.
 #
 #     The negator and the close verb must share a SENTENCE (#486), and the gap
-#     between them may hold prose but never a `#`, so a negation can only
-#     swallow the reference it directly precedes ("does not close #A, but
-#     Closes #B" still closes #B). "not only/just/merely fixes #N" is
+#     between them may hold prose or closing references joined directly by
+#     "or" (#503), but no other `#`. Thus "does not fix #A or resolve #B"
+#     negates both, while "does not close #A, but Closes #B" still closes #B.
+#     "not only/just/merely fixes #N" is
 #     AFFIRMATIVE and is filtered back out per matched span, emphasis included.
 #     Subtracting a NUMBER is deliberately conservative — a body that both
 #     negates and closes the same number does not close it.
