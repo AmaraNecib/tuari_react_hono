@@ -2,6 +2,7 @@
  * Report builder component for creating custom reports.
  */
 import { useState } from "react";
+import { getAlgeriaTimeZone } from "@/lib/algeria-time";
 import { useTranslation } from "react-i18next";
 import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
@@ -104,7 +105,7 @@ export function ReportBuilder() {
                   {reportType === "INVENTORY" ? "تقرير المخزون" : reportType === "DEBT" ? "تقرير الديون" : "تقرير الحركات"}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {t("reports.generatedAt")} {new Date(data.generatedAt).toLocaleString("ar-DZ")}
+                  {t("reports.generatedAt")} {new Date(data.generatedAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={handleDownloadCSV}>

@@ -23,7 +23,9 @@ vi.mock("./inventory-hooks", () => ({
 
 import { AssetChargeHistory } from "./asset-charge-history"
 
-const createdAt = "2026-06-01T00:00:00.000Z"
+import { MIDNIGHT_CROSSING, pinUtcTimeZone } from "@/test-utils/algeria-day"
+
+const createdAt = MIDNIGHT_CROSSING
 
 function makeCharge(overrides: Record<string, unknown> = {}) {
   return {
@@ -265,51 +267,57 @@ describe("AssetChargeHistory (#413)", () => {
     expect(screen.queryByText("لا توجد احتسابات لهذا الأصل بعد.")).toBeNull()
   })
 
-  it("shows each correction's from → to amount, actor, time and reason", () => {
-    mocks.charges.mockReturnValue({
-      data: {
-        items: [
-          makeCharge({
-            revisions: [
-              {
-                id: "rev-1",
-                chargeId: "charge-1",
-                previousAmountDzd: 100_000,
-                newAmountDzd: 75_000,
-                reason: "خصم",
-                actorUserId: "user-1",
-                actorLabel: "مدير",
-                createdAt,
-              },
-              {
-                id: "rev-2",
-                chargeId: "charge-1",
-                previousAmountDzd: 75_000,
-                newAmountDzd: null,
-                reason: null,
-                actorUserId: "user-1",
-                actorLabel: "مدير",
-                createdAt,
-              },
-            ],
-          }),
-        ],
-      },
-    })
-    render(<AssetChargeHistory assetUnitId="asset-1" />)
+  it("shows each correction's from → to amount, actor, Algeria time and reason under UTC", () => {
+    const restore = pinUtcTimeZone()
+    try {
+      mocks.charges.mockReturnValue({
+        data: {
+          items: [
+            makeCharge({
+              revisions: [
+                {
+                  id: "rev-1",
+                  chargeId: "charge-1",
+                  previousAmountDzd: 100_000,
+                  newAmountDzd: 75_000,
+                  reason: "خصم",
+                  actorUserId: "user-1",
+                  actorLabel: "مدير",
+                  createdAt,
+                },
+                {
+                  id: "rev-2",
+                  chargeId: "charge-1",
+                  previousAmountDzd: 75_000,
+                  newAmountDzd: null,
+                  reason: null,
+                  actorUserId: "user-1",
+                  actorLabel: "مدير",
+                  createdAt,
+                },
+              ],
+            }),
+          ],
+        },
+      })
+      render(<AssetChargeHistory assetUnitId="asset-1" />)
 
-    fireEvent.click(screen.getByText("سجل الاحتساب"))
+      fireEvent.click(screen.getByText("سجل الاحتساب"))
 
-    const from100 = (100_000).toLocaleString("ar-DZ")
-    const to75 = (75_000).toLocaleString("ar-DZ")
-    expect(screen.getByText(new RegExp(`تصحيح من ${from100} إلى ${to75}`))).toBeTruthy()
-    expect(screen.getByText(new RegExp(`إلغاء من ${to75} إلى 0`))).toBeTruthy()
-    // The actor, the timestamp and the reason are not collapsed into a single
-    // "corrected" badge.
-    expect(screen.getAllByText(/مدير/).length).toBe(2)
-    expect(screen.getByText(/خصم/)).toBeTruthy()
-    expect(
-      screen.getAllByText((content) => content.includes(new Date(createdAt).toLocaleString("ar-DZ"))).length,
-    ).toBeGreaterThan(0)
+      const from100 = (100_000).toLocaleString("ar-DZ")
+      const to75 = (75_000).toLocaleString("ar-DZ")
+      expect(screen.getByText(new RegExp(`تصحيح من ${from100} إلى ${to75}`))).toBeTruthy()
+      expect(screen.getByText(new RegExp(`إلغاء من ${to75} إلى 0`))).toBeTruthy()
+      // The actor, the timestamp and the reason are not collapsed into a single
+      // "corrected" badge.
+      expect(screen.getAllByText(/مدير/).length).toBe(2)
+      expect(screen.getByText(/خصم/)).toBeTruthy()
+      expect(
+        screen.getAllByText((content) => content.includes("1‏/10‏/2026، 12:00:00 ص")).length,
+      ).toBeGreaterThan(0)
+      expect(screen.queryByText(/30‏\/9‏\/2026، 11:00:00 م/)).toBeNull()
+    } finally {
+      restore()
+    }
   })
 })
