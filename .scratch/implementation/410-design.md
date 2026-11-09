@@ -21,7 +21,9 @@
 The implementation is being carried on a branch that preserves #499's published
 head `69a26bbe` and completed timeout/cleanup correction `9ce23ae0`, then #504's
 current-develop source and published #496 (`8ec3d7ed` plus the published
-correction `1a160b1b`). The parent will retarget #499 to `develop` after source
+correction `1a160b1b`). Before handoff, the stack also merged current
+`origin/develop` at `4917fd2c` (the #496 squash); the exact published correction
+remains an ancestor too. The parent will retarget #499 to `develop` after source
 publication; this worker does not change the PR.
 
 The #504 event-SHA selector remains the single source for full/affected scopes.
