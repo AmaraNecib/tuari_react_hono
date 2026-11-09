@@ -214,7 +214,7 @@ export function HomeView({
       onThemeToggle={shell.handleThemeToggle}
     >
       <ErrorBoundary key={contentBoundaryKey}>
-        <TableQueryState query={page === "transactions" ? systemLogQuery : workspaceQuery} resource={page === "transactions" ? t("systemLog.title") : t("shell.workspace") }>
+        <TableQueryState query={workspaceQuery} resource={t("shell.workspace")}>
           <HomeViewPageContent
             copy={copy}
             derived={derived}
@@ -231,9 +231,8 @@ export function HomeView({
             session={auth.session}
             systemLogFilters={shell.systemLogFilters}
             systemLogState={{
+              ...systemLogQuery,
               entries: systemLogQuery.data?.items ?? [],
-              isError: systemLogQuery.isError && systemLogQuery.data === undefined,
-              isLoading: systemLogQuery.isPending && systemLogQuery.data === undefined,
             }}
             t={t}
             theme={theme}

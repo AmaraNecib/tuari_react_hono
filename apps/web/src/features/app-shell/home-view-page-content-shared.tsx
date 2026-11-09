@@ -4,6 +4,7 @@
  */
 import type { TFunction } from "i18next"
 import type { SystemLogEntry } from "@tuari/contracts"
+import type { TableQuery } from "@/features/shared/table-primitives"
 
 import { Button } from "@/components/ui/button"
 import { Surface } from "@/features/shared/page-primitives"
@@ -32,7 +33,7 @@ export type HomeViewPageContentProps = {
   selectedWarehouse: HomeViewDerived["warehouses"][number] | null
   session: NonNullable<DemoSession>
   systemLogFilters: HomeViewSystemLogFilters
-  systemLogState: { entries: SystemLogEntry[]; isError: boolean; isLoading: boolean }
+  systemLogState: TableQuery & { entries: SystemLogEntry[] }
   t: TFunction
   theme: "light" | "dark"
   resetWorkspacePending: boolean
