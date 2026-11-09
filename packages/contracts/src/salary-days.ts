@@ -1,3 +1,5 @@
+import { roundToDecimals } from "./round-to-decimals";
+
 /**
  * Salary proration and per-project split helpers (issue #412).
  *
@@ -51,23 +53,13 @@ const ALGERIA_OFFSET_MS = 60 * 60 * 1000;
  * same whole-cent total.
  */
 export function roundMoneyToCents(value: number): number {
-  if (!Number.isFinite(value)) {
-    return value;
-  }
+  if (!Number.isFinite(value)) return value;
 
-  // Scale the decimal representation, not the binary product: `Math.round(1.005
-  // * 100)` is `Math.round(100.49999999999999)` → 100, so the float product
-  // rounds the half-cent DOWN and breaks this helper's half-up contract.
-  // `Number("1.005e2")` is the exact decimal 100.5, which rounds up. The string
-  // form is exponential only for magnitudes money never reaches; those fall
-  // back to the float product.
-  const scaled = Number(`${value}e2`);
-  if (!Number.isFinite(scaled)) {
-    return Math.round(value * 100) / 100;
-  }
+  // Preserve the historical scientific-notation fallback, including signed
+  // zero and overflow. Ordinary money uses shared decimal-string rounding.
+  if (String(value).includes("e")) return Math.round(value * 100) / 100;
 
-  // Half away from zero, so a negative half-cent rounds up in magnitude too.
-  return (Math.sign(scaled) * Math.round(Math.abs(scaled))) / 100;
+  return roundToDecimals(value, 2);
 }
 
 /**

@@ -1,3 +1,5 @@
+import { roundToDecimals } from "@tuari/contracts";
+
 /**
  * Pure helpers for inventory write paths.
  *
@@ -124,11 +126,8 @@ export function quantityDifferenceMatches(before: number, after: number, expecte
  * through a scaled float can alter large stored balances. Use decimal addition
  * or subtraction for balance changes instead.
  *
- * Scales the decimal representation rather than the binary product, mirroring
- * `roundMoneyToCents`: `${v}e6` is read as an exact decimal, so `0.7999999999999999`
- * becomes `0.8` instead of dragging a float epsilon through to storage. A value
- * whose string form is exponential falls back to the float product; a magnitude
- * whose scale would overflow is returned unchanged rather than `Infinity`.
+ * Shared decimal-string rounding removes float noise. The inventory wrapper
+ * owns its exact-grid shortcut and positive-zero result.
  */
 export function roundQuantity(value: number): number {
   if (!Number.isFinite(value)) {
@@ -137,13 +136,7 @@ export function roundQuantity(value: number): number {
   if (value === 0) return 0
   if (normalizedQuantityMicroUnits(value) !== null) return value
 
-  const scaled = Number(`${value}e${QUANTITY_DECIMALS}`);
-  const units = Number.isFinite(scaled) ? scaled : value * QUANTITY_SCALE;
-  if (!Number.isFinite(units)) {
-    return value;
-  }
-
-  const result = (Math.sign(units) * Math.round(Math.abs(units))) / QUANTITY_SCALE;
+  const result = roundToDecimals(value, QUANTITY_DECIMALS);
   // Normalise -0 so a value rounded away from nothing compares equal to 0.
   return result === 0 ? 0 : result;
 }
