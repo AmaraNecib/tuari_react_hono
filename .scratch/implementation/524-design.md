@@ -34,6 +34,29 @@ prevents deletion/non-fast-forward updates. Its bypass actor list is empty and
 `current_user_can_bypass` is `never`. This is launch-time enforcement evidence,
 not current-head CI acceptance or a future merge protection check.
 
+## Windows CI test-isolation correction
+
+After owner acceptance of the actual input UI and conditional merge authority
+for PR532, Windows CI at c0be902c failed one unchanged Rust clock test.
+The test helper named cleanup roots using only wall-clock nanoseconds.
+Native Windows measurement found repeated directory names in134 of1000
+parallel16-caller rounds. A deterministic fixed-tick probe using extracted
+production write_atomic code reproduced the exact missing nested parent and
+Windows OS error3 after five rename attempts when a second test cleaned its
+colliding root. Process ID plus a test-local atomic sequence prevents that
+collision without changing production clock, retry, license or crypto code.
+
+This bounded correction changes only the cfg(test) directory helper and adds
+a fixed-tick parallel uniqueness regression. Tests must retain isolated cleanup
+roots even when the OS repeats a clock tick. Focused std-only native extraction
+is local diagnostic proof, not a claim that the full Tauri crate ran locally.
+CI still runs the actual crate on Windows and Linux at the new head. Prior
+failure logs remain local. No production seam moved; no dependency added.
+The earlier visual source is unchanged and its valid browser proof is carried
+forward rather than rerun. A fresh bounded review must inspect this correction
+and carry prior conclusions forward before publication. Owner authority covers
+merge only after all current-head checks, hosted5/5 and protection gates pass.
+
 ## Acceptance criteria
 
 The live issue requires:
@@ -157,6 +180,62 @@ returns only -1/0/1, avoiding subtraction overflow and Number keys. MoneyValue's
 aggregate mode validates bounded canonical report strings and never returns a
 persistable Money. No expense-only exports are added for absent files. After
 integrating the reviewed common commit, #528 owns adding its two export lines.
+
+## Physical-left currency correction and tracked caller follow-up
+
+Owner rejected the26427361 currency placement and requires Arabic DZD physically
+left of the numeric run beside its leading digit. This supersedes the earlier
+capture acceptance interpretation, not exact digit/negative-sign isolation.
+Only the shared source files are changed in this layer:
+`features/shared/money-value.tsx`, `components/ui/form-controls.tsx`, and
+`components/ui/currency-amount-input.tsx`, plus their tests under apps/web/src.
+CurrencyRun accepts already-formatted text and renders an explicit LTR inline-flex
+currency label followed by isolated LTR digits. MoneyValue delegates both numeric
+and exact paths to it; both Pay Full branches retain their current formatting.
+CurrencyInput uses LTR physical layout and left-aligned editable text. No amount
+parsing, arithmetic, grouping or optional-decimal policy is changed.
+
+This shared change reaches salary employee tables/details, salary payment tables,
+employee batch/edit inputs and all CurrencyInput/CurrencyAmountInput consumers.
+Issue528 owns expenses-page.tsx literal bypasses and must integrate the shared
+fix without a second layout. Current scope does not claim app-wide completion.
+
+Tracked follow-up for the coordinator's separate develop-based presentation PR
+after prerequisite merge, not a successor implementation branch:
+
+- Debt bypasses: apps/web/src/features/debts/consolidation-dialog.tsx,
+  debt-cases-panel.tsx, void-entry-dialog.tsx, record-entry-payment-dialog.tsx,
+  debts-hub-page.tsx and debt-ledger-panel.tsx. Includes HubStatCard preformatted
+  string amounts and interpolated adjustment/cascade descriptions.
+- External bypass: apps/web/src/features/externals/externals-page.tsx.
+- Inventory bypasses: apps/web/src/features/inventory/inventory-invoice-details-page.tsx,
+  location-transfer-history.tsx, transfer-history-page.tsx and
+  record-invoice-payment-dialog.tsx. Includes summary-card preformatted strings.
+- Translation bypass: apps/web/src/i18n/ar.ts cascadeDescription and translated
+  monetary interpolation identified by the coordinator audit. Preserve prose and
+  introduce actual shared presentation rather than string/DOM ordering assumptions.
+
+These are explicit remaining owner requirements, not approved exceptions. The
+owner will merge manually. PR533 waits for actual PR532 merge before safe
+non-destructive standalone retarget; no new stacked publication, reset, rebase,
+force push, production activation or premature merge is authorized.
+
+## Approved input refinement
+
+Owner approved the inline prototype after7477362c and authorized implementation.
+Static numeric/exact MoneyValue placement remains unchanged. Editable CurrencyInput
+aligns the intact LTR digit run to the right for Arabic and to the left for LTR
+locales. The fixed Arabic unit stays inside the same outer field on its physical
+left, separated by a subtle vertical border. It is not a button or second input.
+Existing optional onPayFull remains the only action authority. The button now says
+كامل المبلغ and uses the installed Button and Tooltip components. A full amount
+description remains accessible, visually hidden for hover+fine-pointer devices,
+visible for non-hover/touch devices. Existing Tooltip supplies hover/focus/Escape
+behavior; device capability, not viewport width, chooses the touch description.
+No instructional prototype copy is shipped. Legacy numeric amount formatting and
+exact string limits remain intact. Legacy label is now explicitly associated with
+its native input; both buttons remain non-submit and disabled with the field.
+This prototype approval is not final-source merge/activation approval.
 
 ## Planned proof and remaining gates
 

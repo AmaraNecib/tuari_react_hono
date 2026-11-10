@@ -10,6 +10,13 @@ type MoneyValueProps = {
   zeroAsDash?: boolean
 } & ({ exact?: false; value: number; aggregate?: never } | { exact: true; value: string; aggregate?: boolean })
 
+/** Physical currency placement is shared by formatted displays and amount buttons. */
+export function CurrencyRun({ amount, currencyLabel, className }: { amount: string; currencyLabel: string; className?: string }) {
+  return <span dir="ltr" className={cn("inline-flex items-baseline gap-1 whitespace-nowrap", className)}>
+    <span dir="rtl">{currencyLabel}</span>{" "}<bdi dir="ltr">{amount}</bdi>
+  </span>
+}
+
 /** Displays DZD with optional cents; grouping never changes the amount. */
 export function MoneyValue({
   value,
@@ -33,17 +40,12 @@ export function MoneyValue({
     useGrouping,
   }).format(value)
 
-  const amount = exact ? <bdi dir="ltr">{formattedNumber}</bdi> : formattedNumber
-
   return (
-    <span
+    <CurrencyRun amount={formattedNumber} currencyLabel={currencyLabel}
       className={cn(
         variant === "detail" ? "inline-flex items-baseline gap-1.5 font-mono" : "font-mono tabular-nums text-ink",
         toneClassName,
       )}
-      dir="ltr"
-    >
-      {variant === "detail" ? <><span>{currencyLabel}</span><span>{amount}</span></> : <>{currencyLabel}{" "}{amount}</>}
-    </span>
+    />
   )
 }
