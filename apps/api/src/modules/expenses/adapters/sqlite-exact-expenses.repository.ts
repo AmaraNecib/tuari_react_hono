@@ -48,15 +48,19 @@ const exactStorage: ExpenseStorageCodec<string> = {
 export class SqliteExactExpenseRepository extends SqliteExpenseStorage<string> {
   constructor(db: BetterSqliteDatabase, lock: FifoLock) {
     requireExactMoneySchema(db, "expenses");
-    for (const [table, column, expected] of [
-      ["expense", "amount_minor", "INTEGER"],
-      ["expense", "currency", "TEXT"],
-      ["expense_revision", "previous_amount_minor", "INTEGER"],
-      ["expense_revision", "new_amount_minor", "INTEGER"],
-    ]) {
-      const columns = db.pragma(`table_info(${table})`) as { name: string; type: string }[];
-      if (columns.find((item) => item.name === column)?.type.toUpperCase() !== expected) {
-        throw new TypeError(`Exact expense schema requires ${table}.${column} ${expected}`);
+    for (const [table, column, expected, notNull] of [
+      ["expense", "amount_minor", "INTEGER", 1],
+      ["expense", "currency", "TEXT", 1],
+      ["expense_revision", "previous_amount_minor", "INTEGER", 0],
+      ["expense_revision", "new_amount_minor", "INTEGER", 1],
+    ] as const) {
+      const columns = db.pragma(`table_info(${table})`) as { name: string; type: string; notnull: number }[];
+      const actual = columns.find((item) => item.name === column);
+      if (actual?.type.toUpperCase() !== expected || actual.notnull !== notNull) {
+        throw new TypeError(`Exact expense schema requires ${table}.${column} ${expected} with expected nullability`);
+      }
+      if (columns.some(item => ["amount_dzd", "previous_amount_dzd", "new_amount_dzd"].includes(item.name))) {
+        throw new TypeError("Exact expense schema cannot retain legacy monetary columns");
       }
     }
     if (db.prepare("SELECT 1 FROM expense WHERE currency IS NULL OR currency <> 'DZD' LIMIT 1").get()) {

@@ -28,7 +28,7 @@ describe("inert foundation inventory", () => {
     expect(rows.sort()).toEqual(physical.sort());
     expect(new Set(rows).size).toBe(27);
   });
-  it("limits exact imports to the inert storage adapter and opt-in shared UI", () => {
+  it("limits exact imports to inert storage, opt-in shared UI and isolated expense consumers", () => {
     const imports: string[] = [];
     for (const dir of ["apps/api/src", "apps/web/src", "packages/contracts/src"]) {
       for (const path of sources(join(root, dir))) {
@@ -40,9 +40,13 @@ describe("inert foundation inventory", () => {
     }
     expect(imports.sort()).toEqual([
       "apps/api/src/infrastructure/database/exact-money-storage.ts",
+      "apps/api/src/modules/expenses/adapters/sqlite-exact-expenses.repository.ts",
+      "apps/api/src/modules/expenses/expense-cost-inputs.ts",
+      "apps/api/src/modules/expenses/expenses.exact.ts",
       "apps/web/src/components/ui/currency-amount-input.tsx",
       "apps/web/src/features/shared/exact-money-display.ts",
       "apps/web/src/features/shared/exact-money-input.ts",
+      "packages/contracts/src/expenses-exact.ts",
       "packages/contracts/src/index.ts",
     ]);
   });

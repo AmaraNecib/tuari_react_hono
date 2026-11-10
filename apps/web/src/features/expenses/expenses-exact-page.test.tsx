@@ -89,6 +89,43 @@ describe("ExactExpensesPage", () => {
     expect(screen.getByText("Correction")).toBeTruthy()
   })
 
+  it("keeps an all-voided project's rows visible in grouped view without charging totals", () => {
+    listQuery.mockReturnValue({ data: { ...exactData, items: [{ ...exactExpense, status: "VOIDED" }], groupsByProject: [], totals: { ...exactData.totals, total: "0.00", taggedToProject: "0.00", heldByWorkers: "0.00", count: 0 } }, isPending: false, isError: false, isFetching: false })
+    detailQuery.mockReturnValue({ data: undefined, isPending: false, isError: false })
+    renderExact()
+    fireEvent.click(screen.getByRole("button", { name: "تجميع حسب المشروع" }))
+    expect(screen.getByRole("listitem").textContent).toContain("Exact expense")
+    expect(screen.getByRole("listitem").textContent).toContain("ملغى")
+    expect(screen.getByRole("button", { name: "التفاصيل" })).toBeTruthy()
+    expect(screen.getByText("مجموع المعروض · 0 مصروفات")).toBeTruthy()
+  })
+
+  it("uses period filters for the month shortcut without converting exact totals", () => {
+    listQuery.mockReturnValue({ data: exactData, isPending: false, isError: false, isFetching: false })
+    detailQuery.mockReturnValue({ data: undefined, isPending: false, isError: false })
+    renderExact()
+    const button = screen.getByRole("button", { name: "الشهر الحالي" })
+    expect(button.getAttribute("aria-pressed")).toBe("false")
+    fireEvent.click(button)
+    expect(button.getAttribute("aria-pressed")).toBe("true")
+    expect(listQuery.mock.calls.at(-1)?.[1]).toMatchObject({ fromDate: expect.any(String), toDate: expect.any(String) })
+    expect(screen.getByText("إجمالي الفترة")).toBeTruthy()
+    fireEvent.click(button)
+    expect(screen.getByText("إجمالي كل الفترات")).toBeTruthy()
+  })
+
+  it("does not invent zero KPIs during loading and retains real exact values after a refetch error", () => {
+    detailQuery.mockReturnValue({ data: undefined, isPending: false, isError: false })
+    listQuery.mockReturnValue({ data: undefined, isPending: true, isError: false, isFetching: true })
+    const { rerender } = renderExact()
+    expect(screen.getByRole("status")).toBeTruthy()
+    expect(screen.queryByText("إجمالي كل الفترات")).toBeNull()
+    listQuery.mockReturnValue({ data: exactData, isPending: false, isError: true, isFetching: false, error: new Error("offline"), refetch: vi.fn() })
+    rerender(<ExactExpensesPage {...props} />)
+    expect(screen.getByRole("alert")).toBeTruthy()
+    expect(screen.getAllByText(/90,071,992,547,409\.13/).length).toBeGreaterThan(0)
+  })
+
   it("retains void reason and dialog after a failed void request", async () => {
     listQuery.mockReturnValue({ data: exactData, isPending: false, isError: false, isFetching: false })
     detailQuery.mockReturnValue({ data: undefined, isPending: false, isError: false })
@@ -96,7 +133,7 @@ describe("ExactExpensesPage", () => {
     renderExact()
     const row = screen.getByRole("row", { name: /Exact expense/ })
     fireEvent.click(within(row).getByRole("button", { name: "إلغاء" }))
-    const reason = screen.getByPlaceholderText(/سبب الإلغاء/)
+    const reason = screen.getByLabelText("سبب الإلغاء (اختياري)")
     fireEvent.change(reason, { target: { value: "Duplicate record" } })
     fireEvent.click(screen.getByRole("button", { name: /تأكيد الإلغاء/ }))
     await waitFor(() => expect(voidMutate).toHaveBeenCalled())

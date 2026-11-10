@@ -6,10 +6,13 @@ Source-owning tree: `D:/worktrees/tuari_react_hono/feat-issue-528-independ-34a61
 Base and last fetched develop: `b2d37386aa3aa7bca1d98a4f7171f7a459859201`.
 Live acceptance: https://github.com/AmaraNecib/tuari_react_hono/issues/528.
 
-Status: partial local expense implementation over an unpublished shared
-prerequisite. No PR, push, merge, production activation or expense UI conversion.
-The complete issue remains open. Current owner authorization permits a declared
-dependent stack after agreement on the exact publishable shared parent layer.
+Status: reviewable opt-in expense implementation over published parent PR532.
+Parent branch `feat/issue-524-shared-money-preparation` at
+`0a7d94ac7010b995b2082e626e052170255e8322`, based on develop b2d37386.
+Both published parent commits were integrated by non-destructive merges. Shared
+524 design note remains identical. No child PR, production activation or approval
+yet. UI, service/RPC, native storage and narrow project-cost source are implemented
+opt-in; the full issue remains open until acceptance gates and later cutover.
 
 Local shared dependency `2c55189b706c95db67d01c6440bba434a9236766` from issue 524
 was cherry-picked as `ac3e2e0034ae8ae88c687647aeb698e18b7917d6` before the owner
@@ -107,13 +110,16 @@ It is not a no-UI preparation commit eligible for unattended self-merge. Do not
 strip its UI or relabel effects to evade owner approval. Startup/schema effects
 also retain their existing approval boundaries.
 
-No expense frontend files changed yet. The attempted isolated UI worker returned
-without edits because its older base lacked the shared APIs. After the owner's
-stack authorization, expense-only UI work can resume from the actual committed
-shared implementation. Remaining work
-includes exact form/list/detail/history integration, #483 month/KPI preservation,
-#425 failed-submit field retention, keyboard/touch/RTL, grouping and actual after
-rendering. Cropped actual baseline images and one selected passing Chromium case
+The exact form and page now share their generic view with numeric defaults.
+Exact hooks use a distinct client-scoped and session-scoped cache, never the
+numeric expense cache. Forms preserve localized string drafts and validate through
+the shared parser. Exact rows/history use shared MoneyValue; aggregates use wide
+shared formatting. The percentage converts only the final bounded integer ratio.
+Exact grouped view keeps voided-only groups visible without charging their values.
+Detail/history shows nullable previous as unavailable, audit and soft references;
+correction and void remain accessible. Mutations preserve fields/reasons on error.
+Actual browser proof found an offscreen edit Save button; bounded dialog scrolling
+now makes it reachable. This shared view fix also applies to numeric mode. Cropped actual baseline images and one selected passing Chromium case
 are local at `.scratch/reviews/528/before-expense/`. That capture used unchanged
 committed frontend with then-dirty numeric backend source, not a clean backend
 baseline. It is not exact UI proof or owner approval.
@@ -139,6 +145,38 @@ not production arithmetic. Raw commands, native exits, counts and durations are
 under `.scratch/reviews/528/`, with a local handoff report. No full suite/build,
 release proof, fresh review sessions or hosted verdict was claimed. Only contracts
 dist prerequisite builds ran through the heavy queue, plus selected baseline UI.
+
+## Integrated proof and review boundary
+
+Precommit affected web proof: 50 cases passed across six expense files; API/web/
+contract typecheck and API/web expense lint passed. Contracts workspace has no
+lint script or eslint dependency; the attempted command failed, not a passed check.
+Affected parity proof: 56 cases across memory/plain/keyed and legacy lifecycle.
+Physical schema proof: 14 native/schema cases. Explicit INTEGER/TEXT/nullability
+checks now reject hybrid legacy columns. Parity tests found an in-memory correction
+race; its transaction and writes now use the existing FIFO lock, with concurrent
+old/new chains passing against all three repositories. A test attempted a NULL
+project filter outside the actual contract and was removed rather than broadening
+financial semantics. Earlier failure logs remain intact.
+
+Selected Chromium proof uses actual exact page/form/hooks and native SQLite over
+a real isolated RPC server with actual auth/audit/permission middleware. A fixed
+synthetic current-user resolver and cached session/inventory lookup avoid any
+production startup or database. Trial license is set explicitly for the fixture.
+One complete create/correct/history/group/preference/month/void case passed in
+13.6 seconds. Screenshots are cropped native elements, not owner approval.
+Initial failures include missing fixture license, genuine offscreen Save, duplicate
+Close locator and an overly exact grouped-label locator. These remain local.
+The screenshots are current successful-run images; successive development attempts
+replaced same-named images, so earlier logs—not those images—prove earlier failures.
+No current-head acceptance is inferred from this dirty combined-tree browser proof.
+
+Parent inventory update was rerun on integrated tree and caught four intentional
+expense consumers; child allowlist now names only those four additional files.
+The two inventory cases pass. No production interface changed in parent refresh.
+Initial reviews must now read complete committed expense source, not worker partial
+scope. Parent architecture pass reduced duplicate screens to one typed view and
+kept all amount policy, parser/renderer and cache/activation seams explicit.
 
 ## Resource recovery and next gate
 
