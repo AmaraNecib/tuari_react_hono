@@ -79,12 +79,19 @@ it("enforces worker party and sale-direction rules, and receives a zero invoice 
   expect(() => invoices.createInvoice({ ...draftInput("worker-sale"), counterpartyType: "WORKER", counterpartyId: workerId, direction: "SALE" })).toThrow(/workers cannot own sale invoices/i);
   const workerDraft = invoices.createInvoice({ ...draftInput("worker-purchase"), counterpartyType: "WORKER", counterpartyId: workerId, direction: "PURCHASE" });
   expect(workerDraft.counterpartyId).toBe(workerId);
+  const workerInvoice = invoices.receiveInvoice(command("worker-receive", workerDraft.id));
+  expect(finance.getAccount(workerInvoice.debtAccountId!)).toMatchObject({ partyType: "INTERNAL_WORKER", workerId, direction: "PAYABLE", currentBalance: "100.00" });
+  const workerPayment = invoices.createPayment({ requestId: "worker-payment", counterpartyType: "WORKER", counterpartyId: workerId, direction: "PURCHASE", paymentMethod: "CASH", paymentDate: dependencies.now(), totalAmount: "1.00", allocations: [{ invoiceId: workerInvoice.id, amount: "1.00" }] });
+  expect(workerPayment.unallocatedAmount).toBe("0.00");
+  expect(finance.remaining(workerInvoice.debtEntryId!)).toBe("99.00");
   const zeroDraft = invoices.createInvoice(draftInput("zero-receipt", "0.00"));
   const received = invoices.receiveInvoice(command("zero-receive", zeroDraft.id));
   expect(received).toMatchObject({ status: "PAID", totalAmount: "0.00", paidAmount: "0.00", remainingAmount: "0.00", debtEntryId: null });
-  expect(finance.listAccounts()).toHaveLength(1);
+  expect(finance.listAccounts()).toHaveLength(2);
   expect(finance.listEntries(received.debtAccountId!)).toEqual([]);
   expect(() => invoices.receiveInvoice(command("zero-receive-again", zeroDraft.id))).toThrow(/only draft/i);
+  expect(invoices.voidInvoice({ ...command("zero-void", zeroDraft.id), reason: "Cancel zero invoice" })).toMatchObject({ status: "VOIDED", debtEntryId: null, remainingAmount: "0.00" });
+  expect(finance.remaining(workerInvoice.debtEntryId!)).toBe("99.00");
 });
 
 it("requires distinct split identities and omits shares smaller than one minor unit", () => {
