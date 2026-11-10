@@ -67,12 +67,12 @@ describe("debt payment form to RPC", () => {
     const payableLabels = screen.getAllByText("الرصيد الحالي — مستحقات علينا")
     expect(payableLabels).toHaveLength(2)
     const selectedCard = payableLabels[0]!.closest("section")!
-    expect(within(selectedCard).getByText("دج 1,000")).toBeTruthy()
-    expect(within(selectedCard).queryByText("دج 22,500.5")).toBeNull()
+    expect(within(selectedCard).getByText("1,000", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
+    expect(within(selectedCard).queryByText("22,500.5", { selector: 'bdi[dir="ltr"]' })).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
     expect(screen.getAllByText("الرصيد الحالي — مستحقات لنا")).toHaveLength(2)
-    expect(within(selectedCard).getByText("دج 22,500.5")).toBeTruthy()
-    expect(within(selectedCard).queryByText("دج 1,000")).toBeNull()
+    expect(within(selectedCard).getByText("22,500.5", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
+    expect(within(selectedCard).queryByText("1,000", { selector: 'bdi[dir="ltr"]' })).toBeNull()
   })
 
   it.each(["amount", "note", "date"])("keeps the default ledger pinned after editing %s when another ledger arrives", async (field) => {

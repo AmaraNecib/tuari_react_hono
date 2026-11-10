@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router"
 
 import type { ProjectCost } from "@tuari/contracts"
 
+import { CurrencyRun } from "@/features/shared/money-value"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
@@ -40,7 +41,7 @@ export function ProjectCostSection({
   const navigate = useNavigate()
   const query = useProjectCostQuery(projectId)
 
-  const money = (value: number) => `${formatNumber(value)} ${t("detailPages.project.cost.currency")}`
+  const money = (value: number, sign = "") => <CurrencyRun amount={`${sign}${formatNumber(value)}`} currencyLabel={t("detailPages.project.cost.currency")} />
 
   if (query.isPending) {
     return (
@@ -95,9 +96,9 @@ export function ProjectCostSection({
           {sources.map((source) => {
             const percent = percentOf(source.value)
             return (
-              <li key={source.key} className="flex items-center gap-3 text-sm">
+              <li key={source.key} className="flex items-center gap-2 text-sm sm:gap-3">
                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${source.bar}`} aria-hidden="true" />
-                <span className="w-40 shrink-0 text-ink-2">{source.label}</span>
+                <span className="w-28 shrink-0 text-ink-2 sm:w-40">{source.label}</span>
                 <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2">
                   <span
                     className={`block h-full rounded-full ${source.bar}`}
@@ -231,11 +232,11 @@ export function ProjectCostSection({
                         {" · "}
                         {formatNumber(movement.quantity)}
                         {movement.unit ? ` ${movement.unit}` : ""}
-                        {movement.unitPriceDzd != null ? ` · ${money(movement.unitPriceDzd)}` : ""}
+                        {movement.unitPriceDzd != null ? <> · {money(movement.unitPriceDzd)}</> : ""}
                       </span>
                     </span>
                     <span className="shrink-0 font-mono text-ink" dir="ltr">
-                      {movement.direction === "IN" ? "+" : "−"} {money(movement.valueDzd)}
+                      {money(movement.valueDzd, movement.direction === "IN" ? "+" : "−")}
                     </span>
                   </li>
                 ))}

@@ -63,8 +63,9 @@ describe("SystemLogSection detail tokenizer", () => {
     );
 
     // The two monetary chips split out of the bullet-joined line.
-    expect(screen.getByText("القيمة +1000 دج")).toBeTruthy();
-    expect(screen.getByText("الرصيد بعد العملية 1000 دج")).toBeTruthy();
+    const signed = screen.getByText("+1000", { selector: 'bdi[dir="ltr"]' });
+    expect(signed.parentElement?.parentElement?.textContent).toBe("القيمة دج +1000");
+    expect(screen.getByText("1000", { selector: 'bdi[dir="ltr"]' }).parentElement?.parentElement?.textContent).toBe("الرصيد بعد العملية دج 1000");
 
     // No raw i18n key text may leak into the rendered detail cell.
     const table = screen.getByRole("table");
@@ -94,7 +95,8 @@ describe("SystemLogSection detail tokenizer", () => {
       />,
     );
 
-    expect(screen.getByText("المبلغ المدفوع 25000 دج")).toBeTruthy();
+    const amount = screen.getByText("25000", { selector: 'bdi[dir="ltr"]' });
+    expect(amount.parentElement?.parentElement?.textContent).toBe("المبلغ المدفوع دج 25000");
     expect(screen.getByRole("table").textContent).not.toContain("systemLog.");
   });
 
