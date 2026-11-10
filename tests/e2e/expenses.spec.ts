@@ -110,7 +110,7 @@ test("record an expense against a project, group it, then void it out of the tot
   // while the total and the count drop it.
   await expect(row.getByText("ملغى", { exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText("مجموع المعروض · 0 مصروفات")).toBeVisible()
-  await expect(page.getByText("0 دج").first()).toBeVisible()
+  await expectCurrencyPhysicallyLeft(page, "0")
   // The live void button is gone from the voided row, and so is Edit: the
   // service rejects editing a voided expense, so offering it would only let
   // the user fill a dialog whose Save fails.
