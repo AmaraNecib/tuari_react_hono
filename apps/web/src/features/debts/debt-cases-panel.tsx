@@ -1,3 +1,4 @@
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useTranslation } from "react-i18next"
 import { useMemo, useState } from "react"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
@@ -26,7 +27,7 @@ import {
   type DebtDirectionAlias,
 } from "./debt-utils"
 
-function CasesStatCard({ label, value, valueClassName, phrase }: { label: string; value: string; valueClassName?: string; phrase?: string }) {
+function CasesStatCard({ label, value, valueClassName, phrase }: { label: string; value: import("react").ReactNode; valueClassName?: string; phrase?: string }) {
   return (
     <Surface className="rounded-xl px-5 py-4" variant="card">
       <p className="text-sm text-muted-foreground">{label}</p>
@@ -141,7 +142,7 @@ export function DebtCasesPanel({
         <CasesStatCard
           label={`${t("debts.cases.currentBalance")} — ${getDebtDirectionLabel(accountDirection)}`}
           phrase={balance.phrase}
-          value={`دج ${formatDebtAmount(balance.amount)}`}
+          value={<CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel="دج" />}
           valueClassName={balance.textClassName}
         />
         <CasesStatCard label={t("debts.cases.accountCount")} value={String(sortedAccounts.length)} />
@@ -158,9 +159,9 @@ export function DebtCasesPanel({
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-0.5">
               <p className="text-sm text-muted-foreground">
-                {getDebtDirectionLabel(payableAccount!.direction)} · {payableBalance!.phrase} دج {formatDebtAmount(payableBalance!.amount)}
+                {getDebtDirectionLabel(payableAccount!.direction)} · {payableBalance!.phrase} <CurrencyRun amount={formatDebtAmount(payableBalance!.amount)} currencyLabel="دج" />
                 {` — `}
-                {getDebtDirectionLabel(receivableAccount!.direction)} · {receivableBalance!.phrase} دج {formatDebtAmount(receivableBalance!.amount)}
+                {getDebtDirectionLabel(receivableAccount!.direction)} · {receivableBalance!.phrase} <CurrencyRun amount={formatDebtAmount(receivableBalance!.amount)} currencyLabel="دج" />
               </p>
               <p className="text-xs text-muted-foreground">
                 {hasConsolidatableOpenings

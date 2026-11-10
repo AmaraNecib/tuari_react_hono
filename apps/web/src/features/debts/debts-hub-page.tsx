@@ -1,3 +1,4 @@
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts"
@@ -23,7 +24,7 @@ import {
 
 type FilterOption = DebtHubFilter
 
-function HubStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+function HubStatCard({ label, value, valueClassName }: { label: string; value: import("react").ReactNode; valueClassName?: string }) {
   return (
     <div className="px-5 py-4">
       <p className="text-sm text-muted-foreground">{label}</p>
@@ -113,8 +114,8 @@ export function DebtsHubPage({
     >
       <div className="grid gap-4 md:grid-cols-4">
         <HubStatCard label="عدد الأرصدة المفتوحة" value={String(filter === "all" ? totals.openCount : filteredOpenCount)} />
-        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedToUs} value={`دج ${formatDebtAmount(totals.owedToUsDzd)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
-        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedByUs} value={`دج ${formatDebtAmount(totals.owedByUsDzd)}`} valueClassName="text-rose-700 dark:text-rose-300" />
+        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedToUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedToUsDzd)} currencyLabel="دج" />} valueClassName="text-emerald-700 dark:text-emerald-300" />
+        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedByUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedByUsDzd)} currencyLabel="دج" />} valueClassName="text-rose-700 dark:text-rose-300" />
         <HubStatCard label="عدد الحسابات" value={String(rows.length)} />
       </div>
 
@@ -184,7 +185,7 @@ export function DebtsHubPage({
                           {balance.phrase}
                         </span>
                         <span className={`font-mono text-sm ${balance.textClassName}`.trim()} dir="ltr">
-                          دج {formatDebtAmount(balance.amount)}
+                          <CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel="دج" />
                         </span>
                       </div>
                     </TableCell>

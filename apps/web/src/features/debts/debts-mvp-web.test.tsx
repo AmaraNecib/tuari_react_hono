@@ -827,6 +827,8 @@ describe("debts MVP web UI", () => {
       // The remainder (5000 - 2000) stays on the payable side, so the phrase
       // must state "we owe them", not the sign-only "they owe us".
       const remaining = screen.getByText(/^يبقى (?!رصيد)/)
+      expect(remaining.querySelector('bdi[dir="ltr"]')?.textContent).toBe("3,000")
+      expect(remaining.querySelector('bdi')?.previousElementSibling?.textContent).toBe("دج")
       expect(remaining.textContent).toContain("مستحق علينا")
       expect(remaining.textContent).not.toContain("مستحق لنا")
     })
@@ -865,7 +867,9 @@ describe("debts MVP web UI", () => {
         [],
       )
 
-      expect(document.body.textContent).toContain("-5000")
+      const amount = screen.getByText("-5000", { selector: 'bdi[dir="ltr"]' })
+      expect(amount.previousElementSibling?.textContent).toBe("دج")
+      expect(amount.parentElement?.getAttribute("dir")).toBe("ltr")
     })
 
     it("keeps a voided payment movement delta signed", () => {
@@ -884,7 +888,9 @@ describe("debts MVP web UI", () => {
         />,
       )
 
-      expect(document.body.textContent).toContain("-300")
+      const amount = screen.getByText("-300", { selector: 'bdi[dir="ltr"]' })
+      expect(amount.previousElementSibling?.textContent).toBe("دج")
+      expect(amount.parentElement?.getAttribute("dir")).toBe("ltr")
     })
   })
 

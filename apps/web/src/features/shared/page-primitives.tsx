@@ -126,7 +126,7 @@ function SurfaceHeader({
   className,
 }: {
   title: string
-  description?: string
+  description?: ReactNode
   action?: ReactNode
   className?: string
 }) {
@@ -168,7 +168,7 @@ function StatBand({
 }: {
   stats: Array<{
     label: string
-    value: string | number
+    value: ReactNode
     meta?: string
     tone?: "good" | "warn" | "bad" | "neutral"
   }>

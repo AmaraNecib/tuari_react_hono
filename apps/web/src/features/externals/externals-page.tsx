@@ -1,6 +1,7 @@
 /**
  * External counterparties listing page.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -78,7 +79,7 @@ export function ExternalCounterpartiesPage({
                     </TableCell>
                     <TableCell className={balance.textClassName}>
                       <span className="block text-xs font-medium">{balance.phrase}</span>
-                      <span className="font-mono" dir="ltr">دج {formatDebtAmount(balance.amount)}</span>
+                      <span className="font-mono" dir="ltr"><CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel="دج" /></span>
                     </TableCell>
                     <TableCell>
                       {counterparty.totalCaseCount} {t("externalsPage.caseUnit")}{counterparty.openCaseCount ? `، ${counterparty.openCaseCount} ${t("externalsPage.openCases")}` : ""}

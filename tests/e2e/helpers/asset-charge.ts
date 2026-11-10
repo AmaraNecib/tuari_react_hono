@@ -94,10 +94,25 @@ export async function expectProjectCost(page: Page, fixture: TransferFixture, am
   await page.goto(`/projects/${fixture.projectId}`)
   await page.getByRole("tab", { name: "التكلفة", exact: true }).click()
   const panel = page.getByRole("tabpanel", { name: "التكلفة", exact: true })
-  const money = `${amount.toLocaleString("en-US")} دج`
+  const numericText = amount.toLocaleString("en-US")
   const total = panel.locator("section").filter({ has: page.getByRole("heading", { name: "الإجمالي", exact: true }) })
-  await expect(total.locator("p")).toHaveText(money)
-  await expect(panel.getByRole("listitem").filter({ hasText: "عتاد مخصّص" })).toContainText(money)
+  const contribution = panel.getByRole("listitem").filter({ hasText: "عتاد مخصّص" })
   const stock = panel.locator("section").filter({ has: page.getByRole("heading", { name: "عتاد على المشروع", exact: true }) })
-  await expect(stock.getByRole("listitem").filter({ hasText: fixture.assetName })).toContainText(money)
+  const asset = stock.getByRole("listitem").filter({ hasText: fixture.assetName })
+  for (const surface of [total.locator("p"), contribution, asset]) {
+    const numericRun = surface.locator('bdi[dir="ltr"]')
+    await expect(numericRun).toHaveText(numericText)
+    const placement = await numericRun.evaluate(element => {
+      const label = element.previousElementSibling!
+      return {
+        label: label.textContent,
+        labelDirection: label.getAttribute("dir"),
+        labelRight: label.getBoundingClientRect().right,
+        numberLeft: element.getBoundingClientRect().left,
+      }
+    })
+    expect(placement.label).toBe("دج")
+    expect(placement.labelDirection).toBe("rtl")
+    expect(placement.labelRight).toBeLessThanOrEqual(placement.numberLeft + 0.5)
+  }
 }
