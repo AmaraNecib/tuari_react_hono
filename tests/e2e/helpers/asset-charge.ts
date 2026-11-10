@@ -99,7 +99,7 @@ export async function expectProjectCost(page: Page, fixture: TransferFixture, am
   const contribution = panel.getByRole("listitem").filter({ hasText: "عتاد مخصّص" })
   const stock = panel.locator("section").filter({ has: page.getByRole("heading", { name: "عتاد على المشروع", exact: true }) })
   const asset = stock.getByRole("listitem").filter({ hasText: fixture.assetName })
-  for (const surface of [total, contribution, asset]) {
+  for (const surface of [total.locator("p"), contribution, asset]) {
     const numericRun = surface.locator('bdi[dir="ltr"]')
     await expect(numericRun).toHaveText(numericText)
     const placement = await numericRun.evaluate(element => {
