@@ -218,6 +218,11 @@ export function derivedPrice(total: Money, quantity: Quantity): Readonly<{
 /** Finalize the whole document, nearest with exact ties away from zero. */
 export function finalizeLines(lines: readonly ExactLine[]): Money {
   boundedItems(lines.length);
+  return Money.parse(sumExactLineHistory(lines));
+}
+
+/** Read-only source history rounds once, without document count or persisted int64 limits. */
+export function sumExactLineHistory(lines: Iterable<ExactLine>): string {
   let total = fraction(0n, 1n);
   for (const line of lines) {
     const value = lineValues.get(line);
@@ -230,7 +235,17 @@ export function finalizeLines(lines: readonly ExactLine[]): Money {
   const sign = total.numerator < 0n ? -1n : 1n;
   const magnitude = total.numerator * sign;
   const rounded = magnitude / total.denominator + (2n * (magnitude % total.denominator) >= total.denominator ? 1n : 0n);
-  return Money.fromMinorUnits((sign * rounded).toString());
+  return render(sign * rounded, 2);
+}
+
+/** Combine already finalized report amounts without narrowing them back to persisted Money. */
+export function sumMoneyReports(amounts: Iterable<string>): string {
+  let total = 0n;
+  for (const amount of amounts) {
+    if (typeof amount !== "string" || amount.length > MAX_DIGITS || !/^-?(?:0|[1-9]\d*)\.\d{2}$/.test(amount)) throw new TypeError("Expected a bounded exact report amount");
+    total = limited(total + BigInt(amount.replace(".", "")));
+  }
+  return render(total, 2);
 }
 
 /** Reports may sum wider than persisted int64, without passing through SQL SUM or Number. */

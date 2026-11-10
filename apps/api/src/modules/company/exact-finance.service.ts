@@ -1,11 +1,13 @@
 import {
-  Money, sumMoneyHistory, getLockedDirectionForCategory,
+  Money, sumMoneyHistory, getLockedDirectionForCategory, exactDebtProducerSchema, exactFinanceAggregateOwnerSchema, type ExactDebtProducer, type ExactFinanceAggregateOwner,
   createExactDebtAccountSchema, postExactDebtEntrySchema, payExactDebtEntrySchema,
   correctExactDebtEntrySchema, voidExactDebtEntrySchema, settleExactDebtAccountSchema,
   type CreateExactDebtAccount, type PostExactDebtEntry, type PayExactDebtEntry,
   type CorrectExactDebtEntry, type VoidExactDebtEntry, type SettleExactDebtAccount,
 } from "@tuari/contracts";
-import type { ExactDebtAccount, ExactDebtEntry, ExactFinanceRepository } from "./exact-finance.repository";
+import type { ExactDebtAccount, ExactDebtEntry, ExactFinanceRepository, ExactTransactionParticipant } from "./exact-finance.repository";
+
+import { exactFinanceJson as aggregateJson } from "./exact-finance-json";
 
 export class ExactDebtError extends Error {
   constructor(message: string, readonly code: "BAD_REQUEST" | "NOT_FOUND" | "CONFLICT" = "BAD_REQUEST") { super(message); }
@@ -22,10 +24,48 @@ const normalize = (value: unknown): unknown => {
 
 /** Inert exact ledger lifecycle. Production composition continues to use FinanceService. */
 export class ExactFinanceService {
-  constructor(private readonly repository: ExactFinanceRepository, private readonly dependencies: { id(): string; now(): string }) {}
+  private readonly producer: ExactDebtProducer | null;
+  constructor(private readonly repository: ExactFinanceRepository, private readonly dependencies: { id(): string; now(): string }, producer: ExactDebtProducer | null = null) {
+    this.producer = producer ? Object.freeze(exactDebtProducerSchema.parse(producer)) : null;
+  }
+
+  get transactionIdentity() { return this.repository.transactionIdentity; }
+
+  runAggregate<T>(input: ExactDebtAudit & { requestId: string; producer: ExactFinanceAggregateOwner; intent: unknown }, participant: ExactTransactionParticipant, work: () => T): T {
+    if (work.constructor.name === "AsyncFunction") throw new ExactDebtError("Aggregate work must be synchronous JSON work");
+    const producer = exactFinanceAggregateOwnerSchema.parse(input.producer);
+    if (!/^[A-Za-z0-9:_-]{1,128}$/.test(input.requestId)) throw new ExactDebtError("Invalid aggregate request id");
+    const identity = this.transactionIdentity;
+    if (participant.transactionIdentity.connection !== identity.connection || participant.transactionIdentity.lock !== identity.lock) throw new ExactDebtError("Aggregate participants require the same connection and shared FIFO");
+    const id = JSON.stringify([producer.type, producer.id, input.requestId]);
+    const fingerprint = aggregateJson({ producer, intent: input.intent, actorUserId: input.actorUserId ?? null, actorLabel: input.actorLabel ?? null });
+    return participant.withTransaction(() => this.repository.withTransaction(() => {
+      const previous = this.repository.getAggregateCommand(id);
+      if (previous) {
+        if (previous.fingerprint !== fingerprint) throw new ExactDebtError("Aggregate command replay conflict", "CONFLICT");
+        return JSON.parse(previous.resultJson) as T;
+      }
+      const result = work();
+      const resultJson = aggregateJson(result);
+      this.repository.saveAggregateCommand({ id, fingerprint, resultJson });
+      return JSON.parse(resultJson) as T;
+    }));
+  }
+
+  /** Trusted domain composition only. This capability is not exposed by the debt RPC. */
+  forProducer(raw: ExactDebtProducer): ExactFinanceService {
+    return new ExactFinanceService(this.repository, this.dependencies, exactDebtProducerSchema.parse(raw));
+  }
+  private owns(entry: ExactDebtEntry): boolean {
+    return (entry.producerType ?? null) === (this.producer?.type ?? null)
+      && (entry.producerId ?? null) === (this.producer?.id ?? null);
+  }
+  private assertOwner(entry: ExactDebtEntry): void {
+    if (!this.owns(entry)) throw new ExactDebtError("Debt target must be changed through its producer", "CONFLICT");
+  }
 
   private command<T>(kind: string, input: Command, intent: unknown, work: () => T): T {
-    const fingerprint = JSON.stringify(normalize({ kind, intent, actorUserId: input.actorUserId ?? null, actorLabel: input.actorLabel ?? null }));
+    const fingerprint = JSON.stringify(normalize({ kind, producer: this.producer, intent, actorUserId: input.actorUserId ?? null, actorLabel: input.actorLabel ?? null }));
     if (fingerprint.length > 16000) throw new ExactDebtError("Debt command resource limit exceeded");
     return this.repository.withTransaction(() => {
       const previous = this.repository.getCommand(input.requestId);
@@ -37,6 +77,9 @@ export class ExactFinanceService {
       this.repository.saveCommand({ id: input.requestId, fingerprint, resultJson: JSON.stringify(result) });
       return result;
     });
+  }
+  requireParty(partyType: ExactDebtAccount["partyType"], id: string): void {
+    if (!this.repository.partyExists(partyType, id)) throw new ExactDebtError("Debt party not found", "NOT_FOUND");
   }
   getAccount(id: string): ExactDebtAccount {
     const account = this.repository.getAccount(id);
@@ -104,6 +147,7 @@ export class ExactFinanceService {
         this.repository.saveAccount(account);
       }
       const opening = Money.parse(input.openingBalanceDzd ?? "0", input.currency);
+      if (this.producer && opening.compare(zero()) !== 0) throw new ExactDebtError("Producer opening requires an explicit original posting");
       if (opening.compare(zero()) > 0) this.append(account, {
         entryType: this.listEntries(account.id).length ? "ADJUSTMENT" : "OPENING", signedAmountDzd: opening.toWire(),
         entryDate: now, note: input.note, reasonCategory: input.reasonCategory, reasonDetail: input.reasonDetail,
@@ -116,6 +160,8 @@ export class ExactFinanceService {
     const audit = this.audit(raw);
     return this.command("post", { ...input, ...audit }, input, () => {
       const account = this.getAccount(input.debtAccountId);
+      if (input.invoiceId && this.producer?.type !== "INVOICE") throw new ExactDebtError("Invoice linkage requires a validated invoice producer");
+      if (this.producer?.type === "INVOICE" && input.invoiceId !== this.producer.id) throw new ExactDebtError("Invoice producer linkage mismatch");
       const amount = Money.parse(input.signedAmountDzd, input.currency);
       this.assertCurrency(account, input.currency);
       if (amount.compare(zero()) === 0) throw new ExactDebtError("Posting must be nonzero");
@@ -154,6 +200,7 @@ export class ExactFinanceService {
     const audit = this.audit(raw);
     return this.command("payment", { ...input, ...audit }, input, () => {
       const target = this.obligation(input.debtEntryId);
+      this.assertOwner(target);
       const account = this.getAccount(target.debtAccountId);
       this.assertCurrency(account, input.currency);
       const amount = Money.parse(input.amountDzd, input.currency);
@@ -167,6 +214,7 @@ export class ExactFinanceService {
     const audit = this.audit(raw);
     return this.command("correction", { ...input, ...audit }, input, () => {
       const target = this.obligation(input.entryId);
+      this.assertOwner(target);
       const account = this.getAccount(target.debtAccountId);
       this.assertCurrency(account, input.currency);
       const rows = this.listEntries(account.id);
@@ -192,7 +240,7 @@ export class ExactFinanceService {
       let current = account;
       const positive: ExactDebtEntry[] = [];
       const negative: ExactDebtEntry[] = [];
-      for (const target of rows.filter(row => row.status === "LIVE" && !row.targetEntryId && !row.correctionOfEntryId)) {
+      for (const target of rows.filter(row => row.status === "LIVE" && !row.targetEntryId && !row.correctionOfEntryId && this.owns(row))) {
         const sign = remainders.get(target.id)!.compare(zero());
         if (sign > 0) positive.push(target);
         if (sign < 0) negative.push(target);
@@ -217,6 +265,7 @@ export class ExactFinanceService {
     const audit = this.audit(raw);
     return this.command("void", { ...input, ...audit }, input, () => {
       const target = this.liveEntry(input.entryId);
+      this.assertOwner(target);
       const account = this.getAccount(target.debtAccountId);
       this.assertCurrency(account, input.currency);
       const rows = this.listEntries(account.id);
@@ -257,7 +306,11 @@ export class ExactFinanceService {
     const amount = Money.parse(input.signedAmountDzd, account.currency);
     const balance = Money.parse(account.currentBalance, account.currency).add(amount);
     const now = this.dependencies.now();
-    const entry: ExactDebtEntry = { id: this.dependencies.id(), debtAccountId: account.id, currency: account.currency, postingSequence: (latest?.postingSequence ?? 0) + 1, entryType: input.entryType, signedAmountDzd: amount.toWire(), balanceAfterDzd: balance.toWire(), entryDate: input.entryDate, note: input.note ?? null, reasonCategory: input.reasonCategory ?? "INVOICE_DRIVEN", reasonDetail: input.reasonDetail ?? null, paymentMethod: input.paymentMethod ?? null, status: "LIVE", voidedAt: null, voidedBy: null, voidReason: null, invoiceId: input.invoiceId ?? null, targetEntryId: input.targetEntryId ?? null, correctionOfEntryId: input.correctionOfEntryId ?? null, ...this.audit(audit), createdAt: now, updatedAt: now };
+    const original = input.targetEntryId || input.correctionOfEntryId ? this.repository.getEntry((input.targetEntryId ?? input.correctionOfEntryId)!) : null;
+    const provenance = original
+      ? { producerType: original.producerType, producerId: original.producerId, invoiceId: original.invoiceId }
+      : { producerType: this.producer?.type ?? null, producerId: this.producer?.id ?? null, invoiceId: input.invoiceId ?? null };
+    const entry: ExactDebtEntry = { ...provenance, id: this.dependencies.id(), debtAccountId: account.id, currency: account.currency, postingSequence: (latest?.postingSequence ?? 0) + 1, entryType: input.entryType, signedAmountDzd: amount.toWire(), balanceAfterDzd: balance.toWire(), entryDate: input.entryDate, note: input.note ?? null, reasonCategory: input.reasonCategory ?? "INVOICE_DRIVEN", reasonDetail: input.reasonDetail ?? null, paymentMethod: input.paymentMethod ?? null, status: "LIVE", voidedAt: null, voidedBy: null, voidReason: null, targetEntryId: input.targetEntryId ?? null, correctionOfEntryId: input.correctionOfEntryId ?? null, ...this.audit(audit), createdAt: now, updatedAt: now };
     this.repository.saveEntry(entry);
     this.updateBalance(account, balance, audit);
     return entry;
