@@ -139,7 +139,7 @@ describe("ProjectCostSection (#414)", () => {
     render(<ProjectCostSection projectId="p-1" />)
 
     expect(screen.getByText("260,000", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
-    const amounts = [...document.querySelectorAll('bdi[dir="ltr"]')]
+    const amounts = [...document.querySelectorAll('span[dir="ltr"] > span[dir="rtl"] + bdi[dir="ltr"]')]
     expect(amounts.map(el => el.textContent)).toEqual([
       "260,000", "10,000", "36,000", "180,000", "34,000", "10,000", "36,000", "180,000", "850", "+34,000", "180,000", "180,000",
     ])
