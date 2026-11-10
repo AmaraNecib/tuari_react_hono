@@ -34,7 +34,8 @@ describe("form control placeholder contrast", () => {
     expect(input.parentElement?.getAttribute("dir")).toBe("ltr")
     expect(input.parentElement?.firstElementChild?.textContent).toBe("دج")
     expect(input.getAttribute("dir")).toBe("ltr")
-    expect(input.className).toContain("text-left")
+    expect(input.className).toContain("text-right")
+    expect(input.parentElement?.firstElementChild?.className).toContain("border-r")
   })
 
   it("bumps the placeholder to the full-opacity muted token in dark mode", () => {

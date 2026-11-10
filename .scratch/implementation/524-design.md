@@ -197,6 +197,23 @@ owner will merge manually. PR533 waits for actual PR532 merge before safe
 non-destructive standalone retarget; no new stacked publication, reset, rebase,
 force push, production activation or premature merge is authorized.
 
+## Approved input refinement
+
+Owner approved the inline prototype after7477362c and authorized implementation.
+Static numeric/exact MoneyValue placement remains unchanged. Editable CurrencyInput
+aligns the intact LTR digit run to the right for Arabic and to the left for LTR
+locales. The fixed Arabic unit stays inside the same outer field on its physical
+left, separated by a subtle vertical border. It is not a button or second input.
+Existing optional onPayFull remains the only action authority. The button now says
+كامل المبلغ and uses the installed Button and Tooltip components. A full amount
+description remains accessible, visually hidden for hover+fine-pointer devices,
+visible for non-hover/touch devices. Existing Tooltip supplies hover/focus/Escape
+behavior; device capability, not viewport width, chooses the touch description.
+No instructional prototype copy is shipped. Legacy numeric amount formatting and
+exact string limits remain intact. Legacy label is now explicitly associated with
+its native input; both buttons remain non-submit and disabled with the field.
+This prototype approval is not final-source merge/activation approval.
+
 ## Planned proof and remaining gates
 
 Use the preapproved service/RPC and real repository seams, independent literal

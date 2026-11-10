@@ -2,13 +2,41 @@
  * Currency amount input with optional "Pay Full" button.
  * Used for payment and financial forms.
  */
-import { useId, useState } from "react"
+import { useId, useState, useSyncExternalStore } from "react"
 import { Money } from "@tuari/contracts"
 import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
 import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
 import { CurrencyRun } from "@/features/shared/money-value"
 import { Button } from "@/components/ui/button"
 import { CurrencyInput } from "@/components/ui/form-controls"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
+
+const HOVER_QUERY = "(hover: hover) and (pointer: fine)"
+function hoverAvailable() {
+  return typeof window !== "undefined" && Boolean(window.matchMedia?.(HOVER_QUERY).matches)
+}
+function subscribeHover(onChange: () => void) {
+  const media = window.matchMedia?.(HOVER_QUERY)
+  media?.addEventListener("change", onChange)
+  return () => media?.removeEventListener("change", onChange)
+}
+const noHover = () => false
+
+function FullPaymentButton({ amount, onClick, disabled }: { amount: string; onClick: () => void; disabled: boolean }) {
+  const id = useId()
+  const canHover = useSyncExternalStore(subscribeHover, hoverAvailable, noHover)
+  return <div className="flex shrink-0 flex-col items-end gap-1">
+    <Tooltip disabled={!canHover || disabled}>
+      <TooltipTrigger delay={200} render={<Button type="button" onClick={onClick} disabled={disabled} aria-describedby={id} className="h-10 whitespace-nowrap" />}>
+        كامل المبلغ
+      </TooltipTrigger>
+      <TooltipContent dir="rtl">المتبقي: <CurrencyRun amount={amount} currencyLabel="دج" /></TooltipContent>
+    </Tooltip>
+    <span id={id} className={canHover ? "sr-only" : "text-xs text-muted-foreground"}>
+      المتبقي: <CurrencyRun amount={amount} currencyLabel="دج" />
+    </span>
+  </div>
+}
 
 /**
  * @description Component
@@ -32,16 +60,19 @@ function LegacyCurrencyAmountInput({
   disabled?: boolean
   error?: string | boolean
 }) {
+  const id = useId()
   const normalized = value.trim()
   const amountValue = normalized.length > 0 ? Number(normalized) : null
   const exceedsMax = maxAmount !== undefined && amountValue !== null && amountValue > maxAmount
 
   return (
     <div className="flex flex-col gap-2">
-      {label && <span className="text-sm font-medium text-foreground">{label}</span>}
+      {label && <label htmlFor={id} className="text-sm font-medium text-foreground">{label}</label>}
       <div className="flex gap-2">
         <div className="min-w-0 flex-1">
           <CurrencyInput
+            id={id}
+            aria-label={label ? undefined : "المبلغ"}
             placeholder={placeholder}
             value={value}
             onChange={(e) => onChange(e.target.value)}
@@ -51,9 +82,7 @@ function LegacyCurrencyAmountInput({
           {typeof error === "string" && error && <p className="mt-1 text-xs text-red-600 dark:text-red-400">{error}</p>}
         </div>
         {onPayFull && maxAmount !== undefined && (
-          <Button size="sm" variant="outline" onClick={onPayFull} disabled={disabled} className="whitespace-nowrap">
-            <CurrencyRun amount={maxAmount.toFixed(2)} currencyLabel="دج" />
-          </Button>
+          <FullPaymentButton amount={maxAmount.toFixed(2)} onClick={onPayFull} disabled={disabled} />
         )}
       </div>
     </div>
@@ -105,7 +134,7 @@ function ExactCurrencyAmountInput({ label, value, onChange, onPayFull, maxAmount
           {message && <p id={`${id}-error`} role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{message}</p>}
         </div>
         {onPayFull && maximum !== undefined && (
-          <Button type="button" size="sm" variant="outline" onClick={onPayFull} disabled={disabled} className="whitespace-nowrap"><CurrencyRun amount={maxLabel!} currencyLabel="دج" /></Button>
+          <FullPaymentButton amount={maxLabel!} onClick={onPayFull} disabled={disabled} />
         )}
       </div>
     </div>
