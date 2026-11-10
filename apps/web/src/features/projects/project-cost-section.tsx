@@ -96,19 +96,19 @@ export function ProjectCostSection({
           {sources.map((source) => {
             const percent = percentOf(source.value)
             return (
-              <li key={source.key} className="flex items-center gap-2 text-sm sm:gap-3">
+              <li key={source.key} className="grid min-w-0 grid-cols-[0.625rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-sm sm:flex sm:gap-3">
                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${source.bar}`} aria-hidden="true" />
-                <span className="w-28 shrink-0 text-ink-2 sm:w-40">{source.label}</span>
-                <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2">
+                <span className="min-w-0 text-ink-2 sm:w-40 sm:shrink-0">{source.label}</span>
+                <span className="col-span-2 row-start-2 h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2">
                   <span
                     className={`block h-full rounded-full ${source.bar}`}
                     style={{ width: `${percent}%` }}
                   />
                 </span>
-                <span className="w-10 shrink-0 text-left text-xs text-ink-3">
+                <span className="col-start-3 row-start-2 shrink-0 text-left text-xs text-ink-3 sm:w-10">
                   {t("detailPages.project.cost.share", { percent })}
                 </span>
-                <span className="w-28 shrink-0 text-left font-mono text-ink" dir="ltr">
+                <span className="col-start-3 row-start-1 shrink-0 text-left font-mono text-ink sm:w-28" dir="ltr">
                   {money(source.value)}
                 </span>
               </li>

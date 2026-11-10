@@ -64,7 +64,11 @@ describe("SystemLogSection detail tokenizer", () => {
 
     // The two monetary chips split out of the bullet-joined line.
     const signed = screen.getByText("+1000", { selector: 'bdi[dir="ltr"]' });
-    expect(signed.parentElement?.parentElement?.textContent).toBe("القيمة دج +1000");
+    const prose = signed.parentElement!.parentElement!;
+    expect(prose.textContent).toBe("القيمة دج +1000");
+    expect(prose.firstChild?.textContent).toBe("القيمة ");
+    expect(prose.classList.contains("inline-flex")).toBe(false);
+    expect(prose.parentElement?.classList.contains("inline-flex")).toBe(true);
     expect(screen.getByText("1000", { selector: 'bdi[dir="ltr"]' }).parentElement?.parentElement?.textContent).toBe("الرصيد بعد العملية دج 1000");
 
     // No raw i18n key text may leak into the rendered detail cell.

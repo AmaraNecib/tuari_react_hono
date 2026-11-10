@@ -10,17 +10,30 @@ import { chromium } from "@playwright/test"
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 process.chdir(root)
 const webRequire = createRequire(path.join(root, "apps/web/package.json"))
-for (const location of ["tests/currency-placement/node_modules", ".scratch/reviews/535/baseline/apps/web/node_modules"]) {
-  try { await fs.lstat(path.join(root, location)) } catch {
-    await fs.symlink(path.join(root, "apps/web/node_modules"), path.join(root, location), "junction")
+const baseline = "7a56b245740d6d2ef836181cd150011657be0303"
+const sources = process.env.CURRENCY_BASELINE_ONLY === "1" ? ["before"] : process.env.CURRENCY_AFTER_ONLY === "1" ? ["after"] : ["before", "after"]
+const baselineParent = path.join(root, ".scratch/reviews/535/baselines")
+let baselineRoot
+if (sources.includes("before")) {
+  await fs.mkdir(baselineParent, { recursive: true })
+  baselineRoot = await fs.mkdtemp(path.join(baselineParent, `${baseline}-`))
+  const archive = execFileSync("git", ["archive", baseline, "apps/web/src"], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
+  execFileSync("tar", ["-xf", "-", "-C", baselineRoot], { cwd: root, input: archive })
+}
+const dependencyLocations = [path.join(root, "tests/currency-placement/node_modules")]
+if (baselineRoot) dependencyLocations.push(path.join(baselineRoot, "apps/web/node_modules"))
+for (const location of dependencyLocations) {
+  await fs.mkdir(path.dirname(location), { recursive: true })
+  try { await fs.lstat(location) } catch {
+    await fs.symlink(path.join(root, "apps/web/node_modules"), location, "junction")
   }
 }
 const { createServer } = await import(pathToFileURL(webRequire.resolve("vite")))
 const { default: tailwind } = await import(pathToFileURL(webRequire.resolve("@tailwindcss/vite")))
 const output = path.resolve(process.env.CURRENCY_OUTPUT ?? ".scratch/reviews/535/browser-draft")
+await fs.mkdir(path.dirname(output), { recursive: true })
 await fs.mkdir(output, { recursive: false })
 const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim()
-const sources = process.env.CURRENCY_BASELINE_ONLY === "1" ? ["before"] : process.env.CURRENCY_AFTER_ONLY === "1" ? ["after"] : ["before", "after"]
 const surfaces = ["dashboard", "reports", "project", "ledger", "party", "external", "history", "invoice", "transfers", "audit"]
 const expectedValues = {
   dashboard: ["1.500"], reports: ["1.234,567", "0", "-50,125"],
@@ -42,12 +55,12 @@ const hookFiles = ["features/inventory/inventory-hooks.ts", "features/debts/debt
 const tree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { cwd: root, encoding: "utf8" }).trim()
 const sourceStatus = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"], { cwd: root, encoding: "utf8" })
 const startedAt = new Date().toISOString()
-const report = { head, tree, sourceStatus, startedAt, baseline: "7a56b245740d6d2ef836181cd150011657be0303", fixture: "tests/currency-placement/fixture.tsx", records: [], errors: [] }
+const report = { head, tree, sourceStatus, startedAt, baseline, baselineRoot, fixture: "tests/currency-placement/fixture.tsx", records: [], errors: [] }
 let browser
 try {
   browser = await chromium.launch({ headless: true })
   for (const source of sources) {
-    const sourceRoot = path.join(root, source === "before" ? ".scratch/reviews/535/baseline/apps/web/src" : "apps/web/src")
+    const sourceRoot = source === "before" ? path.join(baselineRoot, "apps/web/src") : path.join(root, "apps/web/src")
     const modules = new Map()
     for (const file of hookFiles) {
       const content = await fs.readFile(path.join(root, "apps/web/src", file), "utf8")
@@ -78,7 +91,7 @@ try {
     try {
       await server.listen()
       const origin = server.resolvedUrls.local[0]
-      for (const width of [1280, 390]) {
+      for (const width of [1280, 390, 360]) {
         const page = await browser.newPage({ viewport: { width, height: 960 }, deviceScaleFactor: 1, reducedMotion: "reduce" })
         page.on("pageerror", e => report.errors.push({ source, width, message: e.message }))
         for (const direction of ["rtl", "ltr"]) for (const surface of surfaces) {
@@ -123,6 +136,28 @@ try {
           report.records.push({ source, surface, width, direction, geometry, baselineGeometry })
           if (source === "before" && surface === "project") assert.ok(baselineGeometry.some(run => run.labelRight > run.numberLeft+1), "baseline must expose wrong physical-right currency")
           if (source === "after") {
+            if (surface === "project") {
+              const rows = main.locator("section").first().locator("li").filter({ has: page.locator("bdi") })
+              assert.equal(await rows.count(), 4)
+              for (const row of await rows.all()) {
+                assert.ok(await row.evaluate(el => el.scrollWidth <= el.clientWidth + 1), "project contribution row must fit real MainContent/card width")
+              }
+            }
+            if (surface === "audit") {
+              for (const run of await main.locator('bdi[dir="ltr"]').all()) {
+                const spacing = await run.evaluate(el => {
+                  const wrapper = el.parentElement.parentElement
+                  const prefix = [...wrapper.childNodes].find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim())
+                  const end = prefix.textContent.trimEnd().length
+                  const range = document.createRange()
+                  range.setStart(prefix, end - 1); range.setEnd(prefix, end)
+                  const word = range.getBoundingClientRect(), amount = el.parentElement.getBoundingClientRect()
+                  return { display: getComputedStyle(wrapper).display, sameLine: Math.min(word.bottom, amount.bottom) > Math.max(word.top, amount.top), gap: Math.max(word.left - amount.right, amount.left - word.right) }
+                })
+                assert.ok(!["flex", "inline-flex", "grid", "inline-grid"].includes(spacing.display), "audit prefix and currency must share normal text flow")
+                assert.ok(!spacing.sameLine || spacing.gap >= 1, "audit prose must retain visible space before amount")
+              }
+            }
             assert.equal(geometry.length, expectedCounts[surface], `${surface}/${width}: currency callsite count`)
             assert.deepEqual(geometry.map(run => run.text.replace(/[\u061c\u200e\u200f]/g, "")), expectedValues[surface], `${surface}: preserve original formatter output`)
             for (const run of geometry) {

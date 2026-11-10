@@ -140,7 +140,7 @@ function SystemLogDetailsCell({ detail }: { detail: string | null | undefined })
                   getDetailTokenClassName(token),
                 )}
               >
-                <CurrencyProse text={token} />
+                <span><CurrencyProse text={token} /></span>
               </span>
             ))}
           </div>

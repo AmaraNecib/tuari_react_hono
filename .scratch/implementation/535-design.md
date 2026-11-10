@@ -131,11 +131,27 @@ checks. Their expected numeric values were correct; the expected string layout
 was obsolete after CurrencyRun adoption. CI logs retain both exact failures.
 Update those assertions to inspect the unchanged numeric runs and currency
 labels, and add real label-left geometry to all three project-cost E2E checks.
-This bounded correction changes tests only, not production rendering. Run the
-specific HomeView case and affected asset-charge integration suite, then obtain
-one fresh combined-delta review carrying forward all three initial conclusions.
-Existing `03ca1a44` component geometry and public images retain that exact source
-identity; unchanged production source does not require another browser capture.
+Those two assertion corrections changed tests only and passed 56 HomeView
+cases plus all seven asset-charge integration cases. The first local E2E probe
+exposed an overly broad new total-run locator; scope it to the original total
+paragraph and preserve that failed log as well.
+
+Hosted review on `03ca1a44` then reported three supported issues: the project
+row's fixed columns overflow inside the real MainContent padding; inline-flex
+audit chips can drop the prose prefix's trailing space; and the browser script
+relied on an ignored baseline directory even in after-only mode. Correct the
+mobile project row with a two-line grid while retaining desktop flex layout,
+wrap audit prose in a normal text-flow span, and create fresh baseline archives
+and output parents from tracked setup code. After-only setup skips baseline
+work entirely. The fixture now imports actual MainContent with the shell's
+px-10/py-8 classes, rather than approximating that width with p-4.
+
+Add row-fit and audit text-flow/spacing assertions at 360px as well as 390px and
+1280px. The real-shell row assertion failed before the production correction.
+Fresh current-head before/after media supersedes the earlier p-4 fixture for UI
+acceptance; earlier proof remains honestly labeled historical. Refresh affected
+unit/type/lint and the asset-charge integration cases, then obtain one fresh
+combined-delta review carrying forward all three initial lens conclusions.
 
 ## Verification plan and evidence boundaries
 

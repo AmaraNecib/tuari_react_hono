@@ -11,6 +11,7 @@ import { ExternalCounterpartiesPage } from "@/features/externals/externals-page"
 import { RecordHistoryTable } from "@/features/shared/record-page-frame"
 import { InventoryInvoiceDetailsPage } from "@/features/inventory/inventory-invoice-details-page"
 import { TransferHistoryPage } from "@/features/inventory/transfer-history-page"
+import { MainContent } from "@/components/ui/skip-navigation"
 import { SystemLogSection } from "@/features/app-shell/system-log-section"
 
 const noop = () => {}
@@ -82,6 +83,8 @@ const surface = params.get("surface") ?? "project"
 document.documentElement.dir = params.get("dir") ?? "rtl"
 createRoot(document.getElementById("root")!).render(
   <QueryClientProvider client={new QueryClient()}>
-    <main data-currency-surface={surface} className="p-4">{surfaces[surface]}</main>
+    <div data-currency-surface={surface}>
+      <MainContent className="flex-1 overflow-auto overscroll-contain px-10 py-8">{surfaces[surface]}</MainContent>
+    </div>
   </QueryClientProvider>,
 )
