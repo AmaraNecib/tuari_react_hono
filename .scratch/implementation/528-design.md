@@ -207,6 +207,17 @@ The numeric expense E2E text assumed the former suffix DOM order. Its assertions
 now measure actual shared bdi/currency bounding boxes with intended2-12px gap,
 not a reordered literal string. No production source change for this update.
 
+Actual06227ea2 mobile geometry found a real expense group min-content overflow:
+at390px the document expanded to510px and the card reached487px. Logs84/85
+and native failing crop are retained. Root cause was implicit grid min-content
+tracks plus nonwrapping header/item/action rows, not the shared CurrencyRun.
+Expense-only fix gives the grid an explicit one-column minmax track and zero
+minimum cards; group header/item/actions wrap. No currency order, amount data,
+or date source changed.25 page regressions/types/lint pass locally in86; native
+mobile correction proof follows on the committed head. Numeric E2E geometry
+already passed43.7s on06227ea2, and that earlier execution is not relabeled as
+a later head. Its initial zero-suffix assertion failure82 remains distinct.
+
 Final child proof must run against the committed integration head: affected
 expense/renderer tests, numeric E2E and exact fixture real expense geometry,
 fresh cropped element evidence and bounded delta review. Preserve rejected

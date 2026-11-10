@@ -327,10 +327,10 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
               description={t("expenses.empty.description")}
             />
           ) : groupByProject ? (
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
               {displayedGroups.map((group) => (
-                <Surface key={group.projectId ?? "untagged"} variant="card" className="p-4">
-                  <div className="flex items-center justify-between gap-3">
+                <Surface key={group.projectId ?? "untagged"} variant="card" className="min-w-0 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <h3 className={group.projectId ? "font-medium text-ink" : "font-medium text-ink-3"}>
                       {projectLabel(group.projectId)}
                     </h3>
@@ -338,13 +338,13 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
                   </div>
                   <ul className="mt-3 space-y-2">
                     {(itemsByGroup.get(group.projectId) ?? []).map((item) => (
-                      <li key={item.id} className="flex items-center justify-between gap-3 text-sm">
+                      <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                         <span className="min-w-0 truncate text-ink-2">
                           <span className="text-ink-4">{formatExpenseDate(item.expenseDate)}</span>
                           {" · "}
                           {item.whatFor ?? t("expenses.noDescription")}
                         </span>
-                        <span className="shrink-0">
+                        <span className="flex max-w-full flex-wrap items-center gap-2">
                           {item.responsibleWorkerId ? (
                             <span className="me-2 rounded-full border border-line px-2 py-0.5 text-xs text-ink-2">
                               {workerNameById.get(item.responsibleWorkerId) ?? t("expenses.unknownWorker")}

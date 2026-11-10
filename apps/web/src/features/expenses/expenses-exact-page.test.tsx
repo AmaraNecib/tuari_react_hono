@@ -67,6 +67,19 @@ describe("ExactExpensesPage", () => {
     expect(screen.getByText("Exact expense")).toBeTruthy()
   })
 
+  it("allows long exact group totals and actions to wrap without forcing grid intrinsic width", () => {
+    listQuery.mockReturnValue({ data: exactData, isPending: false, isError: false, isFetching: false })
+    detailQuery.mockReturnValue({ data: undefined, isPending: false, isError: false })
+    renderExact()
+    fireEvent.click(screen.getByRole("button", { name: "تجميع حسب المشروع" }))
+    const item = screen.getByRole("listitem")
+    expect(item.classList.contains("flex-wrap")).toBe(true)
+    expect(item.querySelector(".max-w-full.flex-wrap")).toBeTruthy()
+    const card = item.closest("section")!
+    expect(card.classList.contains("min-w-0")).toBe(true)
+    expect(card.parentElement!.classList.contains("grid-cols-1")).toBe(true)
+  })
+
   it("renders historical aggregates beyond the old 21-digit assumption", () => {
     const total = "9223372036854775807000.00"
     listQuery.mockReturnValue({ data: { ...exactData, totals: { ...exactData.totals, total, taggedToProject: total }, groupsByProject: [{ projectId: "project-1", total, count: 100000 }] }, isPending: false, isError: false, isFetching: false })
