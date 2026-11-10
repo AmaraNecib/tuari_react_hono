@@ -2,11 +2,25 @@ import { cleanup, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { ExactSalaryReferenceValue } from "./exact-salary-reference-value"
 import { setMoneyGrouping } from "@/features/preferences/money-format-preference"
+import { i18n } from "@/i18n"
 
 afterEach(cleanup)
 beforeEach(() => setMoneyGrouping(false))
 
 describe("exact salary reference display", () => {
+  it("resolves empty and currency labels through the application translations", () => {
+    const original = { none: i18n.t("common.none"), currency: i18n.t("common.currency") }
+    i18n.addResourceBundle("ar", "translation", { common: { none: "translated-empty", currency: "translated-currency" } }, true, true)
+    try {
+      const view = render(<ExactSalaryReferenceValue reference={null} />)
+      expect(screen.getByText("translated-empty")).toBeTruthy()
+      view.rerender(<ExactSalaryReferenceValue reference={{ period: "MONTHLY", amount: "100" }} />)
+      expect(screen.getByText("translated-currency")).toBeTruthy()
+    } finally {
+      i18n.addResourceBundle("ar", "translation", { common: original }, true, true)
+    }
+  })
+
   it("shows an optional four-place daily rate without converting it to finalized cash", () => {
     render(<ExactSalaryReferenceValue reference={{ period: "DAILY", amount: "1500.1250" }} />)
     expect(screen.getByText("1500.125")).toBeTruthy()

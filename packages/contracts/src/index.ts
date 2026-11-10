@@ -3,6 +3,7 @@ export * from "./core";
 export * from "./auth";
 export * from "./workforce";
 export * from "./workforce-exact";
+export * from "./workforce-monthly-exact";
 export * from "./salary-days";
 export * from "./round-to-decimals";
 export * from "./projects";
