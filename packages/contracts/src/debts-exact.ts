@@ -13,7 +13,14 @@ const nonnegative = exactDebtAmountSchema.refine(value => Money.parse(value).com
 const note = z.string().trim().max(1000).nullable().optional();
 const command = { requestId: z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/), currency: z.literal("DZD").default("DZD") };
 export const exactDebtAccountSchema = debtAccountSchema.extend({ currency: z.literal("DZD"), currentBalance: exactDebtAmountSchema });
+export const exactDebtProducerTypeSchema = z.enum(["INVOICE", "INVENTORY_PURCHASE", "INVENTORY_OUTBOUND", "PAYROLL_EARNINGS", "PAYROLL_OPENING", "PAYROLL_ADVANCE"]);
+export const exactDebtProducerSchema = z.object({ type: exactDebtProducerTypeSchema, id: entityIdSchema.max(128) }).strict();
+export const exactFinanceAggregateOwnerSchema = z.object({ type: z.enum([...exactDebtProducerTypeSchema.options, "PAYMENT", "INVENTORY_CHARGE", "INVENTORY_TRANSFER"]), id: entityIdSchema.max(128) }).strict();
+export type ExactFinanceAggregateOwner = z.infer<typeof exactFinanceAggregateOwnerSchema>;
+export type ExactDebtProducer = z.infer<typeof exactDebtProducerSchema>;
+
 export const exactDebtEntrySchema = debtEntrySchema.extend({
+  producerType: exactDebtProducerTypeSchema.nullable().default(null), producerId: entityIdSchema.nullable().default(null),
   currency: z.literal("DZD"), signedAmountDzd: exactDebtAmountSchema, balanceAfterDzd: exactDebtAmountSchema,
   invoiceId: entityIdSchema.nullable(), targetEntryId: entityIdSchema.nullable(), correctionOfEntryId: entityIdSchema.nullable(),
   postingSequence: z.number().int().positive().max(100000),
@@ -30,6 +37,7 @@ export const createExactDebtAccountSchema = z.object({
 });
 export const postExactDebtEntrySchema = z.object({
   ...command, debtAccountId: entityIdSchema, entryType: z.enum(["OPENING", "ADVANCE", "ADJUSTMENT"]),
+  invoiceId: entityIdSchema.nullable().optional(),
   signedAmountDzd: exactDebtAmountSchema, entryDate: timestampSchema.transform(value => new Date(value).toISOString()).optional(), note,
   reasonCategory: debtReasonCategorySchema.optional(), reasonDetail: note,
 });

@@ -1,7 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { parseLocalizedMoneyInput } from "./exact-money-input";
+import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "./exact-money-input";
 
 describe("exact finalized-money form submission", () => {
+  it("parses four-place localized prices through the same grouping rules without rounding cash", () => {
+    expect(parseLocalizedUnitPriceInput("١٬٢٣٤٫٥٦٧٨").toWire()).toBe("1234.5678");
+    expect(parseLocalizedUnitPriceInput("۹۲۲٬۳۳۷٬۲۰۳٬۶۸۵٬۴۷۷٫۵۸۰۷").toWire()).toBe("922337203685477.5807");
+    expect(parseLocalizedUnitPriceInput(" 0012.5 ").toWire()).toBe("12.5000");
+    expect(() => parseLocalizedMoneyInput("١٬٢٣٤٫٥٦٧٨")).toThrow();
+    for (const value of ["1.00001", "922337203685477.5808", "1,23", "1,234٬567", "1e4", "", "\u202e12"]) expect(() => parseLocalizedUnitPriceInput(value)).toThrow();
+  });
   it.each([
     ["90071992547409.93", "90071992547409.93"],
     ["92,233,720,368,547,758.07", "92233720368547758.07"],

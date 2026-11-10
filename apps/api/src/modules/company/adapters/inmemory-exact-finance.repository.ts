@@ -12,17 +12,19 @@ export class InMemoryExactFinanceRepository implements ExactFinanceRepository {
   partyExists(partyType: ExactDebtAccount["partyType"], id: string): boolean {
     return (partyType === "INTERNAL_WORKER" ? this.workers : this.externalParties).has(id);
   }
+  readonly transactionIdentity = { connection: this, lock: this };
+  private aggregateCommands = new Map<string, ExactDebtCommand>();
   private accounts = new Map<string, ExactDebtAccount>();
   private entries = new Map<string, ExactDebtEntry>();
   private commands = new Map<string, ExactDebtCommand>();
   withTransaction<T>(work: () => T): T {
-    const snapshot = structuredClone([this.accounts, this.entries, this.commands] as const);
+    const snapshot = structuredClone([this.accounts, this.entries, this.commands, this.aggregateCommands] as const);
     try {
       const result = work();
       if (result && typeof (result as { then?: unknown }).then === "function") throw new TypeError("Exact ledger transaction must be synchronous");
       return result;
     } catch (error) {
-      [this.accounts, this.entries, this.commands] = snapshot;
+      [this.accounts, this.entries, this.commands, this.aggregateCommands] = snapshot;
       throw error;
     }
   }
@@ -49,9 +51,16 @@ export class InMemoryExactFinanceRepository implements ExactFinanceRepository {
     if (this.accounts.get(entry.debtAccountId)?.currency !== entry.currency) throw new Error("Debt entry currency mismatch");
     Money.parse(entry.signedAmountDzd, entry.currency); Money.parse(entry.balanceAfterDzd, entry.currency);
     for (const id of [entry.targetEntryId, entry.correctionOfEntryId]) {
-      if (id && this.entries.get(id)?.debtAccountId !== entry.debtAccountId) throw new Error("Debt attribution must reference the same account");
+      const original = id ? this.entries.get(id) : null;
+      if (id && original?.debtAccountId !== entry.debtAccountId) throw new Error("Debt attribution must reference the same account");
+      if (original && (original.producerType !== entry.producerType || original.producerId !== entry.producerId || original.invoiceId !== entry.invoiceId)) throw new Error("Debt producer attribution mismatch");
     }
     this.entries.set(entry.id, structuredClone(entry));
+  }
+  getAggregateCommand(id: string): ExactDebtCommand | null { return structuredClone(this.aggregateCommands.get(id) ?? null); }
+  saveAggregateCommand(command: ExactDebtCommand): void {
+    if (this.aggregateCommands.has(command.id)) throw new Error("Duplicate aggregate command");
+    this.aggregateCommands.set(command.id, structuredClone(command));
   }
   getCommand(id: string): ExactDebtCommand | null { return structuredClone(this.commands.get(id) ?? null); }
   saveCommand(command: ExactDebtCommand): void {
