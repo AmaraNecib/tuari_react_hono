@@ -2,8 +2,10 @@
 
 ## Status and authority
 
-Blocked before implementation by machine-wide disk exhaustion. This is a design
-handoff, not an implemented interface, conversion, executed test or review verdict.
+Implementation resumed after owner-controlled disk recovery. The first bounded
+change implements the common opt-in input/renderer and startup isolation gate.
+The debt lifecycle conversion remains unfinished. No production activation,
+rendered UI approval or final issue verdict is claimed.
 
 Issue: https://github.com/AmaraNecib/tuari_react_hono/issues/524
 
@@ -81,7 +83,8 @@ obligation allocation, and `voidDebtEntry` can void every live account payment
 when an OPENING is voided. Exact arithmetic alone does not fix attribution.
 The conversion must preserve unrelated obligations and recorded links. It must
 not invent historical payment attribution or a new salary excess policy.
-The exact posting/correction/allocation interface is not yet finalized.
+The exact posting/correction/allocation interface is not yet finalized. Common
+capability work does not resolve these lifecycle hazards or satisfy their proof.
 
 ## Agreed inert integration boundary
 
@@ -91,10 +94,10 @@ identities only in fresh isolated fixtures or authorized fresh copies. Do not
 create a second production ledger, shadow mutable balance or Number bridge.
 Do not introduce selective account activation or freeze unrelated legacy accounts.
 
-Proposed shared file:
+Implemented shared file:
 `apps/api/src/infrastructure/database/money-schema-gate.ts`.
 
-Proposed exact-adapter check:
+Implemented exact-adapter prerequisite:
 `requireExactMoneySchema(db: BetterSqliteDatabase, slice: "debt" | "expenses")`.
 The fixture/copy schema carries metadata table `exact_money_schema` with
 `slice TEXT PRIMARY KEY` and `version INTEGER NOT NULL`, requiring version 1
@@ -106,7 +109,9 @@ The legacy startup initializer will check for exact markers or converted monetar
 columns before its first mutation. It must reject them before constructing
 financial services, traffic or background work. No environment flag will enable
 an incomplete exact production graph. The current legacy behavior on ordinary
-REAL schemas must remain unchanged. This gate has not been implemented or tested.
+REAL schemas must remain unchanged. Native tests cover plain/keyed rejection before
+mutation, markerless converted debt/expense detection and legacy startup/reopen.
+The gate checks only these two slices and is not a complete app-wide cutover.
 
 Coordinated activation still requires all connected writers/readers, transport,
 schema, driver/recovery proof and owner authority. This issue must not claim
@@ -121,7 +126,7 @@ This issue owns shared input/renderer work, exports, initializer and gate design
 Issue 528 proceeds only on disjoint expense files and will integrate reviewed
 shared changes after this issue. Neither tree edits the other's files.
 
-Agreed names, still unimplemented:
+Agreed common names, implemented opt-in without switching existing consumers:
 
 - `CurrencyAmountInput exact={true}` retains draft string `value` and `onChange`;
   `maxAmount` is an exact decimal string. Its default numeric branch is preserved.
@@ -139,7 +144,12 @@ required `expense_revision.new_amount_minor`. Revisions inherit currency through
 identities on fresh fixtures. Numeric project-cost consumers must not receive
 these records; exact expense inputs cannot enter active numeric combined totals.
 
-No shared code is available for cherry-pick yet. No package addition is approved.
+No shared commit is approved for integration until its local reviews finish.
+No package addition is approved. Money.compare uses private coefficients and
+returns only -1/0/1, avoiding subtraction overflow and Number keys. MoneyValue's
+aggregate mode validates bounded canonical report strings and never returns a
+persistable Money. No expense-only exports are added for absent files. After
+integrating the reviewed common commit, #528 owns adding its two export lines.
 
 ## Planned proof and remaining gates
 
@@ -182,6 +192,28 @@ cleanup of shared/other-owner files while storage is exhausted. Preserve all
 worktrees, development databases and keys. No resource workaround, deletion,
 review waiver or production activation is authorized.
 
-Resume after owner-controlled disk recovery. Recheck capacity, source/base and
-shared-file coordination, then finish exact lifecycle/interface design before
-starting focused failing-first implementation. No source conversion is underway.
+Historical blocker resolved when the owner reported disk recovery. Recheck found
+D: 5.2 GB free; C: remains nearly full. Frozen installation passed from the lock,
+784 packages in 50.1 seconds. All new temporary files/logs stay in this worktree
+on D:. The fetched develop base remains unchanged. No new dependency was added.
+The earlier failed logs are retained, including one malformed proof-runner
+argument attempt and one keyed in-memory fixture error. Keyed proof now uses
+fresh files rather than unsupported keyed in-memory connections.
+
+Contracts dist generation is a named test prerequisite, not a production build:
+this isolated tree initially had no package exports available for API/web tests.
+The queued contracts build passed. Adding Money.compare required refreshing that
+artifact before web component proof. No whole-app build or full suite was run.
+
+Focused red/green proof now covers startup isolation, malformed markers, exact
+comparison, localized finalized input and opt-in components. Earlier failure logs
+remain ignored under `.scratch/reviews/524/`. This first commit is common
+capability only, not completion of #524. Complete debt source, RPC, forms,
+attribution, native concurrency and production-inert integration proof remain.
+
+The installed impeccable skill has no reference/product.md despite requiring
+that path, and no shadcn SKILL.md was found in the scoped installed skill/package
+locations. No skill installation was attempted. Existing DESIGN.md, components,
+accessibility and interaction-design reference govern this bounded UI change.
+Actual browser rendering, keyboard/touch inspection and owner approval remain
+unfulfilled merge gates. Default existing numeric markup/formatting is retained.

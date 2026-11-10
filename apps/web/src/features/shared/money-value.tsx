@@ -1,28 +1,33 @@
 import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
 import { cn } from "@/lib/utils"
+import { formatExactMoney } from "./exact-money-display"
 
-/** Displays DZD with optional cents; grouping never changes the amount. */
-export function MoneyValue({
-  value,
-  currencyLabel,
-  variant = "table",
-  signed = false,
-  toneClassName,
-  zeroAsDash = false,
-}: {
-  value: number
+type MoneyValueProps = {
   currencyLabel: string
   variant?: "table" | "detail"
   signed?: boolean
   toneClassName?: string
   zeroAsDash?: boolean
-}) {
+} & ({ exact?: false; value: number; aggregate?: never } | { exact: true; value: string; aggregate?: boolean })
+
+/** Displays DZD with optional cents; grouping never changes the amount. */
+export function MoneyValue({
+  value,
+  exact,
+  aggregate,
+  currencyLabel,
+  variant = "table",
+  signed = false,
+  toneClassName,
+  zeroAsDash = false,
+}: MoneyValueProps) {
   const useGrouping = useMoneyGrouping()
-  if (zeroAsDash && value === 0) {
+  const exactDisplay = exact ? formatExactMoney(value, { aggregate, grouped: useGrouping, signed }) : null
+  if (zeroAsDash && (exactDisplay ? exactDisplay.zero : value === 0)) {
     return <span className={cn("text-muted-foreground", toneClassName)}>—</span>
   }
 
-  const formattedNumber = new Intl.NumberFormat("en-US", {
+  const formattedNumber = exact ? exactDisplay!.text : new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 2,
     signDisplay: signed ? "always" : "auto",
     useGrouping,
