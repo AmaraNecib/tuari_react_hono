@@ -1,7 +1,7 @@
-import { Money } from "@tuari/contracts"
+import { Money, UnitPrice } from "@tuari/contracts"
 
 /** Normalize supported entry notation only at submit. Draft input stays untouched. */
-export function parseLocalizedMoneyInput(value: string): Money {
+function normalizeLocalizedDecimal(value: string): string {
   if (typeof value !== "string" || value.length > 128) throw new TypeError("Invalid monetary input")
   const digits = "٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹"
   const ascii = value.trim().replace(/[٠-٩۰-۹]/g, digit => String(digits.indexOf(digit) % 10))
@@ -20,5 +20,14 @@ export function parseLocalizedMoneyInput(value: string): Money {
   }
   whole = whole.replace(/^0+(?=\d)/, "")
   const fraction = match[3] ? `.${match[3]}` : ""
-  return Money.parse(`${match[1]}${whole}${fraction}`)
+  return `${match[1]}${whole}${fraction}`
+}
+
+export function parseLocalizedMoneyInput(value: string): Money {
+  return Money.parse(normalizeLocalizedDecimal(value))
+}
+
+/** Entered prices and DAILY references retain four places, independently of cash. */
+export function parseLocalizedUnitPriceInput(value: string): UnitPrice {
+  return UnitPrice.parse(normalizeLocalizedDecimal(value))
 }

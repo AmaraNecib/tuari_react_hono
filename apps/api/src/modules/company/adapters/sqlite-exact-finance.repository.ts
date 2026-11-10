@@ -10,18 +10,20 @@ const accountFields = {
   id: "id", partyType: "party_type", workerId: "worker_id", externalCounterpartyId: "external_counterparty_id", direction: "direction", currency: "currency", status: "status", note: "note", settledAt: "settled_at", actorUserId: "actor_user_id", actorLabel: "actor_label", transactionId: "transaction_id", createdAt: "created_at", updatedAt: "updated_at",
 } as const;
 const entryFields = {
-  id: "id", debtAccountId: "debt_account_id", postingSequence: "posting_sequence", invoiceId: "invoice_id", targetEntryId: "target_entry_id", correctionOfEntryId: "correction_of_entry_id", currency: "currency", entryType: "entry_type", entryDate: "entry_date", note: "note", reasonCategory: "reason_category", reasonDetail: "reason_detail", paymentMethod: "payment_method", status: "status", voidedAt: "voided_at", voidedBy: "voided_by", voidReason: "void_reason", actorUserId: "actor_user_id", actorLabel: "actor_label", transactionId: "transaction_id", createdAt: "created_at", updatedAt: "updated_at",
+  id: "id", debtAccountId: "debt_account_id", postingSequence: "posting_sequence", invoiceId: "invoice_id", producerType: "producer_type", producerId: "producer_id", targetEntryId: "target_entry_id", correctionOfEntryId: "correction_of_entry_id", currency: "currency", entryType: "entry_type", entryDate: "entry_date", note: "note", reasonCategory: "reason_category", reasonDetail: "reason_detail", paymentMethod: "payment_method", status: "status", voidedAt: "voided_at", voidedBy: "voided_by", voidReason: "void_reason", actorUserId: "actor_user_id", actorLabel: "actor_label", transactionId: "transaction_id", createdAt: "created_at", updatedAt: "updated_at",
 } as const;
 const projection = (fields: Record<string, string>) => Object.entries(fields).map(([property, column]) => `"${column}" AS "${property}"`).join(",");
 
 /** Exact adapter is never selected by production dependencies. */
 export class SqliteExactFinanceRepository implements ExactFinanceRepository {
+  get transactionIdentity() { return { connection: this.db, lock: this.lock }; }
   constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock) {
     requireExactMoneySchema(db, "debt");
     for (const [table, required] of [
       ["debt_account", { ...Object.fromEntries(Object.values(accountFields).map(name => [name, "TEXT"])), current_balance_minor: "INTEGER" }],
       ["debt_entry", { ...Object.fromEntries(Object.values(entryFields).map(name => [name, name === "posting_sequence" ? "INTEGER" : "TEXT"])), signed_amount_minor: "INTEGER", balance_after_minor: "INTEGER" }],
       ["debt_command", { id: "TEXT", fingerprint: "TEXT", result_json: "TEXT" }],
+      ["exact_finance_command", { id: "TEXT", fingerprint: "TEXT", result_json: "TEXT" }],
     ] as const) {
       const columns = db.pragma(`table_info(${table})`) as { name: string; type: string }[];
       for (const [name, type] of Object.entries(required)) {
@@ -100,6 +102,12 @@ export class SqliteExactFinanceRepository implements ExactFinanceRepository {
     });
   }
 
+  getAggregateCommand(id: string): ExactDebtCommand | null {
+    return this.lock.runSync(() => this.db.prepare("SELECT id,fingerprint,result_json AS resultJson FROM exact_finance_command WHERE id=?").get(id) as ExactDebtCommand | undefined ?? null);
+  }
+  saveAggregateCommand(command: ExactDebtCommand): void {
+    this.withTransaction(() => { this.db.prepare("INSERT INTO exact_finance_command(id,fingerprint,result_json) VALUES (?,?,?)").run(command.id, command.fingerprint, command.resultJson); });
+  }
   getCommand(id: string): ExactDebtCommand | null {
     return this.lock.runSync(() => this.db.prepare("SELECT id,fingerprint,result_json AS resultJson FROM debt_command WHERE id=?").get(id) as ExactDebtCommand | undefined ?? null);
   }
