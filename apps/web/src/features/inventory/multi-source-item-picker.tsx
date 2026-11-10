@@ -2,6 +2,7 @@
  * Multi-source item picker for selecting items from different locations.
  * Allows users to pick items from warehouses and projects in a single transfer.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import { matchesItemOfferFilter, outboundPickUsage, resolveItemOffer } from "@tuari/contracts"
@@ -323,7 +324,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
           <div className="flex items-center justify-end gap-2 border-t border-line/50 pt-2">
             <span className="text-sm font-medium text-ink-4">{t("inventory.transfer.total", "الإجمالي")}:</span>
             <span className="text-lg font-display font-semibold tabular-nums">
-              {totalAmount.toLocaleString("ar-DZ")} {t("common.currency")}
+              <CurrencyRun amount={totalAmount.toLocaleString("ar-DZ")} currencyLabel={t("common.currency")} />
             </span>
           </div>
         </div>

@@ -2,6 +2,7 @@
  * Enhanced outbound transfer creation page with multi-source items and debt calculation.
  * Supports items from multiple locations (warehouses/projects) in a single transfer.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -319,17 +320,17 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
             <div className="rounded-lg border border-line/50 bg-surface-2/30 p-4 space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-ink-4">{t("inventory.transfer.totalAmount")}</span>
-                <span className="font-medium tabular-nums">{totalAmount.toLocaleString("ar-DZ")} {t("common.currency")}</span>
+                <span className="font-medium tabular-nums"><CurrencyRun amount={totalAmount.toLocaleString("ar-DZ")} currencyLabel={t("common.currency")} /></span>
               </div>
               {paymentType === "DEBT" && (
                 <>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-ink-4">{t("inventory.transfer.firstPaymentAmount")}</span>
-                    <span className="font-medium tabular-nums text-good">{firstPaymentAmount.toLocaleString("ar-DZ")} {t("common.currency")}</span>
+                    <span className="font-medium tabular-nums text-good"><CurrencyRun amount={firstPaymentAmount.toLocaleString("ar-DZ")} currencyLabel={t("common.currency")} /></span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-ink-4">{t("inventory.transfer.remainingDebt")}</span>
-                    <span className="font-medium tabular-nums text-warn">{remainingDebt.toLocaleString("ar-DZ")} {t("common.currency")}</span>
+                    <span className="font-medium tabular-nums text-warn"><CurrencyRun amount={remainingDebt.toLocaleString("ar-DZ")} currencyLabel={t("common.currency")} /></span>
                   </div>
                 </>
               )}

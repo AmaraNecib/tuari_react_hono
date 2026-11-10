@@ -2,6 +2,7 @@
  * Debt party summary card component.
  * Displays summary information for a debt party.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useTranslation } from "react-i18next"
 import { getNetDebtBalance } from "@tuari/contracts"
 import type { DebtAccount } from "@tuari/contracts"
@@ -25,7 +26,7 @@ export function DebtPartySummaryCard({ accounts, personName }: { accounts: DebtA
         <div>
           <p className="text-sm text-muted-foreground">{t("detailPages.debt.partySummaryCard.balanceLabel", { personName })}</p>
           <p className={cn("mt-2 font-mono text-3xl font-bold", balance.textClassName)} dir="ltr">
-            {t("detailPages.debt.currency")} {formatDebtAmount(balance.amount)}
+            <CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel={t("detailPages.debt.currency")} />
           </p>
           <p className={cn("mt-1 text-sm font-medium", balance.textClassName)}>
             {balance.phrase}

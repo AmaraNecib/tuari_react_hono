@@ -1,3 +1,4 @@
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount } from "@tuari/contracts"
@@ -126,7 +127,7 @@ export function RecordPaymentDialog({
                 {balanceDisplay.phrase}
               </p>
               <p className={cn("mt-1 font-mono text-2xl font-semibold", balanceDisplay.textClassName)} dir="ltr">
-                {t("detailPages.debt.currency")} {formatDebtAmount(balanceDisplay.amount)}
+                <CurrencyRun amount={formatDebtAmount(balanceDisplay.amount)} currencyLabel={t("detailPages.debt.currency")} />
               </p>
               <p className="mt-1 text-xs text-muted-foreground">{balanceDisplay.description}</p>
             </div>

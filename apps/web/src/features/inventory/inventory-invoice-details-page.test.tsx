@@ -287,7 +287,7 @@ describe("InventoryInvoiceDetailsPage error surface (issue #34)", () => {
 
     expect(screen.getByRole("heading", { name: "FAC-2026-001" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "العودة إلى الفواتير" })).toBeTruthy()
-    expect(screen.getAllByText("الإجمالي: 1500.00 دج").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("1500.00", { selector: 'bdi[dir="ltr"]' }).length).toBeGreaterThan(0)
     expect(screen.getAllByText("أسمنت").length).toBeGreaterThan(0)
     expect(screen.getByText("عدد الأصول: 1")).toBeTruthy()
     expect(screen.getAllByText("حاسوب محمول").length).toBeGreaterThan(0)

@@ -2,6 +2,7 @@
  * Location-level transfer history component.
  * Embeddable in warehouse/project detail pages to show transfers for that location.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { TableQueryState } from "@/features/shared/table-primitives"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -186,7 +187,7 @@ function LocationTransferItem({
       {/* Amount (for sales) */}
       {transfer.totalAmount !== undefined && (
         <span className="text-xs font-medium tabular-nums min-w-[80px] text-start">
-          {transfer.totalAmount.toLocaleString("ar-DZ")} دج
+          <CurrencyRun amount={transfer.totalAmount.toLocaleString("ar-DZ")} currencyLabel="دج" />
         </span>
       )}
     </div>

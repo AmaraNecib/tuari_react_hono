@@ -1,3 +1,4 @@
+import { CurrencyProse } from "@/features/shared/currency-prose"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useTranslation } from "react-i18next"
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
@@ -210,7 +211,7 @@ export function SearchDialog({ isOpen, onClose, onQueryChange, results = [], cla
                     <div>
                       <div className="text-sm font-medium text-foreground">{item.title}</div>
                       {item.description ? (
-                        <div className="text-xs text-muted-foreground">{item.description}</div>
+                        <div className="text-xs text-muted-foreground"><CurrencyProse text={item.description} /></div>
                       ) : null}
                     </div>
                     {item.children && item.children.length > 0 && !isExpanded ? (

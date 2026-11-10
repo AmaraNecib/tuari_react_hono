@@ -3,6 +3,8 @@ import { AppDate } from "@/components/app-date"
  * Debt ledger panel for viewing transaction history.
  * Displays all debt entries with filtering and sorting.
  */
+import { CurrencyProse } from "@/features/shared/currency-prose"
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
@@ -24,7 +26,7 @@ import { resolveDebtPaymentAction } from "./debt-payment"
 import { DebtPaymentPreview } from "./debt-payment-preview"
 import { VoidEntryDialog } from "./void-entry-dialog"
 
-function DebtStatCard({ label, value, valueClassName, phrase }: { label: string; value: string; valueClassName?: string; phrase?: string }) {
+function DebtStatCard({ label, value, valueClassName, phrase }: { label: string; value: import("react").ReactNode; valueClassName?: string; phrase?: string }) {
   return (
     <Surface className="rounded-xl px-5 py-4" variant="card">
       <p className="text-sm text-muted-foreground">{label}</p>
@@ -78,7 +80,7 @@ export function DebtLedgerPanel({
         <DebtStatCard
           label={`الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}`}
           phrase={balance.phrase}
-          value={`دج ${formatDebtAmount(balance.amount)}`}
+          value={<CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel="دج" />}
           valueClassName={balance.textClassName}
         />
         <DebtStatCard label="الحالة" value={balance.phrase} valueClassName={balance.textClassName} />
@@ -133,7 +135,7 @@ export function DebtLedgerPanel({
           description={
             balanceDzd === 0
               ? "الرصيد مغلق بالفعل."
-              : `سيتم إنشاء حركة تسوية بقيمة ${formatDebtAmount(balanceDzd)} دج لإرجاع الرصيد إلى صفر.`
+              : <CurrencyProse text={`سيتم إنشاء حركة تسوية بقيمة ${formatDebtAmount(balanceDzd)} دج لإرجاع الرصيد إلى صفر.`} />
           }
           title="تسوية الرصيد"
         />
@@ -199,11 +201,11 @@ export function DebtLedgerPanel({
                         {getDebtEntryTypeLabel(entry.entryType)}
                       </td>
                       <td className={cn("px-4 py-4 text-start font-mono", amountDisplay.textClassName)} dir="ltr">
-                        دج {formatDebtMoney(entry.signedAmountDzd)}
+                        <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel="دج" />
                       </td>
                       <td className={cn("px-4 py-4 text-start font-mono", balanceAfter.textClassName)}>
                         <span className="block text-xs font-medium">{balanceAfter.phrase}</span>
-                        <span dir="ltr">دج {formatDebtAmount(balanceAfter.amount)}</span>
+                        <span dir="ltr"><CurrencyRun amount={formatDebtAmount(balanceAfter.amount)} currencyLabel="دج" /></span>
                       </td>
                       <td className="px-4 py-4 text-start">
                         {isLive ? (

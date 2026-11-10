@@ -1,4 +1,5 @@
 import { AppDate } from "@/components/app-date"
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -75,9 +76,9 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
           {detail ? (
             <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-xl border border-border/70 p-4">تاريخ الفاتورة: {detail.group.invoiceDate ? <AppDate value={detail.group.invoiceDate} /> : "غير محدد"}</div>
-              <div className="rounded-xl border border-border/70 p-4">الإجمالي: {detail.group.grossTotalDzd.toFixed(2)} دج</div>
-              <div className="rounded-xl border border-border/70 p-4">المدفوع: {detail.group.paidAmountDzd.toFixed(2)} دج</div>
-              <div className="rounded-xl border border-border/70 p-4">الدين المتبقي: {detail.group.remainingDebtDzd.toFixed(2)} دج</div>
+              <div className="rounded-xl border border-border/70 p-4">الإجمالي: <CurrencyRun amount={detail.group.grossTotalDzd.toFixed(2)} currencyLabel="دج" /></div>
+              <div className="rounded-xl border border-border/70 p-4">المدفوع: <CurrencyRun amount={detail.group.paidAmountDzd.toFixed(2)} currencyLabel="دج" /></div>
+              <div className="rounded-xl border border-border/70 p-4">الدين المتبقي: <CurrencyRun amount={detail.group.remainingDebtDzd.toFixed(2)} currencyLabel="دج" /></div>
             </div>
           ) : <p className="text-sm text-muted-foreground">جارٍ تحميل بيانات الفاتورة...</p>}
         </PageSurfaceContent>
@@ -93,7 +94,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
                   <div className="font-medium text-foreground">{entry.itemName}</div>
                   <div className="text-muted-foreground">{entry.itemType === "CONSUMABLE" ? `كمية: ${entry.quantity} ${entry.unit ?? ""}` : `عدد الأصول: ${entry.assets.length}`}</div>
                 </div>
-                <div className="mt-2 text-muted-foreground">الإجمالي: {entry.totalPriceDzd.toFixed(2)} دج</div>
+                <div className="mt-2 text-muted-foreground">الإجمالي: <CurrencyRun amount={entry.totalPriceDzd.toFixed(2)} currencyLabel="دج" /></div>
 
                 {entry.assets.length > 0 ? (
                   <div className="mt-4 space-y-3">

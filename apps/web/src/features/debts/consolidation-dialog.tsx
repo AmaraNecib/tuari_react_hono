@@ -3,6 +3,8 @@ import { AppDate } from "@/components/app-date"
  * Consolidation dialog for combining multiple debt entries.
  * Allows users to merge related debt records.
  */
+import { CurrencyProse } from "@/features/shared/currency-prose"
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
@@ -153,8 +155,8 @@ export function ConsolidationDialog({
           {/* Payable side */}
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
-              {getDebtDirectionLabel(payableAccount.direction)} — رصيد الحساب: دج{" "}
-              {formatDebtAmount(payableDisplay.amount)} ({payableDisplay.phrase})
+              {getDebtDirectionLabel(payableAccount.direction)} — رصيد الحساب:{" "}
+              <CurrencyRun amount={formatDebtAmount(payableDisplay.amount)} currencyLabel="دج" /> ({payableDisplay.phrase})
             </h4>
             {livePayableOpenings.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings")}</p>
@@ -191,7 +193,7 @@ export function ConsolidationDialog({
                         )}
                       </div>
                       <span className={cn("font-mono text-base font-semibold", entryBalance.textClassName)} dir="ltr">
-                        دج {formatDebtMoney(entry.signedAmountDzd)}
+                        <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel="دج" />
                       </span>
                     </button>
                   )
@@ -203,8 +205,8 @@ export function ConsolidationDialog({
           {/* Receivable side */}
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
-              {getDebtDirectionLabel(receivableAccount.direction)} — رصيد الحساب: دج{" "}
-              {formatDebtAmount(receivableDisplay.amount)} ({receivableDisplay.phrase})
+              {getDebtDirectionLabel(receivableAccount.direction)} — رصيد الحساب:{" "}
+              <CurrencyRun amount={formatDebtAmount(receivableDisplay.amount)} currencyLabel="دج" /> ({receivableDisplay.phrase})
             </h4>
             {liveReceivableOpenings.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings")}</p>
@@ -238,7 +240,7 @@ export function ConsolidationDialog({
                         )}
                       </div>
                       <span className={cn("font-mono text-base font-semibold", entryBalance.textClassName)} dir="ltr">
-                        دج {formatDebtMoney(entry.signedAmountDzd)}
+                        <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel="دج" />
                       </span>
                     </button>
                   )
@@ -252,14 +254,14 @@ export function ConsolidationDialog({
             <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-800 dark:bg-amber-950/20">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-amber-800 dark:text-amber-300">
-                  {consolidationPreview?.label ?? ""}
+                  <CurrencyProse text={consolidationPreview?.label ?? ""} />
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {formatDebtAmount(payableAmount)} دج ← {formatDebtAmount(receivableAmount)} دج
+                  <CurrencyRun amount={formatDebtAmount(payableAmount)} currencyLabel="دج" /> ← <CurrencyRun amount={formatDebtAmount(receivableAmount)} currencyLabel="دج" />
                 </span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {consolidationPreview?.description ?? ""}
+                <CurrencyProse text={consolidationPreview?.description ?? ""} />
               </p>
             </div>
           )}
