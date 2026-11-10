@@ -74,6 +74,14 @@ All new commerce copy, validation messages and accessible labels use the existin
 
 Purchase forms retain entered price4 or agreed-total source operands. Outbound forms distinguish omitted valuation from explicit zero and carry original source quantities for derived valuation. A return creates a PAYABLE obligation, a sale creates RECEIVABLE, and a gift cannot create debt. An asset removed by outbound transfer cannot be reintroduced by an internal placement. Project contributions exclude parked-asset value from the cost total and preserve old/new charge history.
 
+## Isolated browser entry and delegated recovery
+
+The combined workspace has an executable isolated entry at tests/browser/commerce-exact-fixture.html. Its runner, tests/browser/commerce-exact-browser.mjs, serves loopback only and uses synthetic data, an explicit fixture identity, combined authenticated/audited oRPC composition and a fresh keyed SQLite database. This follows the existing debt browser-fixture pattern. It is not an active production route, a migration or production authentication. Both complete source and runner must be committed before capturing final evidence.
+
+The delegated equipment-test lane had no installed dependencies and collected zero tests. Its draft was read, copied into this parent tree, corrected against actual component labels and canonical request identities, and executed with existing dependencies here. No packages were added and no peer tree was modified. The mapping lane delivered an inspected document commit; the parent corrected the table/column count, legacy Drizzle repair description and full-gross purchase obligation wording against source.
+
+The combined native RPC test now exercises invoice payment and inventory purchase through one composition, preserving separate original producer targets even when the ledger account is shared for the same party/direction. Parent assertions filter by original obligation, not by assuming one producer per account.
+
 ## Remaining acceptance work
 
 Complete focused equipment UI interaction proof and caller/acceptance mapping, then freeze the complete scope for the three independent initial review lenses. Resolve findings and obtain exact-head proof. Publish only the authorized combined scope. Actual-component visual evidence, owner UI approval, hosted current-head verdict, CI and manual owner merge remain separate gates.

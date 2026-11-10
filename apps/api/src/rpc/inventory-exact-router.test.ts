@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRouterClient } from "@orpc/server";
-import type { ExactInventoryClient } from "@tuari/contracts";
+import type { ExactInventoryClient, ExactInvoicesClient } from "@tuari/contracts";
 import { expect, it } from "vitest";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
 import { createFifoLock } from "../infrastructure/database/fifo-lock";
@@ -26,6 +26,15 @@ it.each(["", "526-public-rpc-key"])("purchase/transfer/charge/outbound input-to-
     const composition = createExactCommerceComposition(db, createFifoLock(), middleware, { id: randomUUID, now: () => date });
     const context: RpcContext = { headers: new Headers(), resolveCurrentUser: async () => user };
     const client = createRouterClient(composition.router.inventory, { context }) as ExactInventoryClient;
+    const invoices = createRouterClient(composition.router.invoices, { context }) as ExactInvoicesClient;
+    const draft = await invoices.createInvoice({ requestId: "shared-invoice-draft", supplierName: "Synthetic supplier", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: "party", lineItems: [
+      { description: "Shared composition source", source: { mode: "agreed-total", total: "0.30", quantity: "1" } },
+    ] });
+    const received = await invoices.receiveInvoice({ requestId: "shared-invoice-receive", id: draft.id });
+    const cash = await invoices.createPayment({ requestId: "shared-invoice-pay", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: "party", direction: "PURCHASE", paymentMethod: "CASH", paymentDate: date, totalAmount: "0.10", allocations: [{ invoiceId: draft.id, amount: "0.10" }] });
+    expect(cash.unallocatedAmount).toBe("0.00");
+    expect(await invoices.getInvoice({ id: draft.id })).toMatchObject({ paidAmount: "0.10", remainingAmount: "0.20" });
+    expect(composition.services.finance.remaining(received.debtEntryId!)).toBe("0.20");
     const purchaseInput = { requestId: "purchase", warehouseId: "warehouse", createDebt: true, externalCounterpartyId: "party", paymentInputType: "AMOUNT" as const, paidAmountDzd: "0.10", entries: [
       { kind: "CONSUMABLE" as const, itemDefinitionId: "material", quantity: 0.25, unitPriceDzd: "1.5000" },
       { kind: "CONSUMABLE" as const, itemDefinitionId: "material", quantity: 0.25, unitPriceDzd: "1.5000" },
@@ -36,6 +45,11 @@ it.each(["", "526-public-rpc-key"])("purchase/transfer/charge/outbound input-to-
     expect(await client.createInvoice(purchaseInput)).toEqual(purchase);
     await client.recordPayment({ requestId: "partial", invoiceGroupId: purchase.group.id, amountDzd: "0.20" });
     expect(composition.services.finance.remaining(purchase.group.debtEntryId!)).toBe("10.45");
+    expect(composition.services.finance.remaining(received.debtEntryId!)).toBe("0.20");
+    const invoiceDebt = composition.services.finance.listEntries(received.debtAccountId!);
+    expect(invoiceDebt.filter(entry => entry.id === received.debtEntryId || entry.targetEntryId === received.debtEntryId).map(entry => [entry.producerType, entry.producerId])).toEqual([["INVOICE", draft.id], ["INVOICE", draft.id]]);
+    const purchaseDebt = composition.services.finance.listEntries(purchase.group.debtAccountId!);
+    expect(purchaseDebt.filter(entry => entry.id === purchase.group.debtEntryId || entry.targetEntryId === purchase.group.debtEntryId).map(entry => [entry.producerType, entry.producerId])).toEqual([["INVENTORY_PURCHASE", purchase.group.id], ["INVENTORY_PURCHASE", purchase.group.id], ["INVENTORY_PURCHASE", purchase.group.id]]);
     const asset = purchase.entries.find(row => row.itemType === "ASSET")!.assets[0]!;
     await client.transferAsset({ requestId: "placement", assetUnitId: asset.id, toProjectId: "project", chargeAmountDzd: "0.30" });
     const charge = (await client.projectCharges({ projectId: "project" })).charges[0]!;
