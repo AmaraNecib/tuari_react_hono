@@ -30,11 +30,32 @@ function inventoryClient() {
     locationContents: vi.fn().mockResolvedValue(contents), chargeDefault: vi.fn().mockResolvedValue({ assetUnitId: asset.id, amountDzd: "71.29", purchasePriceDzd: asset.purchasePriceDzd, source: "LAST_CHARGE" }),
     projectCharges: vi.fn().mockResolvedValue({ projectId: "project", totalDzd: "71.29", charges: [charge] }),
     projectContribution: vi.fn().mockResolvedValue({ projectId: "project", chargedMaterialsDzd: "0.00", equipmentChargesDzd: "71.29", totalDzd: "71.29", parkedAssetValueDzd: "0.00", parkedAssets: [], materialMovements: [] }),
-    transferAsset: vi.fn().mockResolvedValue({}), updateCharge: vi.fn().mockResolvedValue({}), voidCharge: vi.fn().mockResolvedValue({}),
+    transferAsset: vi.fn().mockResolvedValue({}), recordOutboundPayment: vi.fn().mockResolvedValue({}), updateCharge: vi.fn().mockResolvedValue({}), voidCharge: vi.fn().mockResolvedValue({}),
   }
 }
 const page = (client: ReturnType<typeof inventoryClient>) => <ExactInventoryPage client={client as unknown as ExactInventoryClient} locations={locations} parties={parties} />
-describe("exact equipment interactions", () => {
+describe("exact equipment and outbound interactions", () => {
+  it("settles the selected outbound from the localized form and refreshes its remaining amount", async () => {
+    const client = inventoryClient()
+    const outbound = { id: "sale-selected", counterpartyId: "party", transferType: "SALE", debtEntryId: "sale-debt", remainingDebtDzd: "80.00", items: [] }
+    client.listOutbounds.mockResolvedValue([outbound, { ...outbound, id: "gift", transferType: "GIFT", debtEntryId: null, remainingDebtDzd: "0.00" }])
+    client.recordOutboundPayment.mockImplementation(async () => {
+      client.listOutbounds.mockResolvedValue([{ ...outbound, remainingDebtDzd: "0.00" }])
+      return {}
+    })
+    wrapper(page(client))
+    fireEvent.click(await screen.findByRole("button", { name: "تسجيل دفعة التحويل" }))
+    const dialog = await screen.findByRole("dialog")
+    const amount = within(dialog).getByRole("textbox", { name: "مبلغ الدفعة" })
+    fireEvent.change(amount, { target: { value: "80.01" } })
+    expect((within(dialog).getByRole("button", { name: "حفظ الدفعة" }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.change(amount, { target: { value: "٨٠٫٠٠" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "حفظ الدفعة" }))
+    await waitFor(() => expect(client.recordOutboundPayment).toHaveBeenCalledTimes(1))
+    expect(client.recordOutboundPayment.mock.calls[0]?.[0]).toMatchObject({ requestId: expect.any(String), transferId: "sale-selected", amountDzd: "80.00" })
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    await waitFor(() => expect(screen.queryByRole("button", { name: "تسجيل دفعة التحويل" })).toBeNull())
+  })
   it.each([false, true])("preserves server-default versus explicit free placement: override=%s", async free => {
     const client = inventoryClient()
     const submit = vi.fn().mockResolvedValue(undefined)

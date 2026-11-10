@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import {
-  Money, UnitPrice, Quantity, ExactLine, finalizeLines, parseExactLine, sumMoney, sumMoneyHistory,
-  exactInventoryInvoiceCreateSchema, exactInventoryPaymentSchema, exactInventoryAssetTransferSchema, exactInventoryChargeUpdateSchema, exactInventoryChargeVoidSchema, exactInventoryOutboundCreateSchema, exactInventoryConsumableTransferSchema,
+  Money, UnitPrice, Quantity, ExactLine, finalizeLines, parseExactLine, sumMoney, sumMoneyHistory, sumExactLineHistory, sumMoneyReports,
+  exactInventoryInvoiceCreateSchema, exactInventoryPaymentSchema, exactInventoryOutboundPaymentSchema, exactInventoryAssetTransferSchema, exactInventoryChargeUpdateSchema, exactInventoryChargeVoidSchema, exactInventoryOutboundCreateSchema, exactInventoryConsumableTransferSchema,
   invoiceLineUsage, outboundPickUsage, matchesItemOfferFilter, resolveItemOffer,
-  type ExactInventoryInvoiceInput, type ExactInventoryPayment, type ExactInventoryInvoice, type ExactInventoryAsset,
+  type ExactInventoryInvoiceInput, type ExactInventoryPayment, type ExactInventoryOutboundPayment, type ExactInventoryInvoice, type ExactInventoryAsset,
   type ExactInventoryAssetTransfer, type ExactInventoryChargeUpdate, type ExactInventoryChargeVoid, type ExactInventoryOutboundInput, type ExactInventoryOutbound, type ExactInventoryConsumableTransfer,
   type InventoryMovement, type InventoryConsumableBalance,
 } from "@tuari/contracts";
@@ -51,11 +51,11 @@ export class ExactInventoryService {
   }
   listDefinitions() { return this.repo.listDefinitions(); }
   listInvoiceGroups() { return this.repo.listGroups(); }
-  listOutboundTransfers() { return this.repo.listOutbounds(); }
+  listOutboundTransfers() { return this.repo.withTransaction(() => this.repo.listOutbounds().map(row => this.getOutboundTransfer(row.id))); }
   getOutboundTransfer(id: string) {
     const row = this.repo.getOutbound(id);
     if (!row) throw new ExactDebtError("Outbound transfer not found", "NOT_FOUND");
-    return row;
+    return { ...row, remainingDebtDzd: row.debtEntryId ? this.finance.remaining(row.debtEntryId) : "0.00" };
   }
   getInvoiceGroup(id: string) {
     const group = this.repo.getGroup(id);
@@ -258,6 +258,16 @@ export class ExactInventoryService {
       return transfer;
     });
   }
+  recordOutboundPayment(raw: ExactInventoryOutboundPayment & ExactDebtAudit) {
+    const input = exactInventoryOutboundPaymentSchema.parse(raw);
+    return this.finance.runAggregate({ requestId: input.requestId, producer: { type: "INVENTORY_OUTBOUND", id: input.transferId }, intent: { kind: "outbound-payment", input }, ...auditOf(raw) }, this.repo, () => {
+      const transfer = this.getOutboundTransfer(input.transferId);
+      if (!transfer.debtEntryId) throw new ExactDebtError("Outbound has no original obligation");
+      this.finance.forProducer({ type: "INVENTORY_OUTBOUND", id: transfer.id }).recordPayment({ requestId: request(input.requestId, "payment", transfer.id), debtEntryId: transfer.debtEntryId, amountDzd: input.amountDzd, note: input.note, ...auditOf(raw) });
+      this.repo.saveOutbound({ ...transfer, updatedAt: this.dependencies.now() });
+      return this.getOutboundTransfer(transfer.id);
+    });
+  }
   getProjectContribution(projectId: string) {
     return this.repo.withTransaction(() => {
       if (!this.repo.projectExists(projectId)) throw new ExactDebtError("Project not found", "NOT_FOUND");
@@ -270,11 +280,11 @@ export class ExactInventoryService {
         return source.mode === "unit-price" ? ExactLine.fromPrice(UnitPrice.parse(source.price), signedQuantity)
           : ExactLine.fromDerived(Money.parse(source.total), Quantity.inventory(source.mode === "derived-price" ? source.originalQuantity : source.quantity), signedQuantity);
       });
-      const chargedMaterials = finalizeLines(sources);
+      const chargedMaterialsDzd = sumExactLineHistory(sources);
       const equipmentChargesDzd = this.getProjectCharges(projectId).totalDzd;
       const parkedAssets = this.repo.listAssets().filter(row => row.currentProjectId === projectId);
-      return { projectId, chargedMaterialsDzd: chargedMaterials.toWire(), equipmentChargesDzd,
-        totalDzd: sumMoneyHistory([chargedMaterials, ...this.repo.listCharges().filter(row => row.projectId === projectId && row.status === "LIVE").map(row => Money.parse(row.amountDzd))]),
+      return { projectId, chargedMaterialsDzd, equipmentChargesDzd,
+        totalDzd: sumMoneyReports([chargedMaterialsDzd, equipmentChargesDzd]),
         parkedAssetValueDzd: sumMoneyHistory(parkedAssets.map(row => Money.parse(row.purchasePriceDzd))),
         parkedAssets, materialMovements: movements };
     });

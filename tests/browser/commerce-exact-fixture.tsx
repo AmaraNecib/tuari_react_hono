@@ -17,7 +17,7 @@ const client = (domain: string, actions: string[]) => Object.fromEntries(actions
   return result
 }]))
 const invoices = client("invoices", ["getInvoice", "listInvoices", "createInvoice", "updateInvoice", "receiveInvoice", "voidInvoice", "deleteDraft", "getPayment", "listPayments", "createPayment", "allocatePayment", "voidPayment", "deleteUnallocatedPayment", "splitPayment"]) as ExactInvoicesClient
-const inventory = client("inventory", ["definitions", "getInvoice", "listInvoices", "createInvoice", "recordPayment", "locationContents", "transferAsset", "transferConsumable", "createOutbound", "listOutbounds", "getOutbound", "chargeDefault", "projectCharges", "projectContribution", "updateCharge", "voidCharge"]) as ExactInventoryClient
+const inventory = client("inventory", ["definitions", "getInvoice", "listInvoices", "createInvoice", "recordPayment", "recordOutboundPayment", "locationContents", "transferAsset", "transferConsumable", "createOutbound", "listOutbounds", "getOutbound", "chargeDefault", "projectCharges", "projectContribution", "updateCharge", "voidCharge"]) as ExactInventoryClient
 createRoot(document.getElementById("root")!).render(<QueryClientProvider client={query}><ExactCommerceWorkspace clients={{ invoices, inventory }}
   invoiceParties={[{ id: "party", label: "المورد التجريبي", type: "EXTERNAL_COUNTERPARTY" }]}
   inventoryParties={[{ id: "party", label: "المورد التجريبي" }]}

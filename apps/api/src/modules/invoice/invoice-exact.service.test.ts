@@ -22,6 +22,7 @@ const draftInput = (requestId: string, total = "100.00") => ({ requestId, suppli
 const closes: (() => void)[] = [];
 afterEach(() => { for (const close of closes.splice(0)) close(); });
 function setup(kind: "memory" | "plain" | "keyed") {
+  let nativeDb: ReturnType<typeof createDatabaseConnection> | undefined;
   let ledger: ExactFinanceRepository;
   let repo: ExactInvoiceRepository;
   let openPeer: (() => ExactInvoiceService) | undefined;
@@ -32,6 +33,7 @@ function setup(kind: "memory" | "plain" | "keyed") {
     const path = join(mkdtempSync(join(tmpdir(), "tuari-525-invoice-")), "fixture.sqlite");
     const key = kind === "keyed" ? "525-public-invoice-key" : "";
     const db = createDatabaseConnection(path, key);
+    nativeDb = db;
     closes.push(() => db.close());
     db.pragma("foreign_keys=ON");
     db.exec(`CREATE TABLE employee(id TEXT PRIMARY KEY); CREATE TABLE external_counterparty(id TEXT PRIMARY KEY); INSERT INTO external_counterparty VALUES ('${partyId}')`);
@@ -51,8 +53,52 @@ function setup(kind: "memory" | "plain" | "keyed") {
     };
   }
   const finance = new ExactFinanceService(ledger, dependencies);
-  return { ledger, repo, finance, openPeer, invoices: new ExactInvoiceService(repo, finance, dependencies) };
+  return { nativeDb, ledger, repo, finance, openPeer, invoices: new ExactInvoiceService(repo, finance, dependencies) };
 }
+it.each(["memory", "plain", "keyed"] as const)("%s: sorts offset timestamps chronologically through invoice and payment cursors", kind => {
+  const { invoices, repo } = setup(kind);
+  const early = invoices.createInvoice({ ...draftInput("chronological-early"), invoiceDate: "2026-11-10T10:00:00+01:00" });
+  const late = invoices.createInvoice({ ...draftInput("chronological-late"), invoiceDate: "2026-11-10T09:30:00Z" });
+  repo.saveInvoice({ ...early, createdAt: early.invoiceDate! });
+  repo.saveInvoice({ ...late, createdAt: late.invoiceDate! });
+  const cash = [early, late].map((row, index) => invoices.createPayment({ requestId: `chronological-cash-${index}`, counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: partyId, direction: "PURCHASE", paymentMethod: "CASH", paymentDate: row.invoiceDate!, totalAmount: "1.00", allocations: [] }));
+  cash.forEach(row => repo.savePayment({ ...row, createdAt: row.paymentDate }));
+  for (const direction of ["asc", "desc"] as const) {
+    for (const field of ["invoiceDate", "createdAt"] as const) {
+      const expected = direction === "asc" ? [early.id, late.id] : [late.id, early.id];
+      const first = invoices.listInvoices({ sort: { field, direction }, limit: 1 });
+      const second = invoices.listInvoices({ sort: { field, direction }, limit: 1, cursor: first.nextCursor! });
+      expect([...first.items, ...second.items].map(row => row.id)).toEqual(expected);
+      expect(second.hasMore).toBe(false);
+    }
+    for (const field of ["paymentDate", "createdAt"] as const) {
+      const expected = direction === "asc" ? cash.map(row => row.id) : cash.map(row => row.id).reverse();
+      const first = invoices.listPayments({ sort: { field, direction }, limit: 1 });
+      const second = invoices.listPayments({ sort: { field, direction }, limit: 1, cursor: first.nextCursor! });
+      expect([...first.items, ...second.items].map(row => row.id)).toEqual(expected);
+    }
+  }
+});
+it.each(["plain", "keyed"] as const)("%s: refuses oversized native reads before filtering or releasing invoice allocations", kind => {
+  const { invoices, finance, repo, nativeDb: db } = setup(kind);
+  const draft = invoices.createInvoice(draftInput("oversized-invoice"));
+  const received = invoices.receiveInvoice({ requestId: "receive-oversized", id: draft.id });
+  const payment = invoices.createPayment({ requestId: "oversized-cash", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: partyId, direction: "PURCHASE", paymentMethod: "CASH", paymentDate: dependencies.now(), totalAmount: "20.00", allocations: [{ invoiceId: draft.id, amount: "20.00" }] });
+  const columns = (db!.pragma("table_info(payment)") as { name: string }[]).map(row => row.name);
+  db!.exec(`WITH RECURSIVE seq(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n<100001) INSERT INTO payment (${columns.join(",")}) SELECT ${columns.map(column => column === "id" ? "'prefix-' || printf('%06d',seq.n)" : `p.${column}`).join(",")} FROM seq CROSS JOIN payment p WHERE p.id='${payment.id}'`);
+  const get = repo.getPayment.bind(repo);
+  repo.getPayment = () => { throw new Error("Partial payment prefix was hydrated"); };
+  expect(() => invoices.listPayments({ filters: { counterpartyId: "no-match" } })).toThrow(/read resource limit/);
+  expect(() => invoices.voidInvoice({ requestId: "void-oversized", id: draft.id, reason: "Oversized payment history must abort atomically" })).toThrow(/read resource limit/);
+  repo.getPayment = get;
+  expect(invoices.getInvoice(draft.id)).toMatchObject({ status: "RECEIVED", paidAmount: "20.00", remainingAmount: "80.00" });
+  expect(finance.remaining(received.debtEntryId!)).toBe("80.00");
+  expect(invoices.getPayment(payment.id).allocations[0]?.status).toBe("LIVE");
+  const invoiceColumns = (db!.pragma("table_info(invoice)") as { name: string }[]).map(row => row.name);
+  db!.exec(`WITH RECURSIVE seq(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n<100001) INSERT INTO invoice (${invoiceColumns.join(",")}) SELECT ${invoiceColumns.map(column => column === "id" ? "'prefix-' || printf('%06d',seq.n)" : `i.${column}`).join(",")} FROM seq CROSS JOIN invoice i WHERE i.id='${draft.id}'`);
+  repo.getInvoice = () => { throw new Error("Partial invoice prefix was hydrated"); };
+  expect(() => invoices.listInvoices({ filters: { counterpartyId: "no-match" } })).toThrow(/read resource limit/);
+});
 it.each(["memory", "plain", "keyed"] as const)("%s: finalizes source lines once and pays only the linked invoice through a replayable aggregate", kind => {
   const { invoices, finance } = setup(kind);
   const draft = invoices.createInvoice({ requestId: "draft", supplierName: "Synthetic supplier", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: partyId, lineItems: [

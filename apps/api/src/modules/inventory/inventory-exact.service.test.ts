@@ -26,6 +26,7 @@ function setup(kind: "memory" | "plain" | "keyed") {
     { id: "material", name: "Synthetic material", itemType: "CONSUMABLE" as const, unit: "m", description: null, isActive: true, createdAt: date, updatedAt: date },
     { id: "asset", name: "Synthetic equipment", itemType: "ASSET" as const, unit: null, description: null, isActive: true, createdAt: date, updatedAt: date },
   ] };
+  let nativeDb: ReturnType<typeof createDatabaseConnection> | undefined;
   let ledger: ExactFinanceRepository;
   let repo: ExactInventoryRepository;
   let openPeer: (() => ExactInventoryService) | undefined;
@@ -36,6 +37,7 @@ function setup(kind: "memory" | "plain" | "keyed") {
     const path = join(mkdtempSync(join(tmpdir(), "tuari-526-inventory-")), "fixture.sqlite");
     const key = kind === "keyed" ? "526-public-inventory-key" : "";
     const db = createDatabaseConnection(path, key);
+    nativeDb = db;
     closes.push(() => db.close());
     db.pragma("foreign_keys=ON");
     db.exec(`CREATE TABLE employee(id TEXT PRIMARY KEY); CREATE TABLE external_counterparty(id TEXT PRIMARY KEY); CREATE TABLE warehouse(id TEXT PRIMARY KEY,name TEXT NOT NULL); CREATE TABLE project(id TEXT PRIMARY KEY,name TEXT NOT NULL); INSERT INTO external_counterparty VALUES ('${partyId}'); INSERT INTO warehouse VALUES ('warehouse','Synthetic warehouse'); INSERT INTO project VALUES ('project','Synthetic project')`);
@@ -56,8 +58,61 @@ function setup(kind: "memory" | "plain" | "keyed") {
     };
   }
   const finance = new ExactFinanceService(ledger, dependencies);
-  return { ledger, repo, finance, openPeer, inventory: new ExactInventoryService(repo, finance, dependencies) };
+  return { nativeDb, ledger, repo, finance, openPeer, inventory: new ExactInventoryService(repo, finance, dependencies) };
 }
+it.each(["plain", "keyed"] as const)("%s: rejects oversized inventory history, entries and assets before returning a prefix", kind => {
+  const { inventory, repo, nativeDb: db } = setup(kind);
+  const purchase = inventory.createInvoiceGroup({ requestId: "capped-stock", projectId: "project", entries: [{ kind: "ASSET", itemDefinitionId: "asset", assets: [{ assetName: "Synthetic asset", purchasePriceDzd: "1.00" }] }] });
+  function extend(table: string, id: string, sequence?: string) {
+    const columns = (db!.pragma(`table_info(${table})`) as { name: string }[]).map(row => row.name);
+    db!.exec(`WITH RECURSIVE seq(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n<100001) INSERT INTO ${table} (${columns.join(",")}) SELECT ${columns.map(column => column === "id" ? "'prefix-' || printf('%06d',seq.n)" : column === sequence ? "seq.n" : `p.${column}`).join(",")} FROM seq CROSS JOIN ${table} p WHERE p.id='${id}'`);
+  }
+  extend("inventory_movement", purchase.movements[0]!.id);
+  expect(() => inventory.getProjectContribution("project")).toThrow(/read resource limit/);
+  extend("inventory_asset_unit", purchase.entries[0]!.assets[0]!.id, "asset_order");
+  repo.getAsset = () => { throw new Error("Partial asset prefix was hydrated"); };
+  expect(() => repo.listAssets()).toThrow(/read resource limit/);
+  extend("inventory_entry", purchase.entries[0]!.id, "entry_order");
+  repo.getEntry = () => { throw new Error("Partial entry prefix was hydrated"); };
+  expect(() => repo.listEntries(purchase.group.id)).toThrow(/read resource limit/);
+});
+it.each(["memory", "plain", "keyed"] as const)("%s: reports material history wider than a single persisted amount", kind => {
+  const { inventory } = setup(kind);
+  for (const requestId of ["wide-report-first", "wide-report-second"]) inventory.createInvoiceGroup({ requestId, projectId: "project", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 1, priceSource: { mode: "agreed-total", total: "92233720368547758.07", quantity: "1" } }] });
+  expect(inventory.getProjectContribution("project")).toMatchObject({ chargedMaterialsDzd: "184467440737095516.14", totalDzd: "184467440737095516.14" });
+});
+it("reports more than ten thousand material movements with one final rounding", () => {
+  const { inventory, repo } = setup("memory");
+  inventory.createInvoiceGroup({ requestId: "long-history-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 10001, unitPriceDzd: "0.0050" }] });
+  const purchase = repo.listMovements()[0]!;
+  for (let index = 0; index < 10001; index++) repo.saveMovement({ ...purchase, id: `report-transfer-${index}`, movementType: "TRANSFER", quantity: 1, fromWarehouseId: "warehouse", toWarehouseId: null, toProjectId: "project" });
+  expect(inventory.getProjectContribution("project")).toMatchObject({ chargedMaterialsDzd: "50.01", totalDzd: "50.01" });
+});
+it.each(["memory", "plain", "keyed"] as const)("%s: settles outbound-owned sale and return debt without generic bypass or duplicate payments", kind => {
+  const { inventory, finance, ledger } = setup(kind);
+  inventory.createInvoiceGroup({ requestId: "outbound-payment-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 3, unitPriceDzd: "1.0000" }] });
+  for (const transferType of ["SALE", "RETURN"] as const) {
+    const transfer = inventory.createOutboundTransfer({ requestId: `outbound-${transferType}`, fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType, debtAmountDzd: "100.00", firstPaymentAmountDzd: "20.00", items: [{ itemId: "material", quantity: 1 }] });
+    expect(() => finance.recordPayment({ requestId: `generic-${transferType}`, debtEntryId: transfer.debtEntryId!, amountDzd: "80.00" })).toThrow(/producer/);
+    const command = { requestId: `settle-${transferType}`, transferId: transfer.id, amountDzd: "80.00", actorUserId: "owner" };
+    const save = ledger.saveAggregateCommand.bind(ledger);
+    ledger.saveAggregateCommand = () => { throw new Error("Injected outbound payment receipt failure"); };
+    expect(() => inventory.recordOutboundPayment(command)).toThrow(/receipt failure/);
+    expect(finance.remaining(transfer.debtEntryId!)).toBe("80.00");
+    ledger.saveAggregateCommand = save;
+    const settled = inventory.recordOutboundPayment(command);
+    expect(settled.remainingDebtDzd).toBe("0.00");
+    expect(settled.initialPaymentEntryId).toBe(transfer.initialPaymentEntryId);
+    expect(inventory.recordOutboundPayment(command)).toEqual(settled);
+    expect(() => inventory.recordOutboundPayment({ ...command, actorUserId: "other" })).toThrow(/replay conflict/);
+    expect(() => inventory.recordOutboundPayment({ ...command, requestId: `overpay-${transferType}`, amountDzd: "0.01" })).toThrow(/exceeds/);
+    const payments = finance.listEntries(transfer.associatedDebtAccountId!).filter(row => row.targetEntryId === transfer.debtEntryId);
+    expect(payments.map(row => row.signedAmountDzd).sort()).toEqual(["-20.00", "-80.00"]);
+  }
+  const gift = inventory.createOutboundTransfer({ requestId: "outbound-gift", fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType: "GIFT", items: [{ itemId: "material", quantity: 1 }] });
+  expect(() => inventory.recordOutboundPayment({ requestId: "pay-gift", transferId: gift.id, amountDzd: "1.00" })).toThrow(/obligation/);
+  expect(() => inventory.recordOutboundPayment({ requestId: "pay-missing", transferId: "missing", amountDzd: "1.00" })).toThrow(/not found/);
+});
 it.each(["plain", "keyed"] as const)("%s: reserves stock before receipt reads and rejects stale competing picks after commit", kind => {
   const { inventory, openPeer, repo } = setup(kind);
   const purchase = inventory.createInvoiceGroup({ requestId: "competing-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 1, unitPriceDzd: "1.0000" }] });

@@ -215,10 +215,20 @@ export class ExactInvoiceService {
   }
 }
 
+function compareTimestamp(a: string, b: string): number {
+  // Compare whole instants, then preserve accepted sub-millisecond precision.
+  const whole = Date.parse(a.replace(/\.\d+/, "")) - Date.parse(b.replace(/\.\d+/, ""));
+  if (whole) return whole;
+  const left = a.match(/\.(\d+)/)?.[1] ?? "";
+  const right = b.match(/\.(\d+)/)?.[1] ?? "";
+  const width = Math.max(left.length, right.length);
+  return compareText(left.padEnd(width, "0"), right.padEnd(width, "0"));
+}
+
 function page<T extends { id: string; totalAmount: string }>(rows: T[], collection: string, sort: { field: string; direction: "asc" | "desc" }, cursor: string | undefined, limit: number) {
   if (rows.length > 100000) throw new ExactDebtError("Exact financial read resource limit exceeded");
   const value = (row: T): string | null => (row as Record<string, unknown>)[sort.field] as string | null;
-  const compare = (a: string | null, b: string | null) => a === b ? 0 : a === null ? -1 : b === null ? 1 : sort.field === "totalAmount" ? Money.parse(a).compare(Money.parse(b)) : compareText(a, b);
+  const compare = (a: string | null, b: string | null) => a === b ? 0 : a === null ? -1 : b === null ? 1 : sort.field === "totalAmount" ? Money.parse(a).compare(Money.parse(b)) : compareTimestamp(a, b);
   const sign = sort.direction === "asc" ? 1 : -1;
   rows.sort((a, b) => sign * (compare(value(a), value(b)) || compareText(a.id, b.id)));
   let after: { sortValue: string | null; id: string } | null = null;

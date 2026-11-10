@@ -23,6 +23,17 @@ function fixture(row = invoice, firstPage = { hasMore: false, nextCursor: null a
 }
 afterEach(() => { cleanup(); queries.splice(0).forEach(query => query.clear()) })
 describe("opt-in exact invoices and payments", () => {
+  it.each(["DRAFT", "RECEIVED", "PAID", "VOIDED"] as const)("separates %s state from action controls in a dedicated column", async status => {
+    fixture({ ...invoice, status })
+    const region = await screen.findByRole("region", { name: "جدول الفواتير" })
+    await within(region).findByText("INV-1")
+    const headers = within(region).getAllByRole("columnheader")
+    expect(headers.map(header => header.textContent)).toEqual(["الفاتورة والطرف", "الإجمالي", "المدفوع", "المتبقي", "الحالة", "الإجراءات"])
+    const cells = within(region).getAllByRole("cell")
+    expect(within(cells[4]!).queryByRole("button")).toBeNull()
+    expect(cells[4]?.textContent).toBe(({ DRAFT: "مسودة", RECEIVED: "مستلمة", PAID: "مسددة", VOIDED: "ملغاة" })[status])
+    expect(within(cells[5]!).getAllByRole("button").length).toBeGreaterThan(0)
+  })
   it("renders unsafe-number cents unchanged without using the numeric workspace cache", async () => {
     const { query } = fixture()
     await screen.findByText("INV-1")

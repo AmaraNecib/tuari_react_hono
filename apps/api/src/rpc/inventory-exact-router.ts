@@ -1,9 +1,9 @@
 import { implement, ORPCError } from "@orpc/server";
 import { z, ZodError } from "zod";
 import {
-  exactInventoryContract, exactInventoryDetailSchema, exactInventoryInvoiceSchema, exactInventoryAssetSchema, exactInventoryLocationSchema, exactInventoryOutboundSchema, exactInventoryChargeSchema,
+  exactInventoryContract, exactInventoryDetailSchema, exactInventoryInvoiceSchema, exactInventoryAssetSchema, exactInventoryLocationSchema, exactInventoryOutboundSchema, exactInventoryOutboundViewSchema, exactInventoryChargeSchema,
   type ExactInventoryInvoiceInput, type ExactInventoryPayment, type ExactInventoryAssetTransfer, type ExactInventoryConsumableTransfer,
-  type ExactInventoryOutboundInput, type ExactInventoryChargeUpdate, type ExactInventoryChargeVoid,
+  type ExactInventoryOutboundInput, type ExactInventoryOutboundPayment, type ExactInventoryChargeUpdate, type ExactInventoryChargeVoid,
 } from "@tuari/contracts";
 import { FifoLockBusyError } from "../infrastructure/database/fifo-lock";
 import { ExactDebtError } from "../modules/company/exact-finance.service";
@@ -34,6 +34,7 @@ export function createExactInventoryRouter(service: ExactInventoryService, middl
     projectCharges: os.projectCharges.handler(middleware.queryAuth(async ({ input }) => service.getProjectCharges(input.projectId), resolveError)),
     projectContribution: os.projectContribution.handler(middleware.queryAuth(async ({ input }) => service.getProjectContribution(input.projectId), resolveError)),
     createInvoice: os.createInvoice.handler(audited(exactInventoryDetailSchema, (input: ExactInventoryInvoiceInput, audit) => service.createInvoiceGroup({ ...input, ...audit }))),
+    recordOutboundPayment: os.recordOutboundPayment.handler(audited(exactInventoryOutboundViewSchema, (input: ExactInventoryOutboundPayment, audit) => service.recordOutboundPayment({ ...input, ...audit }))),
     recordPayment: os.recordPayment.handler(audited(exactInventoryInvoiceSchema, (input: ExactInventoryPayment, audit) => service.recordInvoicePayment({ ...input, ...audit }))),
     transferAsset: os.transferAsset.handler(audited(exactInventoryAssetSchema, (input: ExactInventoryAssetTransfer, audit) => service.transferAsset({ ...input, ...audit }))),
     transferConsumable: os.transferConsumable.handler(audited(exactInventoryLocationSchema, (input: ExactInventoryConsumableTransfer, audit) => service.transferConsumable({ ...input, ...audit }))),

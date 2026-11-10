@@ -47,7 +47,11 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
     return this.db.prepare(`SELECT ${projection(fields)} FROM "${table}" WHERE id=?`).get(id) as Record<string, unknown> | undefined ?? null;
   }
   private ids(table: string, where = "", parameters: unknown[] = []): string[] {
-    return (this.db.prepare(`SELECT id FROM "${table}" ${where} ORDER BY created_at,id LIMIT 100001`).all(...parameters) as { id: string }[]).map(row => row.id);
+    return this.boundedIds(this.db.prepare(`SELECT id FROM "${table}" ${where} ORDER BY created_at,id LIMIT 100001`).all(...parameters) as { id: string }[]);
+  }
+  private boundedIds(rows: { id: string }[]): string[] {
+    if (rows.length > 100000) throw new RangeError("Exact inventory read resource limit exceeded");
+    return rows.map(row => row.id);
   }
   private money(table: string, column: string, id: string, nullable = false): string | null {
     const value = prepareMoneyRead(this.db, `SELECT "${column}" AS minor_units FROM "${table}" WHERE id=?`).get(id);
@@ -104,7 +108,7 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
       return parsed;
     });
   }
-  listEntries(groupId?: string) { return this.withTransaction(() => (this.db.prepare(`SELECT id FROM inventory_entry ${groupId ? "WHERE invoice_group_id=?" : ""} ORDER BY invoice_group_id,entry_order LIMIT 100001`).all(...(groupId ? [groupId] : [])) as { id: string }[]).map(row => this.getEntry(row.id)!)); }
+  listEntries(groupId?: string) { return this.withTransaction(() => this.boundedIds(this.db.prepare(`SELECT id FROM inventory_entry ${groupId ? "WHERE invoice_group_id=?" : ""} ORDER BY invoice_group_id,entry_order LIMIT 100001`).all(...(groupId ? [groupId] : [])) as { id: string }[]).map(id => this.getEntry(id)!)); }
   saveEntry(row: ExactInventoryEntryRecord) { this.withTransaction(() => { this.save("inventory_entry", { ...this.metadata(row, entryFields), entry_order: this.recordOrder("inventory_entry", "entry_order", "invoice_group_id", row.invoiceGroupId, row.id), price_source: JSON.stringify(row.priceSource), unit_price_units: row.unitPriceDzd === null ? null : bindUnitPrice(UnitPrice.parse(row.unitPriceDzd)) }); }); }
   getAsset(id: string) {
     return this.withTransaction(() => {
@@ -112,7 +116,7 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
       return row ? exactInventoryAssetSchema.parse({ ...row, itemDefinitionId: this.getEntry(row.inventoryEntryId as string)!.itemDefinitionId, purchasePriceDzd: this.money("inventory_asset_unit", "purchase_price_minor", id) }) : null;
     });
   }
-  listAssets() { return this.withTransaction(() => (this.db.prepare("SELECT id FROM inventory_asset_unit ORDER BY inventory_entry_id,asset_order LIMIT 100001").all() as { id: string }[]).map(row => this.getAsset(row.id)!)); }
+  listAssets() { return this.withTransaction(() => this.boundedIds(this.db.prepare("SELECT id FROM inventory_asset_unit ORDER BY inventory_entry_id,asset_order LIMIT 100001").all() as { id: string }[]).map(id => this.getAsset(id)!)); }
   saveAsset(row: ExactInventoryAsset) { this.withTransaction(() => { this.save("inventory_asset_unit", { ...this.metadata(row, assetFields), asset_order: this.recordOrder("inventory_asset_unit", "asset_order", "inventory_entry_id", row.inventoryEntryId, row.id), purchase_price_minor: bindMoney(Money.parse(row.purchasePriceDzd)) }); }); }
   listBalances() {
     return this.withTransaction(() => this.ids("inventory_consumable_balance").map(id => {

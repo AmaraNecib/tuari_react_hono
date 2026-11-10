@@ -117,6 +117,8 @@ export const exactInventoryConsumableTransferSchema = inventoryConsumableTransfe
 export const exactInventoryPaymentSchema = inventoryInvoiceGroupRecordPaymentInputSchema.extend({
   ...command, amountDzd: exactInventoryMoneySchema.refine(value => value !== "0.00", "Payment must be positive"),
 });
+export const exactInventoryOutboundPaymentSchema = exactInventoryPaymentSchema.omit({ invoiceGroupId: true }).extend({ transferId: z.string().min(1) });
+export const exactInventoryOutboundViewSchema = exactInventoryOutboundSchema.extend({ remainingDebtDzd: exactInventoryMoneySchema });
 export const exactInventoryAssetTransferSchema = z.object({ ...inventoryAssetTransferInputSchema.shape,
   ...command, chargeAmountDzd: exactInventoryMoneySchema.nullable().optional(),
 }).superRefine((input, ctx) => {
@@ -147,5 +149,7 @@ export type ExactInventoryOutbound = z.infer<typeof exactInventoryOutboundSchema
 export type ExactInventoryAssetTransfer = z.input<typeof exactInventoryAssetTransferSchema>;
 export type ExactInventoryConsumableTransfer = z.input<typeof exactInventoryConsumableTransferSchema>;
 export type ExactInventoryPayment = z.input<typeof exactInventoryPaymentSchema>;
+export type ExactInventoryOutboundPayment = z.input<typeof exactInventoryOutboundPaymentSchema>;
+export type ExactInventoryOutboundView = z.infer<typeof exactInventoryOutboundViewSchema>;
 export type ExactInventoryChargeUpdate = z.input<typeof exactInventoryChargeUpdateSchema>;
 export type ExactInventoryChargeVoid = z.input<typeof exactInventoryChargeVoidSchema>;

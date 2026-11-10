@@ -60,13 +60,21 @@ it.each(["", "526-public-rpc-key"])("purchase/transfer/charge/outbound input-to-
     expect(outbound).toMatchObject({ actorUserId: user.id, actorLabel: user.name, currency: "DZD" });
     expect(composition.services.finance.remaining(outbound.debtEntryId!)).toBe("0.20");
     expect((await client.getOutbound({ id: outbound.id })).items[0]).toMatchObject({ optionId: option.id, unitPriceDzd: "3.0000", priceSource: { mode: "unit-price", price: "3.0000", quantity: "0.1" } });
+    const paymentInput = { requestId: "outbound-balance", transferId: outbound.id, amountDzd: "0.20" };
+    expect((await client.getOutbound({ id: outbound.id })).remainingDebtDzd).toBe("0.20");
+    const settled = await client.recordOutboundPayment(paymentInput);
+    expect(settled.remainingDebtDzd).toBe("0.00");
+    expect(await client.recordOutboundPayment(paymentInput)).toEqual(settled);
+    expect((await client.listOutbounds())[0]?.remainingDebtDzd).toBe("0.00");
     await client.voidCharge({ requestId: "void", chargeId: charge.id, reason: "Wrong placement" });
     expect(await client.projectCharges({ projectId: "project" })).toMatchObject({ totalDzd: "0.00" });
     expect(() => JSON.stringify(composition.services.inventory.getInvoiceGroup(purchase.group.id))).not.toThrow();
     await expect(client.recordPayment({ requestId: "invalid", invoiceGroupId: purchase.group.id, amountDzd: "0.001" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     const anonymous = createRouterClient(composition.router.inventory, { context: { ...context, resolveCurrentUser: async () => null } }) as ExactInventoryClient;
     await expect(anonymous.listInvoices()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(anonymous.recordOutboundPayment(paymentInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     const nonAdmin = createRouterClient(composition.router.inventory, { context: { ...context, resolveCurrentUser: async () => ({ ...user, id: "not-owner" }) } }) as ExactInventoryClient;
     await expect(nonAdmin.createInvoice(purchaseInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(nonAdmin.recordOutboundPayment(paymentInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   } finally { db.close(); }
 });

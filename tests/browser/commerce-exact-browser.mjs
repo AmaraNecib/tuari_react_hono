@@ -23,7 +23,7 @@ globalThis.require = apiRequire;
 const errors = [], commands = [];
 const allowed = {
   invoices: new Set(["getInvoice", "listInvoices", "createInvoice", "updateInvoice", "receiveInvoice", "voidInvoice", "deleteDraft", "getPayment", "listPayments", "createPayment", "allocatePayment", "voidPayment", "deleteUnallocatedPayment", "splitPayment"]),
-  inventory: new Set(["definitions", "getInvoice", "listInvoices", "createInvoice", "recordPayment", "locationContents", "transferAsset", "transferConsumable", "createOutbound", "listOutbounds", "getOutbound", "chargeDefault", "projectCharges", "projectContribution", "updateCharge", "voidCharge"]),
+  inventory: new Set(["definitions", "getInvoice", "listInvoices", "createInvoice", "recordPayment", "recordOutboundPayment", "locationContents", "transferAsset", "transferConsumable", "createOutbound", "listOutbounds", "getOutbound", "chargeDefault", "projectCharges", "projectContribution", "updateCharge", "voidCharge"]),
 };
 let clients;
 async function bridge(req, res) {
@@ -86,6 +86,8 @@ try {
   if (warmupErrors.some(message => !message.includes("504 (Outdated Optimize Dep)"))) throw new Error(warmupErrors.join("\n"));
   await page.reload({ waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
+  await expect(invoiceTable.getByRole("columnheader", { name: "الحالة", exact: true })).toBeVisible();
+  await expect(invoiceTable.getByRole("columnheader", { name: "الإجراءات", exact: true })).toBeVisible();
   await invoiceTable.screenshot({ path: resolve(out, "invoice-before.png"), animations: "disabled" });
   await page.getByRole("button", { name: "تسجيل دفعة", exact: true }).click();
   let dialog = page.getByRole("dialog");
@@ -97,6 +99,11 @@ try {
   await expect(invoiceTable).toContainText("90,071,992,547,409.63");
   expect(composition.services.invoices.getInvoice(invoice.id).remainingAmount).toBe("90071992547409.63");
   await invoiceTable.screenshot({ path: resolve(out, "invoice-after.png"), animations: "disabled" });
+  await page.setViewportSize({ width: 390, height: 900 });
+  await invoiceTable.getByRole("button", { name: "تفاصيل الفاتورة", exact: true }).scrollIntoViewIfNeeded();
+  if (await page.evaluate(() => document.body.scrollWidth > innerWidth)) throw new Error("Invoice document overflow at390px");
+  await invoiceTable.screenshot({ path: resolve(out, "invoice-status-actions-390.png"), animations: "disabled" });
+  await page.setViewportSize({ width: 1120, height: 900 });
   await page.getByRole("button", { name: "المخزون والمشتريات", exact: true }).click();
   await page.getByRole("button", { name: `تفاصيل ${stock.group.invoiceNumber}`, exact: true }).click();
   await expect(page.getByText("10,000", { exact: true })).toBeVisible();
@@ -142,6 +149,31 @@ try {
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
   }
+  await page.setViewportSize({ width: 1120, height: 900 });
+  await page.getByRole("button", { name: "تحويل مخزون أو بيع", exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox", { name: "نوع العملية", exact: true }).selectOption("SALE");
+  await dialog.getByRole("combobox", { name: "المخزون المختار", exact: true }).selectOption(stock.consumableBalances[0].id);
+  await dialog.getByRole("textbox", { name: "الكمية المحولة", exact: true }).fill("1");
+  await dialog.getByRole("checkbox", { name: "تسجيل مستحقات لنا من البيع", exact: true }).check();
+  await dialog.getByRole("textbox", { name: "القيمة الكاملة للدين", exact: true }).fill("100.00");
+  await dialog.getByRole("textbox", { name: "الدفعة الأولى، اختياري", exact: true }).fill("20.00");
+  await dialog.getByRole("button", { name: "تأكيد التحويل", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const outbound = composition.services.inventory.listOutboundTransfers()[0];
+  expect(outbound.remainingDebtDzd).toBe("80.00");
+  const outboundSection = page.getByRole("heading", { name: "التحويلات الخارجية", exact: true }).locator("..");
+  await expect(outboundSection).toContainText("80");
+  await outboundSection.screenshot({ path: resolve(out, "outbound-payment-before.png"), animations: "disabled" });
+  await page.getByRole("button", { name: "تسجيل دفعة التحويل", exact: true }).click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByRole("textbox", { name: "مبلغ الدفعة", exact: true }).fill("٨٠٫٠٠");
+  await dialog.screenshot({ path: resolve(out, "outbound-payment-localized.png"), animations: "disabled" });
+  await dialog.getByRole("button", { name: "حفظ الدفعة", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("button", { name: "تسجيل دفعة التحويل", exact: true })).toBeHidden();
+  expect(composition.services.finance.remaining(outbound.debtEntryId)).toBe("0.00");
+  await outboundSection.screenshot({ path: resolve(out, "outbound-payment-after.png"), animations: "disabled" });
   if (errors.length) throw new Error(errors.join("\n"));
   const dirtyAfter = execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" });
   if (dirtyBefore !== dirtyAfter) throw new Error("Source changed while browser proof was running");

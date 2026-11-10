@@ -1,9 +1,10 @@
-import type { ExactInventoryClient, ExactInventoryInvoiceInput, ExactInventoryPayment, ExactInventoryAssetTransfer, ExactInventoryConsumableTransfer, ExactInventoryOutboundInput, ExactInventoryChargeUpdate, ExactInventoryChargeVoid } from "@tuari/contracts"
+import type { ExactInventoryClient, ExactInventoryInvoiceInput, ExactInventoryPayment, ExactInventoryOutboundPayment, ExactInventoryAssetTransfer, ExactInventoryConsumableTransfer, ExactInventoryOutboundInput, ExactInventoryChargeUpdate, ExactInventoryChargeVoid } from "@tuari/contracts"
 import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
 import { exactCommercePrefix, useExactCommerceMutation } from "@/features/shared/exact-commerce-queries"
 export type ExactInventoryAction =
   | { kind: "createInvoice"; input: ExactInventoryInvoiceInput }
   | { kind: "recordPayment"; input: ExactInventoryPayment }
+  | { kind: "recordOutboundPayment"; input: ExactInventoryOutboundPayment }
   | { kind: "transferAsset"; input: ExactInventoryAssetTransfer }
   | { kind: "transferConsumable"; input: ExactInventoryConsumableTransfer }
   | { kind: "createOutbound"; input: ExactInventoryOutboundInput }
@@ -39,6 +40,7 @@ export function useExactInventoryAction(client: ExactInventoryClient) {
     switch (command.kind) {
       case "createInvoice": return client.createInvoice(command.input)
       case "recordPayment": return client.recordPayment(command.input)
+      case "recordOutboundPayment": return client.recordOutboundPayment(command.input)
       case "transferAsset": return client.transferAsset(command.input)
       case "transferConsumable": return client.transferConsumable(command.input)
       case "createOutbound": return client.createOutbound(command.input)

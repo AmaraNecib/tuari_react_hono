@@ -45,8 +45,13 @@ export class SqliteExactInvoiceRepository implements ExactInvoiceRepository {
       return exactInvoiceSchema.parse({ ...metadata, totalAmount: this.amount("invoice", "total_amount_minor", id), paidAmount: this.amount("invoice", "paid_amount_minor", id), remainingAmount: this.amount("invoice", "remaining_amount_minor", id), lineItems });
     });
   }
+  private ids(table: "invoice" | "payment"): string[] {
+    const rows = this.db.prepare(`SELECT id FROM "${table}" ORDER BY id LIMIT 100001`).all() as { id: string }[];
+    if (rows.length > 100000) throw new RangeError("Exact financial read resource limit exceeded");
+    return rows.map(row => row.id);
+  }
   listInvoices(): ExactInvoice[] {
-    return this.withTransaction(() => (this.db.prepare("SELECT id FROM invoice ORDER BY id LIMIT 100001").all() as { id: string }[]).map(row => this.getInvoice(row.id)!));
+    return this.withTransaction(() => this.ids("invoice").map(id => this.getInvoice(id)!));
   }
   saveInvoice(raw: ExactInvoice): void {
     const invoice = exactInvoiceSchema.parse(raw);
@@ -68,7 +73,7 @@ export class SqliteExactInvoiceRepository implements ExactInvoiceRepository {
     });
   }
   listPayments(): ExactPayment[] {
-    return this.withTransaction(() => (this.db.prepare("SELECT id FROM payment ORDER BY id LIMIT 100001").all() as { id: string }[]).map(row => this.getPayment(row.id)!));
+    return this.withTransaction(() => this.ids("payment").map(id => this.getPayment(id)!));
   }
   savePayment(raw: ExactPayment): void {
     const payment = exactPaymentSchema.parse(raw);

@@ -4,7 +4,7 @@ import { entityIdSchema } from "./core";
 import {
   exactInventoryInvoiceCreateSchema, exactInventoryInvoiceSchema, exactInventoryDetailSchema, exactInventoryPaymentSchema,
   exactInventoryAssetTransferSchema, exactInventoryConsumableTransferSchema, exactInventoryLocationInputSchema, exactInventoryLocationSchema,
-  exactInventoryOutboundCreateSchema, exactInventoryOutboundSchema, exactInventoryAssetSchema, exactInventoryChargeSchema,
+  exactInventoryOutboundCreateSchema, exactInventoryOutboundSchema, exactInventoryOutboundViewSchema, exactInventoryOutboundPaymentSchema, exactInventoryAssetSchema, exactInventoryChargeSchema,
   exactInventoryChargeUpdateSchema, exactInventoryChargeVoidSchema, exactInventoryProjectContributionSchema,
   exactInventoryProjectChargesSchema, exactInventoryChargeDefaultSchema, exactInventoryDefinitionsSchema,
 } from "./inventory-exact";
@@ -19,8 +19,9 @@ export const exactInventoryContract = {
   locationContents: oc.input(exactInventoryLocationInputSchema).output(exactInventoryLocationSchema),
   transferAsset: oc.input(exactInventoryAssetTransferSchema).output(exactInventoryAssetSchema),
   transferConsumable: oc.input(exactInventoryConsumableTransferSchema).output(exactInventoryLocationSchema),
-  listOutbounds: oc.output(z.array(exactInventoryOutboundSchema)),
-  getOutbound: oc.input(id).output(exactInventoryOutboundSchema),
+  listOutbounds: oc.output(z.array(exactInventoryOutboundViewSchema)),
+  getOutbound: oc.input(id).output(exactInventoryOutboundViewSchema),
+  recordOutboundPayment: oc.input(exactInventoryOutboundPaymentSchema).output(exactInventoryOutboundViewSchema),
   createOutbound: oc.input(exactInventoryOutboundCreateSchema).output(exactInventoryOutboundSchema),
   chargeDefault: oc.input(z.object({ assetUnitId: entityIdSchema })).output(exactInventoryChargeDefaultSchema),
   projectCharges: oc.input(z.object({ projectId: entityIdSchema })).output(exactInventoryProjectChargesSchema),
