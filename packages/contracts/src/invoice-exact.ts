@@ -91,4 +91,3 @@ export type ExactPaymentCreate = z.input<typeof exactPaymentCreateSchema>;
 export type ExactPaymentAllocate = z.input<typeof exactPaymentAllocateSchema>;
 export type ExactInvoiceList = z.input<typeof exactInvoiceListSchema>;
 export type ExactPaymentList = z.input<typeof exactPaymentListSchema>;
-
