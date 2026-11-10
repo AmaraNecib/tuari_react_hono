@@ -178,6 +178,20 @@ Initial reviews must now read complete committed expense source, not worker part
 scope. Parent architecture pass reduced duplicate screens to one typed view and
 kept all amount policy, parser/renderer and cache/activation seams explicit.
 
+## Hosted API coverage correction
+
+PR533 CI at 42bb1c94 passed 1,900 API tests with one skipped, but the strict
+100% coverage gate rejected unexercised expense currency/source validation and
+equal-width aggregate comparison branches. Raw failed job log remains ignored
+at `.scratch/reviews/528/49-ci-api-job.log`. Three focused tests now pin explicit
+non-DZD create rejection, exact group ordering/ties and wrong-currency source
+rejection with independent expected results. No production code or thresholds
+changed. The selected four-file run passes 55 cases with coverage restricted to
+the three affected modules: 119/119 statements, 99/99 branches, 38/38 functions
+and 88/88 lines. This is targeted local proof, not the full CI suite or new-head
+hosted acceptance. API typecheck and test lint also pass. One fresh combined-delta
+review must carry forward unaffected earlier conclusions before publishing the fix.
+
 ## Resource recovery and next gate
 
 Two initial frozen installs failed ENOSPC, including the hardlink retry. After
