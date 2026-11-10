@@ -1,3 +1,4 @@
+import { AppDate } from "@/components/app-date"
 /**
  * Consolidation dialog for combining multiple debt entries.
  * Allows users to merge related debt records.
@@ -18,7 +19,6 @@ import { Button } from "@/components/ui/button"
 import {
   useDebtEntriesConsolidateMutation,
 } from "@/features/app-shell/mock-dashboard"
-import { formatAlgeriaDate } from "@/lib/algeria-time"
 import { formatDebtAmount, formatDebtMoney, getConsolidationRemainder, getDebtAccountBalanceDisplay, getDebtDirectionLabel } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
@@ -184,7 +184,7 @@ export function ConsolidationDialog({
                     >
                       <div>
                         <p className="text-sm font-medium text-foreground">
-                          {formatAlgeriaDate(entry.entryDate)}
+                          {<AppDate value={entry.entryDate} />}
                         </p>
                         {entry.note?.trim() && (
                           <p className="mt-0.5 text-xs text-muted-foreground">{entry.note.trim()}</p>
@@ -231,7 +231,7 @@ export function ConsolidationDialog({
                     >
                       <div>
                         <p className="text-sm font-medium text-foreground">
-                          {formatAlgeriaDate(entry.entryDate)}
+                          {<AppDate value={entry.entryDate} />}
                         </p>
                         {entry.note?.trim() && (
                           <p className="mt-0.5 text-xs text-muted-foreground">{entry.note.trim()}</p>

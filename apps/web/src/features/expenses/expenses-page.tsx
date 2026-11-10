@@ -25,7 +25,7 @@ import {
 import { TableQueryState } from "@/features/shared/table-primitives"
 import { Surface } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
-import { formatAlgeriaDate } from "@/lib/algeria-time"
+import { AppDate } from "@/components/app-date"
 
 import { ExpenseFormDialog, type ExpenseLookupOption } from "./expense-form-dialog"
 import { buildExpenseFilters, getCurrentMonthExpenseDates } from "./expenses-filters"
@@ -43,15 +43,6 @@ function formatNumber(value: number) {
   // Money is not always whole dinars: `paymentAmountSchema` accepts fractions,
   // so show up to two decimals instead of rounding every amount to an integer.
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value)
-}
-
-/**
- * Render a stored instant as the local (Africa/Algiers) calendar day it fell
- * on. The raw `expenseDate` is UTC; slicing it would show September 30 for an
- * expense entered for October 1 in Algeria (UTC+1).
- */
-function formatExpenseDate(iso: string) {
-  return formatAlgeriaDate(new Date(iso))
 }
 
 /**
@@ -300,7 +291,7 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
                     {(itemsByGroup.get(group.projectId) ?? []).map((item) => (
                       <li key={item.id} className="flex items-center justify-between gap-3 text-sm">
                         <span className="min-w-0 truncate text-ink-2">
-                          <span className="text-ink-4">{formatExpenseDate(item.expenseDate)}</span>
+                          <span className="text-ink-4"><AppDate value={item.expenseDate} /></span>
                           {" · "}
                           {item.whatFor ?? t("expenses.noDescription")}
                         </span>
@@ -334,7 +325,7 @@ export function ExpensesPage({ projects, employees, sellers }: ExpensesPageProps
               <TableBody>
                 {items.map((item) => (
                   <TableRow key={item.id} className={item.status === "VOIDED" ? "opacity-60" : undefined}>
-                    <TableCell className="text-ink-3">{formatExpenseDate(item.expenseDate)}</TableCell>
+                    <TableCell className="text-ink-3"><AppDate value={item.expenseDate} /></TableCell>
                     <TableCell>
                       <span className={item.status === "VOIDED" ? "line-through" : undefined}>
                         {item.whatFor ?? t("expenses.noDescription")}

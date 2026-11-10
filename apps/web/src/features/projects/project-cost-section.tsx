@@ -6,7 +6,7 @@ import type { ProjectCost } from "@tuari/contracts"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { formatAlgeriaDate } from "@/lib/algeria-time"
+import { AppDate } from "@/components/app-date"
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import { useProjectCostQuery } from "./project-cost-queries"
@@ -16,7 +16,7 @@ function formatNumber(value: number) {
 }
 
 function formatDay(iso: string) {
-  return formatAlgeriaDate(new Date(iso))
+  return <AppDate value={iso} />
 }
 
 /**

@@ -194,7 +194,7 @@ export function RecordHistoryTable({
     typeLabel: string
     title: string
     detail?: string | null
-    periodLabel: string
+    periodLabel: ReactNode
     statusLabel: string
   }>
 }) {
@@ -258,7 +258,7 @@ export function RecordHistoryCard({
 }: {
   title: string
   emptyLabel: string
-  items: Array<{ id: string; label: string; secondary: string; badge: string }>
+  items: Array<{ id: string; label: string; secondary: ReactNode; badge: string }>
 }) {
   return (
     <Surface as="article" className="p-4" variant="table">

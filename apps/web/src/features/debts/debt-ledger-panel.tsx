@@ -1,3 +1,4 @@
+import { AppDate } from "@/components/app-date"
 /**
  * Debt ledger panel for viewing transaction history.
  * Displays all debt entries with filtering and sorting.
@@ -14,7 +15,7 @@ import {
   useCreateDebtEntryMutation,
   useSettleDebtAccountMutation,
 } from "@/features/app-shell/mock-dashboard"
-import { formatAlgeriaDate, getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 
 import { formatDebtAmount, formatDebtMoney, getDebtAccountBalanceDisplay, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
@@ -192,7 +193,7 @@ export function DebtLedgerPanel({
                   return (
                     <tr key={entry.id} className={cn("border-t border-border/60", !isLive && "opacity-50")}>
                       <td className="px-4 py-4 text-start text-foreground">
-                        {formatAlgeriaDate(entry.entryDate)}
+                        {<AppDate value={entry.entryDate} />}
                       </td>
                       <td className="px-4 py-4 text-start text-muted-foreground">
                         {getDebtEntryTypeLabel(entry.entryType)}

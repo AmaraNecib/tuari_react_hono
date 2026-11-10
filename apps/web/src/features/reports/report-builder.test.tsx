@@ -61,8 +61,9 @@ describe("ReportBuilder range boundary", () => {
       reportsGenerate.mockResolvedValue(inventory)
       renderPage()
       fireEvent.click(screen.getByRole("button", { name: "إنشاء التقرير" }))
-      await screen.findByText(/1‏\/10‏\/2026، 12:00:00 ص/)
-      expect(screen.queryByText(/30‏\/9‏\/2026، 11:00:00 م/)).toBeNull()
+      await screen.findByText("01/10/2026")
+      expect(screen.getByText("12:00:00 ص")).toBeTruthy()
+      expect(screen.queryByText("30/09/2026")).toBeNull()
 
       const reports: Report[] = [inventory, {
         type: "DEBT", generatedAt: MIDNIGHT_CROSSING,

@@ -5,6 +5,7 @@ import { format, parse, isValid } from "date-fns"
 import { CalendarIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { AppDate } from "@/components/app-date"
 import { formInputClassName } from "@/components/ui/form-controls"
 import {
   Popover,
@@ -17,13 +18,6 @@ const CANONICAL_DAY_FORMAT = "yyyy-MM-dd"
 
 const CANONICAL_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const DISPLAY_DAY_PATTERN = /^\d{2}\/\d{2}\/\d{4}$/
-
-/**
- * Format a Date as DD/MM/YYYY for Arabic RTL display.
- */
-function formatDateAr(date: Date): string {
-  return format(date, DISPLAY_DATE_FORMAT)
-}
 
 /**
  * Parse a picker value into a Date.
@@ -66,7 +60,7 @@ type DatePickerProps = {
 }
 
 /**
- * Date picker with Arabic locale support. Displays `dd/MM/yyyy`; its value
+ * Date picker with Arabic locale support. Displays the chosen numeric order; its value
  * contract is the app's canonical `yyyy-MM-dd` day in and out.
  */
 /**
@@ -114,7 +108,7 @@ export function DatePicker({
           )}
         >
           <span className={cn(!selectedDate && "text-muted-foreground/80")}>
-            {selectedDate ? formatDateAr(selectedDate) : placeholder}
+            {selectedDate ? <AppDate value={toCanonicalDay(selectedDate)} /> : placeholder}
           </span>
           <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
         </PopoverTrigger>

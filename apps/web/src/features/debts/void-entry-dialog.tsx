@@ -1,3 +1,4 @@
+import { AppDate } from "@/components/app-date"
 /**
  * Void entry dialog for reversing/cancelling debt entries.
  */
@@ -16,7 +17,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/form-controls"
 import { useVoidDebtEntryMutation } from "@/features/app-shell/mock-dashboard"
-import { formatAlgeriaDate } from "@/lib/algeria-time"
 import { formatDebtAmount, formatDebtMoney, getDebtAccountBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
@@ -104,7 +104,7 @@ export function VoidEntryDialog({
               </p>
             ) : null}
             <p className="mt-1 text-xs text-muted-foreground">
-              {formatAlgeriaDate(entry.entryDate)}
+              {<AppDate value={entry.entryDate} />}
               {entry.note?.trim() ? ` — ${entry.note.trim()}` : ""}
             </p>
           </div>
