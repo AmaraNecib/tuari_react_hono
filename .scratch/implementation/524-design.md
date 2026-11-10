@@ -1,6 +1,103 @@
 # Issue 524 exact debt implementation design
 
-## Status and authority
+## Resumed full debt scope
+
+The owner explicitly directed completing the original full524 scope after the
+shared preparation merged. This work continues in the original tree and branch.
+Seven preserved untracked exact debt files were inspected, not discarded or
+replaced by another lane. The branch fast-forwarded safely from a90a86f4 to
+actual merged develop d09ff583095254f600d4340e00d5a7dd8baa8e5d. Shared532,
+expense533, currency536 and date537 are predecessors already merged, not a
+publication stack. Full524 gets an independent develop PR only when complete.
+Actual UI approval and owner manual merge apply to that new PR. No earlier
+hosted-verdict exception transfers. Verification is focused-local/CI-final-enforced;
+current effective develop protection was saved in resumed-protection.json.
+
+The opt-in exact module retains debt_account and debt_entry as the sole ledger.
+Production initialization, contracts, router and connected numeric writers remain
+numeric and reject a converted database before legacy initialization. Exact
+construction requires a version1 debt marker and physical INTEGER money fields.
+The inert DDL is for fresh fixtures or authorized fresh-copy preparation only.
+No migration, live schema activation or automatic attribution of legacy data.
+
+An original obligation is a signed OPENING, ADVANCE or independent ADJUSTMENT.
+A payment or settlement records its original targetEntryId. A correction records
+a signed ADJUSTMENT delta with correctionOfEntryId pointing at that same original
+obligation. The original record is immutable. Payments retain their original links;
+corrections do not redistribute them. A positive obligation correction supplies
+the explicitly agreed new amount and reason, never an automatic write-off.
+Reject a correction or correction-void that would invalidate recorded settlements.
+Signed independent adjustments remain available under the existing ledger model.
+Voiding an original marks only its own payments/corrections void, not unrelated
+account payments. Voiding a payment reverses only that recorded allocation.
+Whole-account settlement emits a linked entry for every outstanding original,
+including signed credit adjustments, inside one transaction. It never nets across
+PAYABLE and RECEIVABLE accounts. Summary gross exposure keeps both directions.
+
+PostingSequence fixes persisted order when equal dates/random UUIDs would sort
+otherwise. Every posting and replay receipt commits atomically with current and
+running balances. Memory snapshots and SQLite immediate transactions implement
+the same synchronous repository interface. SQLite operations use the existing
+connection-wide FifoLock and statement-local exact money reads. No global integer
+mode, floating SQL SUM, Number money keys, or separate mutable balance is added.
+Read-only history aggregates use the now-merged sumMoneyHistory; per-value and
+operation bounds remain independent. Account/entry lists have explicit100000
+resource limits. Exact DTOs, opt-in RPC and injected exact debt UI cannot satisfy
+numeric cache/read paths. The default production graph is unchanged.
+
+Local proof must cover memory/plain/keyed parity, attributed correction/void,
+int64 and recomputation overflow rollback, canonical replay/conflict, immutable
+identity and amount/links, numeric ordering beyond Number range, shared-connection
+foreign-lock refusal and competing-connection reservation before decision reads.
+RPC proof must use actual validation, authenticated audit, native persistence and
+replay. UI proof must use actual components for create/post/pay/correct/void/settle,
+localized exact draft entry, signed/grouped display, errors and keyboard/mobile.
+All three initial lenses apply to this new debt diff. Prior532 reviews do not
+review the new lifecycle. Logs/reviews remain private and ignored.
+
+## Full-scope review correction
+
+Positive PAYABLE and RECEIVABLE balances already contribute to their respective
+gross totals. Add literal assertions against all three repository implementations
+so that dropping the matching-direction branch cannot pass unnoticed. Retain the
+separate signed-credit coverage; it exercises a different exposure branch.
+
+Pending command receipt keys belong to the injected client and authenticated
+owner. Store them in an explicit per-client WeakMap rather than relying on a
+useMemo dependency whose callback does not consume that client. Preserve a key
+after uncertain transport failure; remove it only on success. Switching clients
+must not reuse another client's receipt key. No money calculation, wire format,
+ledger transaction, rendered markup or default production composition changes.
+
+## Hosted review corrections for PR538
+
+Settlement must keep every intermediate posting within reversal-safe int64,
+not merely the final zero balance. Partition outstanding obligations by sign.
+At each step reverse a positive obligation when the current balance is
+nonnegative, or a negative obligation when it is negative. Fall back to the
+remaining sign only when the other partition is empty. Re-evaluate after each
+posting, rather than using one fixed sign sort. Each reversal retains the
+original target and the command stays atomic. Regression cases include both
+signs of the maximal three-entry case and alternating five-entry histories
+across memory, plain and keyed native repositories.
+
+Pending transport intent must survive page unmount. The injected client's
+module-level WeakMap owns pending receipt maps; each intent signature includes
+the authenticated owner. Lost responses retain keys through remounts, while
+successful responses delete them. Client garbage collection bounds lifetime;
+this is not browser-restart persistence or a new financial ledger. A remount
+test models a committed payment with a lost response and verifies one commit
+when its identical request is retried.
+
+CI's existing strict coverage gate exposed missing command/storage guard cases.
+Add direct public-seam rejection and atomicity assertions, without lowering any
+threshold or excluding source. Remove the unused array normalization branch,
+since exact command intent contains no arrays, and the unreachable zero fallback
+for a live original's own remaining-index entry. Keep repository-currency drift
+refusal tested independently of the DZD command codec. No migration or production
+activation is authorized by these corrections.
+
+## Shared-preparation status and authority (historical)
 
 Implementation resumed after owner-controlled disk recovery. The first bounded
 change implements the common opt-in input/renderer and startup isolation gate.

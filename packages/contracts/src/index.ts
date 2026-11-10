@@ -7,6 +7,8 @@ export * from "./round-to-decimals";
 export * from "./projects";
 export * from "./warehouses";
 export * from "./debts";
+export * from "./debts-exact";
+export * from "./debts-exact-contract";
 export * from "./debt-helpers";
 export * from "./inventory";
 export * from "./inventory-item-usage";
