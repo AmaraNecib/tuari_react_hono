@@ -67,6 +67,10 @@ export class Money {
     return new Money(this.#minor + other.#minor, this.currency);
   }
   subtract(other: Money): Money { return this.add(other.negate()); }
+  compare(other: Money): -1 | 0 | 1 {
+    currency(other.currency);
+    return this.#minor < other.#minor ? -1 : this.#minor > other.#minor ? 1 : 0;
+  }
   negate(): Money { return new Money(-this.#minor, this.currency); }
 }
 

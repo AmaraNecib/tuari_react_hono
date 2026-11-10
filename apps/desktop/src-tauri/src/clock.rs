@@ -380,7 +380,30 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("tuari-clock-test-{nanos}"))
+        temp_dir_at(nanos)
+    }
+
+    fn temp_dir_at(nanos: u128) -> PathBuf {
+        // Windows clock ticks can repeat across parallel tests. Keep their
+        // cleanup roots distinct even when the timestamp is identical.
+        static TEST_DIR_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+        let sequence = TEST_DIR_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "tuari-clock-test-{}-{nanos}-{sequence}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn temp_directories_are_unique_when_clock_ticks_repeat() {
+        let workers: Vec<_> = (0..16)
+            .map(|_| thread::spawn(|| temp_dir_at(123)))
+            .collect();
+        let paths: std::collections::HashSet<_> = workers
+            .into_iter()
+            .map(|worker| worker.join().unwrap())
+            .collect();
+        assert_eq!(paths.len(), 16, "parallel tests must not share cleanup roots");
     }
 
     fn seed_tracker(dir: &Path, last_seen_wall: i64, install_wall: i64) {

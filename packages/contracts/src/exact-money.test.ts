@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { Money, UnitPrice, Quantity, SalaryReference, priceLine, agreedLine, derivedPrice, finalizeLines, sumMoney, allocateMoney, reverseAllocations, parseExactLine } from "./exact-money";
 
 describe("exact money input and wire", () => {
+  it("compares exact signed values without subtraction overflow or Number keys", () => {
+    expect(Money.parse("90071992547409.93").compare(Money.parse("90071992547409.92"))).toBe(1);
+    expect(Money.parse("-92233720368547758.07").compare(Money.parse("92233720368547758.07"))).toBe(-1);
+    expect(Money.parse("0").compare(Money.parse("-0.00"))).toBe(0);
+    const incompatible = { currency: "USD" } as unknown as Money;
+    expect(() => Money.parse("1").compare(incompatible)).toThrow(/currency/);
+  });
   it("round-trips every digit beyond Number precision and formats without forced decimals", () => {
     const amount = Money.parse("90071992547409.93", "DZD");
     expect(amount.toMinorUnits()).toBe("9007199254740993");

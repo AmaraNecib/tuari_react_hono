@@ -1,3 +1,4 @@
+import { assertLegacyMoneySchema } from "./money-schema-gate";
 import {
   actorLabelBackfillMigrationKey,
   additiveStatements,
@@ -1712,6 +1713,7 @@ export async function applyEmployeeUserLinkMigration(db: DbExecutor): Promise<vo
 }
 
 export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
+  await assertLegacyMoneySchema(db);
   await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
 
   for (const statement of schemaStatements) {
