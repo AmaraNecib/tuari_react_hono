@@ -122,6 +122,21 @@ No date source is copied from an unmerged branch. The additional prose adapter
 render slots were communicated directly. #524 shared components and #528 expense
 screens remain untouched.
 
+## CI-discovered caller assertions
+
+The first hosted run on `03ca1a44` exposed two unchanged integration assertions
+that still required concatenated suffix text: HomeView's invoice-detail check
+and the inventory asset-charge E2E helper's project total/contribution/asset
+checks. Their expected numeric values were correct; the expected string layout
+was obsolete after CurrencyRun adoption. CI logs retain both exact failures.
+Update those assertions to inspect the unchanged numeric runs and currency
+labels, and add real label-left geometry to all three project-cost E2E checks.
+This bounded correction changes tests only, not production rendering. Run the
+specific HomeView case and affected asset-charge integration suite, then obtain
+one fresh combined-delta review carrying forward all three initial conclusions.
+Existing `03ca1a44` component geometry and public images retain that exact source
+identity; unchanged production source does not require another browser capture.
+
 ## Verification plan and evidence boundaries
 
 The owner explicitly selected actual callsites and physical geometry as test
