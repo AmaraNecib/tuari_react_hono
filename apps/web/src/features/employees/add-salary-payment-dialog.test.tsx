@@ -5,6 +5,7 @@ const { mockMutateAsync } = vi.hoisted(() => ({ mockMutateAsync: vi.fn() }))
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
+    i18n: { dir: () => "rtl" },
     t: (key: string, options?: { count?: number }) =>
       options?.count !== undefined ? `${key}:${options.count}` : key,
   }),

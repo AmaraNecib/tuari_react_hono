@@ -7,6 +7,7 @@ vi.mock("react-i18next", () => ({
   // status-meta imports @/i18n, which calls i18n.use(initReactI18next).
   initReactI18next: { type: "3rdParty", init: () => {} },
   useTranslation: () => ({
+    i18n: { dir: () => "rtl" },
     t: (key: string, options?: { count?: number }) =>
       options?.count !== undefined ? `${key}:${options.count}` : key,
   }),
