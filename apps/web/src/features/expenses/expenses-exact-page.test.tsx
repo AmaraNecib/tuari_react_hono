@@ -2,12 +2,13 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import type { ExactExpenseListOutput, ExactExpensesClient } from "@tuari/contracts"
 import { ExpensesPage, ExactExpensesPage } from "./expenses-page"
 import { setMoneyGrouping } from "@/features/preferences/money-format-preference"
+import { setDateFormat } from "@/features/preferences/date-format-preference"
 
 const { listQuery, detailQuery, voidMutate } = vi.hoisted(() => ({
   listQuery: vi.fn(),
@@ -56,6 +57,7 @@ afterEach(() => {
   detailQuery.mockReset()
   voidMutate.mockReset()
   setMoneyGrouping(true)
+  setDateFormat("DD/MM/YYYY")
 })
 
 describe("ExactExpensesPage", () => {
@@ -114,6 +116,32 @@ describe("ExactExpensesPage", () => {
     expect(within(dialog).getByText("Workshop")).toBeTruthy()
     expect(within(dialog).getByText("Worker")).toBeTruthy()
     expect(within(dialog).queryByText("project-1")).toBeNull()
+  })
+
+  it("refreshes exact detail, void and revision dates without changing Algeria clocks", () => {
+    const item = { ...exactExpense, status: "VOIDED" as const, voidedAt: "2026-11-10T23:30:00.000Z", revisions: [
+      { id: "r1", expenseId: exactExpense.id, previousAmount: null, newAmount: exactExpense.amount, changedFields: ["amount"], reason: "Correction", actorUserId: "editor", actorLabel: "Editor", transactionId: "txn-r1", createdAt: "2026-11-09T23:30:00.000Z" },
+    ] }
+    listQuery.mockReturnValue({ data: { ...exactData, items: [item] }, isPending: false, isError: false, isFetching: false })
+    detailQuery.mockReturnValue({ data: item, isPending: false, isError: false })
+    renderExact()
+    fireEvent.click(screen.getByRole("button", { name: "التفاصيل" }))
+    const dialog = screen.getByRole("dialog")
+    const value = (label: string) => within(dialog).getByText(label).nextElementSibling!
+    const originalClock = value("وقت الإلغاء").querySelectorAll("bdi")[1]?.textContent
+    for (const [order, expense, voidDay, revision] of [
+      ["YYYY/MM/DD", "2026/10/03", "2026/11/11", "2026/11/10"],
+      ["MM/DD/YYYY", "10/03/2026", "11/11/2026", "11/10/2026"],
+      ["YYYY/DD/MM", "2026/03/10", "2026/11/11", "2026/10/11"],
+      ["DD/MM/YYYY", "03/10/2026", "11/11/2026", "10/11/2026"],
+    ] as const) {
+      act(() => setDateFormat(order))
+      for (const [label, expected] of [["التاريخ", expense], ["وقت الإلغاء", voidDay], ["الوقت", revision]] as const) {
+        expect(value(label).querySelector('bdi[dir="ltr"]')?.textContent).toBe(expected)
+      }
+      expect(value("وقت الإلغاء").querySelectorAll("bdi")[1]?.textContent).toBe(originalClock)
+      expect(value("وقت الإلغاء").textContent).toMatch(/0:30|12:30/)
+    }
   })
 
   it("keeps the raw ID for a missing soft reference instead of inventing a name", () => {

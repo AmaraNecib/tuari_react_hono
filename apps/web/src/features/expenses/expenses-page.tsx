@@ -28,7 +28,7 @@ import { useMoneyGrouping } from "@/features/preferences/money-format-preference
 import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { Surface } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
-import { formatAlgeriaDate, formatDateTimeInAlgeria } from "@/lib/algeria-time"
+import { AppDate } from "@/components/app-date"
 
 import { ExpenseFormDialog, ExactExpenseFormDialog, type ExpenseFormDialogProps, type ExpenseLookupOption } from "./expense-form-dialog"
 import { buildExpenseFilters, getCurrentMonthExpenseDates } from "./expenses-filters"
@@ -47,15 +47,6 @@ function formatNumber(value: number) {
   // Money is not always whole dinars: `paymentAmountSchema` accepts fractions,
   // so show up to two decimals instead of rounding every amount to an integer.
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value)
-}
-
-/**
- * Render a stored instant as the local (Africa/Algiers) calendar day it fell
- * on. The raw `expenseDate` is UTC; slicing it would show September 30 for an
- * expense entered for October 1 in Algeria (UTC+1).
- */
-function formatExpenseDate(iso: string) {
-  return formatAlgeriaDate(new Date(iso))
 }
 
 /**
@@ -340,7 +331,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
                     {(itemsByGroup.get(group.projectId) ?? []).map((item) => (
                       <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 text-sm">
                         <span className="min-w-0 truncate text-ink-2">
-                          <span className="text-ink-4">{formatExpenseDate(item.expenseDate)}</span>
+                          <span className="text-ink-4"><AppDate value={item.expenseDate} /></span>
                           {" · "}
                           {item.whatFor ?? t("expenses.noDescription")}
                         </span>
@@ -376,7 +367,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
               <TableBody>
                 {items.map((item) => (
                   <TableRow key={item.id} className={item.status === "VOIDED" ? "opacity-60" : undefined}>
-                    <TableCell className="text-ink-3">{formatExpenseDate(item.expenseDate)}</TableCell>
+                    <TableCell className="text-ink-3"><AppDate value={item.expenseDate} /></TableCell>
                     <TableCell>
                       <span className={item.status === "VOIDED" ? "line-through" : undefined}>
                         {item.whatFor ?? t("expenses.noDescription")}
@@ -507,7 +498,7 @@ function ExactExpenseDetail({ client, id, onClose, onEdit, onVoid, projects, emp
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
               <dt>المبلغ</dt><dd>{money(detail.amount)}</dd>
               <dt>الحالة</dt><dd>{detail.status === "VOIDED" ? t("expenses.status.voided") : "ساري"}</dd>
-              <dt>التاريخ</dt><dd>{formatExpenseDate(detail.expenseDate)}</dd>
+              <dt>التاريخ</dt><dd><AppDate value={detail.expenseDate} /></dd>
               <dt>الوصف</dt><dd>{detail.whatFor ?? t("expenses.noDescription")}</dd>
               <dt>ملاحظة</dt><dd>{detail.note ?? t("expenses.none")}</dd>
               <dt>المشروع</dt><dd><bdi>{referenceLabel(detail.projectId, projects)}</bdi></dd>
@@ -519,7 +510,7 @@ function ExactExpenseDetail({ client, id, onClose, onEdit, onVoid, projects, emp
               {detail.status === "VOIDED" && <>
                 <dt>سبب الإلغاء</dt><dd>{detail.voidReason ?? t("expenses.none")}</dd>
                 <dt>ألغاه</dt><dd><bdi>{detail.voidedBy ?? t("expenses.none")}</bdi></dd>
-                <dt>وقت الإلغاء</dt><dd>{detail.voidedAt ? formatDateTimeInAlgeria(new Date(detail.voidedAt)) : t("expenses.none")}</dd>
+                <dt>وقت الإلغاء</dt><dd>{detail.voidedAt ? <AppDate value={detail.voidedAt} includeTime /> : t("expenses.none")}</dd>
               </>}
             </dl>
             <h3 className="font-semibold">سجل التعديلات</h3>
@@ -531,7 +522,7 @@ function ExactExpenseDetail({ client, id, onClose, onEdit, onVoid, projects, emp
                   <dt>المبلغ الجديد</dt><dd>{money(revision.newAmount)}</dd>
                   <dt>السبب</dt><dd>{revision.reason ?? t("expenses.none")}</dd>
                   <dt>الفاعل</dt><dd><bdi>{revision.actorLabel ?? revision.actorUserId ?? t("expenses.none")}</bdi></dd>
-                  <dt>الوقت</dt><dd>{formatDateTimeInAlgeria(new Date(revision.createdAt))}</dd>
+                  <dt>الوقت</dt><dd><AppDate value={revision.createdAt} includeTime /></dd>
                   <dt>معرّف العملية</dt><dd className="break-all"><bdi>{revision.transactionId ?? t("expenses.none")}</bdi></dd>
                 </dl>
               </li>)}

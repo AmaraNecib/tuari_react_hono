@@ -53,7 +53,7 @@ type EmployeeProfile = Pick<
 type ManagedOption = {
   id: string
   label: string
-  secondary: string
+  secondary: ReactNode
 }
 
 function createFormState(employee: EmployeeProfile): FormState {

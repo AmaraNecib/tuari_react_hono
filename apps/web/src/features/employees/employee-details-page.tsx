@@ -1,3 +1,5 @@
+import type { ReactNode } from "react"
+import { AppDate } from "@/components/app-date"
 import { MoneyValue } from "@/features/shared/money-value"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -29,7 +31,7 @@ import {
   RecordTabPanel,
   RecordTabs,
 } from "@/features/shared/record-page-frame"
-import { formatAlgeriaDate, getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { computeProposedSalaryAmount } from "@tuari/contracts"
 
 import type { EmployeeTableRow } from "./employee-table"
@@ -39,7 +41,7 @@ type EmployeeWorkHistoryRow = {
   title: string
   detail?: string | null
   typeLabel: string
-  periodLabel: string
+  periodLabel: ReactNode
   statusLabel: string
 }
 
@@ -484,7 +486,7 @@ export function EmployeeDetailsPage({
 
                       return (
                         <tr key={payment.id} className="border-t border-border/60 bg-sidebar dark:bg-background">
-                          <td className="px-4 py-4 text-start text-foreground">{formatAlgeriaDate(payment.paymentDate)}</td>
+                          <td className="px-4 py-4 text-start text-foreground">{<AppDate value={payment.paymentDate} />}</td>
                           <td className="px-4 py-4 text-start font-mono tabular-nums text-foreground" dir="ltr">{payment.days}</td>
                           <td className="px-4 py-4 text-start text-foreground"><MoneyValue value={payment.expectedAmountDzd} currencyLabel={currencyLabel} variant="detail" /></td>
                           <td className="px-4 py-4 text-start text-foreground"><MoneyValue value={payment.actualAmountDzd} currencyLabel={currencyLabel} variant="detail" /></td>

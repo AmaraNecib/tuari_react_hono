@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { DatePicker } from "./date-picker"
+import { setDateFormat } from "@/features/preferences/date-format-preference"
 
 /**
  * The shared DatePicker is the single seam between the app's canonical
@@ -25,12 +26,33 @@ function pickDay(isoDay: string) {
 }
 
 describe("DatePicker value contract", () => {
-  afterEach(cleanup)
+  afterEach(() => { cleanup(); setDateFormat("DD/MM/YYYY") })
 
   it("renders a canonical yyyy-MM-dd value as its dd/MM/yyyy display day", () => {
     render(<DatePicker value="2026-10-01" onChange={vi.fn()} />)
 
     expect(screen.getByRole("button").textContent).toContain("01/10/2026")
+  })
+
+  it("updates its display order without changing canonical submission or calendar selection", () => {
+    const onChange = vi.fn()
+    render(<DatePicker value="2026-04-23" name="businessDay" onChange={onChange} />)
+    act(() => setDateFormat("YYYY/DD/MM"))
+    expect(screen.getByRole("button").textContent).toContain("2026/23/04")
+    expect((document.querySelector('input[name="businessDay"]') as HTMLInputElement).value).toBe("2026-04-23")
+    openPicker()
+    pickDay("2026-04-24")
+    expect(onChange).toHaveBeenCalledWith("2026-04-24")
+  })
+
+  it("refreshes the empty cue for all four orders without changing empty canonical submission", () => {
+    render(<DatePicker value="" name="businessDay" onChange={vi.fn()} />)
+    for (const order of ["YYYY/MM/DD", "DD/MM/YYYY", "MM/DD/YYYY", "YYYY/DD/MM"]) {
+      act(() => setDateFormat(order))
+      expect(screen.getByRole("button").textContent).toContain(order.toLowerCase())
+      expect(screen.getByRole("button").querySelector('bdi[dir="ltr"]')).toBeTruthy()
+      expect((document.querySelector('input[name="businessDay"]') as HTMLInputElement).value).toBe("")
+    }
   })
 
   it("emits the picked day as canonical yyyy-MM-dd, never dd/MM/yyyy", () => {

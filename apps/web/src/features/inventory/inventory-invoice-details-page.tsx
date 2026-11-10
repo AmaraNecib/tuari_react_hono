@@ -1,3 +1,4 @@
+import { AppDate } from "@/components/app-date"
 import { CurrencyRun } from "@/features/shared/money-value"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -5,7 +6,6 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { formatAlgeriaDate, getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { downloadDesktopApiFile } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { resolveApiUrl } from "@/lib/runtime-config"
@@ -75,7 +75,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
           <PageHeader title={detail?.group.invoiceNumber || "تفاصيل الفاتورة"} description={detail?.group.supplierName || "بدون مورد محدد"} action={<PageActionGroup><Button variant="outline" onClick={onBack}>العودة إلى الفواتير</Button>{detail && detail.group.remainingDebtDzd > 0 && <Button onClick={() => setPaymentDialogOpen(true)}>تسجيل دفعة</Button>}</PageActionGroup>} />
           {detail ? (
             <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl border border-border/70 p-4">تاريخ الفاتورة: {detail.group.invoiceDate ? formatAlgeriaDate(detail.group.invoiceDate) : "غير محدد"}</div>
+              <div className="rounded-xl border border-border/70 p-4">تاريخ الفاتورة: {detail.group.invoiceDate ? <AppDate value={detail.group.invoiceDate} /> : "غير محدد"}</div>
               <div className="rounded-xl border border-border/70 p-4">الإجمالي: <CurrencyRun amount={detail.group.grossTotalDzd.toFixed(2)} currencyLabel="دج" /></div>
               <div className="rounded-xl border border-border/70 p-4">المدفوع: <CurrencyRun amount={detail.group.paidAmountDzd.toFixed(2)} currencyLabel="دج" /></div>
               <div className="rounded-xl border border-border/70 p-4">الدين المتبقي: <CurrencyRun amount={detail.group.remainingDebtDzd.toFixed(2)} currencyLabel="دج" /></div>
@@ -181,7 +181,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
             {detail?.movements.map((movement) => (
               <div key={movement.id} className="rounded-xl border border-border/70 px-4 py-3 text-sm">
                 <div className="font-medium text-foreground">{movement.movementType === "PURCHASE" ? "شراء" : "تحويل"} - {movement.itemType === "ASSET" ? "أصل" : "مادة"}</div>
-                <div className="text-muted-foreground">{new Date(movement.occurredAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}</div>
+                <div className="text-muted-foreground">{<AppDate value={movement.occurredAt} includeTime timeStyle="medium" />}</div>
               </div>
             ))}
             {detail && detail.movements.length === 0 ? <p className="text-sm text-muted-foreground">لا توجد حركات مسجلة بعد.</p> : null}

@@ -100,7 +100,7 @@ export async function expectProjectCost(page: Page, fixture: TransferFixture, am
   const stock = panel.locator("section").filter({ has: page.getByRole("heading", { name: "عتاد على المشروع", exact: true }) })
   const asset = stock.getByRole("listitem").filter({ hasText: fixture.assetName })
   for (const surface of [total.locator("p"), contribution, asset]) {
-    const numericRun = surface.locator('bdi[dir="ltr"]')
+    const numericRun = surface.locator('span[dir="ltr"] > span[dir="rtl"] + bdi[dir="ltr"]')
     await expect(numericRun).toHaveText(numericText)
     const placement = await numericRun.evaluate(element => {
       const label = element.previousElementSibling!
