@@ -31,6 +31,16 @@ describe("opt-in exact workforce input and suggestions", () => {
     expect(exactSalaryCashInputSchema.safeParse({ ...cash, amount: "35000", advance: undefined }).success).toBe(false);
   });
 
+  it("rejects zero cash totals while accepting the smallest positive explicit settlement", () => {
+    const cash = { requestId: "cash", employeeId: "worker", currency: "DZD", paymentDate: "2026-11-10T00:00:00.000Z", advance: null };
+    for (const amount of ["0", "0.0", "0.00"]) {
+      const result = exactSalaryCashInputSchema.safeParse({ ...cash, amount, wageAllocations: [] });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.issues.some(issue => issue.path[0] === "amount")).toBe(true);
+    }
+    expect(exactSalaryCashInputSchema.parse({ ...cash, amount: "0.01", wageAllocations: [{ id: "allocation", source: { kind: "EARNING", id: "earning" }, amount: "0.01" }] }).amount).toBe("0.01");
+  });
+
   it("keeps omitted, cleared and zero references distinct without accepting numeric legacy fields", () => {
     expect(exactEmployeeUpdateInputSchema.parse({ id: "worker" })).not.toHaveProperty("salaryReference");
     expect(exactEmployeeUpdateInputSchema.parse({ id: "worker", salaryReference: null }).salaryReference).toBeNull();

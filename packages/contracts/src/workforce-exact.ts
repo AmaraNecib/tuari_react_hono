@@ -98,7 +98,7 @@ export const exactSalaryOpeningReviewInputSchema = z.object({
 /** Every cash unit has an explicit wage target or an explicitly declared advance. */
 export const exactSalaryCashInputSchema = z.object({
   ...payrollCommand,
-  amount: exactSalaryAmountSchema,
+  amount: exactSalaryAmountSchema.refine(value => value !== "0.00", "A cash payment must be positive"),
   paymentDate: timestampSchema,
   wageAllocations: z.array(z.object({
     id: entityIdSchema,
