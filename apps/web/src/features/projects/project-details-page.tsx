@@ -1,4 +1,3 @@
-import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
@@ -43,7 +42,7 @@ export function ProjectDetailsPage({
     typeLabel: string
     title: string
     detail?: string | null
-    periodLabel: ReactNode
+    periodLabel: string
     statusLabel: string
   }>
   onTabChange: (tabId: string) => void
@@ -53,7 +52,7 @@ export function ProjectDetailsPage({
     typeLabel: string
     title: string
     detail?: string | null
-    periodLabel: ReactNode
+    periodLabel: string
     statusLabel: string
   }>
 }) {

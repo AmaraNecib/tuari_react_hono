@@ -7,7 +7,7 @@ import { CurrencyRun } from "@/features/shared/money-value"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { AppDate } from "@/components/app-date"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import { useProjectCostQuery } from "./project-cost-queries"
@@ -17,7 +17,7 @@ function formatNumber(value: number) {
 }
 
 function formatDay(iso: string) {
-  return <AppDate value={iso} />
+  return formatAlgeriaDate(new Date(iso))
 }
 
 /**

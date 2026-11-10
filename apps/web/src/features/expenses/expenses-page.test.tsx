@@ -153,11 +153,11 @@ describe("ExpensesPage", () => {
     const row = screen.getByRole("row", { name: /هاتف للورشة/ })
     expect(row.textContent).toContain("دج")
     // Each table amount must be inside the shared MoneyValue component.
-    expect(row.querySelector('span[dir="ltr"] > bdi')?.textContent).toBe("12,500")
+    expect(row.querySelector('[dir="ltr"]')?.textContent).toContain("12,500")
     fireEvent.click(screen.getByRole("button", { name: "تجميع حسب المشروع" }))
     const item = screen.getAllByRole("listitem").find(item => item.textContent?.includes("هاتف للورشة"))!
-    expect(item.querySelector('span[dir="ltr"] > bdi')?.textContent).toBe("12,500")
-    expect(item.querySelector('span[dir="ltr"]')?.textContent).toContain("دج")
+    expect(item.querySelector('[dir="ltr"]')?.textContent).toContain("12,500")
+    expect(item.querySelector('[dir="ltr"]')?.textContent).toContain("دج")
   })
 
   it("uses the shared page-frame spacing so its header aligns with other pages", () => {

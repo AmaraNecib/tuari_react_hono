@@ -114,9 +114,8 @@ describe("stored business day renders in Africa/Algiers (#473)", () => {
   })
 
   it("home-view formatDateLabel renders the Algeria day, not the ambient UTC day", () => {
-    render(<>{formatDateLabel(MIDNIGHT_CROSSING)}</>)
-    expect(screen.getByText(ALGERIA_DAY_SHORT)).toBeTruthy()
-    expect(screen.queryByText(UTC_DAY_SHORT)).toBeNull()
+    expect(formatDateLabel(MIDNIGHT_CROSSING)).toBe(ALGERIA_DAY_SHORT)
+    expect(formatDateLabel(MIDNIGHT_CROSSING)).not.toBe(UTC_DAY_SHORT)
     expect(formatDateLabel(null)).toBe("-")
   })
 

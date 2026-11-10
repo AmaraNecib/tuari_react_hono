@@ -5,8 +5,6 @@
  * rendered in this zone: the machine's zone is not the business zone, and an
  * instant near midnight would otherwise render the previous day.
  */
-import { DEFAULT_DATE_FORMAT, resolveDateFormat, type DateFormat } from "./date-format"
-
 const ALGERIA_TIME_ZONE = "Africa/Algiers"
 const ALGERIA_OFFSET_HOURS = 1
 
@@ -74,14 +72,12 @@ export function getAlgeriaDateInputValue(date = new Date()) {
 /**
  * Format a stored instant as a date and time in Africa/Algiers.
  */
-export function formatDateTimeInAlgeria(date: Date, locale = "ar-DZ", order: DateFormat = DEFAULT_DATE_FORMAT, timeStyle: "short" | "medium" = "short") {
-  if (Number.isNaN(date.getTime())) return "—"
-  return `${formatAlgeriaDate(date, locale, order)} ${formatTimeInAlgeria(date, locale, timeStyle)}`
-}
-
-/** Keep the existing localized clock and business timezone separate from numeric date order. */
-export function formatTimeInAlgeria(date: Date, locale = "ar-DZ", timeStyle: "short" | "medium" = "short") {
-  return new Intl.DateTimeFormat(locale, { timeStyle, timeZone: ALGERIA_TIME_ZONE }).format(date)
+export function formatDateTimeInAlgeria(date: Date, locale = "ar-DZ") {
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: ALGERIA_TIME_ZONE,
+  }).format(date)
 }
 
 /**
@@ -90,7 +86,7 @@ export function formatTimeInAlgeria(date: Date, locale = "ar-DZ", timeStyle: "sh
  * day. Accepts the stored value directly — an instant string or a `Date` — and
  * returns `—` for a value that is not a parsable date.
  */
-export function formatAlgeriaDate(value: string | Date, locale = "ar-DZ", order: DateFormat = DEFAULT_DATE_FORMAT) {
+export function formatAlgeriaDate(value: string | Date, locale = "ar-DZ") {
   const date = typeof value === "string" ? new Date(value) : value
   // `Intl.DateTimeFormat.format` throws a RangeError on an invalid date, where
   // the `toLocaleDateString` this replaced rendered the string "Invalid Date".
@@ -100,16 +96,10 @@ export function formatAlgeriaDate(value: string | Date, locale = "ar-DZ", order:
     return "—"
   }
 
-  const parts = new Intl.DateTimeFormat(locale, {
-    calendar: "gregory",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
+  return new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
     timeZone: ALGERIA_TIME_ZONE,
-  }).formatToParts(date)
-  const component = (type: "day" | "month" | "year") => parts.find((part) => part.type === type)!.value
-  const tokens = { DD: component("day"), MM: component("month"), YYYY: component("year") }
-  return resolveDateFormat(order).split("/").map((token) => tokens[token as keyof typeof tokens]).join("/")
+  }).format(date)
 }
 
 /** The app's business timezone, for formatters that take their own options. */

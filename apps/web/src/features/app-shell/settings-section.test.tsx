@@ -149,7 +149,7 @@ describe("SettingsSection stored instant timezone (#473)", () => {
 
     renderSettings()
 
-    expect(screen.getByText((_, element) => element?.textContent === `${LAST_CHECKED_LABEL}: ${algeriaStamp}`)).toBeTruthy()
-    expect(screen.queryByText((_, element) => element?.textContent === `${LAST_CHECKED_LABEL}: ${utcStamp}`)).toBeNull()
+    expect(screen.getByText(`${LAST_CHECKED_LABEL}: ${algeriaStamp}`)).toBeTruthy()
+    expect(screen.queryByText(`${LAST_CHECKED_LABEL}: ${utcStamp}`)).toBeNull()
   })
 })

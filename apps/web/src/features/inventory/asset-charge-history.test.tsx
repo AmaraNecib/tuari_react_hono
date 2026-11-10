@@ -313,10 +313,9 @@ describe("AssetChargeHistory (#413)", () => {
       expect(screen.getAllByText(/مدير/).length).toBe(2)
       expect(screen.getByText(/خصم/)).toBeTruthy()
       expect(
-        screen.getAllByText("01/10/2026").length,
+        screen.getAllByText((content) => content.includes("1‏/10‏/2026، 12:00:00 ص")).length,
       ).toBeGreaterThan(0)
-      expect(screen.getAllByText("12:00:00 ص")).toHaveLength(2)
-      expect(screen.queryByText("30/09/2026")).toBeNull()
+      expect(screen.queryByText(/30‏\/9‏\/2026، 11:00:00 م/)).toBeNull()
     } finally {
       restore()
     }

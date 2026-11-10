@@ -5,12 +5,12 @@
  * enabled features, days-remaining warning, activation prompt,
  * and upgrade CTA.
  */
-import { Trans, useTranslation } from "react-i18next"
+import { useTranslation } from "react-i18next"
 import { AlertCircle, CheckCircle2, Clock, Crown, KeyRound, ShieldAlert, Star, Users } from "lucide-react"
 
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { AppDate } from "@/components/app-date"
+import { getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { useLicenseStatus } from "./license-hooks"
 
 // ─── Constants ──────────────────────────────────────────────────
@@ -39,6 +39,21 @@ const STATUS_CONFIG: Record<string, { variant: "success" | "warning" | "destruct
 }
 
 // ─── Helpers ────────────────────────────────────────────────────
+
+function formatDate(isoString: string | null): string {
+  if (!isoString) return "—"
+  try {
+    const date = new Date(isoString)
+    return date.toLocaleDateString("ar-DZ", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: getAlgeriaTimeZone(),
+    })
+  } catch {
+    return isoString
+  }
+}
 
 function getStatusLabel(status: string, t: ReturnType<typeof useTranslation>["t"]): string {
   const labels: Record<string, string> = {
@@ -203,7 +218,7 @@ export function LicenseSettings() {
             </div>
             <p className="text-lg font-semibold">
               {data.validUntil
-                ? <AppDate value={data.validUntil} />
+                ? formatDate(data.validUntil)
                 : t("license.lifetime")}
             </p>
             {data.validUntil && (
@@ -268,7 +283,7 @@ export function LicenseSettings() {
           {data.status === "tampered"
             ? t("license.tamperedUpgrade")
             : data.status === "not_yet_active"
-              ? <Trans i18nKey="license.notYetActiveUpgrade" components={{ date: data.validFrom ? <AppDate value={data.validFrom} /> : <span>—</span> }} />
+              ? t("license.notYetActiveUpgrade", "الترخيص غير مفعل بعد. تاريخ البدء: {{date}}.", { date: formatDate(data.validFrom) })
               : data.status === "expired" || data.status === "expired_grace" || data.status === "locked"
                 ? t("license.renewalPrompt")
                 : data.edition === "standard"

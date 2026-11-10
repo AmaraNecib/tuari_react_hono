@@ -1,6 +1,5 @@
 import { useState, useMemo } from "react";
-import { getAlgeriaTimeZone } from "@/lib/algeria-time"
-import { AppDate } from "@/components/app-date";
+import { getAlgeriaTimeZone } from "@/lib/algeria-time";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import type { SystemLogEntry } from "@tuari/contracts";
@@ -205,7 +204,7 @@ export function AuditLogPage() {
                         <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                           <span>{auditLog.actor}</span>
                           <span>{auditLog.resourceId}</span>
-                          <span>{<AppDate value={auditLog.timestamp} includeTime timeStyle="medium" />}</span>
+                          <span>{new Date(auditLog.timestamp).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}</span>
                         </div>
                       </div>
                     </div>

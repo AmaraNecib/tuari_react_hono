@@ -9,8 +9,18 @@ import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
-import { AppDate } from "@/components/app-date"
+import { getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { useLocationTransferHistoryQuery, type TransferHistoryItem } from "./transfer-history-hooks"
+
+/** formatDate - helper function. */
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString("ar-DZ", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: getAlgeriaTimeZone(),
+  })
+}
 
 /** getTransferTypeLabel - helper function. */
 function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
@@ -159,7 +169,7 @@ function LocationTransferItem({
       </span>
 
       {/* Date */}
-      <span className="text-xs text-ink-4 min-w-[80px]"><AppDate value={transfer.date} /></span>
+      <span className="text-xs text-ink-4 min-w-[80px]">{formatDate(transfer.date)}</span>
 
       {/* Type badge */}
       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${getTransferTypeColor(transfer.type)}`}>

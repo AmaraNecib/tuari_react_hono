@@ -1,4 +1,3 @@
-import { AppDate } from "@/components/app-date"
 import { MoneyValue } from "@/features/shared/money-value"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -8,6 +7,7 @@ import { Field } from "@/components/ui/field"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { allocateSalaryAmountByDays } from "@/features/employees/salary-payment-form"
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
+import { formatAlgeriaDate } from "@/lib/algeria-time"
 import type { SalaryPeriodType, SalaryProjectDaySplit } from "@tuari/contracts"
 
 import {
@@ -174,7 +174,7 @@ export function SalaryPaymentsTable({
                       <p className="text-[11px] text-ink-3" dir="auto">{payment.employeeRole}</p>
                     </td>
                     <td className="px-4 py-3 text-start text-[13px] text-ink-2">
-                      {<AppDate value={payment.paymentDate} />}
+                      {formatAlgeriaDate(payment.paymentDate)}
                     </td>
                     <td className="px-4 py-3 text-start text-[13px] text-ink-2 font-mono tabular-nums" dir="ltr">
                       {payment.days}

@@ -11,8 +11,18 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader, StatBand } from "@/features/shared/page-primitives"
-import { AppDate } from "@/components/app-date"
+import { getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { useTransferHistoryQuery, type TransferHistoryFilters, type TransferHistoryItem } from "./transfer-history-hooks"
+
+/** formatDate - helper function. */
+function formatDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString("ar-DZ", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: getAlgeriaTimeZone(),
+  })
+}
 
 /** formatCurrency - helper function. */
 function formatCurrency(amount: number): string {
@@ -239,7 +249,7 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
             {getTransferTypeLabel(transfer.type)}
           </span>
         </div>
-        <span className="text-xs text-ink-4"><AppDate value={transfer.date} /></span>
+        <span className="text-xs text-ink-4">{formatDate(transfer.date)}</span>
       </div>
 
       {/* Route */}

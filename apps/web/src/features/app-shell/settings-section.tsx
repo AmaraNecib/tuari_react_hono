@@ -6,10 +6,9 @@ import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Field } from "@/components/ui/field"
 import { MoneyFormatSetting } from "@/features/preferences/money-format-setting"
-import { DateFormatSetting } from "@/features/preferences/date-format-setting"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
-import { AppDate } from "@/components/app-date"
+import { formatDateTimeInAlgeria } from "@/lib/algeria-time"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { BackupSettings } from "./backup-settings"
@@ -135,11 +134,11 @@ export function SettingsSection({
   const { t } = useTranslation()
   const { state: checkUpdateState, checkUpdate } = useUpdateCheck()
 
-  function formatCheckedAt(checkedAt: string) {
+  function formatCheckedAt(checkedAt: string): string {
     try {
       const date = new Date(checkedAt)
       if (isNaN(date.getTime())) return "-"
-      return <AppDate value={date} includeTime />
+      return formatDateTimeInAlgeria(date)
     } catch {
       return "-"
     }
@@ -385,7 +384,6 @@ export function SettingsSection({
             </Button>
           </div>
           <MoneyFormatSetting />
-          <DateFormatSetting />
         </div>
       )}
 

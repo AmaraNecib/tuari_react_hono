@@ -12,7 +12,7 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Field } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
-import { AppDate } from "@/components/app-date"
+import { formatDateTimeInAlgeria } from "@/lib/algeria-time"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 
 import {
@@ -21,10 +21,10 @@ import {
   useSetBackupsRootMutation,
 } from "./backup-hooks"
 
-function formatTimestamp(value: string | null | undefined) {
+function formatTimestamp(value: string | null | undefined): string {
   if (!value) return "—"
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? "—" : <AppDate value={date} includeTime />
+  return Number.isNaN(date.getTime()) ? "—" : formatDateTimeInAlgeria(date)
 }
 
 /**
