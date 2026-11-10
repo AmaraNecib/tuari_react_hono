@@ -2,6 +2,7 @@
  * Transfer history page with filters for viewing all inventory movements.
  * Shows internal transfers, sales, gifts, and returns.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { TableQueryState } from "@/features/shared/table-primitives"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -10,18 +11,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader, StatBand } from "@/features/shared/page-primitives"
-import { getAlgeriaTimeZone } from "@/lib/algeria-time"
+import { AppDate } from "@/components/app-date"
 import { useTransferHistoryQuery, type TransferHistoryFilters, type TransferHistoryItem } from "./transfer-history-hooks"
-
-/** formatDate - helper function. */
-function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString("ar-DZ", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone: getAlgeriaTimeZone(),
-  })
-}
 
 /** formatCurrency - helper function. */
 function formatCurrency(amount: number): string {
@@ -122,7 +113,7 @@ export function TransferHistoryPage() {
             },
             {
               label: t("inventory.transferHistory.totalValue"),
-              value: `${formatCurrency(totalValue)} دج`,
+              value: <CurrencyRun amount={formatCurrency(totalValue)} currencyLabel="دج" />,
             },
           ]}
         />
@@ -248,7 +239,7 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
             {getTransferTypeLabel(transfer.type)}
           </span>
         </div>
-        <span className="text-xs text-ink-4">{formatDate(transfer.date)}</span>
+        <span className="text-xs text-ink-4"><AppDate value={transfer.date} /></span>
       </div>
 
       {/* Route */}
@@ -299,18 +290,18 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
           <div className="flex items-center gap-4">
             <div>
               <span className="text-xs text-ink-4">{t("inventory.transferHistory.total")}</span>
-              <span className="ms-2 font-medium tabular-nums">{formatCurrency(transfer.totalAmount)} دج</span>
+              <span className="ms-2 font-medium tabular-nums"><CurrencyRun amount={formatCurrency(transfer.totalAmount)} currencyLabel="دج" /></span>
             </div>
             {transfer.paidAmount !== undefined && transfer.paidAmount > 0 && (
               <div>
                 <span className="text-xs text-ink-4">{t("inventory.transferHistory.paid")}</span>
-                <span className="ms-2 font-medium tabular-nums text-good">{formatCurrency(transfer.paidAmount)} دج</span>
+                <span className="ms-2 font-medium tabular-nums text-good"><CurrencyRun amount={formatCurrency(transfer.paidAmount)} currencyLabel="دج" /></span>
               </div>
             )}
             {transfer.remainingDebt !== undefined && transfer.remainingDebt > 0 && (
               <div>
                 <span className="text-xs text-ink-4">{t("inventory.transferHistory.debt")}</span>
-                <span className="ms-2 font-medium tabular-nums text-warn">{formatCurrency(transfer.remainingDebt)} دج</span>
+                <span className="ms-2 font-medium tabular-nums text-warn"><CurrencyRun amount={formatCurrency(transfer.remainingDebt)} currencyLabel="دج" /></span>
               </div>
             )}
           </div>

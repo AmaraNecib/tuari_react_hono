@@ -495,7 +495,11 @@ describe("HomeView workspace shell", () => {
     // main stayed empty.
     expect(await screen.findByRole("heading", { name: "FAC-2026-001" })).toBeTruthy()
     expect((await screen.findAllByText("أسمنت")).length).toBeGreaterThan(0)
-    expect(screen.getAllByText("الإجمالي: 1500.00 دج").length).toBeGreaterThan(0)
+    const invoiceTotal = screen.getAllByText("الإجمالي:").find(element =>
+      element.querySelector('bdi[dir="ltr"]')?.textContent === "1500.00",
+    )
+    expect(invoiceTotal).toBeTruthy()
+    expect(invoiceTotal?.querySelector("bdi")?.previousElementSibling?.textContent).toBe("دج")
     // ASSET entry branch: renders the asset count label and the asset row
     // (entry line name and the asset row both carry the asset name).
     expect(screen.getByText("عدد الأصول: 1")).toBeTruthy()

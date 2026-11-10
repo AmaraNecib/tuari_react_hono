@@ -2,13 +2,14 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { SystemLogEntry } from "@tuari/contracts"
 
 import { format } from "date-fns"
 
+import { setDateFormat } from "@/features/preferences/date-format-preference"
 import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { AuditLogPage } from "./audit-log-page"
 import { MIDNIGHT_CROSSING, pinUtcTimeZone } from "@/test-utils/algeria-day"
@@ -43,6 +44,7 @@ function renderPage() {
 
 afterEach(() => {
   cleanup()
+  setDateFormat("DD/MM/YYYY")
   vi.clearAllMocks()
 })
 
@@ -66,8 +68,13 @@ describe("AuditLogPage end-of-day range boundary", () => {
         id: "midnight-log", createdAt: MIDNIGHT_CROSSING, summary: "حدث اختباري",
       })] })
       renderPage()
-      await screen.findByText("1‏/10‏/2026، 12:00:00 ص")
-      expect(screen.queryByText("30‏/9‏/2026، 11:00:00 م")).toBeNull()
+      const day = await screen.findByText("01/10/2026", { selector: 'bdi[dir="ltr"]' })
+      const timestamp = day.parentElement!
+      expect(timestamp.textContent).toContain("12:00:00 ص")
+      expect(timestamp.textContent).not.toContain("30/09/2026")
+      act(() => setDateFormat("YYYY/MM/DD"))
+      expect(day.textContent).toBe("2026/10/01")
+      expect(timestamp.textContent).toContain("12:00:00 ص")
       fireEvent.click(screen.getByRole("button", { name: "تصدير CSV" }))
       expect(createObjectURL).toHaveBeenCalledTimes(1)
       const blob = createObjectURL.mock.calls[0]![0] as Blob

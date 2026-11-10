@@ -287,7 +287,7 @@ describe("InventoryInvoiceDetailsPage error surface (issue #34)", () => {
 
     expect(screen.getByRole("heading", { name: "FAC-2026-001" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "العودة إلى الفواتير" })).toBeTruthy()
-    expect(screen.getAllByText("الإجمالي: 1500.00 دج").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("1500.00", { selector: 'bdi[dir="ltr"]' }).length).toBeGreaterThan(0)
     expect(screen.getAllByText("أسمنت").length).toBeGreaterThan(0)
     expect(screen.getByText("عدد الأصول: 1")).toBeTruthy()
     expect(screen.getAllByText("حاسوب محمول").length).toBeGreaterThan(0)
@@ -364,8 +364,8 @@ describe("InventoryInvoiceDetailsPage pins the invoice day (#473)", () => {
     detail.movements[0]!.occurredAt = MIDNIGHT_CROSSING
     renderPage({ data: detail, isPending: false, isError: false, refetch: vi.fn() })
 
-    expect(screen.getByText("1‏/10‏/2026، 12:00:00 ص")).toBeTruthy()
-    expect(screen.queryByText("30‏/9‏/2026، 11:00:00 م")).toBeNull()
+    expect(screen.getByText((_, element) => element?.textContent === "01/10/2026 12:00:00 ص")).toBeTruthy()
+    expect(screen.queryByText("30/09/2026")).toBeNull()
   })
 
   it("renders the invoice on its Algeria day under a UTC machine", () => {
@@ -376,7 +376,7 @@ describe("InventoryInvoiceDetailsPage pins the invoice day (#473)", () => {
     detail.group.invoiceDate = MIDNIGHT_CROSSING
     renderPage({ data: detail, isPending: false, isError: false, refetch: vi.fn() })
 
-    expect(screen.getByText(`تاريخ الفاتورة: ${ALGERIA_DAY}`)).toBeTruthy()
-    expect(screen.queryByText(`تاريخ الفاتورة: ${UTC_DAY}`)).toBeNull()
+    expect(screen.getByText((_, element) => element?.textContent === `تاريخ الفاتورة: ${ALGERIA_DAY}`)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
   })
 })

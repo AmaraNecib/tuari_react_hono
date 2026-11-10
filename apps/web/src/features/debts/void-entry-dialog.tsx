@@ -1,6 +1,9 @@
+import { AppDate } from "@/components/app-date"
 /**
  * Void entry dialog for reversing/cancelling debt entries.
  */
+import { CurrencyProse } from "@/features/shared/currency-prose"
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useState, useEffect, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
@@ -16,7 +19,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/form-controls"
 import { useVoidDebtEntryMutation } from "@/features/app-shell/mock-dashboard"
-import { formatAlgeriaDate } from "@/lib/algeria-time"
 import { formatDebtAmount, formatDebtMoney, getDebtAccountBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
@@ -95,7 +97,7 @@ export function VoidEntryDialog({
                 {entry.entryType === "OPENING" ? t("debts.voidEntry.openingBalance") : t("debts.voidEntry.payment")}
               </span>
               <span className={cn("font-mono text-lg font-semibold", openingDisplay.textClassName)} dir="ltr">
-                دج {formatDebtMoney(entry.signedAmountDzd)}
+                <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel="دج" />
               </span>
             </div>
             {isOpeningBalance ? (
@@ -104,7 +106,7 @@ export function VoidEntryDialog({
               </p>
             ) : null}
             <p className="mt-1 text-xs text-muted-foreground">
-              {formatAlgeriaDate(entry.entryDate)}
+              {<AppDate value={entry.entryDate} />}
               {entry.note?.trim() ? ` — ${entry.note.trim()}` : ""}
             </p>
           </div>
@@ -116,7 +118,7 @@ export function VoidEntryDialog({
                 {t("debts.voidEntry.cascadeWarning")}
               </p>
               <p className="mt-2 text-sm text-amber-800 dark:text-amber-400">
-                {t("debts.voidEntry.cascadeDescription", "سيتم إلغاء {{count}} دفعة مرتبطة تلقائياً بقيمة إجمالية {{amount}} دج.", { count: livePaymentEntries.length, amount: formatDebtAmount(totalCascadeAmount) })}
+                <CurrencyProse text={t("debts.voidEntry.cascadeDescription", "سيتم إلغاء {{count}} دفعة مرتبطة تلقائياً بقيمة إجمالية {{amount}} دج.", { count: livePaymentEntries.length, amount: formatDebtAmount(totalCascadeAmount) })} />
               </p>
               <label className="mt-3 flex items-start gap-2">
                 <input

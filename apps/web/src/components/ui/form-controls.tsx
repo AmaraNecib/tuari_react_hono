@@ -76,16 +76,18 @@ function CurrencyInput({
   currencyLabel?: string
   inputClassName?: string
 }) {
+  const { i18n } = useTranslation()
+  const rightAligned = i18n.dir?.() !== "ltr"
   return (
-    <span className={cn(
+    <span dir="ltr" className={cn(
       "flex w-full items-center gap-2 rounded-xl border border-border/75 bg-background/82 px-4 shadow-[0_1px_0_rgba(255,255,255,0.48)_inset] focus-within:border-primary/45 focus-within:ring-4 focus-within:ring-primary/10 aria-invalid:border-destructive/60 aria-invalid:ring-4 aria-invalid:ring-destructive/15 dark:bg-background dark:shadow-none dark:focus-within:ring-destructive/40",
       className
     )}>
-      <span className="shrink-0 text-sm font-medium text-muted-foreground" dir="rtl">
+      <span className="flex h-10 shrink-0 items-center border-r border-border/75 pr-3 text-sm font-medium text-muted-foreground select-none" dir="rtl">
         {currencyLabel ?? "دج"}
       </span>
       <input
-        className={cn("h-10 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none", placeholderContrastClassName, inputClassName)}
+        className={cn("h-10 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none", rightAligned ? "text-right" : "text-left", placeholderContrastClassName, inputClassName)}
         dir="ltr"
         inputMode="decimal"
         {...props}

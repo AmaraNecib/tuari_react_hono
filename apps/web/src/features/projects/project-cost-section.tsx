@@ -3,10 +3,11 @@ import { useNavigate } from "@tanstack/react-router"
 
 import type { ProjectCost } from "@tuari/contracts"
 
+import { CurrencyRun } from "@/features/shared/money-value"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { formatAlgeriaDate } from "@/lib/algeria-time"
+import { AppDate } from "@/components/app-date"
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import { useProjectCostQuery } from "./project-cost-queries"
@@ -16,7 +17,7 @@ function formatNumber(value: number) {
 }
 
 function formatDay(iso: string) {
-  return formatAlgeriaDate(new Date(iso))
+  return <AppDate value={iso} />
 }
 
 /**
@@ -40,7 +41,7 @@ export function ProjectCostSection({
   const navigate = useNavigate()
   const query = useProjectCostQuery(projectId)
 
-  const money = (value: number) => `${formatNumber(value)} ${t("detailPages.project.cost.currency")}`
+  const money = (value: number, sign = "") => <CurrencyRun amount={`${sign}${formatNumber(value)}`} currencyLabel={t("detailPages.project.cost.currency")} />
 
   if (query.isPending) {
     return (
@@ -95,19 +96,19 @@ export function ProjectCostSection({
           {sources.map((source) => {
             const percent = percentOf(source.value)
             return (
-              <li key={source.key} className="flex items-center gap-3 text-sm">
+              <li key={source.key} className="grid min-w-0 grid-cols-[0.625rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-sm sm:flex sm:gap-3">
                 <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${source.bar}`} aria-hidden="true" />
-                <span className="w-40 shrink-0 text-ink-2">{source.label}</span>
-                <span className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2">
+                <span className="min-w-0 text-ink-2 sm:w-40 sm:shrink-0">{source.label}</span>
+                <span className="col-span-2 row-start-2 h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2">
                   <span
                     className={`block h-full rounded-full ${source.bar}`}
                     style={{ width: `${percent}%` }}
                   />
                 </span>
-                <span className="w-10 shrink-0 text-left text-xs text-ink-3">
+                <span className="col-start-3 row-start-2 shrink-0 text-left text-xs text-ink-3 sm:w-10">
                   {t("detailPages.project.cost.share", { percent })}
                 </span>
-                <span className="w-28 shrink-0 text-left font-mono text-ink" dir="ltr">
+                <span className="col-start-3 row-start-1 shrink-0 text-left font-mono text-ink sm:w-28" dir="ltr">
                   {money(source.value)}
                 </span>
               </li>
@@ -231,11 +232,11 @@ export function ProjectCostSection({
                         {" · "}
                         {formatNumber(movement.quantity)}
                         {movement.unit ? ` ${movement.unit}` : ""}
-                        {movement.unitPriceDzd != null ? ` · ${money(movement.unitPriceDzd)}` : ""}
+                        {movement.unitPriceDzd != null ? <> · {money(movement.unitPriceDzd)}</> : ""}
                       </span>
                     </span>
                     <span className="shrink-0 font-mono text-ink" dir="ltr">
-                      {movement.direction === "IN" ? "+" : "−"} {money(movement.valueDzd)}
+                      {money(movement.valueDzd, movement.direction === "IN" ? "+" : "−")}
                     </span>
                   </li>
                 ))}

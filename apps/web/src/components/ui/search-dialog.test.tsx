@@ -41,6 +41,14 @@ describe("SearchDialog", () => {
     expect(screen.getByRole("option", { name: /الموظفون/ }).getAttribute("aria-selected")).toBe("false")
   })
 
+  it("isolates the preformatted debt description without changing the search item", () => {
+    const item = { id: "debt", title: "طرف تجريبي", description: "مستحق لنا 22,500.50 دج", action: vi.fn() }
+    render(<SearchDialog isOpen onClose={vi.fn()} onQueryChange={vi.fn()} results={[item]} />)
+    const amount = screen.getByText("22,500.50", { selector: 'bdi[dir="ltr"]' })
+    expect(amount.previousElementSibling?.textContent).toBe("دج")
+    expect(item.description).toBe("مستحق لنا 22,500.50 دج")
+  })
+
   it("does not render the dialog when closed", () => {
     render(<SearchDialog isOpen={false} onClose={vi.fn()} onQueryChange={vi.fn()} results={[]} />)
     expect(screen.queryByRole("dialog")).toBeNull()

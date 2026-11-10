@@ -138,7 +138,13 @@ describe("ProjectCostSection (#414)", () => {
     prime(cost())
     render(<ProjectCostSection projectId="p-1" />)
 
-    expect(screen.getByText("260,000 دج")).toBeTruthy()
+    expect(screen.getByText("260,000", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
+    const amounts = [...document.querySelectorAll('span[dir="ltr"] > span[dir="rtl"] + bdi[dir="ltr"]')]
+    expect(amounts.map(el => el.textContent)).toEqual([
+      "260,000", "10,000", "36,000", "180,000", "34,000", "10,000", "36,000", "180,000", "850", "+34,000", "180,000", "180,000",
+    ])
+    expect(amounts.every(el => el.previousElementSibling?.textContent === "دج" && el.previousElementSibling.getAttribute("dir") === "rtl")).toBe(true)
+    expect(document.body.textContent).not.toContain("[object Object]")
     expect(screen.getByText("مصروفات")).toBeTruthy()
     expect(screen.getByText("أجور (أيام موزّعة)")).toBeTruthy()
     expect(screen.getByText("عتاد مخصّص")).toBeTruthy()
@@ -212,9 +218,9 @@ describe("ProjectCostSection (#414)", () => {
 
     // The anomaly renders the screen; it is not an error state and not hidden.
     expect(screen.queryByText(/تعذّر تحميل تكلفة المشروع/)).toBeNull()
-    expect(screen.getByText("8,500 دج")).toBeTruthy()
+    expect(screen.getByText("8,500", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
     // The negative material figure is shown as computed ...
-    expect(screen.getByText("-1,500 دج")).toBeTruthy()
+    expect(screen.getByText("-1,500", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
     // ... with a warning that says what it usually means.
     expect(screen.getByText(/المواد الخارجة من هذا المشروع أكثر من الداخلة إليه/)).toBeTruthy()
   })
@@ -240,7 +246,7 @@ describe("ProjectCostSection (#414)", () => {
 
     expect(screen.getByText("مخزون على الموقع")).toBeTruthy()
     // The parked total and the single parked asset are both 180,000 here.
-    expect(screen.getAllByText("180,000 دج").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("180,000", { selector: 'bdi[dir="ltr"]' }).length).toBeGreaterThan(0)
     expect(screen.getByText("رافعة")).toBeTruthy()
   })
 

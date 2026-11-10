@@ -50,6 +50,21 @@ afterEach(() => {
  * month near a month boundary).
  */
 describe("ReportBuilder range boundary", () => {
+  it("retains three-decimal report totals, zero and a signed total in isolated currency runs", async () => {
+    reportsGenerate.mockResolvedValue({
+      type: "INVENTORY", generatedAt: "2026-10-15T00:00:00.000Z",
+      summary: { totalAssetsDzd: 1234.567, totalConsumablesDzd: 0, totalValueDzd: -50.125 },
+      byLocation: [], byItemType: [], agingAnalysis: [],
+    })
+    const { container } = renderPage()
+    fireEvent.click(screen.getByRole("button", { name: "إنشاء التقرير" }))
+    await screen.findByText("1.234,567", { selector: 'bdi[dir="ltr"]' })
+    const amounts = [...container.querySelectorAll('span[dir="ltr"] > span[dir="rtl"] + bdi[dir="ltr"]')]
+    expect(amounts.map(el => el.textContent?.replace(/[\u061c\u200e\u200f]/g, ""))).toEqual(["1.234,567", "0", "-50,125"])
+    expect(amounts.every(el => el.previousElementSibling?.textContent === "د.ج")).toBe(true)
+  })
+
+
   it("renders and exports report generation instants in Algeria under a UTC machine", async () => {
     const restore = pinUtcTimeZone()
     try {
@@ -61,8 +76,9 @@ describe("ReportBuilder range boundary", () => {
       reportsGenerate.mockResolvedValue(inventory)
       renderPage()
       fireEvent.click(screen.getByRole("button", { name: "إنشاء التقرير" }))
-      await screen.findByText(/1‏\/10‏\/2026، 12:00:00 ص/)
-      expect(screen.queryByText(/30‏\/9‏\/2026، 11:00:00 م/)).toBeNull()
+      await screen.findByText("01/10/2026")
+      expect(screen.getByText("12:00:00 ص")).toBeTruthy()
+      expect(screen.queryByText("30/09/2026")).toBeNull()
 
       const reports: Report[] = [inventory, {
         type: "DEBT", generatedAt: MIDNIGHT_CROSSING,

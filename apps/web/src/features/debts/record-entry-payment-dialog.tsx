@@ -1,6 +1,8 @@
+import { AppDate } from "@/components/app-date"
 /**
  * Record entry payment dialog for recording payments against debt entries.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
@@ -18,7 +20,6 @@ import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import {
   useRecordDebtPaymentMutation,
 } from "@/features/app-shell/mock-dashboard"
-import { formatAlgeriaDate } from "@/lib/algeria-time"
 import { formatDebtAmount, getDebtAccountBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
@@ -96,16 +97,16 @@ export function RecordEntryPaymentDialog({
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">{t("debts.payment.openingBalance")}</span>
               <span className={cn("font-mono text-lg font-semibold", openingBalance.textClassName)} dir="ltr">
-                دج {formatDebtAmount(openingBalance.amount)}
+                <CurrencyRun amount={formatDebtAmount(openingBalance.amount)} currencyLabel="دج" />
               </span>
             </div>
             <p className={cn("mt-1 text-xs font-medium", openingBalance.textClassName)}>{openingBalance.phrase}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {formatAlgeriaDate(entry.entryDate)}
+              {<AppDate value={entry.entryDate} />}
               {entry.note?.trim() ? ` — ${entry.note.trim()}` : ""}
             </p>
             <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              {t("debts.payment.maxAmount")} {maxPaymentDisplay.phrase} دج {formatDebtAmount(maxPaymentDisplay.amount)}
+              {t("debts.payment.maxAmount")} {maxPaymentDisplay.phrase} <CurrencyRun amount={formatDebtAmount(maxPaymentDisplay.amount)} currencyLabel="دج" />
             </p>
           </div>
 

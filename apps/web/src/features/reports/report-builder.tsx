@@ -1,8 +1,9 @@
 /**
  * Report builder component for creating custom reports.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useState } from "react";
-import { getAlgeriaTimeZone } from "@/lib/algeria-time";
+import { AppDate } from "@/components/app-date";
 import { useTranslation } from "react-i18next";
 import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
@@ -105,7 +106,7 @@ export function ReportBuilder() {
                   {reportType === "INVENTORY" ? "تقرير المخزون" : reportType === "DEBT" ? "تقرير الديون" : "تقرير الحركات"}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {t("reports.generatedAt")} {new Date(data.generatedAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}
+                  {t("reports.generatedAt")} {<AppDate value={data.generatedAt} includeTime timeStyle="medium" />}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={handleDownloadCSV}>
@@ -118,15 +119,15 @@ export function ReportBuilder() {
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">إجمالي الأصول</p>
-                  <p className="text-2xl font-bold">{data.summary.totalAssetsDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={data.summary.totalAssetsDzd.toLocaleString("ar-DZ")} currencyLabel="د.ج" /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">إجمالي المستهلكات</p>
-                  <p className="text-2xl font-bold">{data.summary.totalConsumablesDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={data.summary.totalConsumablesDzd.toLocaleString("ar-DZ")} currencyLabel="د.ج" /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">القيمة الإجمالية</p>
-                  <p className="text-2xl font-bold">{data.summary.totalValueDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={data.summary.totalValueDzd.toLocaleString("ar-DZ")} currencyLabel="د.ج" /></p>
                 </div>
               </div>
             )}
@@ -135,16 +136,16 @@ export function ReportBuilder() {
               <div className="grid gap-4 md:grid-cols-4">
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المتبقية</p>
-                  <p className="text-2xl font-bold">{data.summary.totalOutstandingDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={data.summary.totalOutstandingDzd.toLocaleString("ar-DZ")} currencyLabel="د.ج" /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المسددة</p>
-                  <p className="text-2xl font-bold">{data.summary.totalSettledDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={data.summary.totalSettledDzd.toLocaleString("ar-DZ")} currencyLabel="د.ج" /></p>
                   <p className="text-xs font-medium text-muted-foreground">{DEBT_BALANCE_STATE_PHRASE.settled}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المتأخرة</p>
-                  <p className="text-2xl font-bold">{data.summary.overdueDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={data.summary.overdueDzd.toLocaleString("ar-DZ")} currencyLabel="د.ج" /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">عدد الأطراف</p>

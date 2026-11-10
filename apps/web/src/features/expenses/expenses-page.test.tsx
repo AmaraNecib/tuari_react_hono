@@ -92,6 +92,13 @@ const DATA = {
   ],
 }
 
+// DOM text assertions only check formatting. Physical placement needs browser geometry.
+function currencyDisplays(amount: string) {
+  return screen.queryAllByText((_text, element) =>
+    element?.tagName === "SPAN" &&
+    [`دج${amount}`, `${amount}دج`].includes(element.textContent?.replace(/\s/g, "") ?? ""))
+}
+
 function renderPage() {
   return render(
     <ExpensesPage
@@ -123,9 +130,9 @@ describe("ExpensesPage", () => {
     // KPI cards
     expect(screen.getByText("إجمالي كل الفترات")).toBeTruthy()
     // 22,000 appears in both the KPI card and the total strip.
-    expect(screen.getAllByText("22,000 دج").length).toBeGreaterThan(1)
+    expect(currencyDisplays("22,000").length).toBeGreaterThan(1)
     expect(screen.getByText("مقيّد بمشروع")).toBeTruthy()
-    expect(screen.getByText("12,500 دج")).toBeTruthy()
+    expect(currencyDisplays("12,500").length).toBeGreaterThan(0)
     expect(screen.getByText("لدى العمال")).toBeTruthy()
 
     // Total strip split
@@ -138,6 +145,19 @@ describe("ExpensesPage", () => {
     expect(screen.getAllByText("محل الإلكترونيات").length).toBeGreaterThan(0)
     expect(screen.getAllByText("فيلا حيدرة").length).toBeGreaterThan(0)
     expect(screen.getAllByText("بدون مشروع").length).toBeGreaterThan(0)
+  })
+
+  it("uses shared currency displays for legacy numeric cards, rows and project groups", () => {
+    useExpensesListQuery.mockReturnValue({ data: DATA, isPending: false, isError: false, refetch: vi.fn() })
+    renderPage()
+    const row = screen.getByRole("row", { name: /هاتف للورشة/ })
+    expect(row.textContent).toContain("دج")
+    // Each table amount must be inside the shared MoneyValue component.
+    expect(row.querySelector('span[dir="ltr"] > bdi')?.textContent).toBe("12,500")
+    fireEvent.click(screen.getByRole("button", { name: "تجميع حسب المشروع" }))
+    const item = screen.getAllByRole("listitem").find(item => item.textContent?.includes("هاتف للورشة"))!
+    expect(item.querySelector('span[dir="ltr"] > bdi')?.textContent).toBe("12,500")
+    expect(item.querySelector('span[dir="ltr"]')?.textContent).toContain("دج")
   })
 
   it("uses the shared page-frame spacing so its header aligns with other pages", () => {
@@ -285,8 +305,8 @@ describe("ExpensesPage", () => {
     expect(screen.getByRole("heading", { name: "فيلا حيدرة" })).toBeTruthy()
     expect(screen.getByRole("heading", { name: "بدون مشروع" })).toBeTruthy()
     // The tagged amount now appears both in the KPI card and the group card.
-    expect(screen.getAllByText("12,500 دج").length).toBeGreaterThan(1)
-    expect(screen.getByText("9,500 دج")).toBeTruthy()
+    expect(currencyDisplays("12,500").length).toBeGreaterThan(1)
+    expect(currencyDisplays("9,500").length).toBeGreaterThan(0)
   })
 
   it("shows the empty state when the filter matches nothing", () => {
@@ -348,7 +368,7 @@ describe("ExpensesPage", () => {
 
     renderPage()
 
-    expect(screen.getAllByText("0.1 دج").length).toBeGreaterThan(0)
+    expect(currencyDisplays("0.1").length).toBeGreaterThan(0)
   })
 
   it("offers no Edit button on a voided row", () => {

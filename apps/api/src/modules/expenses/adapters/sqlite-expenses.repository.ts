@@ -38,13 +38,37 @@ function normalizeAudit(audit?: ExpenseAudit): AuditSnapshot {
  * `BEGIN IMMEDIATE` write reservation (same discipline as the payment and
  * company repositories).
  */
-export class SqliteExpenseRepository implements ExpenseRepository {
+export interface ExpenseStorageCodec<Amount> {
+  amountColumn: "amount_dzd" | "amount_minor";
+  previousColumn: "previous_amount_dzd" | "previous_amount_minor";
+  newColumn: "new_amount_dzd" | "new_amount_minor";
+  expenseProjection: string;
+  revisionProjection: string;
+  encode(value: Amount): unknown;
+  decode(value: unknown): Amount;
+  validateExpense?(row: Record<string, unknown>): void;
+  validateRevision?(row: Record<string, unknown>): void;
+  currency?: "DZD";
+}
+
+const numericStorage: ExpenseStorageCodec<number> = {
+  amountColumn: "amount_dzd",
+  previousColumn: "previous_amount_dzd",
+  newColumn: "new_amount_dzd",
+  expenseProjection: "*",
+  revisionProjection: "*",
+  encode: (value) => value,
+  decode: (value) => value as number,
+};
+
+export class SqliteExpenseStorage<Amount> implements ExpenseRepository<Amount> {
   constructor(
     private readonly db: BetterSqliteDatabase,
     private readonly connectionLock: FifoLock,
+    private readonly codec: ExpenseStorageCodec<Amount>,
   ) {}
 
-  async create(data: CreateExpenseRecord, audit?: ExpenseAudit): Promise<Expense> {
+  async create(data: CreateExpenseRecord<Amount>, audit?: ExpenseAudit): Promise<Expense<Amount>> {
     const snapshot = normalizeAudit(audit);
     // Single-statement writes still run under the connection-wide lock: a raw
     // `.run()` while another flow holds an open transaction would be absorbed
@@ -53,7 +77,7 @@ export class SqliteExpenseRepository implements ExpenseRepository {
       this.db
         .prepare(
           `INSERT INTO "expense" (
-            id, amount_dzd, expense_date, what_for, responsible_worker_id,
+            id, ${this.codec.amountColumn}, expense_date, what_for, responsible_worker_id,
             seller_id, project_id, stock_item_id, note, status,
             voided_at, voided_by, void_reason,
             actor_user_id, actor_label, transaction_id, created_at, updated_at
@@ -61,7 +85,7 @@ export class SqliteExpenseRepository implements ExpenseRepository {
         )
         .run(
           data.id,
-          data.amount,
+          this.codec.encode(data.amount),
           toUtcInstant(data.expenseDate),
           data.whatFor,
           data.responsibleWorkerId,
@@ -80,14 +104,14 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     return (await this.findById(data.id))!;
   }
 
-  async findById(id: string): Promise<Expense | null> {
+  async findById(id: string): Promise<Expense<Amount> | null> {
     const row = this.db
-      .prepare(`SELECT * FROM "expense" WHERE id = ?`)
+      .prepare(`SELECT ${this.codec.expenseProjection} FROM "expense" WHERE id = ?`)
       .get(id) as Record<string, unknown> | undefined;
-    return row ? mapRowToExpense(row) : null;
+    return row ? mapRowToExpense(row, this.codec) : null;
   }
 
-  async list(filters: ExpenseListFilters): Promise<Expense[]> {
+  async list(filters: ExpenseListFilters): Promise<Expense<Amount>[]> {
     const conditions: string[] = [];
     const params: unknown[] = [];
 
@@ -111,27 +135,27 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
     const rows = this.db
       .prepare(
-        `SELECT * FROM "expense" ${where} ORDER BY expense_date DESC, created_at DESC, id DESC`,
+        `SELECT ${this.codec.expenseProjection} FROM "expense" ${where} ORDER BY expense_date DESC, created_at DESC, id DESC`,
       )
       .all(...params) as Record<string, unknown>[];
 
-    return rows.map(mapRowToExpense);
+    return rows.map((row) => mapRowToExpense(row, this.codec));
   }
 
-  async update(data: UpdateExpenseRecord, audit?: ExpenseAudit): Promise<Expense | null> {
+  async update(data: UpdateExpenseRecord<Amount>, audit?: ExpenseAudit): Promise<Expense<Amount> | null> {
     const snapshot = normalizeAudit(audit);
     let changes = 0;
     runSyncTransaction(this.connectionLock, this.db, () => {
       const result = this.db
         .prepare(
           `UPDATE "expense" SET
-            amount_dzd = ?, expense_date = ?, what_for = ?, responsible_worker_id = ?,
+            ${this.codec.amountColumn} = ?, expense_date = ?, what_for = ?, responsible_worker_id = ?,
             seller_id = ?, project_id = ?, stock_item_id = ?, note = ?,
             actor_user_id = ?, actor_label = ?, transaction_id = ?, updated_at = ?
           WHERE id = ? AND status = 'LIVE'`,
         )
         .run(
-          data.amount,
+          this.codec.encode(data.amount),
           toUtcInstant(data.expenseDate),
           data.whatFor,
           data.responsibleWorkerId,
@@ -152,7 +176,7 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     return this.findById(data.id);
   }
 
-  async voidExpense(data: VoidExpenseRecord, audit?: ExpenseAudit): Promise<Expense | null> {
+  async voidExpense(data: VoidExpenseRecord, audit?: ExpenseAudit): Promise<Expense<Amount> | null> {
     const snapshot = normalizeAudit(audit);
     let changes = 0;
     runSyncTransaction(this.connectionLock, this.db, () => {
@@ -181,23 +205,23 @@ export class SqliteExpenseRepository implements ExpenseRepository {
   }
 
   async createRevision(
-    data: CreateExpenseRevisionRecord,
+    data: CreateExpenseRevisionRecord<Amount>,
     audit?: ExpenseAudit,
-  ): Promise<ExpenseRevision> {
+  ): Promise<ExpenseRevision<Amount>> {
     const snapshot = normalizeAudit(audit);
     runSyncTransaction(this.connectionLock, this.db, () => {
       this.db
         .prepare(
           `INSERT INTO "expense_revision" (
-            id, expense_id, previous_amount_dzd, new_amount_dzd, changed_fields,
+            id, expense_id, ${this.codec.previousColumn}, ${this.codec.newColumn}, changed_fields,
             reason, actor_user_id, actor_label, transaction_id, created_at
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           data.id,
           data.expenseId,
-          data.previousAmount,
-          data.newAmount,
+          data.previousAmount === null ? null : this.codec.encode(data.previousAmount),
+          this.codec.encode(data.newAmount),
           JSON.stringify(data.changedFields),
           data.reason,
           snapshot.actorUserId,
@@ -221,14 +245,14 @@ export class SqliteExpenseRepository implements ExpenseRepository {
     };
   }
 
-  async listRevisionsByExpenseId(expenseId: string): Promise<ExpenseRevision[]> {
+  async listRevisionsByExpenseId(expenseId: string): Promise<ExpenseRevision<Amount>[]> {
     const rows = this.db
       .prepare(
-        `SELECT * FROM "expense_revision" WHERE expense_id = ? ORDER BY created_at ASC, id ASC`,
+        `SELECT ${this.codec.revisionProjection} FROM "expense_revision" WHERE expense_id = ? ORDER BY created_at ASC, id ASC`,
       )
       .all(expenseId) as Record<string, unknown>[];
 
-    return rows.map(mapRowToRevision);
+    return rows.map((row) => mapRowToRevision(row, this.codec));
   }
 
   async runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
@@ -257,10 +281,12 @@ export class SqliteExpenseRepository implements ExpenseRepository {
   }
 }
 
-function mapRowToExpense(row: Record<string, unknown>): Expense {
+function mapRowToExpense<Amount>(row: Record<string, unknown>, codec: ExpenseStorageCodec<Amount>): Expense<Amount> {
+  codec.validateExpense?.(row);
   return {
     id: row.id as string,
-    amount: row.amount_dzd as number,
+    ...(codec.currency ? { currency: codec.currency } : {}),
+    amount: codec.decode(row.amount_dzd),
     expenseDate: row.expense_date as string,
     whatFor: row.what_for as string | null,
     responsibleWorkerId: row.responsible_worker_id as string | null,
@@ -268,7 +294,7 @@ function mapRowToExpense(row: Record<string, unknown>): Expense {
     projectId: row.project_id as string | null,
     stockItemId: row.stock_item_id as string | null,
     note: row.note as string | null,
-    status: row.status as Expense["status"],
+    status: row.status as Expense<Amount>["status"],
     voidedAt: row.voided_at as string | null,
     voidedBy: row.voided_by as string | null,
     voidReason: row.void_reason as string | null,
@@ -280,12 +306,13 @@ function mapRowToExpense(row: Record<string, unknown>): Expense {
   };
 }
 
-function mapRowToRevision(row: Record<string, unknown>): ExpenseRevision {
+function mapRowToRevision<Amount>(row: Record<string, unknown>, codec: ExpenseStorageCodec<Amount>): ExpenseRevision<Amount> {
+  codec.validateRevision?.(row);
   return {
     id: row.id as string,
     expenseId: row.expense_id as string,
-    previousAmount: row.previous_amount_dzd as number | null,
-    newAmount: row.new_amount_dzd as number,
+    previousAmount: row.previous_amount_dzd === null ? null : codec.decode(row.previous_amount_dzd),
+    newAmount: codec.decode(row.new_amount_dzd),
     changedFields: parseChangedFields(row.changed_fields),
     reason: row.reason as string | null,
     actorUserId: row.actor_user_id as string | null,
@@ -293,6 +320,12 @@ function mapRowToRevision(row: Record<string, unknown>): ExpenseRevision {
     transactionId: row.transaction_id as string | null,
     createdAt: row.created_at as string,
   };
+}
+
+export class SqliteExpenseRepository extends SqliteExpenseStorage<number> {
+  constructor(db: BetterSqliteDatabase, connectionLock: FifoLock) {
+    super(db, connectionLock, numericStorage);
+  }
 }
 
 function parseChangedFields(value: unknown): ExpenseRevision["changedFields"] {

@@ -5,6 +5,7 @@ import {
   useInventoryInvoiceGroupsQuery,
   useInventoryItemDefinitionsQuery,
 } from "@/features/inventory/inventory-hooks"
+import { CurrencyRun } from "@/features/shared/money-value"
 import { PageHeader, StatBand } from "@/features/shared/page-primitives"
 
 import { buildDashboardBusinessCounters } from "./dashboard-metrics"
@@ -77,7 +78,7 @@ export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
       ? "—"
       : debtsSummaryQuery.isPending
         ? "…"
-        : `${outstandingDebtsDzd.toLocaleString("ar-DZ")} د.ج`
+        : <CurrencyRun amount={outstandingDebtsDzd.toLocaleString("ar-DZ")} currencyLabel="د.ج" />
 
   return (
     <div className="space-y-6">

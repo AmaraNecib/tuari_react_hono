@@ -5,7 +5,7 @@ import { render, screen } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import { LicenseSettings } from "./license-settings";
-import { ar } from "@/i18n/resources/ar";
+import "@/i18n";
 import type { LicenseStatusData } from "./license-hooks"
 import {
   ALGERIA_DAY_LONG,
@@ -20,31 +20,6 @@ const mockUseLicenseStatus = vi.fn();
 
 vi.mock("./license-hooks", () => ({
   useLicenseStatus: () => mockUseLicenseStatus(),
-}));
-
-// ─── Mock useTranslation with interpolation support ────────────
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string, options?: Record<string, unknown>) => {
-      let node: unknown = ar.translation;
-      for (const part of key.split(".")) {
-        if (node === null || typeof node !== "object" || !(part in node)) {
-          node = undefined;
-          break;
-        }
-        node = (node as Record<string, unknown>)[part];
-      }
-      let result = typeof node === "string" ? node : (fallback ?? key);
-      // Simple interpolation for {{var}} patterns
-      if (options) {
-        for (const [k, v] of Object.entries(options)) {
-          result = result.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), String(v));
-        }
-      }
-      return result;
-    },
-  }),
 }));
 
 // ─── Helpers ───────────────────────────────────────────────────

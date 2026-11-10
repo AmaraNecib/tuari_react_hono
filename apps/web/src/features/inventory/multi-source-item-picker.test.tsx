@@ -67,6 +67,17 @@ afterEach(() => {
 })
 
 describe("MultiSourceItemPicker outbound identity", () => {
+  it("retains the selected price total's locale precision and translated currency", () => {
+    render(<MultiSourceItemPicker items={[{
+      optionId: "synthetic-balance", itemId: "definition-consumable", itemName: "مواد",
+      itemType: "CONSUMABLE", sourceType: "WAREHOUSE", sourceId: "warehouse",
+      sourceName: "Warehouse", quantity: 1, maxQuantity: 7, unitPrice: 1234.567,
+    }]} onItemsChange={vi.fn()} />)
+    const amount = screen.getByText("1.234,567", { selector: 'bdi[dir="ltr"]' })
+    expect(amount.previousElementSibling?.textContent).toBe("دج")
+    expect(amount.previousElementSibling?.getAttribute("dir")).toBe("rtl")
+  })
+
   it.each([
     ["definitions", "pending"],
     ["definitions", "error"],

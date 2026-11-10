@@ -2,7 +2,8 @@
  * Formatting utilities for home view data.
  * Provides helper functions for formatting names, dates, etc.
  */
-import { getAlgeriaTimeZone } from "@/lib/algeria-time"
+import { createElement, Fragment } from "react"
+import { AppDate } from "@/components/app-date"
 import type { DemoWorkspace } from "./workspace-queries"
 
 /** The employee's display name. */
@@ -16,16 +17,11 @@ export function formatDateLabel(value: string | null) {
     return "-"
   }
 
-  return new Intl.DateTimeFormat("ar-DZ", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    timeZone: getAlgeriaTimeZone(),
-  }).format(new Date(value))
+  return createElement(AppDate, { value })
 }
 
 export function formatDateRange(startDate: string | null, endDate: string | null, ongoingLabel: string) {
-  return `${formatDateLabel(startDate)} - ${endDate ? formatDateLabel(endDate) : ongoingLabel}`
+  return createElement(Fragment, null, formatDateLabel(startDate), " - ", endDate ? formatDateLabel(endDate) : ongoingLabel)
 }
 
 export function formatSalaryPeriodLabel(

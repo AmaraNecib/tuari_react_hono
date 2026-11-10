@@ -1,3 +1,4 @@
+import { CurrencyProse } from "@/features/shared/currency-prose"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -6,7 +7,7 @@ import { i18n } from "@/i18n"
 
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
-import { formatDateTimeInAlgeria } from "@/lib/algeria-time"
+import { AppDate } from "@/components/app-date"
 import { cn } from "@/lib/utils"
 
 import {
@@ -139,7 +140,7 @@ function SystemLogDetailsCell({ detail }: { detail: string | null | undefined })
                   getDetailTokenClassName(token),
                 )}
               >
-                {token}
+                <span><CurrencyProse text={token} /></span>
               </span>
             ))}
           </div>
@@ -279,7 +280,7 @@ export function SystemLogSection({
                 {pagedEntries.length > 0 ? (
                   pagedEntries.map((entry) => (
                     <AppShellTableRow key={entry.id} className="align-top">
-                      <td className="px-4 py-4 text-start text-muted-foreground">{formatDateTimeInAlgeria(new Date(entry.createdAt))}</td>
+                      <td className="px-4 py-4 text-start text-muted-foreground">{<AppDate value={entry.createdAt} includeTime />}</td>
                       <td
                         className="px-4 py-4 text-start text-muted-foreground"
                         title={entry.actorCurrentLabel && entry.actorCurrentLabel !== entry.actorLabel ? `${t("systemLog.currentActorName")}: ${entry.actorCurrentLabel}` : undefined}
@@ -289,7 +290,7 @@ export function SystemLogSection({
                       <td className="px-4 py-4 text-start text-foreground">{getActionTypeLabel(t, entry.actionType)}</td>
                       <td className="px-4 py-4 text-start text-muted-foreground">{entry.entityLabel ?? t("systemLog.targetUnknown")}</td>
                       <td className="px-4 py-4 text-start font-mono text-xs text-muted-foreground">{entry.entityId}</td>
-                      <td className="px-4 py-4 text-start font-medium text-foreground">{entry.summary}</td>
+                      <td className="px-4 py-4 text-start font-medium text-foreground"><CurrencyProse text={entry.summary} /></td>
                       <td className="px-4 py-4 text-start text-xs leading-6 text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                         <SystemLogDetailsCell detail={entry.detail} />
                       </td>
