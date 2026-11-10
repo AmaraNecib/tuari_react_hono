@@ -1,3 +1,4 @@
+import { createFifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { ExpenseRepository } from "../expenses.repository";
 import { toUtcInstant } from "../expenses.time";
 import type {
@@ -27,15 +28,18 @@ function normalizeAudit(audit?: ExpenseAudit) {
  * DESC`), the same "void only a LIVE row" guard, and a transaction wrapper
  * that rolls back the in-memory maps when the callback throws.
  */
-export function createInMemoryExpenseRepository(): ExpenseRepository {
-  const expenses = new Map<string, Expense>();
-  const revisions = new Map<string, ExpenseRevision>();
+export function createInMemoryExpenseRepository<Amount = number>(): ExpenseRepository<Amount> {
+  const expenses = new Map<string, Expense<Amount>>();
+  const revisions = new Map<string, ExpenseRevision<Amount>>();
+  const lock = createFifoLock();
 
   return {
-    async create(data: CreateExpenseRecord, audit?: ExpenseAudit): Promise<Expense> {
+    async create(data: CreateExpenseRecord<Amount>, audit?: ExpenseAudit): Promise<Expense<Amount>> {
+      return lock.runSync(() => {
       const snapshot = normalizeAudit(audit);
-      const expense: Expense = {
+      const expense: Expense<Amount> = {
         id: data.id,
+        ...(data.currency ? { currency: data.currency } : {}),
         amount: data.amount,
         expenseDate: toUtcInstant(data.expenseDate),
         whatFor: data.whatFor,
@@ -56,13 +60,14 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
       };
       expenses.set(expense.id, expense);
       return expense;
+      });
     },
 
-    async findById(id: string): Promise<Expense | null> {
+    async findById(id: string): Promise<Expense<Amount> | null> {
       return expenses.get(id) ?? null;
     },
 
-    async list(filters: ExpenseListFilters): Promise<Expense[]> {
+    async list(filters: ExpenseListFilters): Promise<Expense<Amount>[]> {
       const items = [...expenses.values()].filter((expense) => {
         if (filters.projectId !== undefined && expense.projectId !== filters.projectId) {
           return false;
@@ -89,11 +94,12 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
       });
     },
 
-    async update(data: UpdateExpenseRecord, audit?: ExpenseAudit): Promise<Expense | null> {
+    async update(data: UpdateExpenseRecord<Amount>, audit?: ExpenseAudit): Promise<Expense<Amount> | null> {
+      return lock.runSync(() => {
       const existing = expenses.get(data.id);
-      if (!existing) return null;
+      if (!existing || existing.status !== "LIVE") return null;
       const snapshot = normalizeAudit(audit);
-      const updated: Expense = {
+      const updated: Expense<Amount> = {
         ...existing,
         amount: data.amount,
         expenseDate: toUtcInstant(data.expenseDate),
@@ -110,13 +116,15 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
       };
       expenses.set(data.id, updated);
       return updated;
+      });
     },
 
-    async voidExpense(data: VoidExpenseRecord, audit?: ExpenseAudit): Promise<Expense | null> {
+    async voidExpense(data: VoidExpenseRecord, audit?: ExpenseAudit): Promise<Expense<Amount> | null> {
+      return lock.runSync(() => {
       const existing = expenses.get(data.id);
       if (!existing || existing.status !== "LIVE") return null;
       const snapshot = normalizeAudit(audit);
-      const voided: Expense = {
+      const voided: Expense<Amount> = {
         ...existing,
         status: "VOIDED",
         voidedAt: data.voidedAt,
@@ -129,14 +137,16 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
       };
       expenses.set(data.id, voided);
       return voided;
+      });
     },
 
     async createRevision(
-      data: CreateExpenseRevisionRecord,
+      data: CreateExpenseRevisionRecord<Amount>,
       audit?: ExpenseAudit,
-    ): Promise<ExpenseRevision> {
+    ): Promise<ExpenseRevision<Amount>> {
+      return lock.runSync(() => {
       const snapshot = normalizeAudit(audit);
-      const revision: ExpenseRevision = {
+      const revision: ExpenseRevision<Amount> = {
         id: data.id,
         expenseId: data.expenseId,
         previousAmount: data.previousAmount,
@@ -150,9 +160,10 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
       };
       revisions.set(revision.id, revision);
       return revision;
+      });
     },
 
-    async listRevisionsByExpenseId(expenseId: string): Promise<ExpenseRevision[]> {
+    async listRevisionsByExpenseId(expenseId: string): Promise<ExpenseRevision<Amount>[]> {
       return [...revisions.values()]
         .filter((revision) => revision.expenseId === expenseId)
         .sort((a, b) => {
@@ -162,6 +173,7 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
     },
 
     async runInTransaction<T>(fn: () => Promise<T>): Promise<T> {
+      return lock.run(async () => {
       const expenseSnapshot = new Map(expenses);
       const revisionSnapshot = new Map(revisions);
       try {
@@ -173,6 +185,7 @@ export function createInMemoryExpenseRepository(): ExpenseRepository {
         for (const [key, value] of revisionSnapshot) revisions.set(key, value);
         throw err;
       }
+      });
     },
   };
 }

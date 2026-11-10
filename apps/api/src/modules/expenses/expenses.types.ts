@@ -9,9 +9,11 @@ import type { MutationAuditContext } from "../company/company.types";
 
 export type ExpenseStatus = "LIVE" | "VOIDED";
 
-export interface Expense {
+export interface Expense<Amount = number> {
   id: string;
-  amount: number;
+  /** Present on opt-in exact documents; legacy records remain unchanged. */
+  currency?: "DZD";
+  amount: Amount;
   expenseDate: string;
   whatFor: string | null;
   /** The worker the money was handed to (an internal role), not a payee. */
@@ -45,11 +47,11 @@ export type ExpenseRevisionField =
   | "note";
 
 /** A recorded value change (who, when, what changed, optional reason). */
-export interface ExpenseRevision {
+export interface ExpenseRevision<Amount = number> {
   id: string;
   expenseId: string;
-  previousAmount: number | null;
-  newAmount: number;
+  previousAmount: Amount | null;
+  newAmount: Amount;
   /** Which editable fields actually changed, so a project/date/worker/seller
    * move is visible in the history — not just the amount. */
   changedFields: ExpenseRevisionField[];
@@ -60,8 +62,8 @@ export interface ExpenseRevision {
   createdAt: string;
 }
 
-export interface ExpenseWithRevisions extends Expense {
-  revisions: ExpenseRevision[];
+export interface ExpenseWithRevisions<Amount = number> extends Expense<Amount> {
+  revisions: ExpenseRevision<Amount>[];
 }
 
 export interface ExpenseListFilters {
@@ -71,30 +73,31 @@ export interface ExpenseListFilters {
   toDate?: string;
 }
 
-export interface ExpenseTotals {
-  total: number;
+export interface ExpenseTotals<Amount = number> {
+  total: Amount;
   count: number;
-  taggedToProject: number;
-  notTaggedToProject: number;
-  heldByWorkers: number;
+  taggedToProject: Amount;
+  notTaggedToProject: Amount;
+  heldByWorkers: Amount;
   workerCount: number;
 }
 
-export interface ExpenseProjectGroup {
+export interface ExpenseProjectGroup<Amount = number> {
   projectId: string | null;
-  total: number;
+  total: Amount;
   count: number;
 }
 
-export interface ExpenseListResult {
-  items: Expense[];
-  totals: ExpenseTotals;
-  groupsByProject: ExpenseProjectGroup[];
+export interface ExpenseListResult<Amount = number> {
+  items: Expense<Amount>[];
+  totals: ExpenseTotals<Amount>;
+  groupsByProject: ExpenseProjectGroup<Amount>[];
 }
 
-export interface CreateExpenseInput {
+export interface CreateExpenseInput<Amount = number> {
   id: string;
-  amount: number;
+  currency?: "DZD";
+  amount: Amount;
   expenseDate: string;
   whatFor?: string | null;
   responsibleWorkerId?: string | null;
@@ -108,9 +111,9 @@ export interface CreateExpenseInput {
  * Edit input: omitted fields are untouched, an explicit `null` clears an
  * optional field. `reason` is recorded on the revision, not stored on the row.
  */
-export interface UpdateExpenseInput {
+export interface UpdateExpenseInput<Amount = number> {
   id: string;
-  amount?: number;
+  amount?: Amount;
   expenseDate?: string;
   whatFor?: string | null;
   responsibleWorkerId?: string | null;
@@ -128,9 +131,10 @@ export interface VoidExpenseInput {
 
 // --- Repository record shapes (the repository owns timestamps) ---
 
-export interface CreateExpenseRecord {
+export interface CreateExpenseRecord<Amount = number> {
   id: string;
-  amount: number;
+  currency?: "DZD";
+  amount: Amount;
   expenseDate: string;
   whatFor: string | null;
   responsibleWorkerId: string | null;
@@ -142,9 +146,9 @@ export interface CreateExpenseRecord {
   updatedAt: string;
 }
 
-export interface UpdateExpenseRecord {
+export interface UpdateExpenseRecord<Amount = number> {
   id: string;
-  amount: number;
+  amount: Amount;
   expenseDate: string;
   whatFor: string | null;
   responsibleWorkerId: string | null;
@@ -162,11 +166,11 @@ export interface VoidExpenseRecord {
   updatedAt: string;
 }
 
-export interface CreateExpenseRevisionRecord {
+export interface CreateExpenseRevisionRecord<Amount = number> {
   id: string;
   expenseId: string;
-  previousAmount: number | null;
-  newAmount: number;
+  previousAmount: Amount | null;
+  newAmount: Amount;
   changedFields: ExpenseRevisionField[];
   reason: string | null;
   createdAt: string;
@@ -191,8 +195,8 @@ export class ExpenseAlreadyVoidedError extends Error {
 }
 
 export class ExpenseInvalidAmountError extends Error {
-  constructor(public readonly amount: number) {
-    super(`Expense amount must be a positive number; received ${amount}`);
+  constructor(public readonly amount: unknown) {
+    super(`Expense amount must be positive and within its supported precision and range; received ${String(amount)}`);
     this.name = "ExpenseInvalidAmountError";
   }
 }
