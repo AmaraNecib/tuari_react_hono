@@ -23,8 +23,8 @@ function fixture() {
   clients.push(query)
   query.setQueryData(sessionQueryKey, { user: { id: "operator", name: "Operator", phone: "0612345678", version: "0.0.0" } })
   query.setQueryData(workspaceQueryKeys.workspaceSnapshot("operator"), { marker: "numeric-unchanged" })
-  render(<QueryClientProvider client={query}><ExactDebtsPage client={client as ExactDebtsClient} parties={[party]} /></QueryClientProvider>)
-  return { client, query }
+  const view = render(<QueryClientProvider client={query}><ExactDebtsPage client={client as ExactDebtsClient} parties={[party]} /></QueryClientProvider>)
+  return { client, query, switchClient: (next: ExactDebtsClient) => view.rerender(<QueryClientProvider client={query}><ExactDebtsPage client={next} parties={[party]} /></QueryClientProvider>) }
 }
 async function openAccount() {
   fireEvent.click(await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ }))
@@ -66,6 +66,21 @@ describe("injected exact debt page", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
     await waitFor(() => expect(client.pay).toHaveBeenCalledTimes(2))
     expect(client.pay.mock.calls[0]?.[0]).toEqual(client.pay.mock.calls[1]?.[0])
+  })
+  it("does not reuse an uncertain command receipt key across injected clients", async () => {
+    const { client, switchClient } = fixture()
+    client.pay.mockRejectedValueOnce(new Error("Network timed out"))
+    await openAccount()
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دفعة" }))
+    const dialog = await screen.findByRole("dialog")
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "مبلغ الدفعة" }), { target: { value: "0.10" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
+    await screen.findByRole("alert")
+    const nextClient = { ...client, pay: vi.fn().mockResolvedValue(entry) }
+    switchClient(nextClient as ExactDebtsClient)
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
+    await waitFor(() => expect(nextClient.pay).toHaveBeenCalledTimes(1))
+    expect(nextClient.pay.mock.calls[0]?.[0].requestId).not.toBe(client.pay.mock.calls[0]?.[0].requestId)
   })
   it("sends explicit correction, void reason, signed adjustment and attributed settlement commands", async () => {
     const { client } = fixture()

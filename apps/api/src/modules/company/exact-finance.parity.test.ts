@@ -48,6 +48,12 @@ describe.each(["memory", "plain", "keyed"] as const)("exact debt lifecycle parit
     expect(service.createAccount({ ...party, requestId: "reuse" }).id).toBe(account.id);
     expect(service.createAccount({ ...party, direction: "RECEIVABLE", requestId: "opposite" }).id).not.toBe(account.id);
   });
+  it("reports positive payable and receivable gross exposure without netting opposite accounts", () => {
+    const { service } = setup(kind);
+    service.createAccount({ ...party, requestId: "payable", openingBalanceDzd: "20.10" });
+    service.createAccount({ ...party, direction: "RECEIVABLE", requestId: "receivable", openingBalanceDzd: "100.20" });
+    expect(service.summary()).toMatchObject({ grossPayableDzd: "20.10", grossReceivableDzd: "100.20" });
+  });
   it("uses persisted posting order when UUID display ordering differs and voids only linked effects", () => {
     const { service } = setup(kind);
     const account = service.createAccount({ ...party, requestId: "account", openingBalanceDzd: "10.00" });

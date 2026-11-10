@@ -45,8 +45,10 @@ export function ExactDebtsPage({ client, parties }: { client: ExactDebtsClient; 
   const queries = useQueryClient()
   // Preserve the receipt key after an uncertain network result, including when
   // a dialog closes and reopens. A successful intentional repeat gets a new key.
-  const requests = useMemo(() => new Map<string, string>(), [client])
+  const [requestScopes] = useState(() => new WeakMap<ExactDebtsClient, Map<string, string>>())
   async function execute(command: ExactDebtCommand) {
+    let requests = requestScopes.get(client)
+    if (!requests) { requests = new Map<string, string>(); requestScopes.set(client, requests) }
     const signature = JSON.stringify({ owner: getCachedSessionUserId(queries), kind: command.kind, input: { ...command.input, requestId: undefined } })
     let requestId = requests.get(signature)
     if (!requestId) { requestId = crypto.randomUUID(); requests.set(signature, requestId) }

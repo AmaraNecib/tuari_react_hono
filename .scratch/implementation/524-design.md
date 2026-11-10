@@ -55,7 +55,21 @@ localized exact draft entry, signed/grouped display, errors and keyboard/mobile.
 All three initial lenses apply to this new debt diff. Prior532 reviews do not
 review the new lifecycle. Logs/reviews remain private and ignored.
 
-## Status and authority
+## Full-scope review correction
+
+Positive PAYABLE and RECEIVABLE balances already contribute to their respective
+gross totals. Add literal assertions against all three repository implementations
+so that dropping the matching-direction branch cannot pass unnoticed. Retain the
+separate signed-credit coverage; it exercises a different exposure branch.
+
+Pending command receipt keys belong to the injected client and authenticated
+owner. Store them in an explicit per-client WeakMap rather than relying on a
+useMemo dependency whose callback does not consume that client. Preserve a key
+after uncertain transport failure; remove it only on success. Switching clients
+must not reuse another client's receipt key. No money calculation, wire format,
+ledger transaction, rendered markup or default production composition changes.
+
+## Shared-preparation status and authority (historical)
 
 Implementation resumed after owner-controlled disk recovery. The first bounded
 change implements the common opt-in input/renderer and startup isolation gate.
