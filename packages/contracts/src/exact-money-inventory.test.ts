@@ -28,7 +28,7 @@ describe("inert foundation inventory", () => {
     expect(rows.sort()).toEqual(physical.sort());
     expect(new Set(rows).size).toBe(27);
   });
-  it("limits exact imports to inert storage, opt-in shared UI and isolated debt/expense consumers", () => {
+  it("limits exact imports to inert storage, opt-in shared UI and isolated debt/expense/commerce consumers", () => {
     const imports: string[] = [];
     for (const dir of ["apps/api/src", "apps/web/src", "packages/contracts/src"]) {
       for (const path of sources(join(root, dir))) {
@@ -46,12 +46,22 @@ describe("inert foundation inventory", () => {
       "apps/api/src/modules/expenses/adapters/sqlite-exact-expenses.repository.ts",
       "apps/api/src/modules/expenses/expense-cost-inputs.ts",
       "apps/api/src/modules/expenses/expenses.exact.ts",
+      "apps/api/src/modules/inventory/adapters/sqlite-exact-inventory.repository.ts",
+      "apps/api/src/modules/inventory/inventory-exact.service.ts",
+      "apps/api/src/modules/invoice/adapters/sqlite-exact-invoice.repository.ts",
+      "apps/api/src/modules/invoice/invoice-exact.service.ts",
       "apps/web/src/components/ui/currency-amount-input.tsx",
+      "apps/web/src/features/inventory/inventory-exact-movement-form.tsx",
+      "apps/web/src/features/inventory/inventory-exact-page.tsx",
+      "apps/web/src/features/inventory/inventory-exact-purchase-form.tsx",
+      "apps/web/src/features/invoices/invoices-exact-page.tsx",
       "apps/web/src/features/shared/exact-money-display.ts",
       "apps/web/src/features/shared/exact-money-input.ts",
       "packages/contracts/src/debts-exact.ts",
       "packages/contracts/src/expenses-exact.ts",
       "packages/contracts/src/index.ts",
+      "packages/contracts/src/inventory-exact.ts",
+      "packages/contracts/src/invoice-exact.ts",
     ]);
   });
 });

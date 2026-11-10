@@ -44,6 +44,10 @@ Native participants must use the same database and lock. Memory participants mus
 | Shared storage gate | money-schema-gate.ts | Add agreed slice markers and physical-column refusal before legacy mutations |
 | Forms and views | existing invoice inventory paths; opt-in debts/expenses precedent | Injected independent exact composition, no numeric mixed totals or active cutover |
 
+## CI import inventory correction
+
+PR 539 at b6b8dfd0 failed its contracts import-inventory assertion before the API suite ran. The exact-money-inventory.test.ts allowlist still described only the earlier debt/expense delivery. All ten additional direct Money/UnitPrice consumers are the isolated invoice/inventory adapters, services, forms and contracts already included in this combined scope. Add those exact paths and update the test name. Preserve the scanner, exact set equality, legacy monetary-column inventory and production route non-activation. Do not replace the list with broad directory permissions or derive expected paths from the scanner output. Reproduce the existing failure, then run the focused inventory and commerce contracts tests plus contracts typecheck. A fresh combined-delta reviewer must check this bounded test/design correction and carry the initial three-lens conclusions forward explicitly. No runtime interface or evidence UI changes.
+
 ## Verification seams
 
 Owner-approved seams are actual application-service/RPC inputs through memory and production plain/keyed SQLite, persisted readback, exact JSON/cursor contracts, and actual affected components. Use independent literal expected values. Include failure injection, rollback, same-intent replay, changed-intent conflicts, attribution and competing native connections. Inspect initialized schema, not declarations alone.
