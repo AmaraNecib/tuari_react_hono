@@ -45,6 +45,16 @@ describe("DatePicker value contract", () => {
     expect(onChange).toHaveBeenCalledWith("2026-04-24")
   })
 
+  it("refreshes the empty cue for all four orders without changing empty canonical submission", () => {
+    render(<DatePicker value="" name="businessDay" onChange={vi.fn()} />)
+    for (const order of ["YYYY/MM/DD", "DD/MM/YYYY", "MM/DD/YYYY", "YYYY/DD/MM"]) {
+      act(() => setDateFormat(order))
+      expect(screen.getByRole("button").textContent).toContain(order.toLowerCase())
+      expect(screen.getByRole("button").querySelector('bdi[dir="ltr"]')).toBeTruthy()
+      expect((document.querySelector('input[name="businessDay"]') as HTMLInputElement).value).toBe("")
+    }
+  })
+
   it("emits the picked day as canonical yyyy-MM-dd, never dd/MM/yyyy", () => {
     const onChange = vi.fn()
     render(<DatePicker value="2026-10-01" onChange={onChange} />)

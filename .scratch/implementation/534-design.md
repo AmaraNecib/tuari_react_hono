@@ -26,7 +26,7 @@ A **business day** is the calendar day in Africa/Algiers; a **stored instant** i
 - `formatAlgeriaDate(value, locale?, order?)` is pure and returns an unisolated numeric string for explicit formatting boundaries. `formatDateTimeInAlgeria(date, locale?, order?, timeStyle?)` retains the clock. Neither reads a preference or converts storage.
 - `AppDate` accepts `value`, optional `includeTime`, `timeStyle` and `locale`. It subscribes itself and isolates the date run with bdi dir=ltr. The localized clock is separately isolated. Callers pass original values rather than slicing ISO strings.
 - History range derivation returns presentation React nodes containing AppDate instead of prematurely freezing display strings. This avoids global preference reads inside pure builders and keeps already-mounted history reactive without rebuilding workspace data. Corresponding presentation-only prop types accept ReactNode.
-- Existing DatePicker keeps parsing, calendar selection and canonical submission unchanged. Only its full-date trigger label uses AppDate; calendar days/month headings keep their own semantics.
+- Existing DatePicker keeps parsing, calendar selection and canonical submission unchanged. Its full-date trigger label uses AppDate, and its default empty cue follows the selected order with LTR isolation. Explicit caller-provided placeholders remain unchanged. Calendar days/month headings keep their own semantics.
 
 Deletion test: removing AppDate would duplicate subscription, invalid-date handling, numeric ordering, timezone selection and bidi isolation across each display caller. The module earns its interface. No generic protocol-string coercer, root context rerender or datepicker replacement is introduced.
 
@@ -76,7 +76,7 @@ All paths below are relative to apps/web/src. Status describes the source migrat
 | features/app-shell/backup-settings.tsx | AppDate timestamp, short clock, existing null/invalid placeholder. |
 | features/app-shell/settings-section.tsx | DateFormatSetting in appearance and AppDate update-check timestamp. |
 | features/app-shell/system-log-section.tsx | AppDate timestamp, short clock. |
-| components/ui/date-picker.tsx | Existing custom calendar full-date trigger follows preference; canonical value and calendar untouched. |
+| components/ui/date-picker.tsx | Existing custom calendar full-date trigger and default empty cue follow preference; canonical value, explicit placeholders and calendar untouched. |
 | features/update/update-section.tsx | Audited: download byte/speed formatting only, no full-date output. |
 
 ## Intentional exclusions

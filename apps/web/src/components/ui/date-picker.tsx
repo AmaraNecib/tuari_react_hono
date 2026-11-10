@@ -6,6 +6,7 @@ import { CalendarIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { AppDate } from "@/components/app-date"
+import { useDateFormat } from "@/features/preferences/date-format-preference"
 import { formInputClassName } from "@/components/ui/form-controls"
 import {
   Popover,
@@ -69,13 +70,14 @@ type DatePickerProps = {
 export function DatePicker({
   value,
   onChange,
-  placeholder = "dd/mm/yyyy",
+  placeholder,
   disabled = false,
   className,
   name,
   id,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
+  const order = useDateFormat()
   const selectedDate = value ? parsePickerValue(value) : undefined
 
   function handleSelect(date: Date | undefined) {
@@ -108,7 +110,7 @@ export function DatePicker({
           )}
         >
           <span className={cn(!selectedDate && "text-muted-foreground/80")}>
-            {selectedDate ? <AppDate value={toCanonicalDay(selectedDate)} /> : placeholder}
+            {selectedDate ? <AppDate value={toCanonicalDay(selectedDate)} /> : placeholder ?? <bdi dir="ltr">{order.toLowerCase()}</bdi>}
           </span>
           <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
         </PopoverTrigger>

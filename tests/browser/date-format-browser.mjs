@@ -11,6 +11,7 @@ const web = path.join(root, "apps/web")
 const require = createRequire(path.join(web, "package.json"))
 const { createServer } = await import(pathToFileURL(require.resolve("vite")).href)
 const baseline = process.argv.includes("--baseline")
+const pickerOnly = process.argv.includes("--picker-only")
 const base = "b2d37386aa3aa7bca1d98a4f7171f7a459859201"
 const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim()
 const initialStatus = execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" })
@@ -104,6 +105,36 @@ try {
     await dateCell.screenshot({ path: path.join(output, "expense-before.png") })
     await page.getByTestId("audit").getByRole("row").last().screenshot({ path: path.join(output, "audit-before.png") })
     console.log("Expected-red baseline reproduced: logical day/month/year, physical year/month/day")
+  } else if (pickerOnly) {
+    const select = page.getByRole("combobox", { name: "تنسيق التاريخ", exact: true })
+    const picker = page.getByTestId("empty-picker").getByRole("button")
+    for (const width of [1280, 320]) {
+      await page.setViewportSize({ width, height: 900 })
+      for (const direction of ["rtl", "ltr"]) {
+        await page.getByRole("combobox", { name: "اتجاه الاختبار" }).selectOption(direction)
+        for (const order of ["YYYY/MM/DD", "DD/MM/YYYY", "MM/DD/YYYY", "YYYY/DD/MM"]) {
+          await select.selectOption(order)
+          await expect(picker).toHaveText(order.toLowerCase())
+          await expect(picker.locator('bdi[dir="ltr"]')).toHaveText(order.toLowerCase())
+          await expect(page.locator('input[name="syntheticDay"]')).toHaveValue("")
+          records.push({ width, direction, order, emptyCue: await picker.textContent() })
+        }
+      }
+    }
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.getByRole("combobox", { name: "اتجاه الاختبار" }).selectOption("rtl")
+    await select.selectOption("DD/MM/YYYY")
+    await page.getByTestId("setting").screenshot({ path: path.join(output, "settings-after.png") })
+    await dateCell.screenshot({ path: path.join(output, "expense-after.png") })
+    await page.getByTestId("audit").getByRole("row").last().screenshot({ path: path.join(output, "audit-after.png") })
+    await page.getByTestId("empty-picker").screenshot({ path: path.join(output, "empty-picker-after.png") })
+    await page.setViewportSize({ width: 320, height: 844 })
+    const settingBox = await page.getByTestId("setting").boundingBox()
+    const selectBox = await select.boundingBox()
+    assert(selectBox.width <= settingBox.width && selectBox.x >= 0 && selectBox.x + selectBox.width <= 320)
+    await page.getByTestId("setting").screenshot({ path: path.join(output, "settings-mobile.png") })
+    assert.deepEqual(errors, [])
+    console.log(`Passed ${records.length} empty-picker order/direction/viewport cases; unchanged core geometry conclusions carry from prior exact-head run`)
   } else {
     const select = page.getByRole("combobox", { name: "تنسيق التاريخ", exact: true })
     await expect(select).toHaveValue("DD/MM/YYYY")
@@ -173,5 +204,5 @@ try {
   await server.close()
   const finalStatus = execFileSync("git", ["status", "--porcelain"], { cwd: root, encoding: "utf8" })
   assert.equal(finalStatus, initialStatus, "Source changed while browser proof was running")
-  await writeFile(path.join(output, "manifest.json"), JSON.stringify({ base, head, baseline, source: baseline ? "Tracked baseline source loaded verbatim with git show; new setting fixture is not baseline evidence" : "Clean committed source, unchanged during execution", synthetic: true, timezone: "America/Los_Angeles", started, durationMs: Date.now() - started, records, errors }, null, 2), { flag: "wx" })
+  await writeFile(path.join(output, "manifest.json"), JSON.stringify({ base, head, baseline, pickerOnly, source: baseline ? "Tracked baseline source loaded verbatim with git show; new setting fixture is not baseline evidence" : "Clean committed source, unchanged during execution", synthetic: true, timezone: "America/Los_Angeles", started, durationMs: Date.now() - started, records, errors }, null, 2), { flag: "wx" })
 }

@@ -8,6 +8,7 @@ import { ExpensesPage } from "../../apps/web/src/features/expenses/expenses-page
 import { SystemLogSection } from "../../apps/web/src/features/app-shell/system-log-section"
 import { DateFormatSetting } from "../../apps/web/src/features/preferences/date-format-setting"
 import { AppDate } from "../../apps/web/src/components/app-date"
+import { DatePicker } from "../../apps/web/src/components/ui/date-picker"
 import { formatDateRange } from "../../apps/web/src/features/app-shell/home-view-derived-formatters"
 
 // This fixture replaces query hooks with synthetic data, never the date formatter or Intl.
@@ -18,6 +19,7 @@ function Fixture() {
     <main dir={direction} className="mx-auto max-w-5xl space-y-6 p-4">
       <label>اتجاه الاختبار <select aria-label="اتجاه الاختبار" value={direction} onChange={(event) => setDirection(event.target.value as "rtl" | "ltr")}><option value="rtl">RTL</option><option value="ltr">LTR</option></select></label>
       <section data-testid="setting" className="rounded-xl border border-line bg-surface p-5"><h1>إعدادات عرض التاريخ</h1><DateFormatSetting /></section>
+      <section data-testid="empty-picker" className="max-w-sm"><DatePicker value="" name="syntheticDay" onChange={() => undefined} /></section>
       <section data-testid="prose" className="rounded-xl border border-line p-4">التاريخ المحدد <AppDate value="2026-04-23T12:04:05Z" /> في هذا السجل.</section>
       <section data-testid="range" className="rounded-xl border border-line p-4">الفترة {formatDateRange("2026-04-23", "2026-05-24", "مستمر")}</section>
       <section data-testid="expenses"><ExpensesPage projects={[]} employees={[]} sellers={[]} /></section>
