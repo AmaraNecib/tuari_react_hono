@@ -14,6 +14,26 @@ afterEach(() => {
   setMoneyGrouping(true)
 })
 
+describe("exact opt-in MoneyValue", () => {
+  it("keeps adjacent large minor amounts distinct with grouping and optional decimals", () => {
+    const view = render(<MoneyValue exact value="90071992547409.93" currencyLabel="دج" />)
+    expect(view.container.textContent).toBe("دج 90,071,992,547,409.93")
+    view.rerender(<MoneyValue exact value="90071992547409.92" currencyLabel="دج" />)
+    expect(view.container.textContent).toBe("دج 90,071,992,547,409.92")
+    act(() => setMoneyGrouping(false))
+    expect(view.container.textContent).toBe("دج 90071992547409.92")
+  })
+
+  it("renders wide exact aggregates without imposing persisted bounds", () => {
+    const view = render(<MoneyValue exact aggregate value="184467440737095516.14" currencyLabel="دج" signed />)
+    expect(view.container.textContent).toBe("دج +184,467,440,737,095,516.14")
+    view.rerender(<MoneyValue exact aggregate value="-184467440737095516.00" currencyLabel="دج" signed />)
+    expect(view.container.textContent).toBe("دج -184,467,440,737,095,516")
+    view.rerender(<MoneyValue exact value="-0.00" currencyLabel="دج" zeroAsDash />)
+    expect(view.container.textContent).toBe("—")
+  })
+})
+
 describe("MoneyValue", () => {
   it.each([
     [0, "0", "0"],
