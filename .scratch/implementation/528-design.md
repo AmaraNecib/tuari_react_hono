@@ -192,6 +192,34 @@ and 88/88 lines. This is targeted local proof, not the full CI suite or new-head
 hosted acceptance. API typecheck and test lint also pass. One fresh combined-delta
 review must carry forward unaffected earlier conclusions before publishing the fix.
 
+## Owner currency presentation correction and manual merge boundary
+
+The owner superseded stacked publication. Existing533 remains a historical
+dependent layer until532 is actually merged by the owner. Do not retarget early,
+publish a new stacked source update, merge automatically, rebase or discard work.
+Preserve ordinary integration019582cbc9e49035e5b3e4b5cec6cedf251bdee1 of26427361.
+That parent update isolates negative digits only; it does not meet the later
+physical-left currency requirement. Its42 focused renderer/page tests and web
+types/lint proof remain scoped77, not published-child acceptance.
+
+524 is sole writer for MoneyValue, CurrencyRun, CurrencyInput/form-controls,
+CurrencyAmountInput and their tests. Expense-only bypass correction routes
+legacy numeric cards/totals/group headings and table/group item amounts through
+MoneyValue instead of literal suffix strings or bare formatAmount. Exact detail
+and history already use that component. No local flex/bdi currency layout added,
+no exact arithmetic or production contract change. Expense form already delegates
+both numeric/exact inputs to the shared components. Chips interpolate bare
+numbers without currency, not a remaining suffix layout.
+
+78 red reproduced legacy rows bypassing currency display.79 dirty-tree page
+proof24 tests, web types and scoped lint passed after rerouting. This proves
+shared-component routing, NOT physical browser geometry. Source is committed
+locally while waiting524 actual reviewed physical-left parent correction and
+its real merge. Then integrate non-destructively, inspect expense-only remaining
+diff and run proportionate final-head geometry/captures/review. Current published
+e0cdba77 AFTER images are publicly marked rejected historical currency placement,
+not approval-ready. No browser/review round spent on the superseded layout.
+
 ## Hosted history and audit corrections
 
 The hosted review found a real boundary error despite the earlier local lenses:

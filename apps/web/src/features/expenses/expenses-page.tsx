@@ -85,7 +85,7 @@ type PageViewProps<Amount, Record extends ExpenseRecord<Amount>> = ExpensesPageP
 export function ExpensesPage(props: ExpensesPageProps) {
   const { t } = useTranslation()
   return <ExpensePageView<number, Expense> {...props} zero={0} useListQuery={useExpensesListQuery} useVoidMutation={useVoidExpenseMutation}
-    formatAmount={formatNumber} renderAmount={value => `${formatNumber(value)} ${t("expenses.currency")}`}
+    formatAmount={formatNumber} renderAmount={value => <MoneyValue value={value} currencyLabel={t("expenses.currency")} />}
     percentage={(part, total) => total > 0 ? Math.round(part / total * 100) : 0}
     renderForm={form => <ExpenseFormDialog {...form} />} />
 }
@@ -350,7 +350,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
                               {workerNameById.get(item.responsibleWorkerId) ?? t("expenses.unknownWorker")}
                             </span>
                           ) : null}
-                          <span className="font-medium text-ink">{renderDetail ? money(item.amount) : formatAmount(item.amount)}</span>
+                          <span className="font-medium text-ink">{money(item.amount)}</span>
                           {renderDetail && <Button size="sm" variant="outline" className="ms-2" onClick={() => setDetailId(item.id)}>التفاصيل</Button>}
                           {renderDetail && item.status === "VOIDED" && <span className="ms-2">{t("expenses.status.voided")}</span>}
                         </span>
@@ -387,7 +387,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
                         </span>
                       ) : null}
                     </TableCell>
-                    <TableCell className="font-medium">{renderDetail ? money(item.amount) : formatAmount(item.amount)}</TableCell>
+                    <TableCell className="font-medium">{money(item.amount)}</TableCell>
                     <TableCell className="text-ink-2">
                       {item.responsibleWorkerId
                         ? (workerNameById.get(item.responsibleWorkerId) ?? t("expenses.unknownWorker"))
