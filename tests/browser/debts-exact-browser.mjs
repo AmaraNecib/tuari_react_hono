@@ -18,9 +18,21 @@ const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).tr
 const out = resolve(root, process.argv[2] ?? `.scratch/reviews/524/browser-${head.slice(0,8)}`);
 await mkdir(out, { recursive: false });
 const errors = [], commands = [];
+let fixtureClient;
+async function fixtureBridge(req, res) {
+  try {
+    let body = "";
+    for await (const chunk of req) { body += chunk; if (body.length > 20000) throw new Error("Fixture request too large"); }
+    const { action, input } = JSON.parse(body);
+    if (!["summary", "detail", "create", "post", "pay", "correct", "void", "settle"].includes(action)) throw new Error("Unknown fixture action");
+    const result = await fixtureClient[action](input);
+    commands.push({ action, input });
+    res.setHeader("content-type", "application/json"); res.end(JSON.stringify(result));
+  } catch (error) { res.statusCode = 400; res.setHeader("content-type", "application/json"); res.end(JSON.stringify({ message: error.message })); }
+}
 const start = Date.now();
 const port = 15434;
-const server = await createServer({ root, configFile: resolve(root, "apps/web/vite.config.ts"), resolve: { alias: [
+const server = await createServer({ root, configFile: resolve(root, "apps/web/vite.config.ts"), plugins: [{ name: "exact-debt-fixture-bridge", configureServer(vite) { vite.middlewares.use("/__exact-debt-fixture", fixtureBridge); } }], resolve: { alias: [
   { find: "@tanstack/react-query", replacement: resolve(root, "apps/web/node_modules/@tanstack/react-query") },
   { find: /^react-dom(.*)$/, replacement: resolve(root, "apps/web/node_modules/react-dom") + "$1" },
   { find: /^react(.*)$/, replacement: resolve(root, "apps/web/node_modules/react") + "$1" },
@@ -46,15 +58,10 @@ try {
   const client = createRouterClient(createExactDebtsRouter(service, createRpcMiddleware({ authBootstrapService: { isBootstrapOwner: async id => id === "fixture-owner" } })), { context: { headers: new Headers(), resolveCurrentUser: async () => ({ id: "fixture-owner", name: "Fixture owner", phone: "0612345678", version: "0.0.0", permissions: [] }) } });
   const account = await client.create({ requestId:"seed-payable", partyType:"EXTERNAL_COUNTERPARTY", externalCounterpartyId:party, direction:"PAYABLE", openingBalanceDzd:"90071992547409.93" });
   await client.create({ requestId:"seed-receivable", partyType:"EXTERNAL_COUNTERPARTY", externalCounterpartyId:party, direction:"RECEIVABLE", openingBalanceDzd:"100.20" });
-  server.middlewares.use("/__exact-debt-fixture", async (req,res) => {
-    try {
-      let body=""; for await (const chunk of req) { body+=chunk; if(body.length>20000) throw new Error("Fixture request too large"); }
-      const {action,input}=JSON.parse(body);
-      if(!["summary","detail","create","post","pay","correct","void","settle"].includes(action)) throw new Error("Unknown fixture action");
-      const result=await client[action](input); commands.push({action,input});
-      res.setHeader("content-type","application/json");res.end(JSON.stringify(result));
-    } catch(error) { res.statusCode=400;res.setHeader("content-type","application/json");res.end(JSON.stringify({message:error.message})); }
-  });
+  process.env.TUARI_LICENSE_STATUS = "unknown";
+  await expect(client.create({ requestId: "license-must-refuse", partyType: "EXTERNAL_COUNTERPARTY", externalCounterpartyId: party, direction: "PAYABLE" })).rejects.toMatchObject({ code: "UPGRADE_REQUIRED" });
+  process.env.TUARI_LICENSE_STATUS = "trial";
+  fixtureClient = client;
   await server.listen();
   browser = await chromium.launch({channel:"msedge",headless:true});
   function observe(p) { p.on("pageerror",e=>errors.push(e.message));p.on("console",m=>{if(m.type()==="error")errors.push(m.text())}); }
@@ -62,9 +69,18 @@ try {
   const url=`http://127.0.0.1:${port}/tests/browser/debts-exact-fixture.html`;
   await page.goto(url,{waitUntil:"domcontentloaded",timeout:120000});
   const accountButton=page.getByRole("button",{name:/المورد أحمد · مستحقات علينا/});
+  await expect(accountButton).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  const warmupErrors = errors.splice(0);
+  if (warmupErrors.some(message => !message.includes("504 (Outdated Optimize Dep)"))) throw new Error(warmupErrors.join("\n"));
+  // Cold Vite optimization can invalidate its own module URLs. Preserve those
+  // diagnostics separately, then start interaction proof on a fresh stable load.
+  await page.reload({ waitUntil: "networkidle" });
   await accountButton.click();
   const ledger=page.getByRole("region",{name:"جدول حركات الدين"});await expect(ledger).toBeVisible();await page.evaluate(()=>document.fonts.ready);
   await page.locator("main").screenshot({path:resolve(out,"desktop-initial.png"),animations:"disabled"});
+  await page.locator("main > div.border-y > div").nth(0).screenshot({path:resolve(out,"gross-payable.png"),animations:"disabled"});
+  await page.locator("main > div.border-y > div").nth(1).screenshot({path:resolve(out,"gross-receivable.png"),animations:"disabled"});
   await expect(ledger).toContainText("90,071,992,547,409.93");
   await ledger.getByRole("button",{name:"تسجيل دفعة"}).click();
   let dialog=page.getByRole("dialog");
@@ -129,7 +145,7 @@ try {
     await context.close();
   }
   if(errors.length)throw new Error(errors.join("\n"));
-  await writeFile(resolve(out,"result.json"),JSON.stringify({head,exit:0,durationMs:Date.now()-start,browser:await browser.version(),errors,commands,final:await client.summary(),boundary:"Synthetic keyed native database; actual React/hooks -> JSON bridge -> validated oRPC admin/audit middleware -> exact service/repository. Not production activation. No database, trace or logs published."},null,2));
+  await writeFile(resolve(out,"result.json"),JSON.stringify({head,exit:0,durationMs:Date.now()-start,browser:await browser.version(),errors,warmupErrors,commands,final:await client.summary(),boundary:"Synthetic keyed native database; actual React/hooks -> JSON bridge -> validated oRPC admin/audit middleware -> exact service/repository. Not production activation. No database, trace or logs published."},null,2));
   console.log(out);
 } catch(error) {
   if(page){await page.screenshot({path:resolve(out,"failure.png")});await writeFile(resolve(out,"failure-dom.html"),await page.content());}
