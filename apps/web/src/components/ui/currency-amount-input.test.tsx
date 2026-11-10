@@ -35,14 +35,17 @@ describe("opt-in exact CurrencyAmountInput", () => {
   it("uses a non-submit full-payment button without rounding its label", () => {
     const pay = vi.fn()
     render(<CurrencyAmountInput exact label="المبلغ" value="" maxAmount="92233720368547758.07" onChange={vi.fn()} onPayFull={pay} />)
-    const button = screen.getByRole("button", { name: "92,233,720,368,547,758.07 دج" })
+    const button = screen.getByRole("button", { name: "دج 92,233,720,368,547,758.07" })
     expect(button.getAttribute("type")).toBe("button")
+    const run = button.querySelector('span[dir="ltr"]')!
+    expect(run.firstElementChild?.textContent).toBe("دج")
+    expect(run.lastElementChild?.textContent).toBe("92,233,720,368,547,758.07")
     fireEvent.click(button)
     expect(pay).toHaveBeenCalledTimes(1)
   })
 
   it("retains the legacy numeric max formatting", () => {
     render(<CurrencyAmountInput label="قديم" value="10" maxAmount={10} onChange={vi.fn()} onPayFull={vi.fn()} />)
-    expect(screen.getByRole("button").textContent).toBe("10.00 دج")
+    expect(screen.getByRole("button").textContent).toBe("دج 10.00")
   })
 })

@@ -6,6 +6,7 @@ import { useId, useState } from "react"
 import { Money } from "@tuari/contracts"
 import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
 import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
+import { CurrencyRun } from "@/features/shared/money-value"
 import { Button } from "@/components/ui/button"
 import { CurrencyInput } from "@/components/ui/form-controls"
 
@@ -51,7 +52,7 @@ function LegacyCurrencyAmountInput({
         </div>
         {onPayFull && maxAmount !== undefined && (
           <Button size="sm" variant="outline" onClick={onPayFull} disabled={disabled} className="whitespace-nowrap">
-            {maxAmount.toFixed(2)} دج
+            <CurrencyRun amount={maxAmount.toFixed(2)} currencyLabel="دج" />
           </Button>
         )}
       </div>
@@ -104,7 +105,7 @@ function ExactCurrencyAmountInput({ label, value, onChange, onPayFull, maxAmount
           {message && <p id={`${id}-error`} role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">{message}</p>}
         </div>
         {onPayFull && maximum !== undefined && (
-          <Button type="button" size="sm" variant="outline" onClick={onPayFull} disabled={disabled} className="whitespace-nowrap">{maxLabel} دج</Button>
+          <Button type="button" size="sm" variant="outline" onClick={onPayFull} disabled={disabled} className="whitespace-nowrap"><CurrencyRun amount={maxLabel!} currencyLabel="دج" /></Button>
         )}
       </div>
     </div>

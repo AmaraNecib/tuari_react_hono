@@ -77,7 +77,7 @@ function CurrencyInput({
   inputClassName?: string
 }) {
   return (
-    <span className={cn(
+    <span dir="ltr" className={cn(
       "flex w-full items-center gap-2 rounded-xl border border-border/75 bg-background/82 px-4 shadow-[0_1px_0_rgba(255,255,255,0.48)_inset] focus-within:border-primary/45 focus-within:ring-4 focus-within:ring-primary/10 aria-invalid:border-destructive/60 aria-invalid:ring-4 aria-invalid:ring-destructive/15 dark:bg-background dark:shadow-none dark:focus-within:ring-destructive/40",
       className
     )}>
@@ -85,7 +85,7 @@ function CurrencyInput({
         {currencyLabel ?? "دج"}
       </span>
       <input
-        className={cn("h-10 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none", placeholderContrastClassName, inputClassName)}
+        className={cn("h-10 min-w-0 flex-1 bg-transparent text-left text-sm text-foreground outline-none", placeholderContrastClassName, inputClassName)}
         dir="ltr"
         inputMode="decimal"
         {...props}

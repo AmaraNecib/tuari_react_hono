@@ -158,6 +158,45 @@ aggregate mode validates bounded canonical report strings and never returns a
 persistable Money. No expense-only exports are added for absent files. After
 integrating the reviewed common commit, #528 owns adding its two export lines.
 
+## Physical-left currency correction and tracked caller follow-up
+
+Owner rejected the26427361 currency placement and requires Arabic DZD physically
+left of the numeric run beside its leading digit. This supersedes the earlier
+capture acceptance interpretation, not exact digit/negative-sign isolation.
+Only the shared source files are changed in this layer:
+`features/shared/money-value.tsx`, `components/ui/form-controls.tsx`, and
+`components/ui/currency-amount-input.tsx`, plus their tests under apps/web/src.
+CurrencyRun accepts already-formatted text and renders an explicit LTR inline-flex
+currency label followed by isolated LTR digits. MoneyValue delegates both numeric
+and exact paths to it; both Pay Full branches retain their current formatting.
+CurrencyInput uses LTR physical layout and left-aligned editable text. No amount
+parsing, arithmetic, grouping or optional-decimal policy is changed.
+
+This shared change reaches salary employee tables/details, salary payment tables,
+employee batch/edit inputs and all CurrencyInput/CurrencyAmountInput consumers.
+Issue528 owns expenses-page.tsx literal bypasses and must integrate the shared
+fix without a second layout. Current scope does not claim app-wide completion.
+
+Tracked follow-up for the coordinator's separate develop-based presentation PR
+after prerequisite merge, not a successor implementation branch:
+
+- Debt bypasses: apps/web/src/features/debts/consolidation-dialog.tsx,
+  debt-cases-panel.tsx, void-entry-dialog.tsx, record-entry-payment-dialog.tsx,
+  debts-hub-page.tsx and debt-ledger-panel.tsx. Includes HubStatCard preformatted
+  string amounts and interpolated adjustment/cascade descriptions.
+- External bypass: apps/web/src/features/externals/externals-page.tsx.
+- Inventory bypasses: apps/web/src/features/inventory/inventory-invoice-details-page.tsx,
+  location-transfer-history.tsx, transfer-history-page.tsx and
+  record-invoice-payment-dialog.tsx. Includes summary-card preformatted strings.
+- Translation bypass: apps/web/src/i18n/ar.ts cascadeDescription and translated
+  monetary interpolation identified by the coordinator audit. Preserve prose and
+  introduce actual shared presentation rather than string/DOM ordering assumptions.
+
+These are explicit remaining owner requirements, not approved exceptions. The
+owner will merge manually. PR533 waits for actual PR532 merge before safe
+non-destructive standalone retarget; no new stacked publication, reset, rebase,
+force push, production activation or premature merge is authorized.
+
 ## Planned proof and remaining gates
 
 Use the preapproved service/RPC and real repository seams, independent literal

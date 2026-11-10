@@ -42,6 +42,16 @@ describe("exact opt-in MoneyValue", () => {
 })
 
 describe("MoneyValue", () => {
+  it.each([true, false])("uses a physical LTR currency-then-number layout for exact=%s in Arabic prose", exact => {
+    const view = render(<p dir="rtl">المبلغ: {exact
+      ? <MoneyValue exact value="-12500.25" currencyLabel="دج" />
+      : <MoneyValue value={-12500.25} currencyLabel="دج" />}</p>)
+    const run = view.container.querySelector('span[dir="ltr"]')!
+    expect(run.className).toContain("inline-flex")
+    expect(run.firstElementChild?.textContent).toBe("دج")
+    expect(run.lastElementChild?.tagName).toBe("BDI")
+    expect(run.lastElementChild?.textContent).toBe("-12,500.25")
+  })
   it.each([
     [0, "0", "0"],
     [12.5, "12.5", "12.5"],
@@ -80,15 +90,15 @@ describe("MoneyValue", () => {
   it("updates both presentations from Settings and preserves the choice after remount", () => {
     const view = render(<><MoneyFormatSetting /><MoneyValue value={1234.56} currencyLabel="DZD" /><MoneyValue value={1234.56} currencyLabel="دج" variant="detail" /></>)
     fireEvent.change(screen.getByRole("combobox", { name: /^فواصل الآلاف في المبالغ/ }), { target: { value: "plain" } })
-    expect(screen.getByText("DZD 1234.56")).toBeTruthy()
-    expect(screen.getByText("1234.56", { exact: true })).toBeTruthy()
+    expect(screen.getByText((_, element) => element?.matches('span[dir="ltr"]') === true && element.textContent === "DZD 1234.56")).toBeTruthy()
+    expect(screen.getAllByText("1234.56", { exact: true })).toHaveLength(2)
     expect(screen.getByText("1234.56 / 1234")).toBeTruthy()
     view.unmount()
     render(<><MoneyFormatSetting /><MoneyValue value={1234} currencyLabel="DZD" /></>)
     expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("plain")
-    expect(screen.getByText("DZD 1234")).toBeTruthy()
+    expect(screen.getByText((_, element) => element?.matches('span[dir="ltr"]') === true && element.textContent === "DZD 1234")).toBeTruthy()
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "grouped" } })
-    expect(screen.getByText("DZD 1,234")).toBeTruthy()
+    expect(screen.getByText((_, element) => element?.matches('span[dir="ltr"]') === true && element.textContent === "DZD 1,234")).toBeTruthy()
   })
 
   it("keeps the selected format for this session when storage is full", () => {
@@ -97,15 +107,15 @@ describe("MoneyValue", () => {
     })
     const view = render(<><MoneyFormatSetting /><MoneyValue value={1234.56} currencyLabel="DZD" /></>)
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "plain" } })
-    expect(screen.getByText("DZD 1234.56")).toBeTruthy()
+    expect(screen.getByText((_, element) => element?.matches('span[dir="ltr"]') === true && element.textContent === "DZD 1234.56")).toBeTruthy()
     expect(screen.getByText("1234.56 / 1234")).toBeTruthy()
     view.unmount()
     render(<><MoneyFormatSetting /><MoneyValue value={1234.56} currencyLabel="DZD" /></>)
     expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("plain")
-    expect(screen.getByText("DZD 1234.56")).toBeTruthy()
+    expect(screen.getByText((_, element) => element?.matches('span[dir="ltr"]') === true && element.textContent === "DZD 1234.56")).toBeTruthy()
     write.mockRestore()
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "grouped" } })
-    expect(screen.getByText("DZD 1,234.56")).toBeTruthy()
+    expect(screen.getByText((_, element) => element?.matches('span[dir="ltr"]') === true && element.textContent === "DZD 1,234.56")).toBeTruthy()
     expect(window.localStorage.getItem("tuari.moneyGrouping")).toBe("grouped")
   })
 
@@ -117,9 +127,9 @@ describe("MoneyValue", () => {
       throw new DOMException("Denied", "SecurityError")
     })
     render(<><MoneyFormatSetting /><MoneyValue value={1234.56} currencyLabel="DZD" /></>)
-    expect(screen.getByText("DZD 1,234.56")).toBeTruthy()
+    expect(screen.getByText((_, element) => element?.matches('span[dir="ltr"]') === true && element.textContent === "DZD 1,234.56")).toBeTruthy()
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "plain" } })
-    expect(screen.getByText("DZD 1234.56")).toBeTruthy()
+    expect(screen.getByText((_, element) => element?.matches('span[dir="ltr"]') === true && element.textContent === "DZD 1234.56")).toBeTruthy()
   })
 
   it("uses grouped defaults for invalid storage and follows cross-tab changes and clearing", () => {

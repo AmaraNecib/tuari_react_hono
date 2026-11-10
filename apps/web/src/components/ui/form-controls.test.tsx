@@ -28,6 +28,15 @@ function fileInputElement() {
 afterEach(cleanup)
 
 describe("form control placeholder contrast", () => {
+  it("keeps the currency adornment physically left through explicit LTR layout", () => {
+    render(<div dir="rtl"><CurrencyInput aria-label="المبلغ" value="-12500.25" readOnly /></div>)
+    const input = screen.getByRole("textbox", { name: "المبلغ" })
+    expect(input.parentElement?.getAttribute("dir")).toBe("ltr")
+    expect(input.parentElement?.firstElementChild?.textContent).toBe("دج")
+    expect(input.getAttribute("dir")).toBe("ltr")
+    expect(input.className).toContain("text-left")
+  })
+
   it("bumps the placeholder to the full-opacity muted token in dark mode", () => {
     render(<Input placeholder="اسم" />)
 
