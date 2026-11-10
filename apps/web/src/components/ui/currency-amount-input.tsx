@@ -30,7 +30,7 @@ function FullPaymentButton({ amount, onClick, disabled }: { amount: string; onCl
       <TooltipTrigger delay={200} render={<Button type="button" onClick={onClick} disabled={disabled} aria-describedby={id} className="h-10 whitespace-nowrap" />}>
         كامل المبلغ
       </TooltipTrigger>
-      <TooltipContent dir="rtl">المتبقي: <CurrencyRun amount={amount} currencyLabel="دج" /></TooltipContent>
+      <TooltipContent role="tooltip" dir="rtl">المتبقي: <CurrencyRun amount={amount} currencyLabel="دج" /></TooltipContent>
     </Tooltip>
     <span id={id} className={canHover ? "sr-only" : "text-xs text-muted-foreground"}>
       المتبقي: <CurrencyRun amount={amount} currencyLabel="دج" />
