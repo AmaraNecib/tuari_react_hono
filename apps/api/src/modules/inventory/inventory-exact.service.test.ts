@@ -86,6 +86,8 @@ it("rejects incomplete outbound ledger links rather than showing a false zero ba
   // Historical domain records are an independent persisted input to this read.
   repo.saveOutbound({ ...transfer, associatedDebtAccountId: null });
   expect(() => inventory.listOutboundTransfers()).toThrow(/linked debt account/);
+  repo.saveOutbound({ ...transfer, debtEntryId: null });
+  expect(() => inventory.listOutboundTransfers()).toThrow(/linked original obligation/);
   repo.saveOutbound({ ...transfer, debtEntryId: "missing-original" });
   expect(() => inventory.listOutboundTransfers()).toThrow(/obligation not found/);
   repo.saveOutbound(transfer);

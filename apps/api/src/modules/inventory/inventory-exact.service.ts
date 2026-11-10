@@ -56,7 +56,10 @@ export class ExactInventoryService {
       // Scope the index to this read; later payments must be visible next time.
       const accounts = new Map<string, Map<string, string | null>>();
       return this.repo.listOutbounds().map(row => {
-        if (!row.debtEntryId) return { ...row, remainingDebtDzd: "0.00" };
+        if (!row.debtEntryId) {
+          if (row.associatedDebtAccountId) throw new ExactDebtError("Outbound has no linked original obligation", "CONFLICT");
+          return { ...row, remainingDebtDzd: "0.00" };
+        }
         if (!row.associatedDebtAccountId) throw new ExactDebtError("Outbound has no linked debt account", "CONFLICT");
         let remaining = accounts.get(row.associatedDebtAccountId);
         if (!remaining) {
