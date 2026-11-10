@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { createDatabaseConnection } from "../../infrastructure/database/factory";
 import { createFifoLock } from "../../infrastructure/database/fifo-lock";
 import { exactInvoiceSchemaStatements } from "../invoice/adapters/exact-invoice-schema";
@@ -60,6 +60,38 @@ function setup(kind: "memory" | "plain" | "keyed") {
   const finance = new ExactFinanceService(ledger, dependencies);
   return { nativeDb, ledger, repo, finance, openPeer, inventory: new ExactInventoryService(repo, finance, dependencies) };
 }
+it.each(["memory", "plain", "keyed"] as const)("%s: loads each shared outbound debt account once per list and refreshes after payment", kind => {
+  const { inventory, ledger } = setup(kind);
+  inventory.createInvoiceGroup({ requestId: "list-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 4, unitPriceDzd: "1.0000" }] });
+  const create = (requestId: string, transferType: "SALE" | "RETURN" | "GIFT") => inventory.createOutboundTransfer({ requestId, fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType, debtAmountDzd: transferType === "GIFT" ? undefined : "100.00", firstPaymentAmountDzd: transferType === "GIFT" ? undefined : "20.00", items: [{ itemId: "material", quantity: 1 }] });
+  const first = create("list-sale-first", "SALE");
+  const second = create("list-sale-second", "SALE");
+  const returned = create("list-return", "RETURN");
+  const gift = create("list-gift", "GIFT");
+  expect(first.associatedDebtAccountId).toBe(second.associatedDebtAccountId);
+  expect(returned.associatedDebtAccountId).not.toBe(first.associatedDebtAccountId);
+  const reads = vi.spyOn(ledger, "listEntries");
+  const remaining = () => Object.fromEntries(inventory.listOutboundTransfers().map(row => [row.id, row.remainingDebtDzd]));
+  expect(remaining()).toEqual({ [first.id]: "80.00", [second.id]: "80.00", [returned.id]: "80.00", [gift.id]: "0.00" });
+  expect(reads.mock.calls.map(([id]) => id).sort()).toEqual([first.associatedDebtAccountId, returned.associatedDebtAccountId].sort());
+  inventory.recordOutboundPayment({ requestId: "list-later-payment", transferId: first.id, amountDzd: "30.00" });
+  reads.mockClear();
+  expect(remaining()).toEqual({ [first.id]: "50.00", [second.id]: "80.00", [returned.id]: "80.00", [gift.id]: "0.00" });
+  expect(reads).toHaveBeenCalledTimes(2);
+});
+it("rejects incomplete outbound ledger links rather than showing a false zero balance", () => {
+  const { inventory, repo, finance } = setup("memory");
+  inventory.createInvoiceGroup({ requestId: "broken-link-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 1, unitPriceDzd: "1.0000" }] });
+  const transfer = inventory.createOutboundTransfer({ requestId: "broken-link-sale", fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType: "SALE", debtAmountDzd: "1.00", items: [{ itemId: "material", quantity: 1 }] });
+  // Historical domain records are an independent persisted input to this read.
+  repo.saveOutbound({ ...transfer, associatedDebtAccountId: null });
+  expect(() => inventory.listOutboundTransfers()).toThrow(/linked debt account/);
+  repo.saveOutbound({ ...transfer, debtEntryId: "missing-original" });
+  expect(() => inventory.listOutboundTransfers()).toThrow(/obligation not found/);
+  repo.saveOutbound(transfer);
+  finance.forProducer({ type: "INVENTORY_OUTBOUND", id: transfer.id }).voidEntry({ requestId: "void-linked-original", entryId: transfer.debtEntryId!, voidReason: "Cancelled obligation" });
+  expect(() => inventory.listOutboundTransfers()).toThrow(/obligation not found/);
+});
 it.each(["plain", "keyed"] as const)("%s: rejects oversized inventory history, entries and assets before returning a prefix", kind => {
   const { inventory, repo, nativeDb: db } = setup(kind);
   const purchase = inventory.createInvoiceGroup({ requestId: "capped-stock", projectId: "project", entries: [{ kind: "ASSET", itemDefinitionId: "asset", assets: [{ assetName: "Synthetic asset", purchasePriceDzd: "1.00" }] }] });

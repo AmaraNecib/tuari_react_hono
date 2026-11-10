@@ -11,6 +11,7 @@ import { exactDebtSchemaStatements } from "./adapters/exact-finance-schema";
 import { SqliteExactFinanceRepository } from "./adapters/sqlite-exact-finance.repository";
 import { InMemoryExactFinanceRepository } from "./adapters/inmemory-exact-finance.repository";
 import { ExactFinanceService } from "./exact-finance.service";
+import { exactFinanceJson } from "./exact-finance-json";
 import type { ExactFinanceRepository, ExactTransactionParticipant } from "./exact-finance.repository";
 
 const cleanups: (() => void)[] = [];
@@ -58,6 +59,40 @@ function setup(kind: "memory" | "plain" | "keyed") {
   };
   return { repo, finance, participant, input, work, readDomain, writeDomain };
 }
+
+it("bounds aggregate JSON depth, node count and serialized size before persisting intent", () => {
+  const { finance, participant, input, work, readDomain } = setup("memory");
+  let nested: unknown = null;
+  for (let depth = 0; depth < 33; depth++) nested = [nested];
+  for (const intent of [nested, Array(20001).fill(null), { text: "x".repeat(262144) }]) {
+    expect(() => finance.runAggregate({ ...input, intent }, participant, work)).toThrow(/JSON resource limit/);
+    expect(readDomain()).toBe("0.00");
+    expect(finance.listAccounts()).toEqual([]);
+  }
+  expect(exactFinanceJson({ z: true, amount: "0.30", ignored: undefined, nested: [null, false, 1] })).toBe('{"amount":"0.30","nested":[null,false,1],"z":true}');
+});
+it("refuses invalid aggregate identities and async functions before running domain work", () => {
+  const { finance, participant, input, work, readDomain } = setup("memory");
+  for (const requestId of ["", "space invalid", "x".repeat(129)]) expect(() => finance.runAggregate({ ...input, requestId }, participant, work)).toThrow(/Invalid aggregate request id/);
+  expect(() => finance.runAggregate(input, participant, async () => work())).toThrow(/synchronous JSON/);
+  expect(readDomain()).toBe("0.00");
+  expect(finance.listAccounts()).toEqual([]);
+});
+it("requires explicit producer original postings and paired immutable attribution", () => {
+  const { finance, repo } = setup("memory");
+  const port = finance.forProducer(producer);
+  expect(() => port.createAccount({ ...accountInput, openingBalanceDzd: "1.00" })).toThrow(/explicit original/);
+  expect(finance.listAccounts()).toEqual([]);
+  const account = port.createAccount(accountInput);
+  const post = { debtAccountId: account.id, entryType: "ADJUSTMENT" as const, signedAmountDzd: "1.00" };
+  expect(() => finance.postEntry({ ...post, requestId: "unowned-link", invoiceId })).toThrow(/validated invoice producer/);
+  expect(() => port.postEntry({ ...post, requestId: "missing-link" })).toThrow(/Invoice producer linkage mismatch/);
+  const original = port.postEntry({ ...post, requestId: "paired", invoiceId });
+  expect(() => repo.saveEntry({ ...original, producerId: null })).toThrow(/both type and id/);
+  expect(() => repo.saveEntry({ ...original, producerType: null })).toThrow(/both type and id/);
+  expect(repo.getEntry(original.id)).toEqual(original);
+  expect(finance.remaining(original.id)).toBe("1.00");
+});
 
 describe.each(["memory", "plain", "keyed"] as const)("whole aggregate transaction: %s", kind => {
   it("rolls back domain, ledger and nested receipts on aggregate journal failure, then retries and replays exactly", () => {

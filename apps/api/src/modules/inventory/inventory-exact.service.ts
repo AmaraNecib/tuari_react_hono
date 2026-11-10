@@ -51,7 +51,24 @@ export class ExactInventoryService {
   }
   listDefinitions() { return this.repo.listDefinitions(); }
   listInvoiceGroups() { return this.repo.listGroups(); }
-  listOutboundTransfers() { return this.repo.withTransaction(() => this.repo.listOutbounds().map(row => this.getOutboundTransfer(row.id))); }
+  listOutboundTransfers() {
+    return this.repo.withTransaction(() => {
+      // Scope the index to this read; later payments must be visible next time.
+      const accounts = new Map<string, Map<string, string | null>>();
+      return this.repo.listOutbounds().map(row => {
+        if (!row.debtEntryId) return { ...row, remainingDebtDzd: "0.00" };
+        if (!row.associatedDebtAccountId) throw new ExactDebtError("Outbound has no linked debt account", "CONFLICT");
+        let remaining = accounts.get(row.associatedDebtAccountId);
+        if (!remaining) {
+          remaining = new Map(this.finance.detail(row.associatedDebtAccountId).entries.map(entry => [entry.id, entry.remainingDzd]));
+          accounts.set(row.associatedDebtAccountId, remaining);
+        }
+        const amount = remaining.get(row.debtEntryId);
+        if (amount === undefined || amount === null) throw new ExactDebtError("Live outbound obligation not found", "NOT_FOUND");
+        return { ...row, remainingDebtDzd: amount };
+      });
+    });
+  }
   getOutboundTransfer(id: string) {
     const row = this.repo.getOutbound(id);
     if (!row) throw new ExactDebtError("Outbound transfer not found", "NOT_FOUND");
