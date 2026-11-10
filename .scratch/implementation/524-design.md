@@ -4,7 +4,14 @@
 
 Implementation resumed after owner-controlled disk recovery. The first bounded
 change implements the common opt-in input/renderer and startup isolation gate.
-The debt lifecycle conversion remains unfinished. No production activation,
+The debt lifecycle conversion remains unfinished. PR532 is the published shared
+preparation layer. Its actual isolated RTL capture exposed a trailing negative
+sign in exact table display. A bounded correction isolates only the exact
+formatted digits with `bdi dir="ltr"`, separately from the Arabic currency label.
+Numeric legacy markup and amounts stay unchanged. Tests cover table and detail
+isolation; refreshed same-fixture browser evidence must compare against the
+failing0a7d94ac baseline. This adds no monetary interface or domain policy.
+No production activation,
 rendered UI approval or final issue verdict is claimed.
 
 Issue: https://github.com/AmaraNecib/tuari_react_hono/issues/524

@@ -24,6 +24,13 @@ describe("exact opt-in MoneyValue", () => {
     expect(view.container.textContent).toBe("دج 90071992547409.92")
   })
 
+  it.each(["table", "detail"] as const)("isolates signed exact digits from Arabic currency in %s mode", variant => {
+    const view = render(<p dir="rtl">المبلغ: <MoneyValue exact value="-1234.50" currencyLabel="دج" signed variant={variant} /></p>)
+    const digits = view.container.querySelector("bdi[dir=ltr]")
+    expect(digits?.textContent).toBe("-1,234.5")
+    expect(digits?.textContent).not.toContain("دج")
+  })
+
   it("renders wide exact aggregates without imposing persisted bounds", () => {
     const view = render(<MoneyValue exact aggregate value="184467440737095516.14" currencyLabel="دج" signed />)
     expect(view.container.textContent).toBe("دج +184,467,440,737,095,516.14")
