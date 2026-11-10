@@ -3,147 +3,154 @@
 ## State and authority
 
 Source-owning tree: `D:/worktrees/tuari_react_hono/feat-issue-528-independ-34a61677081e9232`.
-Base and fetched `origin/develop`: `b2d37386aa3aa7bca1d98a4f7171f7a459859201`.
+Base and last fetched develop: `b2d37386aa3aa7bca1d98a4f7171f7a459859201`.
 Live acceptance: https://github.com/AmaraNecib/tuari_react_hono/issues/528.
 
-Status: inspected and proposed, not implemented. No source, schema, contract,
-production composition or application database has changed. No PR exists.
+Status: partial local expense implementation over an unpublished shared
+prerequisite. No PR, push, merge, production activation or expense UI conversion.
+The complete issue remains open. Current owner authorization permits a declared
+dependent stack after agreement on the exact publishable shared parent layer.
 
-High-assurance scope covers exact expense persistence, correction history,
-atomic writes and downstream project-cost inputs. Verification mode is
-`focused-local / CI-final-enforced`. At inspection, effective ruleset 26837184
-was active with strict `CI acceptance`, GitHub Actions app 15368, resolved
-threads, deletion/non-fast-forward restrictions, empty bypass actors and
-`current_user_can_bypass: never`. This is protection evidence, not current-head
-CI or implementation acceptance. Recheck before merge.
+Local shared dependency `2c55189b706c95db67d01c6440bba434a9236766` from issue 524
+was cherry-picked as `ac3e2e0034ae8ae88c687647aeb698e18b7917d6` before the owner
+prohibited unpublished implementation bases. Its new 524 design note was retained
+when resolving a modify/delete conflict. No shared source conflict occurred.
+The owner's later V1 stack authorization explicitly permits this preserved local
+integration as a starting point. Agree the exact parent branch/SHA before a child
+PR. Show only expense-owned changes; do not modify or delete the 524 design note.
+Preserve commits and earlier failures. Parent changes require affected proof and
+review refresh. Merge in dependency order, then inspect the actual remaining diff
+when retargeting to develop. Ancestor merge does not refresh evidence by itself.
+No UI or expensive effect may merge without explicit owner approval.
 
-## Approved financial contract
+High-assurance mode is `focused-local / CI-final-enforced`. At initial inspection,
+effective ruleset 26837184 had strict CI acceptance app 15368, resolved threads,
+deletion/non-fast-forward restrictions, empty bypass actors and
+`current_user_can_bypass: never`. Protection is separate from current-head CI.
+No hosted acceptance or implementation review verdict has been obtained here.
 
-Use `docs/adr/0001-exact-money-contract.md` and its three frozen appendices.
-Their Git blob SHA256 values match the supplied hashes. Windows checkout
-CRLF bytes differ; the committed blobs are unchanged.
+## Financial contract and domain invariants
+
+Use `docs/adr/0001-exact-money-contract.md` and all three frozen appendices. Git
+blob SHA256 values match the supplied hashes; Windows CRLF checkout hashes differ.
 
 Expenses are positive finalized DZD amounts with at most two entered places,
-checked symmetric int64 minor units and exact decimal-string wire values.
-They are not unit prices or quantities. Reject overprecision, malformed inputs
-and overflow instead of rounding. Preserve optional references as soft links,
-nullable previous revision amounts, update omission/null behavior, audit actor
-and transaction context, visible voided rows and exclusion from totals.
+checked reversal-safe int64 minor units and decimal-string wire values. Reject
+malformed input, overprecision and overflow without rounding. They are not rates.
+Optional worker, seller, project and stock references remain soft. Creation does
+not synthesize a revision. A correction records old/new values and audit context
+in the same transaction. Previous revision amount can be NULL. Void changes status
+and audit metadata, keeps the row visible and excludes it from totals. Omitted
+updates preserve values; explicit NULL clears only optional fields.
 
-## Consumer inspection
+## Actual local implementation
 
-`docs/money/523-caller-matrix.md` is the starting inventory, not conversion proof.
-Current expense module and repository interfaces use numbers. The SQLite
-adapter writes `expense.amount_dzd` and revision old/new REAL values. The
-in-memory adapter implements the same interface. Module updates and revisions
-share a locked transaction. Create currently does not synthesize a revision;
-void changes status and audit metadata without creating a correction revision.
+Expense types, repository ports, in-memory and SQLite storage and the lifecycle
+are parameterized by amount type. Existing numeric factories and production
+composition remain the defaults. The opt-in exact factory parses strings through
+shared Money and uses shared sumMoney; there is no exact-to-Number adapter.
+Aggregates can exceed int64. Shared sumMoney permits at most 10,000 source records
+per sum. This is an operation bound, not an invented financial ceiling.
 
-`project-cost/adapters/sqlite-project-cost.repository.ts` directly reads live
-expense rows and converts `amount_dzd` with Number. `project-cost.service.ts`
-adds them to numeric salary, stock and material values. It must never read
-converted expense records until coordinated activation. No expense conversion
-may enter that combined numeric total. The narrow exact expense input must
-return exact source strings and live-row filtering without building #529 totals.
+The SQLite adapter shares lifecycle/storage behavior through a codec rather than
+copying create/correct/void. Exact storage binds typed Money as native BigInt and
+reads validated INTEGER columns using exact SQLite TEXT projections. Unrelated
+integer reads remain numeric. Record readers validate storage class and currency.
+No global safe-integer mode, alternate balance or parallel authoritative table.
 
-Searches of workspace, company audit/system-log, RPC and web audit consumers
-found no expense monetary values in workspace snapshots or system-audit output.
-Expense correction history is exposed through expense get/RPC and its UI.
-Recheck the inventory against the final diff.
-
-## Proposed inert implementation
-
-Retain legacy numeric production composition unchanged. Parameterize the
-existing expense lifecycle and repository types with an amount/aggregate
-policy rather than copy creation/correction/void business rules. The numeric
-policy remains the default. An opt-in exact factory parses strings with the
-shared Money type and uses shared exact sums. No exact-to-Number adapter is
-permitted. Wide read-only totals are distinct from persisted per-value bounds.
-
-Reuse the same table identities only on fresh isolated exact fixtures. An
-exact SQLite adapter must reject REAL values and require the shared gate before
-any eventual production composition. It must use narrow exact projections and
-bindMoney, never global safe-integer reads. An exact in-memory implementation
-must preserve observable ordering, filters, audit, void and rollback behavior.
-No parallel authoritative expense table or balance is proposed.
-
-Exact wire schemas and proof RPC wiring remain opt-in. Do not switch the live
-app-contract or default initializer. The pinned shared gate is
-`requireExactMoneySchema(db, "expenses")` in
-`infrastructure/database/money-schema-gate.ts`. It requires metadata table
+`expenses.exact-schema.ts` contains inert DDL for isolated fixtures only, not a
+migration or startup call. Same table identities, with `expense.amount_minor`
+INTEGER and currency TEXT constrained to DZD. Revision has nullable
+previous_amount_minor and required new_amount_minor INTEGER. Revision currency
+inherits through expense_id. Exact factory requires the shared versioned marker
 `exact_money_schema(slice TEXT PRIMARY KEY, version INTEGER NOT NULL)` with
-row `('expenses', 1)`. Exact owned columns are `expense.amount_minor` INTEGER
-and `expense.currency` TEXT constrained to DZD. Revision columns are nullable
-`previous_amount_minor` and required `new_amount_minor`, both INTEGER; currency
-inherits through expense_id. Validate actual storage types as well as the marker.
-The shared legacy initializer will reject an exact marker or converted columns
-before mutation, without an environment override. The old project reader also
-cannot select the absent amount_dzd column. No production exact composition is
-planned. Activation and transition execution require separate authority and
-coordinated reader/writer coverage. A dependent integration stays unmerged if
-needed.
+`('expenses',1)` and validates actual columns independently. Legacy startup rejects
+exact markers or converted columns before mutations. No production exact wiring.
 
-## Shared ownership agreement
+Expense-only exact schemas/contract are exported separately. appContract remains
+numeric. An isolated exact router reuses actual permissions, audit middleware and
+expense handlers, backed by real exact repositories in proof. The default router
+and app dependencies never import that isolated composition.
 
-Issue 524 leads shared money input/rendering, package exports and initializer/
-gate design. Issue 528 has made no shared edits. Agreed props:
+## Reader inventory and project-cost seam
 
-- `CurrencyAmountInput exact={true}` keeps draft string value/onChange and uses
-  an exact decimal-string maxAmount. Legacy numeric behavior stays unchanged.
-- `MoneyValue exact={true}` accepts a string and optional `aggregate` for bounded
-  wider report totals. Existing styling, grouping and optional decimals remain.
-- `parseLocalizedMoneyInput(value: string): Money` lives at
-  `apps/web/src/features/shared/exact-money-input.ts`. Preserve drafts while
-  editing; submit its `.toWire()` without Number.
+`docs/money/523-caller-matrix.md` remains an inventory, not conversion proof.
+The live project-cost repository still selects expense.amount_dzd through Number,
+and its service combines numeric workforce, inventory and expenses. It must not
+read converted expense records. Exact fixtures lack amount_dzd; the shared legacy
+startup gate rejects their marker before composing traffic.
 
-The exact project-cost expense input is a coordination seam for #529, not an
-expense-owned combined report. Its final exported name is pending. The physical
-column names and shared gate agreement were sent to #524; the coordinator was
-notified about the numeric combined-reader constraint.
+`listExactExpenseCostInputs(repo, projectId)` in expenses/expense-cost-inputs.ts
+returns only live expense source records. Fields are id, expenseDate, whatFor,
+amountDzd as canonical decimal string, currency DZD, projectId, responsibleWorkerId
+and sellerId. No combined total or display-name resolution. It is not wired to the
+numeric project-cost service. Issue 529 can resolve soft-reference names and
+combine values only after its remaining source dependencies are exact.
 
-## Planned proof and UI approval
+Initial searches found no expense money in workspace snapshots or company
+system-audit output. Correction history currently has an expense RPC consumer;
+actual baseline expense page has no separate detail/history UI. The earlier
+inventory assumption that history was already displayed was not borne out by the
+actual browser capture. Complete UI/history conversion remains acceptance work.
 
-Test the existing public expense module/repository and actual RPC wiring with
-independent literal expected amounts. Use selected factory plain and keyed
-drivers on fresh fixtures. Cover 0.10 plus 0.20, int64 endpoints, neighboring
-large values, malformed/exponent/overprecision rejection, old/new audit amounts,
-nullable previous values, no-op edits, failure rollback, filters, void and reopen.
-Preserve earlier failures and exact-SHA command/count/duration records locally.
+## Shared ownership and remaining UI
 
-Expense form currently uses useFormAmount/Number. Expense page has local numeric
-formatting and a monetary division for tagged percentage. Integrate shared
-exact props only after the reviewed shared commit. Preserve #483 current-month
-filters and KPI states, #425 rejected-mutation field retention, keyboard/touch,
-LTR numbers within RTL and visible voided rows. Select affected browser cases
-with the repository selector; inspect actual before/after rendering with cropped
-element evidence. No shadcn skill was found by the read-only UI inspector; no
-package or skill was installed. Actual UI approval is required before merge.
+Issue 524 owns the shared gate, exact input/rendering and their local proofs.
+After its local integration, issue 528 added only its two expense index exports.
+The shared CurrencyAmountInput exact branch preserves draft strings. MoneyValue
+exact accepts strings and aggregate display. parseLocalizedMoneyInput owns
+localized normalization. Grouping and optional decimals remain shared preferences.
 
-Initial local review requires distinct debate, test-audit and code-review
-sessions on committed complete scope. OpenCode remains disabled by policy.
-Record the standing same-family separate-session exception if applicable.
-Hosted current-head 5/5, resolved findings, CI and owner approval remain unmet.
+Those shared APIs are implemented only in the local unpublished dependency, not
+merged prerequisites. The shared commit contains UI/UX input and renderer changes.
+It is not a no-UI preparation commit eligible for unattended self-merge. Do not
+strip its UI or relabel effects to evade owner approval. Startup/schema effects
+also retain their existing approval boundaries.
 
-## Applied lessons
+No expense frontend files changed yet. The attempted isolated UI worker returned
+without edits because its older base lacked the shared APIs. After the owner's
+stack authorization, expense-only UI work can resume from the actual committed
+shared implementation. Remaining work
+includes exact form/list/detail/history integration, #483 month/KPI preservation,
+#425 failed-submit field retention, keyboard/touch/RTL, grouping and actual after
+rendering. Cropped actual baseline images and one selected passing Chromium case
+are local at `.scratch/reviews/528/before-expense/`. That capture used unchanged
+committed frontend with then-dirty numeric backend source, not a clean backend
+baseline. It is not exact UI proof or owner approval.
 
-The money-bound lesson requires separate aggregate and persisted bounds. The
-inclusive-day lesson preserves existing range helpers. The dashboard lesson
-preserves loading/error/retained-data states and shared grouping. The expense
-void lesson requires literal visibility assertions. Saved PowerShell files
-avoid Bash interpolation of variables in verification commands.
+## Local proof boundary
 
-## Resource blocker
+All implementation results so far are LOCAL COMBINED-TREE proof. The initial
+28 memory/native and 16 contract cases were run with uncommitted expense source
+on local shared dependency ac3e2e00 or its earlier foundation. They are not
+standalone issue 528 proof or committed-head acceptance. Exact fixture tests use
+selected plain and keyed factory drivers on fresh files only. They preserve
+large neighboring values, positive int64 endpoint, NULL previous amount, soft
+links, audit old/new/actor/transaction values, correction rollback, reopen and
+void. Memory tests also cover malformed/overprecision rejection, wide sums,
+deterministic groups and equivalent input/no-op updates.
 
-`pnpm install --frozen-lockfile` failed with ENOSPC while copying the locked
-agent-browser Linux ARM64 binary. A second attempt with
-`--package-import-method=hardlink` failed at the same file. D: reported 22 MB
-free and C: 628 MB free. A later read reported 19 MB free on D:. No dependency
-was added or lockfile changed. The
-worktree has a partial ignored node_modules and no usable node_modules/.bin.
-No implementation tests, typecheck, lint or browser run occurred.
+Bounded final local rerun: 14 RPC/native/handler cases passed; API typecheck,
+contract typecheck and expense lint passed. Earlier failed RPC and compiler logs
+remain local, including the rejected keyed in-memory fixture and client typing
+errors. The corrected RPC fixture uses fresh files. An earlier aggregate literal
+was hand-calculated incorrectly by ten DZD; the expected literal was corrected,
+not production arithmetic. Raw commands, native exits, counts and durations are
+under `.scratch/reviews/528/`, with a local handoff report. No full suite/build,
+release proof, fresh review sessions or hosted verdict was claimed. Only contracts
+dist prerequisite builds ran through the heavy queue, plus selected baseline UI.
 
-Do not delete other owners' files, databases, keys or preserved work to recover
-space. Resource recovery is owner-controlled. After space is available, resume
-the frozen install, finish contract reading/consumer inspection, integrate the
-reviewed shared gate from #524 and run the first focused failing test before
-implementation. The coordinator and #524 were notified of this resource blocker.
+## Resource recovery and next gate
+
+Two initial frozen installs failed ENOSPC, including the hardlink retry. After
+owner-controlled disk recovery, the frozen install passed. No dependency or lock
+change occurred. No existing development database or key was touched. Fresh
+synthetic browser backup files were moved, not deleted, into the ignored evidence
+directory so generated outputs stay local.
+
+Continue under the owner's later explicit stack authorization. Finish original
+acceptance, affected proof and three distinct initial reviews on complete
+committed expense scope. Publication requires a declared parent layer and only
+the intended child delta. Hosted current-head 5/5, current-head CI, protection,
+dependency-order merge and explicit UI/expensive-effect approval remain separate
+gates. No parent approval or full issue acceptance is inferred from local progress.

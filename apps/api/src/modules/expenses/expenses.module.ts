@@ -38,66 +38,66 @@ import type {
  *  - Every edit records a revision with actor, timestamp and an optional
  *    reason.
  */
-export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
-  function assertValidAmount(amount: number): void {
+export interface ExpenseAmountPolicy<Amount> {
+  currency?: "DZD";
+  untagged(total: Amount, tagged: Amount, values: Amount[]): Amount;
+  normalize(value: Amount): Amount;
+  sum(values: Amount[]): Amount;
+  compare(left: Amount, right: Amount): number;
+}
+
+const numericAmounts: ExpenseAmountPolicy<number> = {
+  untagged: (total, tagged) => total - tagged,
+  normalize(amount) {
     if (!paymentAmountSchema.safeParse(amount).success) {
       throw new ExpenseInvalidAmountError(amount);
     }
-  }
+    return amount;
+  },
+  sum: (values) => values.reduce((total, value) => total + value, 0),
+  compare: (left, right) => left - right,
+};
 
-  function computeTotals(items: Expense[]): ExpenseTotals {
+export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
+  return createExpenseLifecycle(repo, numericAmounts);
+}
+
+/** Shared lifecycle. Exact composition never selects the numeric policy. */
+export function createExpenseLifecycle<Amount>(
+  repo: ExpenseRepository<Amount>,
+  amounts: ExpenseAmountPolicy<Amount>,
+): ExpensesModule<Amount> {
+  function computeTotals(items: Expense<Amount>[]): ExpenseTotals<Amount> {
     const live = items.filter((item) => item.status === "LIVE");
-    let total = 0;
-    let taggedToProject = 0;
-    let heldByWorkers = 0;
-    const workers = new Set<string>();
-
-    for (const item of live) {
-      total += item.amount;
-      if (item.projectId !== null) {
-        taggedToProject += item.amount;
-      }
-      if (item.responsibleWorkerId !== null) {
-        heldByWorkers += item.amount;
-        workers.add(item.responsibleWorkerId);
-      }
-    }
-
+    const tagged = live.filter((item) => item.projectId !== null);
+    const held = live.filter((item) => item.responsibleWorkerId !== null);
+    const total = amounts.sum(live.map((item) => item.amount));
+    const taggedToProject = amounts.sum(tagged.map((item) => item.amount));
     return {
       total,
       count: live.length,
       taggedToProject,
-      notTaggedToProject: total - taggedToProject,
-      heldByWorkers,
-      workerCount: workers.size,
+      notTaggedToProject: amounts.untagged(total, taggedToProject, live.filter((item) => item.projectId === null).map((item) => item.amount)),
+      heldByWorkers: amounts.sum(held.map((item) => item.amount)),
+      workerCount: new Set(held.map((item) => item.responsibleWorkerId)).size,
     };
   }
 
-  /**
-   * Group live expenses by project. Deterministic order: projects by total
-   * descending then id, with the untagged group (`projectId: null`) last —
-   * matching the prototype's "بدون مشروع" card.
-   */
-  function computeGroups(items: Expense[]): ExpenseProjectGroup[] {
-    const byProject = new Map<string | null, ExpenseProjectGroup>();
-
+  function computeGroups(items: Expense<Amount>[]): ExpenseProjectGroup<Amount>[] {
+    const byProject = new Map<string | null, Amount[]>();
     for (const item of items) {
       if (item.status !== "LIVE") continue;
-      const key = item.projectId;
-      const group = byProject.get(key);
-      if (group) {
-        group.total += item.amount;
-        group.count += 1;
-      } else {
-        byProject.set(key, { projectId: key, total: item.amount, count: 1 });
-      }
+      const values = byProject.get(item.projectId) ?? [];
+      values.push(item.amount);
+      byProject.set(item.projectId, values);
     }
-
-    return [...byProject.values()].sort((a, b) => {
+    return [...byProject].map(([projectId, values]) => ({
+      projectId, total: amounts.sum(values), count: values.length,
+    })).sort((a, b) => {
       if (a.projectId === null) return 1;
       if (b.projectId === null) return -1;
-      if (a.total !== b.total) return b.total - a.total;
-      return a.projectId.localeCompare(b.projectId);
+      const difference = amounts.compare(b.total, a.total);
+      return difference || a.projectId.localeCompare(b.projectId);
     });
   }
 
@@ -107,9 +107,9 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
    * revision say "the project changed" and not merely "the amount changed".
    */
   function collectChangedFields(
-    existing: Expense,
+    existing: Expense<Amount>,
     next: {
-      amount: number;
+      amount: Amount;
       expenseDate: string;
       whatFor: string | null;
       responsibleWorkerId: string | null;
@@ -134,16 +134,20 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
   }
 
   async function create(
-    input: CreateExpenseInput,
+    input: CreateExpenseInput<Amount>,
     audit?: ExpenseAudit,
-  ): Promise<Expense> {
-    assertValidAmount(input.amount);
+  ): Promise<Expense<Amount>> {
+    const amount = amounts.normalize(input.amount);
+    if (amounts.currency && input.currency !== undefined && input.currency !== amounts.currency) {
+      throw new ExpenseInvalidAmountError(input.currency);
+    }
     const now = new Date().toISOString();
 
     return repo.create(
       {
         id: input.id,
-        amount: input.amount,
+        ...(amounts.currency ? { currency: amounts.currency } : {}),
+        amount,
         expenseDate: toUtcInstant(input.expenseDate),
         whatFor: input.whatFor ?? null,
         responsibleWorkerId: input.responsibleWorkerId ?? null,
@@ -158,14 +162,14 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
     );
   }
 
-  async function get(id: string): Promise<ExpenseWithRevisions | null> {
+  async function get(id: string): Promise<ExpenseWithRevisions<Amount> | null> {
     const expense = await repo.findById(id);
     if (!expense) return null;
     const revisions = await repo.listRevisionsByExpenseId(id);
     return { ...expense, revisions };
   }
 
-  async function list(filters?: ExpenseListFilters): Promise<ExpenseListResult> {
+  async function list(filters?: ExpenseListFilters): Promise<ExpenseListResult<Amount>> {
     const items = await repo.list(filters ?? {});
     return {
       items,
@@ -175,12 +179,10 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
   }
 
   async function update(
-    input: UpdateExpenseInput,
+    input: UpdateExpenseInput<Amount>,
     audit?: ExpenseAudit,
-  ): Promise<Expense> {
-    if (input.amount !== undefined) {
-      assertValidAmount(input.amount);
-    }
+  ): Promise<Expense<Amount>> {
+    const amount = input.amount === undefined ? undefined : amounts.normalize(input.amount);
 
     // The read-modify-write runs ENTIRELY inside the locked transaction: a
     // concurrent edit or void can no longer slip between the read and the
@@ -193,7 +195,7 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
       if (existing.status === "VOIDED") throw new ExpenseAlreadyVoidedError(input.id);
 
       const next = {
-        amount: input.amount ?? existing.amount,
+        amount: amount ?? existing.amount,
         expenseDate:
           input.expenseDate === undefined
             ? existing.expenseDate
@@ -252,7 +254,7 @@ export function createExpensesModule(repo: ExpenseRepository): ExpensesModule {
   async function voidExpense(
     input: VoidExpenseInput,
     audit?: ExpenseAudit,
-  ): Promise<Expense> {
+  ): Promise<Expense<Amount>> {
     // Re-read and re-validate under the lock so the void decision is made
     // against the state the write will see (no TOCTOU with a concurrent edit
     // or a second void).

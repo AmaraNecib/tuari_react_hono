@@ -22,6 +22,8 @@ export * from "./invoice-contract";
 export * from "./payment";
 export * from "./payment-contract";
 export * from "./expenses";
+export * from "./expenses-exact";
+export * from "./expenses-exact-contract";
 export * from "./expenses-contract";
 export * from "./project-cost";
 export * from "./project-cost-contract";
