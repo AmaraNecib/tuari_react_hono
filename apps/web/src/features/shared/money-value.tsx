@@ -33,6 +33,8 @@ export function MoneyValue({
     useGrouping,
   }).format(value)
 
+  const amount = exact ? <bdi dir="ltr">{formattedNumber}</bdi> : formattedNumber
+
   return (
     <span
       className={cn(
@@ -41,7 +43,7 @@ export function MoneyValue({
       )}
       dir="ltr"
     >
-      {variant === "detail" ? <><span>{currencyLabel}</span><span>{formattedNumber}</span></> : <>{currencyLabel}{" "}{formattedNumber}</>}
+      {variant === "detail" ? <><span>{currencyLabel}</span><span>{amount}</span></> : <>{currencyLabel}{" "}{amount}</>}
     </span>
   )
 }
