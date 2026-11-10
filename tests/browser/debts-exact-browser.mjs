@@ -5,6 +5,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 const root = process.cwd();
 const require = createRequire(resolve(root, "apps/web/package.json"));
+// Vite SSR evaluates this CommonJS-compatible factory in an ESM fixture.
+// Resolve its native optional require from the real API package, as Vitest does.
+const previousLicenseStatus = process.env.TUARI_LICENSE_STATUS;
+// Synthetic desktop license context, scoped to this disposable fixture process.
+process.env.TUARI_LICENSE_STATUS = "trial";
+const previousRequire = globalThis.require;
+globalThis.require = createRequire(resolve(root, "apps/api/package.json"));
 const { createServer } = await import(pathToFileURL(require.resolve("vite")));
 const { chromium, expect } = createRequire(resolve(root, "package.json"))("@playwright/test");
 const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
@@ -14,6 +21,7 @@ const errors = [], commands = [];
 const start = Date.now();
 const port = 15434;
 const server = await createServer({ root, configFile: resolve(root, "apps/web/vite.config.ts"), resolve: { alias: [
+  { find: "@tanstack/react-query", replacement: resolve(root, "apps/web/node_modules/@tanstack/react-query") },
   { find: /^react-dom(.*)$/, replacement: resolve(root, "apps/web/node_modules/react-dom") + "$1" },
   { find: /^react(.*)$/, replacement: resolve(root, "apps/web/node_modules/react") + "$1" },
 ] }, server: { host: "127.0.0.1", port, strictPort: true }, optimizeDeps: { entries: [resolve(root,"tests/browser/debts-exact-fixture.html")] } });
@@ -126,4 +134,4 @@ try {
 } catch(error) {
   if(page){await page.screenshot({path:resolve(out,"failure.png")});await writeFile(resolve(out,"failure-dom.html"),await page.content());}
   await writeFile(resolve(out,"failure.json"),JSON.stringify({head,error:String(error),errors,durationMs:Date.now()-start},null,2));throw error;
-} finally { await browser?.close();await server.close();db?.close(); }
+} finally { await browser?.close();await server.close();db?.close();globalThis.require=previousRequire;if(previousLicenseStatus===undefined)delete process.env.TUARI_LICENSE_STATUS;else process.env.TUARI_LICENSE_STATUS=previousLicenseStatus; }
