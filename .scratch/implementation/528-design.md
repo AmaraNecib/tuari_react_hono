@@ -192,6 +192,28 @@ and 88/88 lines. This is targeted local proof, not the full CI suite or new-head
 hosted acceptance. API typecheck and test lint also pass. One fresh combined-delta
 review must carry forward unaffected earlier conclusions before publishing the fix.
 
+## Actual merged parent integration
+
+532 is confirmed MERGED into develop at7a56b245740d6d2ef836181cd150011657be0303,
+parent head a90a86f488b48a6ed3c46163a902d3f14578a67c. Ordinary child merge
+a474630abd47be14ca649a9ecd8d4ba24b02782d preserves all528 helper/expense commits.
+Remaining diff against develop excludes shared money components, parent design
+and Rust clock test fix. Only528 scope plus previously agreed sumMoneyHistory
+shared extension remains. No reset/rebase/force or new stack.
+
+Shared physical-left CurrencyRun/input presentation is now inherited from merged
+develop.78-test committed merged-head web proof plus types/scoped lint passed.
+The numeric expense E2E text assumed the former suffix DOM order. Its assertions
+now measure actual shared bdi/currency bounding boxes with intended2-12px gap,
+not a reordered literal string. No production source change for this update.
+
+Final child proof must run against the committed integration head: affected
+expense/renderer tests, numeric E2E and exact fixture real expense geometry,
+fresh cropped element evidence and bounded delta review. Preserve rejected
+e0cdba77 images as historical. Date ordering remains534-owned diagnosis only.
+Standalone533 may retarget develop after child-only diff inspection; owner
+manual UI/merge approval still required. Parent UI approval is not child approval.
+
 ## Owner currency presentation correction and manual merge boundary
 
 The owner superseded stacked publication. Existing533 remains a historical

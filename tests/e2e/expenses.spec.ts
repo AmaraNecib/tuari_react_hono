@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type Page } from "@playwright/test"
 
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 import { seedEmployeeByRole, seedProjectWithManager } from "./helpers/db-seed"
@@ -14,6 +14,20 @@ import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
  * (project creation through the UI is not part of this spec) and the expense
  * date defaults to today. The list opens without a date filter.
  */
+
+async function expectCurrencyPhysicallyLeft(page: Page, amount: string) {
+  const digits = page.locator('bdi[dir="ltr"]').filter({ hasText: amount }).first()
+  await expect(digits).toBeVisible()
+  const geometry = await digits.evaluate(element => {
+    const currency = element.parentElement!.querySelector('span[dir="rtl"]')!
+    const label = currency.getBoundingClientRect()
+    const number = element.getBoundingClientRect()
+    return { currency: currency.textContent, gap: number.left - label.right }
+  })
+  expect(geometry.currency).toBe("دج")
+  expect(geometry.gap).toBeGreaterThanOrEqual(2)
+  expect(geometry.gap).toBeLessThanOrEqual(12)
+}
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 
@@ -62,7 +76,7 @@ test("record an expense against a project, group it, then void it out of the tot
   // expenses mutation invalidation; no reload).
   await expect(page.getByRole("cell", { name: whatFor })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText("مجموع المعروض · 1 مصروفات")).toBeVisible()
-  await expect(page.getByText("12,500 دج").first()).toBeVisible()
+  await expectCurrencyPhysicallyLeft(page, "12,500")
 
   // The month shortcut changes the period, not the current-month expense.
   await expect(page.getByText("إجمالي كل الفترات", { exact: true })).toBeVisible()
@@ -72,7 +86,7 @@ test("record an expense against a project, group it, then void it out of the tot
   await expect(currentMonth).toHaveAttribute("aria-pressed", "true")
   await expect(page.getByText("إجمالي الفترة", { exact: true })).toBeVisible()
   await expect(page.getByRole("cell", { name: whatFor })).toBeVisible()
-  await expect(page.getByText("12,500 دج").first()).toBeVisible()
+  await expectCurrencyPhysicallyLeft(page, "12,500")
   await currentMonth.click()
   await expect(currentMonth).toHaveAttribute("aria-pressed", "false")
   await expect(page.getByText("إجمالي كل الفترات", { exact: true })).toBeVisible()
@@ -80,7 +94,7 @@ test("record an expense against a project, group it, then void it out of the tot
   // The project is charged the whole amount (the group card carries it).
   await page.getByRole("button", { name: "تجميع حسب المشروع" }).click()
   await expect(page.getByRole("heading", { name: projectName })).toBeVisible({ timeout: 10_000 })
-  await expect(page.getByText("12,500 دج").first()).toBeVisible()
+  await expectCurrencyPhysicallyLeft(page, "12,500")
 
   // Back to the flat table to void the row.
   await page.getByRole("button", { name: "تجميع حسب المشروع" }).click()
