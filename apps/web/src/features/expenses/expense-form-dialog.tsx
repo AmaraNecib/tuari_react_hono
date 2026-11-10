@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import type { Expense, InventoryItemDefinition } from "@tuari/contracts"
+import type { CreateExpenseInput, Expense, ExactExpense, ExactExpensesClient, InventoryItemDefinition, UpdateExpenseInput } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
+import { CurrencyAmountInput } from "@/components/ui/currency-amount-input"
+import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
 import { DatePicker } from "@/components/ui/date-picker"
 import {
   Dialog,
@@ -20,39 +22,78 @@ import { ItemOptionPicker } from "@/features/inventory/item-option-picker"
 import { useInventoryItemDefinitionQuery } from "@/features/inventory/inventory-hooks"
 
 import { useCreateExpenseMutation, useUpdateExpenseMutation } from "./expenses-queries"
+import { useCreateExactExpenseMutation, useUpdateExactExpenseMutation } from "./expenses-exact-queries"
 
 /** Sentinel for the "no selection" option in the optional selects. */
 const NO_SELECTION = "__none__"
 
 export type ExpenseLookupOption = { id: string; label: string }
 
-export type ExpenseFormDialogProps = {
+type ExpenseForAmount<Amount> = Omit<Expense, "amount"> & { amount: Amount }
+type FormProps<Amount> = {
   open: boolean
   onOpenChange: (open: boolean) => void
   /** Present in edit mode; absent when recording a new expense. */
-  expense?: Expense | null
+  expense?: ExpenseForAmount<Amount> | null
   projects: ExpenseLookupOption[]
   employees: ExpenseLookupOption[]
   sellers: ExpenseLookupOption[]
 }
 
-/**
- * Add / edit expense dialog. Editing keeps who, when and an optional reason —
- * the reason is sent to the API and recorded on the expense revision.
- */
-export function ExpenseFormDialog({
+export type ExpenseFormDialogProps = FormProps<number>
+export type ExactExpenseFormDialogProps = Omit<FormProps<string>, "expense"> & {
+  expense?: ExactExpense | null
+  client: ExactExpensesClient
+}
+type AmountField<Amount> = {
+  amount: string
+  setAmount: (value: string) => void
+  value: Amount | null
+  isValid: boolean
+  reset: () => void
+}
+type Mutation<Input> = { isPending: boolean; mutateAsync: (input: Input) => Promise<unknown> }
+
+export function ExpenseFormDialog(props: ExpenseFormDialogProps) {
+  const amountField = useFormAmount()
+  const createMutation = useCreateExpenseMutation()
+  const updateMutation = useUpdateExpenseMutation()
+  return <ExpenseFormView {...props} amountField={amountField} createMutation={createMutation} updateMutation={updateMutation} />
+}
+
+/** No numeric client or amount hook is used by this opt-in branch. */
+export function ExactExpenseFormDialog({ client, ...props }: ExactExpenseFormDialogProps) {
+  const [amount, setAmount] = useState("")
+  let value: string | null = null
+  try {
+    const parsed = parseLocalizedMoneyInput(amount)
+    if (BigInt(parsed.toMinorUnits()) > 0n) value = parsed.toWire()
+  } catch { /* Invalid drafts stay editable and cannot be submitted. */ }
+  const createMutation = useCreateExactExpenseMutation(client)
+  const updateMutation = useUpdateExactExpenseMutation(client)
+  const amountField = { amount, setAmount, value, isValid: value !== null, reset: () => setAmount("") }
+  return <ExpenseFormView {...props} exact amountField={amountField} createMutation={createMutation} updateMutation={updateMutation} />
+}
+
+function ExpenseFormView<Amount extends string | number>({
   open,
   onOpenChange,
   expense,
   projects,
   employees,
   sellers,
-}: ExpenseFormDialogProps) {
+  exact = false,
+  amountField,
+  createMutation,
+  updateMutation,
+}: FormProps<Amount> & {
+  exact?: boolean
+  amountField: AmountField<Amount>
+  createMutation: Mutation<Omit<CreateExpenseInput, "amount"> & { amount: Amount }>
+  updateMutation: Mutation<Omit<UpdateExpenseInput, "amount"> & { amount?: Amount }>
+}) {
   const { t } = useTranslation()
-  const createMutation = useCreateExpenseMutation()
-  const updateMutation = useUpdateExpenseMutation()
-  const { amount, setAmount, value: amountValue, isValid: hasValidAmount, reset: resetAmount } =
-    useFormAmount()
+  const { amount, setAmount, value: amountValue, isValid: hasValidAmount, reset: resetAmount } = amountField
   const { date, setDate, reset: resetDate } = useDateField()
   const [whatFor, setWhatFor] = useState("")
   const [responsibleWorkerId, setResponsibleWorkerId] = useState<string | null>(null)
@@ -108,7 +149,7 @@ export function ExpenseFormDialog({
   }
 
   const handleSubmit = async () => {
-    if (!hasValidAmount) return
+    if (!hasValidAmount || pending) return
     const expenseDate = date ? toAlgeriaDayBoundaryIso(date, "start") : undefined
     if (!expenseDate) return
 
@@ -146,20 +187,21 @@ export function ExpenseFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={close}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? t("expenses.form.editTitle") : t("expenses.form.createTitle")}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">{t("expenses.form.amount")}</span>
-            <CurrencyInput
-              placeholder="0"
-              value={amount}
-              onChange={(event) => setAmount(event.target.value)}
-            />
-          </label>
+          {exact ? (
+            <CurrencyAmountInput exact label={t("expenses.form.amount")} placeholder="0" value={amount} onChange={setAmount}
+              error={amount.trim() && !hasValidAmount ? "أدخل مبلغاً موجباً بدقة لا تتجاوز منزلتين عشريتين ضمن النطاق المدعوم." : undefined} />
+          ) : (
+            <label className="flex flex-col gap-2">
+              <span className="text-sm font-medium">{t("expenses.form.amount")}</span>
+              <CurrencyInput placeholder="0" value={amount} onChange={(event) => setAmount(event.target.value)} />
+            </label>
+          )}
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium">{t("expenses.form.date")}</span>

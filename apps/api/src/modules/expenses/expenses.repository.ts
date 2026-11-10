@@ -17,23 +17,23 @@ import type {
  * must run inside one `runInTransaction` so a value change can never be
  * recorded without its revision row (or vice versa).
  */
-export interface ExpenseRepository {
-  create(data: CreateExpenseRecord, audit?: ExpenseAudit): Promise<Expense>;
+export interface ExpenseRepository<Amount = number> {
+  create(data: CreateExpenseRecord<Amount>, audit?: ExpenseAudit): Promise<Expense<Amount>>;
 
-  findById(id: string): Promise<Expense | null>;
+  findById(id: string): Promise<Expense<Amount> | null>;
 
-  list(filters: ExpenseListFilters): Promise<Expense[]>;
+  list(filters: ExpenseListFilters): Promise<Expense<Amount>[]>;
 
-  update(data: UpdateExpenseRecord, audit?: ExpenseAudit): Promise<Expense | null>;
+  update(data: UpdateExpenseRecord<Amount>, audit?: ExpenseAudit): Promise<Expense<Amount> | null>;
 
-  voidExpense(data: VoidExpenseRecord, audit?: ExpenseAudit): Promise<Expense | null>;
+  voidExpense(data: VoidExpenseRecord, audit?: ExpenseAudit): Promise<Expense<Amount> | null>;
 
   createRevision(
-    data: CreateExpenseRevisionRecord,
+    data: CreateExpenseRevisionRecord<Amount>,
     audit?: ExpenseAudit,
-  ): Promise<ExpenseRevision>;
+  ): Promise<ExpenseRevision<Amount>>;
 
-  listRevisionsByExpenseId(expenseId: string): Promise<ExpenseRevision[]>;
+  listRevisionsByExpenseId(expenseId: string): Promise<ExpenseRevision<Amount>[]>;
 
   /** Run a callback inside one database transaction. */
   runInTransaction<T>(fn: () => Promise<T>): Promise<T>;

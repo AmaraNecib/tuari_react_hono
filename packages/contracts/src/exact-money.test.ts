@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Money, UnitPrice, Quantity, SalaryReference, priceLine, agreedLine, derivedPrice, finalizeLines, sumMoney, allocateMoney, reverseAllocations, parseExactLine } from "./exact-money";
+import { Money, UnitPrice, Quantity, SalaryReference, priceLine, agreedLine, derivedPrice, finalizeLines, sumMoney, sumMoneyHistory, allocateMoney, reverseAllocations, parseExactLine } from "./exact-money";
 
 describe("exact money input and wire", () => {
   it("compares exact signed values without subtraction overflow or Number keys", () => {
@@ -45,6 +45,29 @@ describe("exact money input and wire", () => {
     expect(Money.parse("0.1").add(Money.parse("0.2")).toWire()).toBe("0.30");
     expect(Money.parse("0.75").subtract(Money.parse("0.25")).toWire()).toBe("0.50");
     expect(sumMoney([max, max])).toBe("184467440737095516.14");
+  });
+});
+
+describe("read-only exact history aggregation", () => {
+  it("streams more than 10,000 entries while preserving wide totals", () => {
+    function* history() {
+      for (let index = 0; index < 10_001; index++) yield Money.parse("92233720368547758.07");
+    }
+    expect(sumMoneyHistory(history())).toBe("922429437405846128458.07");
+    expect(() => sumMoney(Array(10_001).fill(Money.parse("0")))).toThrow(/operations/);
+  });
+  it("cancels signed wide intermediate totals and renders empty histories exactly", () => {
+    const max = Money.parse("92233720368547758.07");
+    expect(sumMoneyHistory([max, max, max.negate(), max.negate(), Money.parse("0.10"), Money.parse("0.20")])).toBe("0.30");
+    expect(sumMoneyHistory([])).toBe("0.00");
+    function* cancellingHistory() {
+      for (let index = 0; index < 10_001; index++) yield max;
+      for (let index = 0; index < 10_001; index++) yield max.negate();
+    }
+    expect(sumMoneyHistory(cancellingHistory())).toBe("0.00");
+    expect(sumMoneyHistory([max.negate(), max.negate()])).toBe("-184467440737095516.14");
+    const incompatible = { currency: "USD", toMinorUnits: () => "1" } as unknown as Money;
+    expect(() => sumMoneyHistory([incompatible])).toThrow(/currency/);
   });
 });
 

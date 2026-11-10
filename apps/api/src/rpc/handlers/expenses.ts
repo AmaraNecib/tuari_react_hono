@@ -29,10 +29,10 @@ function mapExpenseError(error: unknown): unknown {
   return error;
 }
 
-export function createExpensesHandlers(
+export function createExpensesHandlers<Amount = number>(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
-  expensesModule: ExpensesModule,
+  expensesModule: ExpensesModule<Amount>,
 ) {
   return {
     expensesList: os.expensesList.handler(
@@ -72,7 +72,7 @@ export function createExpensesHandlers(
           }) => {
             return expensesModule.create(
               {
-                ...(input as Omit<CreateExpenseInput, "id"> & { id?: string }),
+                ...(input as Omit<CreateExpenseInput<Amount>, "id"> & { id?: string }),
                 id: (input as { id?: string }).id ?? crypto.randomUUID(),
               },
               auditContext as { actorUserId: string; actorLabel: string; transactionId: string },
@@ -96,7 +96,7 @@ export function createExpensesHandlers(
             auditContext: unknown;
           }) => {
             return expensesModule.update(
-              input as UpdateExpenseInput,
+              input as UpdateExpenseInput<Amount>,
               auditContext as { actorUserId: string; actorLabel: string; transactionId: string },
             );
           },

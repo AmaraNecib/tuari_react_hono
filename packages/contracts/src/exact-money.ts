@@ -236,6 +236,11 @@ export function finalizeLines(lines: readonly ExactLine[]): Money {
 /** Reports may sum wider than persisted int64, without passing through SQL SUM or Number. */
 export function sumMoney(amounts: readonly Money[]): string {
   boundedItems(amounts.length);
+  return sumMoneyHistory(amounts);
+}
+
+/** Read-only history has no document-operation count limit; each source stays bounded Money. */
+export function sumMoneyHistory(amounts: Iterable<Money>): string {
   let total = 0n;
   for (const amount of amounts) {
     currency(amount.currency);
