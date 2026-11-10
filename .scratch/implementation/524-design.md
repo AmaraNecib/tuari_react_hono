@@ -34,6 +34,29 @@ prevents deletion/non-fast-forward updates. Its bypass actor list is empty and
 `current_user_can_bypass` is `never`. This is launch-time enforcement evidence,
 not current-head CI acceptance or a future merge protection check.
 
+## Windows CI test-isolation correction
+
+After owner acceptance of the actual input UI and conditional merge authority
+for PR532, Windows CI at c0be902c failed one unchanged Rust clock test.
+The test helper named cleanup roots using only wall-clock nanoseconds.
+Native Windows measurement found repeated directory names in134 of1000
+parallel16-caller rounds. A deterministic fixed-tick probe using extracted
+production write_atomic code reproduced the exact missing nested parent and
+Windows OS error3 after five rename attempts when a second test cleaned its
+colliding root. Process ID plus a test-local atomic sequence prevents that
+collision without changing production clock, retry, license or crypto code.
+
+This bounded correction changes only the cfg(test) directory helper and adds
+a fixed-tick parallel uniqueness regression. Tests must retain isolated cleanup
+roots even when the OS repeats a clock tick. Focused std-only native extraction
+is local diagnostic proof, not a claim that the full Tauri crate ran locally.
+CI still runs the actual crate on Windows and Linux at the new head. Prior
+failure logs remain local. No production seam moved; no dependency added.
+The earlier visual source is unchanged and its valid browser proof is carried
+forward rather than rerun. A fresh bounded review must inspect this correction
+and carry prior conclusions forward before publication. Owner authority covers
+merge only after all current-head checks, hosted5/5 and protection gates pass.
+
 ## Acceptance criteria
 
 The live issue requires:
