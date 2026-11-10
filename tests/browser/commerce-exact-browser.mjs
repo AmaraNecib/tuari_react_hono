@@ -102,6 +102,7 @@ try {
   await expect(page.getByText("10,000", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "فاتورة مخزون جديدة", exact: true }).click();
   dialog = page.getByRole("dialog");
+  await dialog.getByRole("combobox", { name: "العنصر", exact: true }).selectOption("material");
   await dialog.getByRole("textbox", { name: "كمية المخزون", exact: true }).fill("0.25");
   await dialog.getByRole("textbox", { name: "سعر الوحدة", exact: true }).fill("١٫٥٠٠٠");
   await expect(dialog.getByText("0.38", { exact: true })).toBeVisible();
