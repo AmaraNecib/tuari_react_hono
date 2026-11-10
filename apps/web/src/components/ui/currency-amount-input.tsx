@@ -40,7 +40,7 @@ function LegacyCurrencyAmountInput({
     <div className="flex flex-col gap-2">
       {label && <span className="text-sm font-medium text-foreground">{label}</span>}
       <div className="flex gap-2">
-        <div className="flex-1">
+        <div className="min-w-0 flex-1">
           <CurrencyInput
             placeholder={placeholder}
             value={value}

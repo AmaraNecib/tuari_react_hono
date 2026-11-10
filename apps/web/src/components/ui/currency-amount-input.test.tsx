@@ -47,5 +47,6 @@ describe("opt-in exact CurrencyAmountInput", () => {
   it("retains the legacy numeric max formatting", () => {
     render(<CurrencyAmountInput label="قديم" value="10" maxAmount={10} onChange={vi.fn()} onPayFull={vi.fn()} />)
     expect(screen.getByRole("button").textContent).toBe("دج 10.00")
+    expect(screen.getByRole("textbox").parentElement?.parentElement?.className).toContain("min-w-0")
   })
 })
