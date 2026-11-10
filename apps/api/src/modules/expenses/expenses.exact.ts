@@ -1,4 +1,4 @@
-import { Money, sumMoney } from "@tuari/contracts";
+import { Money, sumMoneyHistory } from "@tuari/contracts";
 
 import { createExpenseLifecycle } from "./expenses.module";
 import type { ExpenseRepository } from "./expenses.repository";
@@ -8,7 +8,7 @@ import { ExpenseInvalidAmountError } from "./expenses.types";
 export function createExactExpensesModule(repo: ExpenseRepository<string>) {
   return createExpenseLifecycle(repo, {
     currency: "DZD",
-    untagged: (_total, _tagged, values) => sumMoney(values.map((value) => Money.parse(value))),
+    untagged: (_total, _tagged, values) => sumMoneyHistory(values.map((value) => Money.parse(value))),
     normalize(value) {
       try {
         const amount = Money.parse(value);
@@ -18,7 +18,7 @@ export function createExactExpensesModule(repo: ExpenseRepository<string>) {
         throw new ExpenseInvalidAmountError(value);
       }
     },
-    sum: (values) => sumMoney(values.map((value) => Money.parse(value))),
+    sum: (values) => sumMoneyHistory(values.map((value) => Money.parse(value))),
     // Totals are canonical, positive decimal strings with exactly two places.
     compare: (left, right) => left.length - right.length || (left < right ? -1 : left > right ? 1 : 0),
   });

@@ -23,5 +23,8 @@ describe("inert exact expense contracts", () => {
     const totals = { total: "184467440737095516.14", count: 2, taggedToProject: "184467440737095516.14", notTaggedToProject: "0.00", heldByWorkers: "0.00", workerCount: 0 };
     expect(exactExpenseListOutputSchema.parse({ items: [], totals, groupsByProject: [] }).totals.total).toBe("184467440737095516.14");
     expect(exactExpenseAmountSchema.safeParse(totals.total).success).toBe(false);
+    const historicalTotal = "9223372036854775807000.00";
+    expect(exactExpenseListOutputSchema.parse({ items: [], totals: { ...totals, total: historicalTotal }, groupsByProject: [{ projectId: id, total: historicalTotal, count: 100000 }] }).totals.total).toBe(historicalTotal);
+    expect(exactExpenseAmountSchema.safeParse(historicalTotal).success).toBe(false);
   });
 });

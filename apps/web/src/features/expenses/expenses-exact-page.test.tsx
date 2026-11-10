@@ -67,6 +67,16 @@ describe("ExactExpensesPage", () => {
     expect(screen.getByText("Exact expense")).toBeTruthy()
   })
 
+  it("renders historical aggregates beyond the old 21-digit assumption", () => {
+    const total = "9223372036854775807000.00"
+    listQuery.mockReturnValue({ data: { ...exactData, totals: { ...exactData.totals, total, taggedToProject: total }, groupsByProject: [{ projectId: "project-1", total, count: 100000 }] }, isPending: false, isError: false, isFetching: false })
+    detailQuery.mockReturnValue({ data: undefined, isPending: false, isError: false })
+    renderExact()
+    expect(screen.getAllByText(/9,223,372,036,854,775,807,000/).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole("button", { name: "تجميع حسب المشروع" }))
+    expect(screen.getAllByText(/9,223,372,036,854,775,807,000/).length).toBeGreaterThan(0)
+  })
+
   it("respects plain grouping preference and keeps numeric page as the default export behavior", () => {
     setMoneyGrouping(false)
     listQuery.mockReturnValue({ data: exactData, isPending: false, isError: false, isFetching: false })
@@ -78,7 +88,7 @@ describe("ExactExpensesPage", () => {
 
   it("opens exact detail and shows nullable previous amount as unavailable with ordered revisions", async () => {
     const item = { ...exactExpense, status: "VOIDED" as const, voidReason: "Duplicate", voidedAt: "2026-10-04T10:00:00.000Z", voidedBy: "voider", revisions: [
-      { id: "r1", expenseId: exactExpense.id, previousAmount: null, newAmount: exactExpense.amount, reason: "Correction", actorUserId: "editor", actorLabel: "Editor", transactionId: "txn-r1", createdAt: "2026-10-04T10:00:00.000Z" },
+      { id: "r1", expenseId: exactExpense.id, previousAmount: null, newAmount: exactExpense.amount, changedFields: ["amount"], reason: "Correction", actorUserId: "editor", actorLabel: "Editor", transactionId: "txn-r1", createdAt: "2026-10-04T10:00:00.000Z" },
     ] }
     listQuery.mockReturnValue({ data: { ...exactData, items: [item] }, isPending: false, isError: false, isFetching: false })
     detailQuery.mockReturnValue({ data: { ...item, revisions: item.revisions }, isPending: false, isError: false })
@@ -87,6 +97,40 @@ describe("ExactExpensesPage", () => {
     expect(await screen.findByText("txn-1")).toBeTruthy()
     expect(screen.getByText(/غير متاح|Unavailable/i)).toBeTruthy()
     expect(screen.getByText("Correction")).toBeTruthy()
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByText("Workshop")).toBeTruthy()
+    expect(within(dialog).getByText("Worker")).toBeTruthy()
+    expect(within(dialog).queryByText("project-1")).toBeNull()
+  })
+
+  it("keeps the raw ID for a missing soft reference instead of inventing a name", () => {
+    const item = { ...exactExpense, sellerId: "missing-seller", projectId: "missing-project", revisions: [] }
+    listQuery.mockReturnValue({ data: { ...exactData, items: [item] }, isPending: false, isError: false, isFetching: false })
+    detailQuery.mockReturnValue({ data: item, isPending: false, isError: false, isFetching: false })
+    renderExact()
+    fireEvent.click(screen.getByRole("button", { name: "التفاصيل" }))
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByText("missing-project")).toBeTruthy()
+    expect(within(dialog).getByText("missing-seller")).toBeTruthy()
+  })
+
+  it("shows non-amount changed fields, latest actor and distinct same-day audit times", () => {
+    const item = { ...exactExpense, actorLabel: "Latest modifier", status: "VOIDED" as const, voidedAt: "2026-10-04T12:45:00.000Z", revisions: [
+      { id: "r1", expenseId: exactExpense.id, previousAmount: exactExpense.amount, newAmount: exactExpense.amount, changedFields: ["projectId", "note"], reason: "Project and note corrected", actorUserId: "editor", actorLabel: "Editor", transactionId: "txn-r1", createdAt: "2026-10-04T10:00:00.000Z" },
+      { id: "r2", expenseId: exactExpense.id, previousAmount: exactExpense.amount, newAmount: exactExpense.amount, changedFields: ["whatFor"], reason: "Description corrected", actorUserId: "editor", actorLabel: "Editor", transactionId: "txn-r2", createdAt: "2026-10-04T11:30:00.000Z" },
+    ] }
+    listQuery.mockReturnValue({ data: { ...exactData, items: [item] }, isPending: false, isError: false, isFetching: false })
+    detailQuery.mockReturnValue({ data: item, isPending: false, isError: false, isFetching: false })
+    renderExact()
+    fireEvent.click(screen.getByRole("button", { name: "التفاصيل" }))
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByText("آخر من عدّل السجل").nextElementSibling?.textContent).toBe("Latest modifier")
+    expect(within(dialog).queryByText("المنشئ")).toBeNull()
+    expect(within(dialog).getByText("الحقول المعدّلة: المشروع، ملاحظات")).toBeTruthy()
+    expect(within(dialog).getByText("الحقول المعدّلة: البيان")).toBeTruthy()
+    expect(within(dialog).getByText(/11:00/)).toBeTruthy()
+    expect(within(dialog).getByText(/12:30/)).toBeTruthy()
+    expect(within(dialog).getByText(/13:45|1:45/)).toBeTruthy()
   })
 
   it("keeps an all-voided project's rows visible in grouped view without charging totals", () => {

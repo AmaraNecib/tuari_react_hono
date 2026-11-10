@@ -19,8 +19,9 @@ export const exactExpenseAmountSchema = z.string().max(96).transform((value, ctx
   }
 });
 
-// At most 10,000 bounded records per shared sumMoney call. Aggregate bounds are not write bounds.
-const exactExpenseAggregateSchema = z.string().max(24).regex(/^(?:0|[1-9]\d{0,20})\.\d{2}$/);
+// Match the shared display transport-length guard, not the document-operation limit.
+// Persisted per-value Money bounds remain independent of read-only history totals.
+const exactExpenseAggregateSchema = z.string().max(256).regex(/^(?:0|[1-9]\d*)\.\d{2}$/);
 
 export const exactExpenseSchema = expenseSchema.extend({
   amount: exactExpenseAmountSchema,

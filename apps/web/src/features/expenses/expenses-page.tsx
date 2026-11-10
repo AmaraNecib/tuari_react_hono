@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
-import type { ExactExpense, ExactExpensesClient, Expense, ExpenseListFilters, ExpenseListOutput, VoidExpenseInput } from "@tuari/contracts"
+import type { ExactExpense, ExactExpensesClient, Expense, ExpenseListFilters, ExpenseListOutput, ExpenseRevisionField, VoidExpenseInput } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -28,7 +28,7 @@ import { useMoneyGrouping } from "@/features/preferences/money-format-preference
 import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { Surface } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
-import { formatAlgeriaDate } from "@/lib/algeria-time"
+import { formatAlgeriaDate, formatDateTimeInAlgeria } from "@/lib/algeria-time"
 
 import { ExpenseFormDialog, ExactExpenseFormDialog, type ExpenseFormDialogProps, type ExpenseLookupOption } from "./expense-form-dialog"
 import { buildExpenseFilters, getCurrentMonthExpenseDates } from "./expenses-filters"
@@ -479,16 +479,23 @@ export function ExactExpensesPage({ client, ...props }: ExactExpensesPageProps) 
     renderAmount={(value, aggregate = false) => <MoneyValue exact value={value} aggregate={aggregate} currencyLabel={t("expenses.currency")} />}
     percentage={exactPercent}
     renderForm={form => <ExactExpenseFormDialog {...form} client={client} />}
-    renderDetail={(id, close, edit, voidExpense) => <ExactExpenseDetail client={client} id={id} onClose={close} onEdit={edit} onVoid={voidExpense} />} />
+    renderDetail={(id, close, edit, voidExpense) => <ExactExpenseDetail client={client} id={id} onClose={close} onEdit={edit} onVoid={voidExpense} projects={props.projects} employees={props.employees} sellers={props.sellers} />} />
 }
 
-function ExactExpenseDetail({ client, id, onClose, onEdit, onVoid }: {
+function ExactExpenseDetail({ client, id, onClose, onEdit, onVoid, projects, employees, sellers }: ExpensesPageProps & {
   client: ExactExpensesClient; id: string | null; onClose: () => void
   onEdit: (expense: ExactExpense) => void; onVoid: (expense: ExactExpense) => void
 }) {
   const { t } = useTranslation()
   const query = useExactExpenseQuery(client, id)
   const detail = query.data
+  const referenceLabel = (id: string | null, options: ExpenseLookupOption[]) => id === null
+    ? t("expenses.none") : options.find(option => option.id === id)?.label ?? id
+  const changedFieldLabels: Record<ExpenseRevisionField, string> = {
+    amount: t("expenses.form.amount"), expenseDate: t("expenses.form.date"), whatFor: t("expenses.form.whatFor"),
+    responsibleWorkerId: t("expenses.table.responsibleWorker"), sellerId: t("expenses.table.seller"),
+    projectId: t("expenses.table.project"), stockItemId: t("expenses.form.stockItem"), note: t("expenses.form.note"),
+  }
   const money = (value: string | null) => value === null ? <span>غير متاح</span>
     : <MoneyValue exact value={value} currencyLabel={t("expenses.currency")} />
   return (
@@ -503,27 +510,28 @@ function ExactExpenseDetail({ client, id, onClose, onEdit, onVoid }: {
               <dt>التاريخ</dt><dd>{formatExpenseDate(detail.expenseDate)}</dd>
               <dt>الوصف</dt><dd>{detail.whatFor ?? t("expenses.noDescription")}</dd>
               <dt>ملاحظة</dt><dd>{detail.note ?? t("expenses.none")}</dd>
-              <dt>المشروع</dt><dd><bdi>{detail.projectId ?? t("expenses.none")}</bdi></dd>
-              <dt>المسؤول</dt><dd><bdi>{detail.responsibleWorkerId ?? t("expenses.none")}</bdi></dd>
-              <dt>المورّد</dt><dd><bdi>{detail.sellerId ?? t("expenses.none")}</bdi></dd>
+              <dt>المشروع</dt><dd><bdi>{referenceLabel(detail.projectId, projects)}</bdi></dd>
+              <dt>المسؤول</dt><dd><bdi>{referenceLabel(detail.responsibleWorkerId, employees)}</bdi></dd>
+              <dt>المورّد</dt><dd><bdi>{referenceLabel(detail.sellerId, sellers)}</bdi></dd>
               <dt>قطعة المخزون</dt><dd><bdi>{detail.stockItemId ?? t("expenses.none")}</bdi></dd>
-              <dt>المنشئ</dt><dd><bdi>{detail.actorLabel ?? detail.actorUserId ?? t("expenses.none")}</bdi></dd>
+              <dt>آخر من عدّل السجل</dt><dd><bdi>{detail.actorLabel ?? detail.actorUserId ?? t("expenses.none")}</bdi></dd>
               <dt>معرّف العملية</dt><dd className="break-all"><bdi>{detail.transactionId ?? t("expenses.none")}</bdi></dd>
               {detail.status === "VOIDED" && <>
                 <dt>سبب الإلغاء</dt><dd>{detail.voidReason ?? t("expenses.none")}</dd>
                 <dt>ألغاه</dt><dd><bdi>{detail.voidedBy ?? t("expenses.none")}</bdi></dd>
-                <dt>وقت الإلغاء</dt><dd>{detail.voidedAt ? formatExpenseDate(detail.voidedAt) : t("expenses.none")}</dd>
+                <dt>وقت الإلغاء</dt><dd>{detail.voidedAt ? formatDateTimeInAlgeria(new Date(detail.voidedAt)) : t("expenses.none")}</dd>
               </>}
             </dl>
             <h3 className="font-semibold">سجل التعديلات</h3>
             {detail.revisions.length === 0 ? <p>لا توجد تعديلات</p> : <ol className="space-y-3">
               {detail.revisions.map(revision => <li key={revision.id} className="border-t border-line pt-3">
+                <p className="mb-2 text-sm text-ink-2">الحقول المعدّلة: {revision.changedFields.map(field => changedFieldLabels[field]).join("، ") || t("expenses.none")}</p>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
                   <dt>المبلغ السابق</dt><dd>{money(revision.previousAmount)}</dd>
                   <dt>المبلغ الجديد</dt><dd>{money(revision.newAmount)}</dd>
                   <dt>السبب</dt><dd>{revision.reason ?? t("expenses.none")}</dd>
                   <dt>الفاعل</dt><dd><bdi>{revision.actorLabel ?? revision.actorUserId ?? t("expenses.none")}</bdi></dd>
-                  <dt>الوقت</dt><dd>{formatExpenseDate(revision.createdAt)}</dd>
+                  <dt>الوقت</dt><dd>{formatDateTimeInAlgeria(new Date(revision.createdAt))}</dd>
                   <dt>معرّف العملية</dt><dd className="break-all"><bdi>{revision.transactionId ?? t("expenses.none")}</bdi></dd>
                 </dl>
               </li>)}

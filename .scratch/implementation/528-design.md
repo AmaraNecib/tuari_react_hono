@@ -192,6 +192,39 @@ and 88/88 lines. This is targeted local proof, not the full CI suite or new-head
 hosted acceptance. API typecheck and test lint also pass. One fresh combined-delta
 review must carry forward unaffected earlier conclusions before publishing the fix.
 
+## Hosted history and audit corrections
+
+The hosted review found a real boundary error despite the earlier local lenses:
+unbounded saved history reached the document helper's 10,000-operation limit.
+The 10,001-row red case preserved at57-history-limit-red reproduces it. The owner
+of524 explicitly assigned exact-money.ts and shared tests to528 without concurrent
+writes; parent532 is unchanged. New shared sumMoneyHistory(Iterable<Money>) reuses
+the same private BigInt accumulation/currency checks/render function. sumMoney
+still enforces its original operation count. Source Money bounds do not change.
+Empty, signed cancellation, wide and >10,000 histories have literal proof.
+
+Expense totals now use the historical helper. Expense aggregate wire schema drops
+the21-digit operation-count assumption and matches the existing shared display's
+256-character transport-length guard, not an economic limit. No display helper
+or parser was duplicated or modified. Existing index export-star exposes the new
+helper; no additional export line is needed.
+
+Accepted UI findings now show readable changedFields (including project/note-only
+corrections), label mutable actor as latest modifier, use shared Algeria date/time
+for audit instants while preserving expense business-day formatting, and resolve
+known project/worker/seller names with raw-ID fallback for absent soft references.
+New tests distinguish same-day audit times and amount-preserving corrections.
+Earlier findings/failures remain local54/55/57/58/60; all hosted duplicates remain
+open until the reviewed fix is pushed and disposition is recorded.
+
+Affected precommit proof: shared/contracts49, API56 with100% targeted coverage,
+page22 passed; API/web/contracts types and affected API/web lint passed.
+These are dirty combined-tree results, not current published-head acceptance.
+Refresh actual history UI evidence, commit complete delta, obtain one fresh
+combined-delta review carrying prior unchanged conclusions, then publish and
+request hosted review once for the new head. Parent merge and owner UI approval
+remain separate gates.
+
 ## Resource recovery and next gate
 
 Two initial frozen installs failed ENOSPC, including the hardlink retry. After

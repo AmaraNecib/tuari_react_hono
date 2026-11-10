@@ -18,6 +18,19 @@ describe("opt-in exact expenses", () => {
     await expect(service.create({ id: "valid", amount: "0.10", currency: "DZD", expenseDate: date })).resolves.toMatchObject({ amount: "0.10", currency: "DZD" });
   });
 
+  it("loads totals and groups for more than 10,000 live historical expenses", async () => {
+    const repo = createInMemoryExpenseRepository<string>();
+    const service = createExactExpensesModule(repo);
+    for (let index = 0; index < 10_001; index++) {
+      await service.create({ id: `history-${index}`, amount: "92233720368547758.07", expenseDate: date,
+        projectId: "historical-project", responsibleWorkerId: "historical-worker" });
+    }
+    expect(await service.list()).toMatchObject({
+      totals: { total: "922429437405846128458.07", taggedToProject: "922429437405846128458.07", notTaggedToProject: "0.00", heldByWorkers: "922429437405846128458.07", count: 10_001 },
+      groupsByProject: [{ projectId: "historical-project", total: "922429437405846128458.07", count: 10_001 }],
+    });
+  });
+
   it("orders equal-width exact project totals numerically with deterministic ties", async () => {
     const service = createExactExpensesModule(createInMemoryExpenseRepository<string>());
     for (const [id, amount, projectId] of [["one", "2.00", "z"], ["two", "1.00", "a"], ["three", "3.00", "b"], ["four", "2.00", "c"], ["five", "1.00", "d"]]) {
