@@ -16,7 +16,6 @@ type Command = ExactDebtAudit & { requestId: string };
 const zero = () => Money.parse("0");
 const limit = 100000;
 const normalize = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(normalize);
   if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, normalize(item)]));
   return value;
 };
@@ -142,7 +141,7 @@ export class ExactFinanceService {
     return new Map([...groups].map(([id, values]) => [id, Money.parse(sumMoneyHistory(values))]));
   }
   private remainingFrom(target: ExactDebtEntry, rows: ExactDebtEntry[]): Money {
-    return this.remainingIndex(rows).get(target.id) ?? zero();
+    return this.remainingIndex(rows).get(target.id)!;
   }
   remaining(id: string): string {
     return this.repository.withTransaction(() => {
@@ -191,9 +190,19 @@ export class ExactFinanceService {
       const results: ExactDebtEntry[] = [];
       const remainders = this.remainingIndex(rows);
       let current = account;
+      const positive: ExactDebtEntry[] = [];
+      const negative: ExactDebtEntry[] = [];
       for (const target of rows.filter(row => row.status === "LIVE" && !row.targetEntryId && !row.correctionOfEntryId)) {
+        const sign = remainders.get(target.id)!.compare(zero());
+        if (sign > 0) positive.push(target);
+        if (sign < 0) negative.push(target);
+      }
+      // Reduce the current balance toward zero before reversing the opposite
+      // sign. Re-evaluate after each posting; one fixed sign sort can overflow.
+      while (positive.length || negative.length) {
+        const targets = (Money.parse(current.currentBalance).compare(zero()) >= 0 && positive.length) || !negative.length ? positive : negative;
+        const target = targets.pop()!;
         const remaining = remainders.get(target.id)!;
-        if (remaining.compare(zero()) === 0) continue;
         const entry = this.append(current, { entryType: "SETTLEMENT", signedAmountDzd: remaining.negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), note: input.note }, audit, rows);
         results.push(entry);
         rows.push(entry);

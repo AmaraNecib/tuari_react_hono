@@ -48,6 +48,26 @@ describe.each(["memory", "plain", "keyed"] as const)("exact debt lifecycle parit
     expect(service.createAccount({ ...party, requestId: "reuse" }).id).toBe(account.id);
     expect(service.createAccount({ ...party, direction: "RECEIVABLE", requestId: "opposite" }).id).not.toBe(account.id);
   });
+  it.each([
+    { amounts: ["-92233720368547758.07", "92233720368547758.07", "92233720368547758.07"], balances: ["-92233720368547758.07", "0.00", "92233720368547758.07"] },
+    { amounts: ["92233720368547758.07", "-92233720368547758.07", "-92233720368547758.07"], balances: ["92233720368547758.07", "0.00", "-92233720368547758.07"] },
+    { amounts: ["-92233720368547758.07", "92233720368547758.07", "-92233720368547758.07", "92233720368547758.07", "92233720368547758.07"], balances: ["-92233720368547758.07", "0.00", "-92233720368547758.07", "0.00", "92233720368547758.07"] },
+    { amounts: ["92233720368547758.07", "-92233720368547758.07", "92233720368547758.07", "-92233720368547758.07", "-92233720368547758.07"], balances: ["92233720368547758.07", "0.00", "92233720368547758.07", "0.00", "-92233720368547758.07"] },
+  ])("settles mixed-sign obligations without intermediate overflow: $amounts", ({ amounts, balances }) => {
+    const { service } = setup(kind);
+    const account = service.createAccount({ ...party, requestId: "mixed-account" });
+    const originals = amounts.map((signedAmountDzd, index) => service.postEntry({ requestId: `mixed-${index}`, debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd }));
+    expect(service.listEntries(account.id).map(row => row.balanceAfterDzd)).toEqual(balances);
+    const settled = service.settleAccount({ requestId: "mixed-settle", debtAccountId: account.id });
+    expect(settled).toHaveLength(amounts.length);
+    for (const original of originals) {
+      expect(settled.find(row => row.targetEntryId === original.id)?.signedAmountDzd).toBe(original.signedAmountDzd.startsWith("-") ? "92233720368547758.07" : "-92233720368547758.07");
+      expect(service.remaining(original.id)).toBe("0.00");
+    }
+    expect(service.getAccount(account.id)).toMatchObject({ currentBalance: "0.00", status: "SETTLED" });
+    expect(service.settleAccount({ requestId: "mixed-settle", debtAccountId: account.id })).toEqual(settled);
+    expect(service.listEntries(account.id)).toHaveLength(amounts.length * 2);
+  });
   it("reports positive payable and receivable gross exposure without netting opposite accounts", () => {
     const { service } = setup(kind);
     service.createAccount({ ...party, requestId: "payable", openingBalanceDzd: "20.10" });

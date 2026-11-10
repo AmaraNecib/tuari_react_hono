@@ -24,7 +24,7 @@ function fixture() {
   query.setQueryData(sessionQueryKey, { user: { id: "operator", name: "Operator", phone: "0612345678", version: "0.0.0" } })
   query.setQueryData(workspaceQueryKeys.workspaceSnapshot("operator"), { marker: "numeric-unchanged" })
   const view = render(<QueryClientProvider client={query}><ExactDebtsPage client={client as ExactDebtsClient} parties={[party]} /></QueryClientProvider>)
-  return { client, query, switchClient: (next: ExactDebtsClient) => view.rerender(<QueryClientProvider client={query}><ExactDebtsPage client={next} parties={[party]} /></QueryClientProvider>) }
+  return { client, query, unmount: view.unmount, remount: () => render(<QueryClientProvider client={query}><ExactDebtsPage client={client as ExactDebtsClient} parties={[party]} /></QueryClientProvider>), switchClient: (next: ExactDebtsClient) => view.rerender(<QueryClientProvider client={query}><ExactDebtsPage client={next} parties={[party]} /></QueryClientProvider>) }
 }
 async function openAccount() {
   fireEvent.click(await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ }))
@@ -66,6 +66,34 @@ describe("injected exact debt page", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
     await waitFor(() => expect(client.pay).toHaveBeenCalledTimes(2))
     expect(client.pay.mock.calls[0]?.[0]).toEqual(client.pay.mock.calls[1]?.[0])
+  })
+  it("reuses a committed payment receipt after a lost response and page remount", async () => {
+    const { client, unmount, remount } = fixture()
+    const receipts = new Set<string>()
+    let committedPayments = 0
+    let loseResponse = true
+    client.pay.mockImplementation(async (input: { requestId: string }) => {
+      if (!receipts.has(input.requestId)) { receipts.add(input.requestId); committedPayments++ }
+      if (loseResponse) { loseResponse = false; throw new Error("Response lost after commit") }
+      return entry
+    })
+    await openAccount()
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دفعة" }))
+    let dialog = await screen.findByRole("dialog")
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "مبلغ الدفعة" }), { target: { value: "0.10" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
+    await screen.findByRole("alert")
+    expect(committedPayments).toBe(1)
+    unmount()
+    remount()
+    await openAccount()
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دفعة" }))
+    dialog = await screen.findByRole("dialog")
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "مبلغ الدفعة" }), { target: { value: "0.10" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
+    await waitFor(() => expect(client.pay).toHaveBeenCalledTimes(2))
+    expect(client.pay.mock.calls[1]?.[0]).toEqual(client.pay.mock.calls[0]?.[0])
+    expect(committedPayments).toBe(1)
   })
   it("does not reuse an uncertain command receipt key across injected clients", async () => {
     const { client, switchClient } = fixture()

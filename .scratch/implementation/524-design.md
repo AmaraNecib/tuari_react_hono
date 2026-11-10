@@ -69,6 +69,34 @@ after uncertain transport failure; remove it only on success. Switching clients
 must not reuse another client's receipt key. No money calculation, wire format,
 ledger transaction, rendered markup or default production composition changes.
 
+## Hosted review corrections for PR538
+
+Settlement must keep every intermediate posting within reversal-safe int64,
+not merely the final zero balance. Partition outstanding obligations by sign.
+At each step reverse a positive obligation when the current balance is
+nonnegative, or a negative obligation when it is negative. Fall back to the
+remaining sign only when the other partition is empty. Re-evaluate after each
+posting, rather than using one fixed sign sort. Each reversal retains the
+original target and the command stays atomic. Regression cases include both
+signs of the maximal three-entry case and alternating five-entry histories
+across memory, plain and keyed native repositories.
+
+Pending transport intent must survive page unmount. The injected client's
+module-level WeakMap owns pending receipt maps; each intent signature includes
+the authenticated owner. Lost responses retain keys through remounts, while
+successful responses delete them. Client garbage collection bounds lifetime;
+this is not browser-restart persistence or a new financial ledger. A remount
+test models a committed payment with a lost response and verifies one commit
+when its identical request is retried.
+
+CI's existing strict coverage gate exposed missing command/storage guard cases.
+Add direct public-seam rejection and atomicity assertions, without lowering any
+threshold or excluding source. Remove the unused array normalization branch,
+since exact command intent contains no arrays, and the unreachable zero fallback
+for a live original's own remaining-index entry. Keep repository-currency drift
+refusal tested independently of the DZD command codec. No migration or production
+activation is authorized by these corrections.
+
 ## Shared-preparation status and authority (historical)
 
 Implementation resumed after owner-controlled disk recovery. The first bounded

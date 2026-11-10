@@ -17,6 +17,10 @@ export type ExactDebtPartyOption = { id: string; label: string; partyType: Exact
 type Entry = ExactDebtDetail["entries"][number]
 type Action = { kind: "pay" | "correct" | "void"; entry: Entry } | { kind: "post" | "settle" }
 const actionLabel = { pay: "تسجيل دفعة", correct: "تصحيح المبلغ المتفق عليه", void: "إلغاء الحركة", post: "إضافة حركة", settle: "تسوية الحساب بالكامل" }
+// Client identity bounds retention without keeping discarded clients alive.
+// Owner is part of each intent signature, so remounts preserve uncertain keys
+// without sharing them across authenticated users.
+const requestScopes = new WeakMap<ExactDebtsClient, Map<string, string>>()
 const entryLabel = { OPENING: "رصيد افتتاحي", ADJUSTMENT: "تعديل", ADVANCE: "سلفة", PAYMENT: "دفعة", SETTLEMENT: "تسوية" }
 function amount(value: string, positive: boolean) {
   try {
@@ -45,7 +49,6 @@ export function ExactDebtsPage({ client, parties }: { client: ExactDebtsClient; 
   const queries = useQueryClient()
   // Preserve the receipt key after an uncertain network result, including when
   // a dialog closes and reopens. A successful intentional repeat gets a new key.
-  const [requestScopes] = useState(() => new WeakMap<ExactDebtsClient, Map<string, string>>())
   async function execute(command: ExactDebtCommand) {
     let requests = requestScopes.get(client)
     if (!requests) { requests = new Map<string, string>(); requestScopes.set(client, requests) }
