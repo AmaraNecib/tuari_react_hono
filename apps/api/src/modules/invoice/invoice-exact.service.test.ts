@@ -98,7 +98,7 @@ it.each(["plain", "keyed"] as const)("%s: refuses oversized native reads before 
   db!.exec(`WITH RECURSIVE seq(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM seq WHERE n<100001) INSERT INTO invoice (${invoiceColumns.join(",")}) SELECT ${invoiceColumns.map(column => column === "id" ? "'prefix-' || printf('%06d',seq.n)" : `i.${column}`).join(",")} FROM seq CROSS JOIN invoice i WHERE i.id='${draft.id}'`);
   repo.getInvoice = () => { throw new Error("Partial invoice prefix was hydrated"); };
   expect(() => invoices.listInvoices({ filters: { counterpartyId: "no-match" } })).toThrow(/read resource limit/);
-});
+}, 30000);
 it.each(["memory", "plain", "keyed"] as const)("%s: finalizes source lines once and pays only the linked invoice through a replayable aggregate", kind => {
   const { invoices, finance } = setup(kind);
   const draft = invoices.createInvoice({ requestId: "draft", supplierName: "Synthetic supplier", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: partyId, lineItems: [

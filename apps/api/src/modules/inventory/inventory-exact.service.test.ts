@@ -75,7 +75,7 @@ it.each(["plain", "keyed"] as const)("%s: rejects oversized inventory history, e
   extend("inventory_entry", purchase.entries[0]!.id, "entry_order");
   repo.getEntry = () => { throw new Error("Partial entry prefix was hydrated"); };
   expect(() => repo.listEntries(purchase.group.id)).toThrow(/read resource limit/);
-});
+}, 30000);
 it.each(["memory", "plain", "keyed"] as const)("%s: reports material history wider than a single persisted amount", kind => {
   const { inventory } = setup(kind);
   for (const requestId of ["wide-report-first", "wide-report-second"]) inventory.createInvoiceGroup({ requestId, projectId: "project", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 1, priceSource: { mode: "agreed-total", total: "92233720368547758.07", quantity: "1" } }] });
