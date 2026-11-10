@@ -20,6 +20,25 @@ const approval = {
 };
 
 describe("opt-in exact workforce aggregate", () => {
+  it.each([
+    { label: "without segments", segments: [] },
+    { label: "with a zero segment", segments: [{ id: "zero-A", projectId: "A", amount: "0" }] },
+  ])("records a zero approval $label without ledger accounts, entries or obligation links", ({ segments }) => {
+    const { service, ledger, finance, repository } = setup();
+    const accountWrites = vi.spyOn(ledger, "saveAccount");
+    const entryWrites = vi.spyOn(ledger, "saveEntry");
+    const input = { ...approval, approvedAmount: "0", unallocatedAmount: "0", segments };
+    const result = service.approveEarnings(input);
+    expect(result).toMatchObject({ approvedAmount: "0.00", unallocatedAmount: "0.00", debtAccountId: null, debtEntryId: null });
+    expect(result.segments).toEqual(segments.map(segment => ({ ...segment, amount: "0.00" })));
+    expect(repository.listEarnings("worker")).toEqual([result]);
+    expect(service.approveEarnings(input)).toEqual(result);
+    expect(repository.listEarnings("worker")).toEqual([result]);
+    expect(finance.listAccounts()).toEqual([]);
+    expect(accountWrites).not.toHaveBeenCalled();
+    expect(entryWrites).not.toHaveBeenCalled();
+  });
+
   it("rolls both source rows and ledger back when aggregate receipt persistence fails, then retries once", () => {
     const { service, ledger, finance, repository } = setup();
     const receipt = vi.spyOn(ledger, "saveAggregateCommand").mockImplementationOnce(() => { throw new Error("receipt failure"); });
