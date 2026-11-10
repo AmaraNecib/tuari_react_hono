@@ -1,4 +1,5 @@
-import { sqliteTable, text, real, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { sqliteTable, text, real, integer, uniqueIndex, check } from "drizzle-orm/sqlite-core";
 import { role } from "./app";
 import { user } from "./auth";
 
@@ -236,7 +237,7 @@ export const employeeSalaryPaymentSplit = sqliteTable("employee_salary_payment_s
     .references(() => project.id, { onDelete: "restrict", onUpdate: "cascade" }),
   days: integer("days").notNull(),
   createdAt: text("created_at").notNull(),
-});
+}, (table) => [check("employee_salary_payment_split_days_positive", sql`${table.days} > 0`)]);
 
 /** External business contacts (suppliers, customers, lenders). */
 export const externalCounterparty = sqliteTable("external_counterparty", {

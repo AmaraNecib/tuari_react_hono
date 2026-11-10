@@ -1,5 +1,7 @@
 # Issue #427 salary domain design
 
+Resume authority: the current owner assigned one combined workforce/salary stream after the exact ledger prerequisite merged. [527-design.md](527-design.md) records its preserved tree, merged baseline, approved exact-money ADR, current interfaces and exclusions. Everything below remains historical design evidence. Its old numeric/TEXT proposals and decision-pending statements do not override the accepted exact-money contract or current live owner decisions.
+
 Status: product semantics and reuse of the existing debt ledger approved by the owner. The owner accepted separating approved wages from actual payments, with reference salary as a suggested default rather than a third required entry. The latest owner clarification supersedes the earlier rejection of minor-unit persistence: minor units are acceptable in principle if names and calculations are currency-neutral and allow future non-Algerian customers. Exact schema/contracts, account-currency ownership and financial-write activation remain proposed. The owner confirmed no old real/customer data exists. No historical customer migration/adoption subsystem is assumed. No source behavior has changed.
 
 ## Latest money direction, supersedes earlier proposals
