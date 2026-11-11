@@ -14,7 +14,33 @@ vi.mock("@/lib/desktop-auth-session", () => ({
 
 vi.mock("@/lib/runtime-config", () => ({
   resolveApiBaseUrl: () => "http://localhost:3000",
+  resolveApiUrl: (path: string) => `http://localhost:3000/${path}`,
 }))
+
+describe("workspace RPC transport", () => {
+  it.each(["https://foreign.example/rpc", "//foreign.example/rpc", "../rpc", "rpc/../other", ""])("refuses a mount outside the configured workspace: %s", async mount => {
+    const { createExactWorkforceClient } = await import("@/features/employees/exact-workforce-client")
+    expect(() => createExactWorkforceClient(mount)).toThrow("RPC mount must be a relative workspace path")
+  })
+  it.each([false, true])("keeps the agreed exact mount in the configured workspace with desktop=%s", async desktop => {
+    isDesktopRuntimeMock.mockReturnValue(desktop)
+    const { desktopApiFetch } = await import("@/lib/desktop-api-bridge")
+    const response = () => new Response(JSON.stringify({ json: [] }), { headers: { "content-type": "application/json" } })
+    const browserFetch = vi.fn<typeof fetch>(async () => response())
+    vi.stubGlobal("fetch", browserFetch)
+    vi.mocked(desktopApiFetch).mockResolvedValueOnce(response())
+    try {
+      const { createExactWorkforceClient } = await import("@/features/employees/exact-workforce-client")
+      const client = createExactWorkforceClient(desktop ? "/agreed-exact-mount" : "agreed-exact-mount")
+      expect(await client.listEmployeeEarnings({ employeeId: "current-employee" })).toEqual([])
+      const calls = desktop ? vi.mocked(desktopApiFetch).mock.calls : browserFetch.mock.calls
+      const request = calls.at(-1)![0] as Request
+      expect(request.url).toBe("http://localhost:3000/agreed-exact-mount/listEmployeeEarnings")
+      if (desktop) expect(vi.mocked(desktopApiFetch).mock.lastCall![1]).toMatchObject({ authenticated: true })
+      else expect(browserFetch.mock.lastCall![1]).toMatchObject({ credentials: "include" })
+    } finally { vi.unstubAllGlobals(); vi.mocked(desktopApiFetch).mockReset() }
+  })
+})
 
 describe("resolveRpcCredentials", () => {
   it("omits cookies in desktop runtime", async () => {

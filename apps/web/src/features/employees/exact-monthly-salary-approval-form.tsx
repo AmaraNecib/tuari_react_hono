@@ -9,6 +9,7 @@ import { ExactMonthlySalaryEditor } from "./exact-monthly-salary-editor"
 import { buildSalaryMonthlyApproval, emptySalaryAllocation, salaryAllocationRemainder, type SalaryAllocationDraft } from "./exact-monthly-salary-allocation"
 
 type ApprovalResult = Awaited<ReturnType<ExactWorkforceClient["approveMonthlyEarnings"]>>
+export type SalaryApprovalState = "idle" | "pending" | "uncertain" | "approved"
 type Props = {
   employeeId: string
   defaultMonth: string
@@ -16,10 +17,11 @@ type Props = {
   projects: readonly { id: string; name: string }[]
   client: Pick<ExactWorkforceClient, "approveMonthlyEarnings">
   busy?: boolean
+  onAttemptStateChange?: (state: SalaryApprovalState) => void
 }
 
 /** Inject an opt-in client and mount keyed by workspace/employee. Never registers a production route. */
-export function ExactMonthlySalaryApprovalForm({ employeeId, defaultMonth, initialMonths, projects, client, busy = false }: Props) {
+export function ExactMonthlySalaryApprovalForm({ employeeId, defaultMonth, initialMonths, projects, client, busy = false, onAttemptStateChange }: Props) {
   const { t, i18n } = useTranslation()
   const [allocations, setAllocations] = useState<Record<string, SalaryAllocationDraft>>({})
   const [locked, setLocked] = useState(false)
@@ -39,15 +41,17 @@ export function ExactMonthlySalaryApprovalForm({ employeeId, defaultMonth, initi
     if (!attempt.current) attempt.current = { input: buildSalaryMonthlyApproval(crypto.randomUUID(), employeeId, plan.months, allocations, projectIds), ambiguous: false }
     const current = attempt.current
     setLocked(true)
+    onAttemptStateChange?.("pending")
     try {
       const result = exactSalaryMonthlyApprovalResultSchema.parse(await client.approveMonthlyEarnings(structuredClone(current.input)))
       setApproved(result)
       setUncertain(false)
+      onAttemptStateChange?.("approved")
     } catch (error) {
       // Only a first, explicit pre-commit rejection permits a new intent. An earlier lost response stays unresolved.
       const rejected = !current.ambiguous && error instanceof ORPCError && ["BAD_REQUEST", "NOT_FOUND", "UNAUTHORIZED", "FORBIDDEN"].includes(error.code)
-      if (rejected) { attempt.current = null; setLocked(false) }
-      else { current.ambiguous = true; setUncertain(true) }
+      if (rejected) { attempt.current = null; setLocked(false); onAttemptStateChange?.("idle") }
+      else { current.ambiguous = true; setUncertain(true); onAttemptStateChange?.("uncertain") }
       throw error
     }
   }
