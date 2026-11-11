@@ -10,6 +10,8 @@ import { createFifoLock } from "../infrastructure/database/fifo-lock";
 import { exactWorkforceSchemaStatements } from "../modules/company/adapters/exact-workforce-schema";
 import { exactWorkforceEarningSchemaStatements } from "../modules/company/adapters/exact-workforce-earning-schema";
 import { exactDebtSchemaStatements } from "../modules/company/adapters/exact-finance-schema";
+import { ExactFinanceService } from "../modules/company/exact-finance.service";
+import { SqliteExactFinanceRepository } from "../modules/company/adapters/sqlite-exact-finance.repository";
 import { createExactWorkforceComposition } from "./exact-workforce-composition";
 import { createRpcMiddleware } from "./rpc-middleware";
 import type { RpcContext } from "./context";
@@ -25,14 +27,47 @@ const plan = {
   ] }],
 };
 
+function prepareFixture(key: string) {
+  const db = createDatabaseConnection(join(mkdtempSync(join(tmpdir(), "tuari-527-shared-finance-")), "fixture.sqlite"), key);
+  db.pragma("foreign_keys=ON");
+  db.exec("CREATE TABLE role(id TEXT PRIMARY KEY); CREATE TABLE user(id TEXT PRIMARY KEY); CREATE TABLE project(id TEXT PRIMARY KEY); CREATE TABLE external_counterparty(id TEXT PRIMARY KEY); CREATE TABLE invoice(id TEXT PRIMARY KEY); INSERT INTO role VALUES ('worker'); INSERT INTO project VALUES ('A'),('B')");
+  for (const sql of [...exactWorkforceSchemaStatements, ...exactDebtSchemaStatements, ...exactWorkforceEarningSchemaStatements]) db.exec(sql);
+  db.prepare("INSERT INTO employee(id,first_name,last_name,phone,role_id,status,created_at,updated_at) VALUES ('worker','Test','Worker','0550000000','worker','ACTIVE',?,?)").run(time, time);
+  return db;
+}
+
 describe.each([["plain", ""], ["keyed", "527-rpc-public-synthetic-key"]])("exact workforce RPC %s", (_kind, key) => {
+  it.each(["connection", "fifo"] as const)("refuses injected finance with a foreign %s before payroll or ledger writes", mismatch => {
+    const db = prepareFixture(key);
+    const other = mismatch === "connection" ? prepareFixture(key) : undefined;
+    try {
+      const lock = createFifoLock();
+      const dependencies = { id: randomUUID, now: () => time };
+      const finance = new ExactFinanceService(new SqliteExactFinanceRepository(other ?? db, mismatch === "fifo" ? createFifoLock() : lock), dependencies);
+      const composition = createExactWorkforceComposition(db, lock, createRpcMiddleware({ authBootstrapService: { isBootstrapOwner: async id => id === user.id } }), dependencies, finance);
+      const counts = () => [db, ...(other ? [other] : [])].map(connection => connection.prepare("SELECT (SELECT count(*) FROM employee_salary_earning) AS earnings, (SELECT count(*) FROM debt_entry) AS entries, (SELECT count(*) FROM exact_finance_command) AS receipts").get());
+      const before = counts();
+      expect(composition.services.finance).toBe(finance);
+      expect(() => composition.services.workforce.listEmployeeEarnings("worker")).toThrow("same connection and shared FIFO");
+      expect(() => composition.services.workforce.getProjectSalaryCost("A")).toThrow("same connection and shared FIFO");
+      expect(() => composition.services.workforce.approveMonthlyEarnings(plan)).toThrow("same connection and shared FIFO");
+      expect(counts()).toEqual(before);
+    } finally { db.close(); other?.close(); }
+  });
+
   it("connects audited native approval, target-backed reads and project labor cost without cash double counting", async () => {
     const path = join(mkdtempSync(join(tmpdir(), "tuari-527-rpc-")), "fixture.sqlite");
     let db = createDatabaseConnection(path, key);
     const middleware = createRpcMiddleware({ authBootstrapService: { isBootstrapOwner: async id => id === user.id } });
     const context: RpcContext = { headers: new Headers(), resolveCurrentUser: async () => user };
     const lock = createFifoLock();
-    const compose = () => createExactWorkforceComposition(db, lock, middleware, { id: randomUUID, now: () => time });
+    const compose = () => {
+      const dependencies = { id: randomUUID, now: () => time };
+      const finance = new ExactFinanceService(new SqliteExactFinanceRepository(db, lock), dependencies);
+      const composition = createExactWorkforceComposition(db, lock, middleware, dependencies, finance);
+      expect(composition.services.finance).toBe(finance);
+      return composition;
+    };
     try {
       db.pragma("foreign_keys=ON");
       db.exec("CREATE TABLE role(id TEXT PRIMARY KEY); CREATE TABLE user(id TEXT PRIMARY KEY); CREATE TABLE project(id TEXT PRIMARY KEY); CREATE TABLE external_counterparty(id TEXT PRIMARY KEY); CREATE TABLE invoice(id TEXT PRIMARY KEY); INSERT INTO user VALUES ('operator'); INSERT INTO role VALUES ('worker'); INSERT INTO project VALUES ('A'),('B'),('empty')");
