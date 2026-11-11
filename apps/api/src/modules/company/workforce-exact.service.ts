@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { Money, exactSalaryApprovalInputSchema, exactSalaryMonthlyApprovalInputSchema, type ExactSalaryApprovalInput, type ExactSalaryMonthlyApprovalInput } from "@tuari/contracts";
+import { Money, sumMoney, exactSalaryApprovalInputSchema, exactSalaryMonthlyApprovalInputSchema, type ExactSalaryApprovalInput, type ExactSalaryMonthlyApprovalInput } from "@tuari/contracts";
 import { ExactFinanceService, ExactDebtError, type ExactDebtAudit } from "./exact-finance.service";
+import { exactFinanceJson } from "./exact-finance-json";
 import type { ExactSalaryEarning, ExactWorkforceRepository } from "./workforce-exact.repository";
 
 const request = (root: string, kind: string) => `payroll:${createHash("sha256").update(JSON.stringify([root, kind])).digest("hex")}`;
@@ -12,7 +13,35 @@ const auditOf = (value: ExactDebtAudit): Required<ExactDebtAudit> => ({
 export class ExactWorkforceService {
   constructor(private readonly repository: ExactWorkforceRepository, private readonly finance: ExactFinanceService, private readonly dependencies: { id(): string; now(): string }) {}
 
+  private snapshot<T>(work: () => T): T {
+    const source = this.repository.transactionIdentity;
+    const ledger = this.finance.transactionIdentity;
+    if (source.connection !== ledger.connection || source.lock !== ledger.lock) throw new ExactDebtError("Payroll reads require the same connection and shared FIFO");
+    return this.repository.withTransaction(work);
+  }
+
+  listEmployeeEarnings(employeeId: string) {
+    return this.snapshot(() => {
+      if (!this.repository.employeeExists(employeeId)) throw new ExactDebtError("Employee not found", "NOT_FOUND");
+      const rows = this.repository.listEarnings(employeeId);
+      if (rows.length > 10000) throw new ExactDebtError("Payroll read resource limit exceeded");
+      return rows.map(earning => ({ earning, remainingAmount: earning.debtEntryId ? this.finance.remaining(earning.debtEntryId) : "0.00" }));
+    });
+  }
+
+  getProjectSalaryCost(projectId: string) {
+    return this.snapshot(() => {
+      if (!this.repository.projectExists(projectId)) throw new ExactDebtError("Project not found", "NOT_FOUND");
+      const segments = this.repository.listProjectEarnings(projectId).flatMap(earning => earning.segments.filter(segment => segment.projectId === projectId).map(segment => ({
+        earningId: earning.id, employeeId: earning.employeeId, periodStart: earning.periodStart, periodEnd: earning.periodEnd, segment,
+      })));
+      if (segments.length > 10000) throw new ExactDebtError("Payroll read resource limit exceeded");
+      return { projectId, currency: "DZD" as const, totalAmount: sumMoney(segments.map(row => Money.parse(row.segment.amount))), segments };
+    });
+  }
+
   approveMonthlyEarnings(raw: ExactSalaryMonthlyApprovalInput & ExactDebtAudit) {
+    exactFinanceJson(raw);
     const { actorUserId, actorLabel, transactionId, ...domain } = raw;
     const input = exactSalaryMonthlyApprovalInputSchema.parse(domain);
     const audit = auditOf({ actorUserId, actorLabel, transactionId });

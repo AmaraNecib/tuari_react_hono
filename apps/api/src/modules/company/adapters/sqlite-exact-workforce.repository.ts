@@ -78,6 +78,12 @@ export class SqliteExactWorkforceRepository implements ExactWorkforceRepository 
       return rows.map(row => this.getEarning(row.id)!);
     });
   }
+  listProjectEarnings(projectId: string): ExactSalaryEarning[] {
+    return this.withTransaction(() => {
+      const rows = this.db.prepare("SELECT id FROM employee_salary_earning e WHERE EXISTS (SELECT 1 FROM employee_salary_earning_segment s WHERE s.earning_id=e.id AND s.project_id=?) ORDER BY created_at,id").all(projectId) as { id: string }[];
+      return rows.map(row => this.getEarning(row.id)!);
+    });
+  }
   saveEarning(earning: ExactSalaryEarning): void {
     this.withTransaction(() => {
       const parsed = exactSalaryApprovalInputSchema.parse({

@@ -39,6 +39,14 @@ describe("explicit monthly approval command", () => {
     ]) expect(exactSalaryMonthlyApprovalInputSchema.safeParse(candidate).success).toBe(false);
   });
 
+  it("bounds combined month and segment records before parsing nested inputs", () => {
+    const oversized = { ...input, months: [{ ...input.months[0], segments: Array(10000).fill(null) }] };
+    const result = exactSalaryMonthlyApprovalInputSchema.safeParse(oversized);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues).toEqual([expect.objectContaining({ code: "custom", path: [], message: "Monthly approval resource limit exceeded" })]);
+    expect(exactSalaryMonthlyApprovalInputSchema.safeParse({ ...input, months: Array(10001).fill(null) }).success).toBe(false);
+  });
+
   it("bounds individual wages but derives a wider exact total without narrowing it", () => {
     const result = exactSalaryMonthlyApprovalInputSchema.parse({ ...input, months: input.months.map(row => ({ ...row, amount: "92233720368547758.07", unallocatedAmount: "92233720368547758.07", segments: [] })) });
     expect(result.totalAmount).toBe("184467440737095516.14");

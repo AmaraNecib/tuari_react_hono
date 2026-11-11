@@ -139,6 +139,27 @@ describe.each([["plain", ""], ["keyed", "527-public-synthetic-key"]])("native ex
     expect(reopened.repository.listEarnings("absent")).toEqual([]);
   });
 
+  it("projects approved project allocations with wider exact totals across workers, not ledger balances", () => {
+    const fixture = setup(key);
+    const { service } = fixture.compose();
+    fixture.db.prepare("INSERT INTO employee(id,first_name,last_name,phone,role_id,status,created_at,updated_at) VALUES ('other','Test','Other','0550000001','worker','ACTIVE',?,?)").run(time, time);
+    for (const employeeId of ["worker", "other"]) service.approveEarnings({ ...approval, requestId: `max-${employeeId}`, employeeId, approvedAmount: "92233720368547758.07", unallocatedAmount: "0", segments: [{ id: "max", projectId: "A", amount: "92233720368547758.07" }] });
+    expect(service.getProjectSalaryCost("A")).toMatchObject({ projectId: "A", currency: "DZD", totalAmount: "184467440737095516.14" });
+    expect(service.getProjectSalaryCost("A").segments).toHaveLength(2);
+    expect(fixture.reopen().service.getProjectSalaryCost("A").totalAmount).toBe("184467440737095516.14");
+  });
+
+  it("excludes explicit unallocated amounts and other projects from labor cost", () => {
+    const fixture = setup(key);
+    const { service } = fixture.compose();
+    service.approveEarnings(approval);
+    const cost = service.getProjectSalaryCost("A");
+    expect(cost.totalAmount).toBe("90071992547409.70");
+    expect(cost.segments.map(row => row.segment.id)).toEqual(["first", "third"]);
+    expect(service.getProjectSalaryCost("B").totalAmount).toBe("0.20");
+    expect(fixture.reopen().service.getProjectSalaryCost("A")).toEqual(cost);
+  });
+
   it("allows segment identities to repeat across separate earnings without deduplicating A/B/A projects", () => {
     const fixture = setup(key);
     const { service, repository, finance } = fixture.compose();
@@ -268,6 +289,8 @@ describe.each([["plain", ""], ["keyed", "527-public-synthetic-key"]])("native ex
       expect(() => service.approveEarnings(approval)).toThrow(/connection busy/);
       expect(() => repository.listEarnings("worker")).toThrow(/connection busy/);
       expect(() => repository.getEarning("absent")).toThrow(/connection busy/);
+      expect(() => service.listEmployeeEarnings("worker")).toThrow(/connection busy/);
+      expect(() => service.getProjectSalaryCost("A")).toThrow(/connection busy/);
     } finally { release(); await held; }
     expect(repository.listEarnings("worker")).toEqual([]);
     expect(() => repository.withTransaction(() => { service.approveEarnings(approval); return Promise.resolve("invalid"); })).toThrow(/synchronous/);

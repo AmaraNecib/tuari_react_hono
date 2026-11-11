@@ -15,6 +15,9 @@ export class InMemoryExactWorkforceRepository implements ExactWorkforceRepositor
   listEarnings(employeeId: string): ExactSalaryEarning[] {
     return [...this.earnings.values()].filter(row => row.employeeId === employeeId).map(row => structuredClone(row));
   }
+  listProjectEarnings(projectId: string): ExactSalaryEarning[] {
+    return [...this.earnings.values()].filter(row => row.segments.some(segment => segment.projectId === projectId)).map(row => structuredClone(row)).sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  }
   saveEarning(earning: ExactSalaryEarning): void {
     if (!this.employeeExists(earning.employeeId) || earning.segments.some(row => !this.projectExists(row.projectId))) throw new Error("Missing workforce reference");
     const previous = this.earnings.get(earning.id);

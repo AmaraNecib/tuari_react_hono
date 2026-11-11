@@ -37,7 +37,7 @@ function coveredMonth(month: string) {
 }
 
 /** Explicit per-month allocations become independent originals in one atomic command. */
-export const exactSalaryMonthlyApprovalInputSchema = z.object({
+const monthlyApprovalSchema = z.object({
   requestId: entityIdSchema,
   employeeId: entityIdSchema,
   currency: z.literal("DZD"),
@@ -62,6 +62,17 @@ export const exactSalaryMonthlyApprovalInputSchema = z.object({
   totalAmount: sumMoney(value.months.map(row => Money.parse(row.amount))),
   months: value.months.map(row => ({ ...row, ...coveredMonth(row.month) })),
 }));
+/** Bound nested records before detailed parsing, not after expanding the cross-product. */
+export const exactSalaryMonthlyApprovalInputSchema = z.custom<z.input<typeof monthlyApprovalSchema>>(value => {
+  if (!value || typeof value !== "object" || !("months" in value) || !Array.isArray(value.months)) return true;
+  let records = value.months.length;
+  if (records > 10000) return false;
+  for (const row of value.months) {
+    if (row && typeof row === "object" && Array.isArray(row.segments)) records += row.segments.length;
+    if (records > 10000) return false;
+  }
+  return true;
+}, "Monthly approval resource limit exceeded").pipe(monthlyApprovalSchema);
 export type ExactSalaryMonthlyApprovalInput = z.input<typeof exactSalaryMonthlyApprovalInputSchema>;
 
 const monthSuggestionSchema = z.object({

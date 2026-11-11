@@ -15,5 +15,6 @@ export interface ExactWorkforceRepository extends ExactTransactionParticipant {
   projectExists(id: string): boolean;
   getEarning(id: string): ExactSalaryEarning | null;
   listEarnings(employeeId: string): ExactSalaryEarning[];
+  listProjectEarnings(projectId: string): ExactSalaryEarning[];
   saveEarning(earning: ExactSalaryEarning): void;
 }
