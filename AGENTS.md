@@ -18,6 +18,42 @@ commit and report; the parent owns publication, PR watches and merge.
 A child does not push, open a PR or merge. A local-only instruction means
 no publication even if GitHub is reachable.
 
+### Parent and worker execution
+
+Each independent issue thread is that issue's parent architect and manager. It
+scopes and delegates implementation and verification, checks the evidence, and
+integrates and commits as needed. It owns PR publication and any merge explicitly
+authorized by the owner. It is not the coordinator's implementation child or the
+default solo implementation worker. Workers implement, prove, commit and report.
+Read-only reviewers return findings and do not edit source.
+
+Delegate full suites, E2E, builds and browser execution to a verification worker,
+which must run heavy commands through `heavy_run`. The parent may run one only
+when the owner explicitly asks or a documented necessary inability to delegate
+blocks the check. Before that exception, record the exact check, why delegation
+is unavailable and why the check is needed. Queue admission never expands the
+verification scope. Parent reads, diffs, selector checks, lint, typecheck and
+small integration corrections remain allowed; the parent is not the default
+implementation or test runner. Follow Tuari's focused-local / CI-final scope and
+activation record, not another repository's gates.
+
+One writer owns each isolated PR worktree. The owner permits assigning one
+implementation worker with `delegate_task` and `isolation: "shared"` to the
+parent's existing isolated PR worktree; the parent gives up all edits while that
+worker owns it. Never share the project root or allow concurrent parent/worker
+writes. Use another worktree only for genuinely independent concurrent scope.
+A read-only reviewer uses the actual source tree at a frozen SHA. A verifier
+creates no checkout. Cancel a writer and confirm it stopped before replacing it,
+preserving its source and proof. Do not restart valid running work or review
+solely to change the worktree arrangement.
+
+Run independent, disjoint tasks in parallel. Keep tightly dependent work serial,
+with one meaningful handoff instead of repeated peer messages. Preserve the
+current payroll-first, root-paused order until the coordinator explicitly
+resumes root work after the final domain handoff. Keep T3 children visible and
+select Luna explicitly. A successor root worker must read this committed policy
+before resuming; chat alone is not the handoff.
+
 Inside T3, use visible `delegate_task` children. Resolve exact model IDs with
 `orchestrator_capabilities`; choose `openai-codex/gpt-6-luna` explicitly for
 ordinary work. Use async mode for work that takes minutes and let completion
