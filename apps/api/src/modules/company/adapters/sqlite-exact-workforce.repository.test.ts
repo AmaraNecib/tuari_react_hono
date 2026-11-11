@@ -113,7 +113,7 @@ describe.each([["plain", ""], ["keyed", "527-public-synthetic-key"]])("native ex
     const fixture = setup(key);
     const { service, repository } = fixture.compose();
     const result = service.approveEarnings(approval);
-    expect(() => repository.saveEarning({ ...result, id: "borrowed-source" })).toThrow(/matching payroll original/);
+    expect(() => repository.saveEarning({ ...result, id: "borrowed-source" })).toThrow(/immutable|matching payroll original/);
     expect(repository.getEarning("borrowed-source")).toBeNull();
     const insert = fixture.db.prepare("INSERT INTO employee_salary_earning(id,employee_id,currency,period_start,period_end,approved_amount_minor,unallocated_amount_minor,created_at) VALUES (?,'worker','DZD','2026-10-01','2026-10-31',?,0,?)");
     expect(() => insert.run("negative", -1n, time)).toThrow(/CHECK/);
@@ -160,6 +160,29 @@ describe.each([["plain", ""], ["keyed", "527-public-synthetic-key"]])("native ex
     expect(() => repository.saveEarning({ ...result, actorLabel: "Changed" })).toThrow(/immutable/);
     expect(() => fixture.db.prepare("UPDATE employee_salary_earning SET actor_label='Changed' WHERE id=?").run(result.id)).toThrow(/immutable/);
     expect(() => fixture.db.prepare("UPDATE employee_salary_earning_segment SET days=1 WHERE earning_id=?").run(result.id)).toThrow(/immutable/);
+    expect(fixture.reopen().repository.getEarning(result.id)).toEqual(result);
+  });
+
+  it.each(["segment identity", "segment ordinal"])("refuses INSERT OR REPLACE against an approved %s even without recursive triggers", (conflict) => {
+    const fixture = setup(key);
+    const { service, repository } = fixture.compose();
+    const result = service.approveEarnings(approval);
+    fixture.db.pragma("recursive_triggers=OFF");
+    const replacementId = conflict === "segment identity" ? "first" : "replacement";
+    expect(() => fixture.db.prepare(`INSERT OR REPLACE INTO employee_salary_earning_segment(earning_id,id,ordinal,project_id,amount_minor,days)
+      SELECT earning_id,?,ordinal,'B',amount_minor,42 FROM employee_salary_earning_segment WHERE earning_id=? AND id='first'`).run(replacementId, result.id)).toThrow(/immutable/);
+    expect(repository.getEarning(result.id)).toEqual(result);
+    expect(fixture.reopen().repository.getEarning(result.id)).toEqual(result);
+  });
+
+  it("refuses replacement of a segmentless zero earning even without recursive triggers", () => {
+    const fixture = setup(key);
+    const { service, repository } = fixture.compose();
+    const result = service.approveEarnings({ ...approval, approvedAmount: "0", unallocatedAmount: "0", segments: [] });
+    fixture.db.pragma("recursive_triggers=OFF");
+    expect(() => fixture.db.prepare(`INSERT OR REPLACE INTO employee_salary_earning(id,employee_id,currency,period_start,period_end,approved_amount_minor,unallocated_amount_minor,actor_label,created_at)
+      SELECT id,employee_id,currency,period_start,period_end,approved_amount_minor,unallocated_amount_minor,'Replaced',created_at FROM employee_salary_earning WHERE id=?`).run(result.id)).toThrow(/immutable/);
+    expect(repository.getEarning(result.id)).toEqual(result);
     expect(fixture.reopen().repository.getEarning(result.id)).toEqual(result);
   });
 

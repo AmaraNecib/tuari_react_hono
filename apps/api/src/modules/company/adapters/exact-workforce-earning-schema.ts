@@ -31,6 +31,12 @@ export const exactWorkforceEarningSchemaStatements = [
         AND e.signed_amount_minor=NEW.approved_amount_minor AND e.status='LIVE'
         AND e.target_entry_id IS NULL AND e.correction_of_entry_id IS NULL
     ) BEGIN SELECT RAISE(ABORT,'Earning requires its matching payroll original'); END`,
+  `CREATE TRIGGER exact_salary_earning_no_replace BEFORE INSERT ON employee_salary_earning
+    WHEN EXISTS (SELECT 1 FROM employee_salary_earning WHERE id=NEW.id OR debt_entry_id=NEW.debt_entry_id)
+    BEGIN SELECT RAISE(ABORT,'Approved earning is immutable'); END`,
+  `CREATE TRIGGER exact_salary_segment_no_replace BEFORE INSERT ON employee_salary_earning_segment
+    WHEN EXISTS (SELECT 1 FROM employee_salary_earning_segment WHERE earning_id=NEW.earning_id AND (id=NEW.id OR ordinal=NEW.ordinal))
+    BEGIN SELECT RAISE(ABORT,'Approved earning is immutable'); END`,
   ...["employee_salary_earning", "employee_salary_earning_segment"].flatMap(table =>
     ["UPDATE", "DELETE"].map(operation =>
       `CREATE TRIGGER ${table}_${operation.toLowerCase()}_immutable BEFORE ${operation} ON ${table} BEGIN SELECT RAISE(ABORT,'Approved earning is immutable'); END`)),
