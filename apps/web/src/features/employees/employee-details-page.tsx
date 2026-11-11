@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import type { ReactNode, ReactElement } from "react"
 import { AppDate } from "@/components/app-date"
 import { MoneyValue } from "@/features/shared/money-value"
 import { useEffect, useMemo, useRef, useState } from "react"
@@ -35,6 +35,8 @@ import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria
 import { computeProposedSalaryAmount } from "@tuari/contracts"
 
 import type { EmployeeTableRow } from "./employee-table"
+import { ExactEmployeeDetailsPage as ExactEmployeeDetails } from "./exact-employee-pages"
+import type { ExactEmployeePageProps } from "./exact-employee-pages"
 
 type EmployeeWorkHistoryRow = {
   id: string
@@ -72,7 +74,7 @@ function getSalaryDifferenceMeta(expectedAmountDzd: number, actualAmountDzd: num
 /**
  * @description Component
  */
-export function EmployeeDetailsPage({
+function NumericEmployeeDetailsPage({
   activeTab,
   debtAccounts,
   debtEntriesByAccountId,
@@ -523,4 +525,14 @@ export function EmployeeDetailsPage({
       ) : null}
     </RecordPageFrame>
   )
+}
+
+type NumericEmployeeDetailsProps = Parameters<typeof NumericEmployeeDetailsPage>[0]
+export function EmployeeDetailsPage(props: { mode: "exact" } & ExactEmployeePageProps): ReactElement
+export function EmployeeDetailsPage(props: NumericEmployeeDetailsProps & { mode?: "numeric" }): ReactElement
+export function EmployeeDetailsPage(props: ({ mode: "exact" } & ExactEmployeePageProps) | (NumericEmployeeDetailsProps & { mode?: "numeric" })) {
+  if (props.mode === "exact") {
+    return <ExactEmployeeDetails {...props} />
+  }
+  return <NumericEmployeeDetailsPage {...props} />
 }

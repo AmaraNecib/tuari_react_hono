@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useEffect, useMemo, useState, type FormEvent, type ReactElement } from "react"
 import type { Role } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 
@@ -18,6 +18,8 @@ import {
   type EmployeeDraftErrors,
   validateEmployeeBatch,
 } from "./employee-batch-schema"
+import { ExactEmployeeBatchCreatePage as ExactEmployeeBatch } from "./exact-employee-pages"
+import type { ExactEmployeeBatchProps } from "./exact-employee-pages"
 import {
   EmployeeBatchRowCard,
   type EmployeeManagerOption,
@@ -109,7 +111,7 @@ function mapServerErrors(error: AppMutationError, rowCount: number) {
 /**
  * @description Component
  */
-export function EmployeeBatchCreatePage({
+function NumericEmployeeBatchCreatePage({
   roles,
   managerOptions,
   onCancel,
@@ -370,4 +372,13 @@ export function EmployeeBatchCreatePage({
       </form>
     </div>
   )
+}
+
+export function EmployeeBatchCreatePage(props: { mode: "exact" } & ExactEmployeeBatchProps): ReactElement
+export function EmployeeBatchCreatePage(props: EmployeeBatchCreatePageProps & { mode?: "numeric" }): ReactElement
+export function EmployeeBatchCreatePage(props: ({ mode: "exact" } & ExactEmployeeBatchProps) | (EmployeeBatchCreatePageProps & { mode?: "numeric" })) {
+  if (props.mode === "exact") {
+    return <ExactEmployeeBatch {...props} />
+  }
+  return <NumericEmployeeBatchCreatePage {...props} />
 }
