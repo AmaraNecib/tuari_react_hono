@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { entityIdSchema, timestampSchema } from "./core";
+import { entityIdSchema, timestampSchema, employeeBatchLimit } from "./core";
 import {
   employeeSchema, employeeStateHistorySchema, employeeSalaryPaymentSchema,
-  employeeCreateInputSchema, employeeUpdateInputSchema,
+  employeeCreateInputSchema, employeeUpdateInputSchema, employeeBatchCreateInputSchema, employeeBatchCreateRowInputSchema,
+  employeeBatchCreateResultSchema, employeeSaveInputSchema,
 } from "./workforce";
 import {
   Money, SalaryReference, UnitPrice, Quantity, derivedPrice, priceLine,
@@ -49,6 +50,18 @@ export const exactEmployeeUpdateInputSchema = employeeUpdateInputSchema.omit({ s
 export type ExactEmployee = z.infer<typeof exactEmployeeSchema>;
 export type ExactEmployeeStateHistory = z.infer<typeof exactEmployeeStateHistorySchema>;
 export type ExactEmployeeSalaryPayment = z.infer<typeof exactEmployeeSalaryPaymentSchema>;
+export const exactEmployeeBatchCreateRowInputSchema = employeeBatchCreateRowInputSchema.omit({ salaryAmountDzd: true, salaryPeriod: true }).extend({
+  salaryReference: exactSalaryReferenceSchema.nullable().optional(),
+}).strict();
+export const exactEmployeeBatchCreateInputSchema = employeeBatchCreateInputSchema.safeExtend({
+  employees: z.array(exactEmployeeBatchCreateRowInputSchema).min(1).max(employeeBatchLimit),
+}).strict();
+export const exactEmployeeBatchCreateResultSchema = employeeBatchCreateResultSchema.extend({ employees: z.array(exactEmployeeSchema) }).strict();
+export const exactEmployeeSaveInputSchema = employeeSaveInputSchema.omit({ salaryAmountDzd: true, salaryPeriod: true }).extend({
+  salaryReference: exactSalaryReferenceSchema.nullable().optional(),
+}).strict();
+export type ExactEmployeeBatchCreateInput = z.input<typeof exactEmployeeBatchCreateInputSchema>;
+export type ExactEmployeeSaveInput = z.input<typeof exactEmployeeSaveInputSchema>;
 export type ExactEmployeeCreateInput = z.input<typeof exactEmployeeCreateInputSchema>;
 export type ExactEmployeeUpdateInput = z.input<typeof exactEmployeeUpdateInputSchema>;
 export const exactSalaryDaysSchema = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);

@@ -1,0 +1,55 @@
+import { randomUUID } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createRouterClient } from "@orpc/server";
+import { describe, expect, it, vi } from "vitest";
+import type { ExactEmployeeClient } from "@tuari/contracts";
+import type { Permission } from "../modules/rbac/permissions";
+import { createDatabaseConnection } from "../infrastructure/database/factory";
+import { createFifoLock } from "../infrastructure/database/fifo-lock";
+import { exactWorkforceSchemaStatements } from "../modules/company/adapters/exact-workforce-schema";
+import { SqliteExactEmployeeRepository } from "../modules/company/adapters/sqlite-exact-employee.repository";
+import { ExactEmployeeService } from "../modules/company/employee-exact.service";
+import { createRpcMiddleware } from "./rpc-middleware";
+import type { RpcContext } from "./context";
+import { createExactEmployeeRouter } from "./employee-exact-router";
+vi.mock("../infrastructure/license", async importOriginal => ({ ...await importOriginal<typeof import("../infrastructure/license")>(), getLicenseInfo: () => ({ status: "trial", maxUsers: 0 }) }));
+const time = "2026-11-01T00:00:00.000Z";
+const owner = { id: "operator", name: "Operator", phone: "0612345678", version: "0.0.0", permissions: ["employees:read", "employees:create", "employees:update", "employees:delete"] as Permission[] };
+describe.each([["plain", ""], ["keyed", "527-employee-rpc-public-fixture-key"]])("exact employee normal-name RPC %s", (_kind, key) => {
+  it("uses actual permission/audit middleware and exact native profiles without a numeric employee fallback", async () => {
+    const db = createDatabaseConnection(join(mkdtempSync(join(tmpdir(), "tuari-exact-employee-rpc-")), "fixture.sqlite"), key);
+    try {
+      db.pragma("foreign_keys=ON");
+      db.exec(`CREATE TABLE role(id TEXT PRIMARY KEY,key TEXT,name TEXT,description TEXT,is_system INTEGER,created_at TEXT,updated_at TEXT); CREATE TABLE user(id TEXT PRIMARY KEY); CREATE TABLE project(id TEXT PRIMARY KEY); INSERT INTO role VALUES ('worker-role','worker','Worker',NULL,1,'${time}','${time}')`);
+      for (const sql of exactWorkforceSchemaStatements) db.exec(sql);
+      const dependencies = { id: randomUUID, now: () => time };
+      const service = new ExactEmployeeService(new SqliteExactEmployeeRepository(db, createFifoLock(), dependencies), dependencies, { isBootstrapOwner: id => id === owner.id });
+      const router = createExactEmployeeRouter(service, createRpcMiddleware({ authBootstrapService: { isBootstrapOwner: async id => id === owner.id } }));
+      const context: RpcContext = { headers: new Headers(), resolveCurrentUser: async () => owner };
+      const client = createRouterClient(router, { context }) as ExactEmployeeClient;
+      const created = await client.employeesCreate({ firstName: "First", lastName: "Worker", phone: "0550000000", roleId: "worker-role", salaryReference: { period: "MONTHLY", amount: "9007199254740993.21" } });
+      expect(created.success).toBe(true);
+      if (!created.success) throw new Error("creation refused");
+      const id = created.item.id;
+      expect((await client.employeesGet({ id }))).toMatchObject({ success: true, item: { id, salaryReference: { period: "MONTHLY", amount: "9007199254740993.21" } } });
+      expect(await client.employeesCreate({ firstName: "Duplicate", lastName: "Worker", phone: "0550000000", roleId: "worker-role" })).toMatchObject({ success: false, error: { code: "CONFLICT", fieldErrors: [{ field: "phone" }] } });
+      expect(await client.employeesList()).toMatchObject({ items: [{ id }] });
+      expect(await client.employeesListPaged({ limit: 1 })).toMatchObject({ total: 1, hasMore: false });
+      expect(await client.employeesUpdate({ id, salaryReference: { period: "DAILY", amount: "0.0001" } })).toMatchObject({ success: true, item: { salaryReference: { period: "DAILY", amount: "0.0001" } } });
+      expect(await client.employeeStateHistoryList({ employeeId: id })).toMatchObject({ items: expect.arrayContaining([expect.objectContaining({ actorUserId: owner.id, salaryReference: { period: "MONTHLY", amount: "9007199254740993.21" } }), expect.objectContaining({ salaryReference: { period: "DAILY", amount: "0.0001" } })]) });
+      const history = db.prepare("SELECT actor_label AS actorLabel,transaction_id AS transactionId FROM employee_state_history WHERE employee_id=?").all(id) as { actorLabel: string; transactionId: string }[];
+      expect(history.every(row => row.actorLabel === owner.name && /^[a-f\d-]{36}$/.test(row.transactionId))).toBe(true);
+      const anonymous = createRouterClient(router, { context: { ...context, resolveCurrentUser: async () => null } }) as ExactEmployeeClient;
+      await expect(anonymous.employeesList()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+      await expect(anonymous.employeesCreate({ firstName: "Other", lastName: "Worker", phone: "0550000001", roleId: "worker-role" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+      const noPermissions = createRouterClient(router, { context: { ...context, resolveCurrentUser: async () => ({ ...owner, id: "other", permissions: [] }) } }) as ExactEmployeeClient;
+      await expect(noPermissions.employeesList()).rejects.toMatchObject({ code: "FORBIDDEN" });
+      await expect(client.employeesCreate({ firstName: "Other", lastName: "Worker", phone: "0550000001", roleId: "worker-role", salaryAmountDzd: 1 } as never)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      await expect(client.employeesCreate({ firstName: "Other", lastName: "Worker", phone: "0550000001", roleId: "worker-role", actorUserId: "forged" } as never)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+      expect(await client.employeesList()).toMatchObject({ items: [{ id }] });
+      expect(() => JSON.stringify(created)).not.toThrow();
+    } finally { db.close(); }
+  });
+});

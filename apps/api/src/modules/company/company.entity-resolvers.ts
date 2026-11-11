@@ -22,7 +22,7 @@ import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
 import type { FinanceRepository } from "./finance.repository";
 
-export function requireRole(repository: WorkforceRepository, roleId: string) {
+export function requireRole(repository: Pick<WorkforceRepository, "getRoleById">, roleId: string) {
   const role = repository.getRoleById(roleId);
   if (!role) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على الدور المطلوب.", [
@@ -79,7 +79,7 @@ export function requireAdminAssignmentGrant(
 }
 
 export function requireAssignableEmployeeRole(
-  repository: WorkforceRepository,
+  repository: Pick<WorkforceRepository, "getRoleById">,
   roleId: string,
   field: string,
   caller?: { authorizer: WorkspaceAdminAuthorizer | undefined; actorUserId: string | null },
@@ -180,6 +180,15 @@ export function requireExternalCounterparty(
   return counterparty;
 }
 
+export type EmployeeTransitionLinks = {
+  hasActiveManagerAssignment: boolean;
+  hasActiveProjectAssignment: boolean;
+  hasActiveWarehouseAssignment: boolean;
+  hasActiveManagedProjects: boolean;
+  hasActiveWorkers: boolean;
+  hasActiveManagedWarehouses: boolean;
+};
+
 export function ensureEmployeeTransitionAllowed(
   workforceRepo: WorkforceRepository,
   operationsRepo: OperationsRepository,
@@ -188,15 +197,23 @@ export function ensureEmployeeTransitionAllowed(
   nextRoleKey: string,
   nextStatus: string,
 ) {
-  const hasActiveManagerAssignment = Boolean(
-    workforceRepo.getActiveManagerAssignmentByWorkerId(employee.id),
-  );
-  const hasActiveProjectAssignment = Boolean(
-    operationsRepo.getActiveProjectAssignmentByEmployeeId(employee.id),
-  );
-  const hasActiveWarehouseAssignment = Boolean(
-    operationsRepo.getActiveWarehouseAssignmentByEmployeeId(employee.id),
-  );
+  const leavingProjectManager = currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.projectManager
+    && (nextRoleKey !== currentRoleKey || nextStatus !== "ACTIVE");
+  const leavingWarehouseManager = currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager
+    && (nextRoleKey !== currentRoleKey || nextStatus !== "ACTIVE");
+  return assertEmployeeTransitionAllowed(currentRoleKey, nextRoleKey, nextStatus, {
+    hasActiveManagerAssignment: Boolean(workforceRepo.getActiveManagerAssignmentByWorkerId(employee.id)),
+    hasActiveProjectAssignment: Boolean(operationsRepo.getActiveProjectAssignmentByEmployeeId(employee.id)),
+    hasActiveWarehouseAssignment: Boolean(operationsRepo.getActiveWarehouseAssignmentByEmployeeId(employee.id)),
+    hasActiveManagedProjects: leavingProjectManager && operationsRepo.listProjects({ managerId: employee.id, status: "ACTIVE" }).length > 0,
+    hasActiveWorkers: leavingProjectManager && workforceRepo.listManagerAssignments({ managerId: employee.id, status: "ACTIVE" }).length > 0,
+    hasActiveManagedWarehouses: leavingWarehouseManager && operationsRepo.listWarehouses({ managerId: employee.id, status: "ACTIVE" }).length > 0,
+  });
+}
+
+/** One metadata-only policy for legacy and exact employee storage. */
+export function assertEmployeeTransitionAllowed(currentRoleKey: string, nextRoleKey: string, nextStatus: string, links: EmployeeTransitionLinks) {
+  const { hasActiveManagerAssignment, hasActiveProjectAssignment, hasActiveWarehouseAssignment } = links;
 
   if (
     currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.worker &&
@@ -219,10 +236,7 @@ export function ensureEmployeeTransitionAllowed(
     currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.projectManager &&
     (nextRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.projectManager || nextStatus !== "ACTIVE")
   ) {
-    const hasActiveManagedProjects =
-      operationsRepo.listProjects({ managerId: employee.id, status: "ACTIVE" }).length > 0;
-    const hasActiveWorkers =
-      workforceRepo.listManagerAssignments({ managerId: employee.id, status: "ACTIVE" }).length > 0;
+    const { hasActiveManagedProjects, hasActiveWorkers } = links;
 
     if (
       hasActiveManagedProjects ||
@@ -248,8 +262,7 @@ export function ensureEmployeeTransitionAllowed(
     currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager &&
     (nextRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager || nextStatus !== "ACTIVE")
   ) {
-    const hasActiveWarehouses =
-      operationsRepo.listWarehouses({ managerId: employee.id, status: "ACTIVE" }).length > 0;
+    const hasActiveWarehouses = links.hasActiveManagedWarehouses;
 
     if (hasActiveWarehouses || hasActiveProjectAssignment || hasActiveWarehouseAssignment) {
       throw new CompanyError(
