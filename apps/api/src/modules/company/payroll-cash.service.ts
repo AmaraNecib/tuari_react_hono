@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import { Money, exactSalaryCashInputSchema, exactSalaryOpeningReviewInputSchema, exactSalaryAdvanceRepaymentInputSchema, type ExactSalaryAdvanceRepaymentInput, type ExactSalaryCashInput, type ExactSalaryOpeningReviewInput } from "@tuari/contracts";
+import { Money, sumMoneyHistory, exactSalaryCashInputSchema, exactSalaryOpeningReviewInputSchema, exactSalaryAdvanceRepaymentInputSchema, exactSalaryCorrectionInputSchema, type ExactSalaryAdvanceRepaymentInput, type ExactSalaryCashInput, type ExactSalaryCorrectionInput, type ExactSalaryOpeningReviewInput } from "@tuari/contracts";
 import { ExactDebtError, type ExactDebtAudit, type ExactFinanceService } from "./exact-finance.service";
-import type { ExactWorkforceRepository } from "./workforce-exact.repository";
+import type { ExactSalaryEarning, ExactWorkforceRepository } from "./workforce-exact.repository";
 import type { PayrollCash, PayrollCashRepository, PayrollOpeningReview, PayrollSettlement } from "./payroll-cash.repository";
 import { exactFinanceJson } from "./exact-finance-json";
 
@@ -15,6 +15,87 @@ export class PayrollCashService {
     for (const source of [this.repository.transactionIdentity, this.earnings.transactionIdentity]) {
       if (source.connection !== ledger.connection || source.lock !== ledger.lock) throw new ExactDebtError("Payroll cash requires the same connection and shared FIFO");
     }
+  }
+  listEmployeeLifecycle(employeeId: string) {
+    this.requireConnection();
+    return this.repository.withTransaction(() => {
+      if (!this.earnings.employeeExists(employeeId)) throw new ExactDebtError("Employee not found", "NOT_FOUND");
+      const opening = this.repository.getEmployeeOpening(employeeId);
+      const earningRows = this.earnings.listEarnings(employeeId);
+      const remainingByAccount = new Map<string, Map<string, string>>();
+      const earnings = earningRows.map(earning => {
+        if (!earning.debtEntryId) return { earning, remainingAmount: "0.00" };
+        if (!earning.debtAccountId) throw new ExactDebtError("Live debt entry not found", "NOT_FOUND");
+        let remaining = remainingByAccount.get(earning.debtAccountId);
+        if (!remaining) {
+          const detail = this.finance.detail(earning.debtAccountId);
+          remaining = new Map(detail.entries.filter(row => row.remainingDzd !== null && row.signedAmountDzd !== "0.00").map(row => [row.id, row.remainingDzd!]));
+          remainingByAccount.set(earning.debtAccountId, remaining);
+        }
+        const amount = remaining.get(earning.debtEntryId);
+        if (amount === undefined) throw new ExactDebtError("Live debt entry not found", "NOT_FOUND");
+        return { earning, remainingAmount: amount };
+      });
+      const cash = this.repository.listCash(employeeId);
+      const settlements = this.repository.listSettlements(employeeId);
+      const corrections = this.repository.listCorrections(employeeId);
+      for (const payment of cash) {
+        for (const allocation of payment.wageAllocations) {
+          const source = allocation.source.kind === "EARNING" ? this.earnings.getEarning(allocation.source.id) : this.repository.getOpening(allocation.source.id);
+          const account = this.finance.getAccount(allocation.debtAccountId);
+          const detail = this.finance.detail(allocation.debtAccountId);
+          const original = detail.entries.find(entry => entry.id === allocation.debtEntryId);
+          const receipt = detail.entries.find(entry => entry.id === allocation.paymentEntryId);
+          const producerType = allocation.source.kind === "EARNING" ? "PAYROLL_EARNINGS" : "PAYROLL_OPENING";
+          const sourceAmount = allocation.source.kind === "EARNING" ? (source as ExactSalaryEarning | null)?.approvedAmount : (source as PayrollOpeningReview | null)?.wagesOwed;
+          if (!source || source.employeeId !== employeeId || source.currency !== payment.currency || !original || original.status !== "LIVE" || original.producerType !== producerType || original.producerId !== allocation.source.id || original.signedAmountDzd !== sourceAmount || original.targetEntryId || original.correctionOfEntryId || !receipt || receipt.status !== "LIVE" || receipt.entryType !== "PAYMENT" || receipt.targetEntryId !== original.id || receipt.producerType !== producerType || receipt.producerId !== allocation.source.id || receipt.signedAmountDzd !== Money.parse(allocation.amount).negate().toWire() || account.workerId !== employeeId || account.direction !== "PAYABLE" || account.currency !== payment.currency) throw new ExactDebtError("Payroll cash source ledger mismatch");
+        }
+        if (payment.advance) {
+          const account = this.finance.getAccount(payment.advance.debtAccountId);
+          const entry = this.finance.detail(payment.advance.debtAccountId).entries.find(row => row.id === payment.advance!.debtEntryId);
+          if (!entry || entry.status !== "LIVE" || entry.entryType !== "ADVANCE" || entry.producerType !== "PAYROLL_ADVANCE" || entry.producerId !== payment.advance.id || entry.signedAmountDzd !== payment.advance.amount || account.workerId !== employeeId || account.direction !== "RECEIVABLE" || account.currency !== payment.currency) throw new ExactDebtError("Payroll advance source ledger mismatch");
+        }
+      }
+      for (const settlement of settlements) {
+        const target = settlement.source.kind === "ADVANCE" ? this.repository.getAdvance(settlement.source.id) : this.repository.getOpening(settlement.source.id);
+        const advanceTarget = target as { debtAccountId: string; debtEntryId: string } | null;
+        const debtAccountId = settlement.source.kind === "ADVANCE" ? advanceTarget?.debtAccountId : (target as PayrollOpeningReview | null)?.advanceDebtAccountId;
+        const debtEntryId = settlement.source.kind === "ADVANCE" ? advanceTarget?.debtEntryId : (target as PayrollOpeningReview | null)?.advanceDebtEntryId;
+        const detail = debtAccountId ? this.finance.detail(debtAccountId) : null;
+        const original = detail?.entries.find(row => row.id === debtEntryId);
+        const payment = detail?.entries.find(row => row.id === settlement.paymentEntryId);
+        if (!target || target.employeeId !== employeeId || target.currency !== settlement.currency || !original || original.status !== "LIVE" || original.producerType !== (settlement.source.kind === "ADVANCE" ? "PAYROLL_ADVANCE" : "PAYROLL_OPENING") || original.producerId !== settlement.source.id || !payment || payment.status !== "LIVE" || payment.targetEntryId !== original.id || payment.signedAmountDzd !== Money.parse(settlement.amount).negate().toWire()) throw new ExactDebtError("Payroll settlement source ledger mismatch");
+      }
+      for (const correction of corrections) {
+        const earning = this.earnings.getEarning(correction.earningId);
+        const detail = earning?.debtAccountId ? this.finance.detail(earning.debtAccountId) : null;
+        const entry = detail?.entries.find(row => row.id === correction.correctionEntryId);
+        const delta = Money.parse(correction.newAmount).subtract(Money.parse(correction.previousAmount));
+        if (!earning || earning.employeeId !== employeeId || earning.debtEntryId !== entry?.correctionOfEntryId || entry?.producerType !== "PAYROLL_EARNINGS" || entry.producerId !== earning.id || Money.parse(entry.signedAmountDzd).compare(delta) !== 0) throw new ExactDebtError("Payroll correction source ledger mismatch");
+      }
+      return { opening, earnings, cash, settlements, corrections };
+    });
+  }
+  correctEarning(raw: ExactSalaryCorrectionInput & ExactDebtAudit) {
+    exactFinanceJson(raw);
+    const { actorUserId = null, actorLabel = null, transactionId = null, ...domain } = raw;
+    const input = exactSalaryCorrectionInputSchema.parse(domain);
+    const audit = { actorUserId, actorLabel, transactionId };
+    this.requireConnection();
+    return this.finance.runAggregate({ requestId: input.requestId, producer: { type: "PAYROLL_EARNINGS", id: command(input.requestId, "correction") }, intent: { kind: "correct-payroll-earning", input }, ...audit }, this.repository, () => {
+      const earning = this.earnings.getEarning(input.earningId);
+      if (!earning || earning.employeeId !== input.employeeId || earning.currency !== input.currency || !earning.debtEntryId || !earning.debtAccountId || Money.parse(earning.approvedAmount).compare(Money.parse("0")) <= 0) throw new ExactDebtError("Positive original earning not found", "NOT_FOUND");
+      const detail = this.finance.detail(earning.debtAccountId);
+      const original = detail.entries.find(row => row.id === earning.debtEntryId);
+      if (!original || original.status !== "LIVE" || original.producerType !== "PAYROLL_EARNINGS" || original.producerId !== earning.id || original.signedAmountDzd !== earning.approvedAmount || original.targetEntryId || original.correctionOfEntryId) throw new ExactDebtError("Earning source ledger mismatch");
+      const previousAmount = sumMoneyHistory(detail.entries.filter(row => row.status === "LIVE" && (row.id === original.id || row.correctionOfEntryId === original.id)).map(row => Money.parse(row.signedAmountDzd)));
+      const paidAmount = Money.parse(previousAmount).subtract(Money.parse(this.finance.remaining(original.id)));
+      if (Money.parse(input.newAmount).compare(paidAmount) < 0) throw new ExactDebtError("Correction below paid amount requires an owner-selected treatment", "CONFLICT");
+      const entry = this.finance.forProducer({ type: "PAYROLL_EARNINGS", id: earning.id }).correctEntry({ requestId: command(input.requestId, "ledger-correction"), entryId: original.id, amountDzd: input.newAmount, currency: input.currency, reason: input.reason, ...audit });
+      const correction = { id: this.dependencies.id(), employeeId: input.employeeId, earningId: earning.id, currency: input.currency, previousAmount, newAmount: input.newAmount, reason: input.reason, correctionEntryId: entry.id, ...audit, createdAt: this.dependencies.now() };
+      this.repository.saveCorrection(correction);
+      return correction;
+    });
   }
   getOpeningStatus(employeeId: string) {
     this.requireConnection();

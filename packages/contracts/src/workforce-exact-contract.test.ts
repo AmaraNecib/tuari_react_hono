@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { exactProjectSalaryCostSchema, exactSalaryEarningRecordSchema, exactSalaryMonthlyApprovalResultSchema } from "./workforce-exact-contract";
+import { exactProjectSalaryCostSchema, exactSalaryEarningRecordSchema, exactSalaryMonthlyApprovalResultSchema, exactPayrollCashRecordSchema, exactPayrollLifecycleSchema } from "./workforce-exact-contract";
 
 const earning = {
   id: "earning", employeeId: "worker", currency: "DZD", periodStart: "2026-10-01", periodEnd: "2026-10-31",
@@ -26,6 +26,14 @@ describe("opt-in exact payroll read contracts", () => {
     expect(exactProjectSalaryCostSchema.safeParse({ ...cost, projectId: "other" }).success).toBe(false);
     expect(exactProjectSalaryCostSchema.safeParse({ ...cost, totalAmount: "1.00" }).success).toBe(false);
     expect(exactProjectSalaryCostSchema.safeParse({ ...cost, totalAmount: 35000 }).success).toBe(false);
+  });
+
+  it("validates lifecycle DTOs with actual cash date, explicit targets and nullable opening state", () => {
+    const cash = { id: "cash", employeeId: "worker", currency: "DZD", amount: "25000", paymentDate: "2026-11-10T12:00:00.000Z", wageAllocations: [{ id: "part", source: { kind: "EARNING", id: "earning" }, amount: "25000", debtAccountId: "payable", debtEntryId: "original", paymentEntryId: "payment" }], advance: null, actorUserId: "operator", actorLabel: "Operator", transactionId: null, createdAt: "2026-11-11T00:00:00.000Z" };
+    const lifecycle = { opening: null, earnings: [], cash: [cash], advances: [], settlements: [], corrections: [] };
+    expect(exactPayrollLifecycleSchema.parse(lifecycle).cash[0]?.paymentDate).toBe(cash.paymentDate);
+    expect(exactPayrollCashRecordSchema.safeParse({ ...cash, amount: "25001" }).success).toBe(false);
+    expect(exactPayrollCashRecordSchema.safeParse({ ...cash, wageAllocations: [{ ...cash.wageAllocations[0], source: { kind: "ADVANCE", id: "advance" } }] }).success).toBe(false);
   });
 
   it("keeps derived labor cost wider than scalar Money while each segment remains bounded", () => {

@@ -3,7 +3,7 @@ import { bindMoney, prepareMoneyRead } from "../../../infrastructure/database/ex
 import { requireExactMoneySchema } from "../../../infrastructure/database/money-schema-gate";
 import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
-import type { PayrollCash, PayrollCashRepository, PayrollOpeningReview, PayrollSettlement } from "../payroll-cash.repository";
+import type { PayrollCash, PayrollCashRepository, PayrollCorrection, PayrollOpeningReview, PayrollSettlement } from "../payroll-cash.repository";
 import { ExactDebtError } from "../exact-finance.service";
 
 const projection = "id,employee_id AS employeeId,currency,payment_date AS paymentDate,actor_user_id AS actorUserId,actor_label AS actorLabel,transaction_id AS transactionId,created_at AS createdAt";
@@ -17,6 +17,7 @@ export class SqlitePayrollCashRepository implements PayrollCashRepository {
     this.withTransaction(() => {
       requireExactMoneySchema(db, "workforce");
       for (const [table, names, amounts] of [
+        ["employee_salary_correction", ["id", "employee_id", "earning_id", "currency", "reason", "correction_entry_id", "actor_user_id", "actor_label", "transaction_id", "created_at"], ["previous_amount_minor", "new_amount_minor"]],
         ["employee_salary_settlement", ["id", "employee_id", "currency", "source_kind", "source_id", "payment_date", "debt_account_id", "debt_entry_id", "payment_entry_id", "actor_user_id", "actor_label", "transaction_id", "created_at"], ["amount_minor"]],
         ["employee_salary_opening_review", ["id", "employee_id", "currency", "status", "wage_debt_account_id", "wage_debt_entry_id", "advance_debt_account_id", "advance_debt_entry_id", "actor_user_id", "actor_label", "transaction_id", "created_at"], ["wages_owed_minor", "advances_owed_minor"]],
         ["employee_salary_cash", ["id", "employee_id", "currency", "payment_date", "actor_user_id", "actor_label", "transaction_id", "created_at"], ["amount_minor"]],
@@ -94,6 +95,26 @@ export class SqlitePayrollCashRepository implements PayrollCashRepository {
       const rows = this.db.prepare("SELECT id FROM employee_salary_settlement WHERE employee_id=? ORDER BY created_at,id LIMIT 10001").all(employeeId) as { id: string }[];
       if (rows.length > 10000) throw new ExactDebtError("Payroll settlement read resource limit exceeded");
       return rows.map(row => this.getSettlement(row.id)!);
+    });
+  }
+  listCorrections(employeeId: string): PayrollCorrection[] {
+    return this.withTransaction(() => {
+      const rows = this.db.prepare("SELECT id,employee_id AS employeeId,earning_id AS earningId,currency,reason,correction_entry_id AS correctionEntryId,actor_user_id AS actorUserId,actor_label AS actorLabel,transaction_id AS transactionId,created_at AS createdAt FROM employee_salary_correction WHERE employee_id=? ORDER BY created_at,id LIMIT 10001").all(employeeId) as Omit<PayrollCorrection, "previousAmount" | "newAmount">[];
+      if (rows.length > 10000) throw new ExactDebtError("Payroll correction read resource limit exceeded");
+      const readAmount = (column: "previous_amount_minor" | "new_amount_minor", id: string) => {
+        const amount = prepareMoneyRead(this.db, `SELECT ${column} AS minor_units FROM employee_salary_correction WHERE id=?`).get(id);
+        if (!amount) throw new TypeError("Required payroll correction amount is missing");
+        return amount.toWire();
+      };
+      return rows.map(row => ({ ...row, previousAmount: readAmount("previous_amount_minor", row.id), newAmount: readAmount("new_amount_minor", row.id) }));
+    });
+  }
+  saveCorrection(row: PayrollCorrection): void {
+    this.withTransaction(() => {
+      auditActorUserIdSchema.parse(row.actorUserId); auditTransactionIdSchema.parse(row.transactionId); timestampSchema.parse(row.createdAt);
+      const previous = Money.parse(row.previousAmount); const next = Money.parse(row.newAmount);
+      if (previous.compare(Money.parse("0")) <= 0 || next.compare(Money.parse("0")) <= 0 || !row.reason.trim() || row.reason.length > 1000) throw new TypeError("Invalid payroll correction source");
+      this.db.prepare("INSERT INTO employee_salary_correction(id,employee_id,earning_id,currency,previous_amount_minor,new_amount_minor,reason,correction_entry_id,actor_user_id,actor_label,transaction_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)").run(row.id,row.employeeId,row.earningId,row.currency,bindMoney(previous),bindMoney(next),row.reason,row.correctionEntryId,row.actorUserId,row.actorLabel,row.transactionId,row.createdAt);
     });
   }
   saveSettlement(row: PayrollSettlement): void {

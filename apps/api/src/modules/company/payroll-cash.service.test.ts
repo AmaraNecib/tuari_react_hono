@@ -40,6 +40,35 @@ function fixture(key: string) {
 const approve = { requestId: "approve", employeeId: "worker", currency: "DZD" as const, periodStart: "2026-10-01", periodEnd: "2026-10-31", approvedAmount: "35000", unallocatedAmount: "0", segments: [{ id: "project", projectId: "A", amount: "35000" }], ...audit };
 
 describe.each([["plain", ""], ["keyed", "527-cash-public-fixture-key"]])("actual payroll cash %s", (_kind, key) => {
+  it("refuses malformed payroll cash physical columns on both native drivers", () => {
+    const f = fixture(key);
+    f.db.exec("DROP TABLE employee_salary_cash; CREATE TABLE employee_salary_cash(id TEXT PRIMARY KEY,employee_id TEXT,currency TEXT,amount_minor TEXT,payment_date TEXT,actor_user_id TEXT,actor_label TEXT,transaction_id TEXT,created_at TEXT)");
+    expect(() => new SqlitePayrollCashRepository(f.db, createFifoLock())).toThrow(/Invalid exact payroll cash column employee_salary_cash.amount_minor/);
+  });
+
+  it("blocks update, delete and INSERT OR REPLACE on every payroll source with recursive triggers off", () => {
+    const f = fixture(key); const c = f.compose();
+    c.service.reviewOpening({ requestId: "review-immutable", employeeId: "worker", currency: "DZD", review: { status: "REVIEWED", wagesOwed: "500", advancesOwed: "1000" }, ...audit });
+    const cash = c.service.recordCash({ requestId: "cash-immutable", employeeId: "worker", currency: "DZD", amount: "1500", paymentDate: now, wageAllocations: [{ id: "wage", source: { kind: "OPENING", id: "source-1" }, amount: "500" }], advance: { id: "advance-immutable", amount: "1000" }, ...audit });
+    c.service.repayAdvance({ requestId: "repay-immutable", employeeId: "worker", currency: "DZD", source: { kind: "ADVANCE", id: "advance-immutable" }, amount: "250", paymentDate: now, ...audit });
+    const earning = c.workforce.approveEarnings(approve);
+    const correction = c.service.correctEarning({ requestId: "correct-immutable", employeeId: "worker", currency: "DZD", earningId: earning.id, newAmount: "36000", reason: "Correction source guard", ...audit });
+    f.db.pragma("recursive_triggers=OFF");
+    const cases = [
+      ["employee_salary_opening_review", "id='source-1'"],
+      ["employee_salary_correction", `id='${correction.id}'`],
+      ["employee_salary_cash", `id='${cash.id}'`],
+      ["employee_salary_payment_allocation", `cash_id='${cash.id}' AND id='wage'`],
+      ["employee_salary_advance", "id='advance-immutable'"],
+      ["employee_salary_settlement", "source_id='advance-immutable'"],
+    ] as const;
+    for (const [table, where] of cases) {
+      expect(() => f.db.exec(`UPDATE ${table} SET created_at=created_at WHERE ${where}`)).toThrow();
+      expect(() => f.db.exec(`DELETE FROM ${table} WHERE ${where}`)).toThrow();
+      expect(() => f.db.exec(`INSERT OR REPLACE INTO ${table} SELECT * FROM ${table} WHERE ${where}`)).toThrow();
+    }
+  });
+
   it("records actual cash against an explicit earning without fabricating a salary period or expected wage, and replays after reopening", () => {
     const f = fixture(key); const c = f.compose(); const earned = c.workforce.approveEarnings(approve);
     const command = { requestId: "cash", employeeId: "worker", currency: "DZD" as const, amount: "25000", paymentDate: "2026-11-11T09:00:00.000Z", wageAllocations: [{ id: "allocation", source: { kind: "EARNING" as const, id: earned.id }, amount: "25000" }], advance: null, ...audit };
@@ -117,6 +146,32 @@ describe.each([["plain", ""], ["keyed", "527-cash-public-fixture-key"]])("actual
     expect(c.finance.remaining(earned.debtEntryId!)).toBe("35000.00");
     expect(c.cash.listCash("worker")).toEqual([]);
     expect(c.service.recordCash({ ...command, amount: "20000", wageAllocations: [command.wageAllocations[0]!] }).amount).toBe("20000.00");
+  });
+
+  it("rolls back opening, repayment and correction sources when the aggregate receipt fails", () => {
+    const f = fixture(key); const c = f.compose();
+    const openingCommand = { requestId: "opening-receipt-failure", employeeId: "worker", currency: "DZD" as const, review: { status: "REVIEWED" as const, wagesOwed: "0", advancesOwed: "1000" }, ...audit };
+    vi.spyOn(c.ledger, "saveAggregateCommand").mockImplementationOnce(() => { throw new Error("opening receipt failure"); });
+    expect(() => c.service.reviewOpening(openingCommand)).toThrow("opening receipt failure");
+    expect(c.cash.getEmployeeOpening("worker")).toBeNull();
+    expect(c.finance.listAccounts()).toEqual([]);
+    const opening = c.service.reviewOpening(openingCommand);
+    const repayCommand = { requestId: "repayment-receipt-failure", employeeId: "worker", currency: "DZD" as const, source: { kind: "OPENING_ADVANCE" as const, id: opening.id }, amount: "250", paymentDate: now, ...audit };
+    vi.spyOn(c.ledger, "saveAggregateCommand").mockImplementationOnce(() => { throw new Error("repayment receipt failure"); });
+    expect(() => c.service.repayAdvance(repayCommand)).toThrow("repayment receipt failure");
+    expect(c.cash.listSettlements("worker")).toEqual([]);
+    expect(c.finance.remaining(opening.advanceDebtEntryId!)).toBe("1000.00");
+    const settlement = c.service.repayAdvance(repayCommand);
+    expect(settlement.amount).toBe("250.00");
+    const earning = c.workforce.approveEarnings(approve);
+    const correctionCommand = { requestId: "correction-receipt-failure", employeeId: "worker", currency: "DZD" as const, earningId: earning.id, newAmount: "36000", reason: "Receipt retry", ...audit };
+    vi.spyOn(c.ledger, "saveAggregateCommand").mockImplementationOnce(() => { throw new Error("correction receipt failure"); });
+    expect(() => c.service.correctEarning(correctionCommand)).toThrow("correction receipt failure");
+    expect(c.cash.listCorrections("worker")).toEqual([]);
+    expect(c.finance.remaining(earning.debtEntryId!)).toBe("35000.00");
+    const correction = c.service.correctEarning(correctionCommand);
+    expect(correction.newAmount).toBe("36000.00");
+    expect(c.finance.remaining(earning.debtEntryId!)).toBe("36000.00");
   });
 
   it("rolls back source, wage payments, advances and child receipts if the aggregate receipt cannot persist", () => {

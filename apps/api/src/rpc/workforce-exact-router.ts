@@ -1,9 +1,10 @@
 import { implement, ORPCError } from "@orpc/server";
 import { z, ZodError } from "zod";
-import { exactWorkforceContract, exactSalaryMonthlyApprovalInputSchema, exactSalaryMonthlyApprovalResultSchema } from "@tuari/contracts";
+import { exactWorkforceContract, exactSalaryMonthlyApprovalInputSchema, exactSalaryMonthlyApprovalResultSchema, exactSalaryCashInputSchema, exactSalaryOpeningReviewInputSchema, exactSalaryAdvanceRepaymentInputSchema, exactSalaryCorrectionInputSchema, exactPayrollCashRecordSchema, exactPayrollOpeningRecordSchema, exactPayrollSettlementRecordSchema, exactPayrollCorrectionRecordSchema, exactPayrollLifecycleSchema } from "@tuari/contracts";
 import { ExactDebtError } from "../modules/company/exact-finance.service";
 import { FifoLockBusyError } from "../infrastructure/database/fifo-lock";
 import type { ExactWorkforceService } from "../modules/company/workforce-exact.service";
+import type { PayrollCashService } from "../modules/company/payroll-cash.service";
 import type { RpcContext } from "./context";
 import type { RpcMiddleware, MutationAuditContext } from "./rpc-middleware";
 
@@ -15,7 +16,7 @@ function resolveError(error: unknown): unknown {
 }
 
 /** Injectable exact-copy router only. The active numeric router does not import it. */
-export function createExactWorkforceRouter(service: ExactWorkforceService, middleware: RpcMiddleware) {
+export function createExactWorkforceRouter(service: ExactWorkforceService, middleware: RpcMiddleware, payroll: PayrollCashService) {
   const os = implement(exactWorkforceContract).$context<RpcContext>();
   const approve = middleware.mutationAudit(({ input, auditContext }: { context: RpcContext; input: z.output<typeof exactSalaryMonthlyApprovalInputSchema>; auditContext: MutationAuditContext }) => {
       // RPC validation derives fields. The command still accepts only explicit raw inputs.
@@ -26,7 +27,20 @@ export function createExactWorkforceRouter(service: ExactWorkforceService, middl
       });
       return result;
     }, resolveError);
+  const recordCash = middleware.mutationAudit(({ input, auditContext }: { context: RpcContext; input: z.output<typeof exactSalaryCashInputSchema>; auditContext: MutationAuditContext }) => payroll.recordCash({ ...input, ...auditContext }), resolveError);
+  const reviewOpening = middleware.mutationAudit(({ input, auditContext }: { context: RpcContext; input: z.output<typeof exactSalaryOpeningReviewInputSchema>; auditContext: MutationAuditContext }) => payroll.reviewOpening({ ...input, ...auditContext }), resolveError);
+  const repayAdvance = middleware.mutationAudit(({ input, auditContext }: { context: RpcContext; input: z.output<typeof exactSalaryAdvanceRepaymentInputSchema>; auditContext: MutationAuditContext }) => payroll.repayAdvance({ ...input, ...auditContext }), resolveError);
+  const correctEarning = middleware.mutationAudit(({ input, auditContext }: { context: RpcContext; input: z.output<typeof exactSalaryCorrectionInputSchema>; auditContext: MutationAuditContext }) => payroll.correctEarning({ ...input, ...auditContext }), resolveError);
   return os.router({
+    recordPayrollCash: os.recordPayrollCash.handler(async params => exactPayrollCashRecordSchema.parse(await recordCash(params))),
+    reviewPayrollOpening: os.reviewPayrollOpening.handler(async params => exactPayrollOpeningRecordSchema.parse(await reviewOpening(params))),
+    repayPayrollAdvance: os.repayPayrollAdvance.handler(async params => exactPayrollSettlementRecordSchema.parse(await repayAdvance(params))),
+    correctPayrollEarning: os.correctPayrollEarning.handler(async params => exactPayrollCorrectionRecordSchema.parse(await correctEarning(params))),
+    getEmployeePayrollLifecycle: os.getEmployeePayrollLifecycle.handler(middleware.queryAuth(async ({ input }) => {
+      const lifecycle = payroll.listEmployeeLifecycle(input.employeeId);
+      const advances = lifecycle.cash.flatMap(cash => cash.advance ? [{ id: cash.advance.id, cashId: cash.id, employeeId: cash.employeeId, currency: cash.currency, amount: cash.advance.amount, paymentDate: cash.paymentDate, debtAccountId: cash.advance.debtAccountId, debtEntryId: cash.advance.debtEntryId }] : []);
+      return exactPayrollLifecycleSchema.parse({ ...lifecycle, advances });
+    }, resolveError)),
     approveMonthlyEarnings: os.approveMonthlyEarnings.handler(async params => exactSalaryMonthlyApprovalResultSchema.parse(await approve(params))),
     listEmployeeEarnings: os.listEmployeeEarnings.handler(middleware.queryAuth(async ({ input }) => service.listEmployeeEarnings(input.employeeId), resolveError)),
     getProjectSalaryCost: os.getProjectSalaryCost.handler(middleware.queryAuth(async ({ input }) => service.getProjectSalaryCost(input.projectId), resolveError)),
