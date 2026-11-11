@@ -28,7 +28,7 @@ describe("inert foundation inventory", () => {
     expect(rows.sort()).toEqual(physical.sort());
     expect(new Set(rows).size).toBe(27);
   });
-  it("limits exact imports to inert storage, opt-in shared UI and isolated debt/expense/commerce consumers", () => {
+  it("limits exact imports to inert storage, opt-in shared UI and isolated debt/expense/commerce/payroll consumers", () => {
     const imports: string[] = [];
     for (const dir of ["apps/api/src", "apps/web/src", "packages/contracts/src"]) {
       for (const path of sources(join(root, dir))) {
@@ -40,9 +40,12 @@ describe("inert foundation inventory", () => {
     }
     expect(imports.sort()).toEqual([
       "apps/api/src/infrastructure/database/exact-money-storage.ts",
+      "apps/api/src/modules/company/adapters/exact-workforce-storage.ts",
       "apps/api/src/modules/company/adapters/inmemory-exact-finance.repository.ts",
       "apps/api/src/modules/company/adapters/sqlite-exact-finance.repository.ts",
+      "apps/api/src/modules/company/adapters/sqlite-exact-workforce.repository.ts",
       "apps/api/src/modules/company/exact-finance.service.ts",
+      "apps/api/src/modules/company/workforce-exact.service.ts",
       "apps/api/src/modules/expenses/adapters/sqlite-exact-expenses.repository.ts",
       "apps/api/src/modules/expenses/expense-cost-inputs.ts",
       "apps/api/src/modules/expenses/expenses.exact.ts",
@@ -51,6 +54,7 @@ describe("inert foundation inventory", () => {
       "apps/api/src/modules/invoice/adapters/sqlite-exact-invoice.repository.ts",
       "apps/api/src/modules/invoice/invoice-exact.service.ts",
       "apps/web/src/components/ui/currency-amount-input.tsx",
+      "apps/web/src/features/employees/exact-salary-reference-value.tsx",
       "apps/web/src/features/inventory/inventory-exact-movement-form.tsx",
       "apps/web/src/features/inventory/inventory-exact-page.tsx",
       "apps/web/src/features/inventory/inventory-exact-purchase-form.tsx",
@@ -62,6 +66,9 @@ describe("inert foundation inventory", () => {
       "packages/contracts/src/index.ts",
       "packages/contracts/src/inventory-exact.ts",
       "packages/contracts/src/invoice-exact.ts",
+      "packages/contracts/src/workforce-exact-contract.ts",
+      "packages/contracts/src/workforce-exact.ts",
+      "packages/contracts/src/workforce-monthly-exact.ts",
     ]);
   });
 });

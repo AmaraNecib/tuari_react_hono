@@ -50,6 +50,41 @@ describe("opt-in exact workforce aggregate", () => {
     } finally { clone.mockRestore(); }
   });
 
+  it("reads a 500-earning account history once and keeps target-specific payment remainders", () => {
+    const { ledger, finance, repository, service } = setup();
+    const first = service.approveEarnings({ ...approval, approvedAmount: "1", unallocatedAmount: "1", segments: [] });
+    const original = ledger.getEntry(first.debtEntryId!)!;
+    for (let i = 1; i < 500; i++) {
+      const id = `history-${i}`;
+      const entryId = `entry-${i}`;
+      ledger.saveEntry({ ...original, id: entryId, producerId: id, postingSequence: i + 1, balanceAfterDzd: `${i + 1}.00` });
+      repository.saveEarning({ ...first, id, debtEntryId: entryId });
+    }
+    ledger.saveAccount({ ...ledger.getAccount(first.debtAccountId!)!, currentBalance: "500.00" });
+    // Trusted fixture payment, not a payroll cash command.
+    finance.forProducer({ type: "PAYROLL_EARNINGS", id: first.id }).recordPayment({ requestId: "history-payment", debtEntryId: first.debtEntryId!, amountDzd: "0.25", currency: "DZD" });
+    const actualRead = ledger.listEntries.bind(ledger);
+    let reads = 0;
+    const history = vi.spyOn(ledger, "listEntries").mockImplementation(id => {
+      if (++reads > 1) throw new Error("Repeated account history read");
+      return actualRead(id);
+    });
+    const rows = service.listEmployeeEarnings("worker");
+    expect(rows).toHaveLength(500);
+    expect(rows[0]).toEqual({ earning: first, remainingAmount: "0.75" });
+    expect(rows.slice(1).every(row => row.remainingAmount === "1.00")).toBe(true);
+    expect(history).toHaveBeenCalledTimes(1);
+    expect(history).toHaveBeenCalledWith(first.debtAccountId);
+  });
+
+  it.each(["voided", "absent"])("does not expose a %s original as an earning remainder", kind => {
+    const { finance, repository, service } = setup();
+    const first = service.approveEarnings(approval);
+    if (kind === "voided") finance.forProducer({ type: "PAYROLL_EARNINGS", id: first.id }).voidEntry({ requestId: "fixture-void", entryId: first.debtEntryId!, currency: "DZD", voidReason: "fixture" });
+    else repository.saveEarning({ ...first, id: "missing-original", debtEntryId: "absent" });
+    expect(() => service.listEmployeeEarnings("worker")).toThrow("Live debt entry not found");
+  });
+
   it("keeps nested copy-on-write source rollback and returned-value isolation", () => {
     const { repository, service } = setup();
     const original = service.approveEarnings(approval);

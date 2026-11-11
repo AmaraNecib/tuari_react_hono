@@ -25,7 +25,20 @@ export class ExactWorkforceService {
       if (!this.repository.employeeExists(employeeId)) throw new ExactDebtError("Employee not found", "NOT_FOUND");
       const rows = this.repository.listEarnings(employeeId);
       if (rows.length > 10000) throw new ExactDebtError("Payroll read resource limit exceeded");
-      return rows.map(earning => ({ earning, remainingAmount: earning.debtEntryId ? this.finance.remaining(earning.debtEntryId) : "0.00" }));
+      const accounts = new Map<string, Map<string, string>>();
+      return rows.map(earning => {
+        if (!earning.debtEntryId) return { earning, remainingAmount: "0.00" };
+        if (!earning.debtAccountId) throw new ExactDebtError("Live debt entry not found", "NOT_FOUND");
+        let remaining = accounts.get(earning.debtAccountId);
+        if (!remaining) {
+          const detail = this.finance.detail(earning.debtAccountId);
+          remaining = new Map(detail.entries.filter(entry => entry.remainingDzd !== null && entry.signedAmountDzd !== "0.00").map(entry => [entry.id, entry.remainingDzd!]));
+          accounts.set(earning.debtAccountId, remaining);
+        }
+        const remainingAmount = remaining.get(earning.debtEntryId);
+        if (remainingAmount === undefined) throw new ExactDebtError("Live debt entry not found", "NOT_FOUND");
+        return { earning, remainingAmount };
+      });
     });
   }
 

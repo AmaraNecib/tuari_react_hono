@@ -139,6 +139,27 @@ describe.each([["plain", ""], ["keyed", "527-public-synthetic-key"]])("native ex
     expect(reopened.repository.listEarnings("absent")).toEqual([]);
   });
 
+  it("shares one native account detail across earning remainders after payments, correction and reopen", () => {
+    const fixture = setup(key);
+    const { service, finance, ledger } = fixture.compose();
+    const input = { ...approval, approvedAmount: "35000", unallocatedAmount: "35000", segments: [] };
+    const first = service.approveEarnings(input);
+    const second = service.approveEarnings({ ...input, requestId: "second-history" });
+    expect(second.debtAccountId).toBe(first.debtAccountId);
+    // Existing trusted ledger capabilities test read semantics, not payroll lifecycle commands.
+    finance.forProducer({ type: "PAYROLL_EARNINGS", id: first.id }).recordPayment({ requestId: "fixture-history-payment", debtEntryId: first.debtEntryId!, amountDzd: "25000", currency: "DZD" });
+    finance.forProducer({ type: "PAYROLL_EARNINGS", id: second.id }).correctEntry({ requestId: "fixture-history-correction", entryId: second.debtEntryId!, amountDzd: "40000", currency: "DZD", reason: "fixture" });
+    const history = vi.spyOn(ledger, "listEntries");
+    const rows = service.listEmployeeEarnings("worker");
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(expect.arrayContaining([{ earning: first, remainingAmount: "10000.00" }, { earning: second, remainingAmount: "40000.00" }]));
+    expect(history).toHaveBeenCalledTimes(1);
+    const reopened = fixture.reopen();
+    const reopenedHistory = vi.spyOn(reopened.ledger, "listEntries");
+    expect(reopened.service.listEmployeeEarnings("worker")).toEqual(rows);
+    expect(reopenedHistory).toHaveBeenCalledTimes(1);
+  });
+
   it.each(["employee", "project"] as const)("bounds combined %s source and segment rows before hydration", target => {
     const fixture = setup(key);
     const { service, repository } = fixture.compose();

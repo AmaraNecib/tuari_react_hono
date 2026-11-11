@@ -113,7 +113,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
             <option value="EQUAL">{t("salaryMonthly.equal")}</option><option value="WORK_DAYS">{t("salaryMonthly.workDays")}</option><option value="CALENDAR_DAYS">{t("salaryMonthly.calendarDays")}</option>
           </select></label>
         </div>
-        {basis === "WORK_DAYS" && rows.map((row, index) => <label key={row.id} className="block space-y-1 text-sm">{t("salaryMonthly.days", { index: index + 1 })}<Input className="min-h-11" type="number" min={1} step={1} dir="ltr" value={row.days} onChange={event => change(rows.map((item, at) => at === index ? { ...item, days: event.target.value } : item))} /></label>)}
+        {basis === "WORK_DAYS" && rows.map((row, index) => <label key={row.id} className="block space-y-1 text-sm">{t("salaryMonthly.days", { index: index + 1 })}<Input className="min-h-11" type="text" inputMode="numeric" dir="ltr" value={row.days} onChange={event => change(rows.map((item, at) => at === index ? { ...item, days: event.target.value } : item))} /></label>)}
         {basis === "CALENDAR_DAYS" && <><div className="grid gap-3 sm:grid-cols-2">
           <label className="space-y-1 text-sm">{t("salaryMonthly.periodStart")}<Input className="min-h-11" type="date" value={periodStart} onChange={event => { setPeriodStart(event.target.value); invalidateSuggestion() }} /></label>
           <label className="space-y-1 text-sm">{t("salaryMonthly.periodEnd")}<Input className="min-h-11" type="date" value={periodEnd} onChange={event => { setPeriodEnd(event.target.value); invalidateSuggestion() }} /></label>

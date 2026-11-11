@@ -13,6 +13,23 @@ afterEach(cleanup)
 beforeEach(() => setMoneyGrouping(false))
 
 describe("approved month-first salary editor", () => {
+  it.each(["0", "1.5"])("does not let unused work-day helper value %s block native approval submission", async days => {
+    const onApprove = vi.fn()
+    render(<ExactMonthlySalaryEditor defaultMonth="2026-10" initialMonths={months} onApprove={onApprove} />)
+    fireEvent.click(screen.getByText(i18n.t("salaryMonthly.distribute")))
+    fireEvent.change(screen.getByRole("combobox", { name: i18n.t("salaryMonthly.basis") }), { target: { value: "WORK_DAYS" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("salaryMonthly.days", { index: 1 })), { target: { value: days } })
+    fireEvent.change(screen.getByLabelText(i18n.t("salaryMonthly.days", { index: 2 })), { target: { value: "10" } })
+    const form = screen.getByRole("form", { name: i18n.t("salaryMonthly.title") }) as HTMLFormElement
+    expect(form.checkValidity()).toBe(true)
+    fireEvent.change(screen.getByLabelText(i18n.t("salaryMonthly.target")), { target: { value: "30000" } })
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("salaryMonthly.calculate") }))
+    expect(screen.getByRole("alert").textContent).toBe(i18n.t("salaryMonthly.suggestionInvalid"))
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(i18n.t("salaryMonthly.approve")) }))
+    await waitFor(() => expect(onApprove).toHaveBeenCalledTimes(1))
+    expect(onApprove.mock.calls[0]![0]).toEqual({ currency: "DZD", months, totalAmount: "30000.00" })
+  })
+
   it("resolves all visible and accessible editor text through overridden resources", async () => {
     const original = { ...ar.translation.salaryMonthly }
     const originalCommon = { currency: i18n.t("common.currency"), loading: i18n.t("common.loading") }
