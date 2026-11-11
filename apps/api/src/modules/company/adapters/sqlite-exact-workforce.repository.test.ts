@@ -139,6 +139,22 @@ describe.each([["plain", ""], ["keyed", "527-public-synthetic-key"]])("native ex
     expect(reopened.repository.listEarnings("absent")).toEqual([]);
   });
 
+  it.each(["employee", "project"] as const)("bounds combined %s source and segment rows before hydration", target => {
+    const fixture = setup(key);
+    const { service, repository } = fixture.compose();
+    const earning = service.approveEarnings({ ...approval, requestId: "budget-zero", approvedAmount: "0", unallocatedAmount: "0", segments: [] });
+    fixture.db.prepare("WITH RECURSIVE n(value) AS (SELECT 1 UNION ALL SELECT value+1 FROM n WHERE value<9999) INSERT INTO employee_salary_earning_segment(earning_id,id,ordinal,project_id,amount_minor,days) SELECT ?,'budget-'||value,value-1,'A',0,NULL FROM n").run(earning.id);
+    const hydrate = vi.spyOn(repository, "getEarning").mockImplementation(() => { throw new Error("hydration boundary reached"); });
+    const read = () => target === "employee" ? service.listEmployeeEarnings("worker") : service.getProjectSalaryCost("A");
+    // One source plus 9999 segments fits; one additional segment must fail before this spy.
+    expect(read).toThrow("hydration boundary reached");
+    fixture.db.prepare("INSERT INTO employee_salary_earning_segment(earning_id,id,ordinal,project_id,amount_minor,days) VALUES (?,'budget-last',9999,'A',0,NULL)").run(earning.id);
+    hydrate.mockClear();
+    expect(read).toThrow("Payroll read resource limit exceeded");
+    expect(hydrate).not.toHaveBeenCalled();
+    hydrate.mockRestore();
+  });
+
   it("projects approved project allocations with wider exact totals across workers, not ledger balances", () => {
     const fixture = setup(key);
     const { service } = fixture.compose();

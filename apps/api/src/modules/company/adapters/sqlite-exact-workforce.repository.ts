@@ -4,7 +4,8 @@ import { requireExactMoneySchema } from "../../../infrastructure/database/money-
 import { exactFinanceJson } from "../exact-finance-json";
 import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
-import type { ExactSalaryEarning, ExactWorkforceRepository } from "../workforce-exact.repository";
+import { EXACT_WORKFORCE_READ_RECORD_LIMIT, type ExactSalaryEarning, type ExactWorkforceRepository } from "../workforce-exact.repository";
+import { ExactDebtError } from "../exact-finance.service";
 
 type Metadata = Pick<ExactSalaryEarning, "id" | "employeeId" | "currency" | "periodStart" | "periodEnd" | "debtAccountId" | "debtEntryId" | "actorUserId" | "actorLabel" | "transactionId" | "createdAt">;
 const fields = {
@@ -72,15 +73,28 @@ export class SqliteExactWorkforceRepository implements ExactWorkforceRepository 
       return { ...approved, ...row };
     });
   }
+  private requireReadBudget(predicate: string, id: string): void {
+    // Count only bounded metadata, including unrelated segments that source reconciliation will read.
+    const row = this.db.prepare(`WITH selected AS MATERIALIZED (
+      SELECT e.id FROM employee_salary_earning e WHERE ${predicate} LIMIT ?
+    ) SELECT count(*) AS count FROM (
+      SELECT id FROM selected UNION ALL
+      SELECT s.id FROM selected e JOIN employee_salary_earning_segment s ON s.earning_id=e.id LIMIT ?
+    )`).get(id, EXACT_WORKFORCE_READ_RECORD_LIMIT + 1, EXACT_WORKFORCE_READ_RECORD_LIMIT + 1) as { count: number };
+    if (row.count > EXACT_WORKFORCE_READ_RECORD_LIMIT) throw new ExactDebtError("Payroll read resource limit exceeded");
+  }
   listEarnings(employeeId: string): ExactSalaryEarning[] {
     return this.withTransaction(() => {
-      const rows = this.db.prepare("SELECT id FROM employee_salary_earning WHERE employee_id=? ORDER BY created_at,id").all(employeeId) as { id: string }[];
+      this.requireReadBudget("e.employee_id=?", employeeId);
+      const rows = this.db.prepare("SELECT id FROM employee_salary_earning WHERE employee_id=? ORDER BY created_at,id LIMIT ?").all(employeeId, EXACT_WORKFORCE_READ_RECORD_LIMIT) as { id: string }[];
       return rows.map(row => this.getEarning(row.id)!);
     });
   }
   listProjectEarnings(projectId: string): ExactSalaryEarning[] {
     return this.withTransaction(() => {
-      const rows = this.db.prepare("SELECT id FROM employee_salary_earning e WHERE EXISTS (SELECT 1 FROM employee_salary_earning_segment s WHERE s.earning_id=e.id AND s.project_id=?) ORDER BY created_at,id").all(projectId) as { id: string }[];
+      const predicate = "EXISTS (SELECT 1 FROM employee_salary_earning_segment s WHERE s.earning_id=e.id AND s.project_id=?)";
+      this.requireReadBudget(predicate, projectId);
+      const rows = this.db.prepare(`SELECT id FROM employee_salary_earning e WHERE ${predicate} ORDER BY created_at,id LIMIT ?`).all(projectId, EXACT_WORKFORCE_READ_RECORD_LIMIT) as { id: string }[];
       return rows.map(row => this.getEarning(row.id)!);
     });
   }

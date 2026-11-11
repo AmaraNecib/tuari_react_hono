@@ -9,11 +9,14 @@ export type ExactSalaryEarning = Omit<ExactSalaryApprovalInput, "requestId"> & {
   createdAt: string;
 } & Required<ExactDebtAudit>;
 
+export const EXACT_WORKFORCE_READ_RECORD_LIMIT = 10000;
+
 /** Payroll source records enlist with, but never duplicate, the authoritative ledger. */
 export interface ExactWorkforceRepository extends ExactTransactionParticipant {
   employeeExists(id: string): boolean;
   projectExists(id: string): boolean;
   getEarning(id: string): ExactSalaryEarning | null;
+  /** Refuse before hydration when selected sources plus all their segments exceed the read budget. */
   listEarnings(employeeId: string): ExactSalaryEarning[];
   listProjectEarnings(projectId: string): ExactSalaryEarning[];
   saveEarning(earning: ExactSalaryEarning): void;

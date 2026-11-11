@@ -39,6 +39,36 @@ describe("opt-in exact workforce aggregate", () => {
     expect(entryWrites).not.toHaveBeenCalled();
   });
 
+  it.each(["employee", "project"] as const)("refuses oversized in-memory %s histories before cloning segments or transaction snapshots", target => {
+    const { repository, service } = setup();
+    const { requestId: _requestId, ...approved } = approval;
+    repository.saveEarning({ ...approved, id: "budget", approvedAmount: "0.00", unallocatedAmount: "0.00", debtAccountId: null, debtEntryId: null, createdAt: "2026-11-11T00:00:00.000Z", segments: Array.from({ length: 10000 }, (_, i) => ({ id: `budget-${i}`, projectId: "A", amount: "0.00" })) });
+    const clone = vi.spyOn(globalThis, "structuredClone").mockImplementation(() => { throw new Error("cloned before resource check"); });
+    try {
+      expect(() => target === "employee" ? service.listEmployeeEarnings("worker") : service.getProjectSalaryCost("A")).toThrow("Payroll read resource limit exceeded");
+      expect(clone).not.toHaveBeenCalled();
+    } finally { clone.mockRestore(); }
+  });
+
+  it("keeps nested copy-on-write source rollback and returned-value isolation", () => {
+    const { repository, service } = setup();
+    const original = service.approveEarnings(approval);
+    expect(() => repository.withTransaction(() => {
+      repository.saveEarning({ ...original, id: "outer" });
+      expect(() => repository.withTransaction(() => {
+        repository.saveEarning({ ...original, id: "inner" });
+        throw new Error("inner rollback");
+      })).toThrow("inner rollback");
+      expect(repository.getEarning("outer")).not.toBeNull();
+      expect(repository.getEarning("inner")).toBeNull();
+      throw new Error("outer rollback");
+    })).toThrow("outer rollback");
+    expect(repository.listEarnings("worker")).toEqual([original]);
+    const read = repository.getEarning(original.id)!;
+    read.segments[0]!.amount = "1.00";
+    expect(repository.getEarning(original.id)).toEqual(original);
+  });
+
   it("rolls both source rows and ledger back when aggregate receipt persistence fails, then retries once", () => {
     const { service, ledger, finance, repository } = setup();
     const receipt = vi.spyOn(ledger, "saveAggregateCommand").mockImplementationOnce(() => { throw new Error("receipt failure"); });
