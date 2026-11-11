@@ -24,7 +24,6 @@ export class ExactWorkforceService {
     return this.snapshot(() => {
       if (!this.repository.employeeExists(employeeId)) throw new ExactDebtError("Employee not found", "NOT_FOUND");
       const rows = this.repository.listEarnings(employeeId);
-      if (rows.length > 10000) throw new ExactDebtError("Payroll read resource limit exceeded");
       const accounts = new Map<string, Map<string, string>>();
       return rows.map(earning => {
         if (!earning.debtEntryId) return { earning, remainingAmount: "0.00" };
@@ -48,7 +47,6 @@ export class ExactWorkforceService {
       const segments = this.repository.listProjectEarnings(projectId).flatMap(earning => earning.segments.filter(segment => segment.projectId === projectId).map(segment => ({
         earningId: earning.id, employeeId: earning.employeeId, periodStart: earning.periodStart, periodEnd: earning.periodEnd, segment,
       })));
-      if (segments.length > 10000) throw new ExactDebtError("Payroll read resource limit exceeded");
       return { projectId, currency: "DZD" as const, totalAmount: sumMoney(segments.map(row => Money.parse(row.segment.amount))), segments };
     });
   }

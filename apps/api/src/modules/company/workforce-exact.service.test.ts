@@ -37,6 +37,9 @@ describe("opt-in exact workforce aggregate", () => {
     expect(finance.listAccounts()).toEqual([]);
     expect(accountWrites).not.toHaveBeenCalled();
     expect(entryWrites).not.toHaveBeenCalled();
+    const detail = vi.spyOn(finance, "detail");
+    expect(service.listEmployeeEarnings("worker")).toEqual([{ earning: result, remainingAmount: "0.00" }]);
+    expect(detail).not.toHaveBeenCalled();
   });
 
   it.each(["employee", "project"] as const)("refuses oversized in-memory %s histories before cloning segments or transaction snapshots", target => {
@@ -77,12 +80,24 @@ describe("opt-in exact workforce aggregate", () => {
     expect(history).toHaveBeenCalledWith(first.debtAccountId);
   });
 
-  it.each(["voided", "absent"])("does not expose a %s original as an earning remainder", kind => {
+  it.each(["voided", "absent", "unlinked account"])("does not expose a %s original as an earning remainder", kind => {
     const { finance, repository, service } = setup();
     const first = service.approveEarnings(approval);
     if (kind === "voided") finance.forProducer({ type: "PAYROLL_EARNINGS", id: first.id }).voidEntry({ requestId: "fixture-void", entryId: first.debtEntryId!, currency: "DZD", voidReason: "fixture" });
-    else repository.saveEarning({ ...first, id: "missing-original", debtEntryId: "absent" });
+    // The memory adapter accepts these port-shaped records; native storage rejects broken links before persistence.
+    else repository.saveEarning({ ...first, id: "missing-original", ...(kind === "absent" ? { debtEntryId: "absent" } : { debtAccountId: null }) });
     expect(() => service.listEmployeeEarnings("worker")).toThrow("Live debt entry not found");
+  });
+
+  it("normalizes omitted audit metadata to null in both the earning and authoritative ledger", () => {
+    const { service, finance } = setup();
+    const { actorUserId: _user, actorLabel: _label, transactionId: _transaction, ...input } = approval;
+    const result = service.approveEarnings(input);
+    const audit = { actorUserId: null, actorLabel: null, transactionId: null };
+    expect(result).toMatchObject(audit);
+    const detail = finance.detail(result.debtAccountId!);
+    expect(detail.account).toMatchObject(audit);
+    expect(detail.entries[0]).toMatchObject(audit);
   });
 
   it("keeps nested copy-on-write source rollback and returned-value isolation", () => {
@@ -135,7 +150,10 @@ describe("opt-in exact workforce aggregate", () => {
       { connection: finance.transactionIdentity.connection, lock: {} },
     ]) {
       const repository = new InMemoryExactWorkforceRepository(identity, { workerIds: ["worker"], projectIds: ["A", "B"] });
-      expect(() => new ExactWorkforceService(repository, finance, dependencies).approveEarnings(approval)).toThrow(/same connection and shared FIFO/);
+      const service = new ExactWorkforceService(repository, finance, dependencies);
+      expect(() => service.approveEarnings(approval)).toThrow(/same connection and shared FIFO/);
+      expect(() => service.listEmployeeEarnings("worker")).toThrow(/same connection and shared FIFO/);
+      expect(() => service.getProjectSalaryCost("A")).toThrow(/same connection and shared FIFO/);
       expect(repository.listEarnings("worker")).toEqual([]);
     }
     expect(finance.listAccounts()).toEqual([]);

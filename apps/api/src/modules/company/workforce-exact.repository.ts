@@ -16,8 +16,9 @@ export interface ExactWorkforceRepository extends ExactTransactionParticipant {
   employeeExists(id: string): boolean;
   projectExists(id: string): boolean;
   getEarning(id: string): ExactSalaryEarning | null;
-  /** Refuse before hydration when selected sources plus all their segments exceed the read budget. */
+  /** Refuse before hydration when selected sources plus all their segments exceed EXACT_WORKFORCE_READ_RECORD_LIMIT. */
   listEarnings(employeeId: string): ExactSalaryEarning[];
+  /** Same combined source/all-segment limit, including segments belonging to other projects. */
   listProjectEarnings(projectId: string): ExactSalaryEarning[];
   saveEarning(earning: ExactSalaryEarning): void;
 }
