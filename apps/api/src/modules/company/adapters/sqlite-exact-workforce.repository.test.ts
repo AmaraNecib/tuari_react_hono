@@ -28,6 +28,15 @@ const approval = {
   actorUserId: "operator", actorLabel: "Operator", transactionId: "audit-1",
 };
 
+const monthlyApproval = {
+  requestId: "approve-months", employeeId: "worker", currency: "DZD" as const,
+  months: [
+    { id: "oct", month: "2026-10", amount: "12000", unallocatedAmount: "2000", segments: [{ id: "A", projectId: "A", amount: "10000", days: 12 }] },
+    { id: "nov", month: "2026-11", amount: "18000", unallocatedAmount: "18000", segments: [] },
+  ],
+  actorUserId: "operator", actorLabel: "Operator", transactionId: "monthly-audit",
+};
+
 function setup(key: string) {
   const path = join(mkdtempSync(join(tmpdir(), "tuari-527-earnings-")), "fixture.sqlite");
   let db = createDatabaseConnection(path, key);
@@ -51,6 +60,66 @@ function setup(key: string) {
 }
 
 describe.each([["plain", ""], ["keyed", "527-public-synthetic-key"]])("native exact payroll approval %s", (_kind, key) => {
+  it("approves selected months atomically with independent amounts and obligations, then replays across reopen", () => {
+    const fixture = setup(key);
+    const { service, repository } = fixture.compose();
+    const result = service.approveMonthlyEarnings(monthlyApproval);
+    expect(result).toMatchObject({ currency: "DZD", totalAmount: "30000.00", months: [
+      { id: "oct", month: "2026-10", earning: { approvedAmount: "12000.00", unallocatedAmount: "2000.00", periodStart: "2026-10-01", periodEnd: "2026-10-31", actorUserId: "operator" } },
+      { id: "nov", month: "2026-11", earning: { approvedAmount: "18000.00", unallocatedAmount: "18000.00", periodStart: "2026-11-01", periodEnd: "2026-11-30", actorUserId: "operator" } },
+    ] });
+    expect(repository.listEarnings("worker")).toHaveLength(2);
+    expect(result.months[0]!.earning.debtEntryId).not.toBe(result.months[1]!.earning.debtEntryId);
+    const reopened = fixture.reopen();
+    expect(reopened.service.approveMonthlyEarnings({ ...monthlyApproval, transactionId: "retry-audit" })).toEqual(result);
+    for (const row of result.months) {
+      expect(reopened.repository.getEarning(row.earning.id)).toEqual(row.earning);
+      expect(reopened.finance.remaining(row.earning.debtEntryId!)).toBe(row.earning.approvedAmount);
+    }
+    expect(() => reopened.service.approveMonthlyEarnings({ ...monthlyApproval, months: monthlyApproval.months.map(row => ({ ...row, amount: "10000", unallocatedAmount: row.id === "oct" ? "0" : "10000" })) })).toThrow(/replay conflict/);
+    const second = reopened.service.approveMonthlyEarnings({ ...monthlyApproval, requestId: "separate-approval-same-months" });
+    expect(second.months[0]!.earning.id).not.toBe(result.months[0]!.earning.id);
+    expect(reopened.repository.listEarnings("worker")).toHaveLength(4);
+    expect(reopened.finance.getAccount(result.months[0]!.earning.debtAccountId!).currentBalance).toBe("60000.00");
+  });
+
+  it("rolls every month and receipt back when a later month references a missing project", () => {
+    const fixture = setup(key);
+    const { service, repository, finance } = fixture.compose();
+    expect(() => service.approveMonthlyEarnings({ ...monthlyApproval, months: [monthlyApproval.months[0]!, { ...monthlyApproval.months[1]!, unallocatedAmount: "0", segments: [{ id: "absent", projectId: "absent", amount: "18000", days: 1 }] }] })).toThrow(/Project not found/);
+    expect(repository.listEarnings("worker")).toEqual([]);
+    expect(finance.listAccounts()).toEqual([]);
+    for (const table of ["employee_salary_earning_segment", "debt_entry", "debt_command", "exact_finance_command"]) expect(fixture.db.prepare(`SELECT count(*) AS count FROM ${table}`).get()).toEqual({ count: 0 });
+    expect(service.approveMonthlyEarnings(monthlyApproval).totalAmount).toBe("30000.00");
+  });
+
+  it("rolls complete monthly source and nested receipts back when the outer monthly receipt fails", () => {
+    const fixture = setup(key);
+    const { service, ledger, repository, finance } = fixture.compose();
+    const save = ledger.saveAggregateCommand.bind(ledger);
+    let calls = 0;
+    vi.spyOn(ledger, "saveAggregateCommand").mockImplementation(command => {
+      calls++;
+      if (calls === 3) throw new Error("monthly receipt failure");
+      save(command);
+    });
+    expect(() => service.approveMonthlyEarnings(monthlyApproval)).toThrow("monthly receipt failure");
+    expect(calls).toBe(3);
+    expect(repository.listEarnings("worker")).toEqual([]);
+    expect(finance.listAccounts()).toEqual([]);
+    for (const table of ["employee_salary_earning_segment", "debt_entry", "debt_command", "exact_finance_command"]) expect(fixture.db.prepare(`SELECT count(*) AS count FROM ${table}`).get()).toEqual({ count: 0 });
+    expect(fixture.reopen().service.approveMonthlyEarnings(monthlyApproval).totalAmount).toBe("30000.00");
+  });
+
+  it("rolls the batch back rather than narrowing a wider derived total into an overflowing ledger balance", () => {
+    const fixture = setup(key);
+    const { service, repository, finance } = fixture.compose();
+    expect(() => service.approveMonthlyEarnings({ ...monthlyApproval, months: monthlyApproval.months.map(row => ({ ...row, amount: "92233720368547758.07", unallocatedAmount: "92233720368547758.07", segments: [] })) })).toThrow(/reversal-safe int64 bounds/);
+    expect(repository.listEarnings("worker")).toEqual([]);
+    expect(finance.listAccounts()).toEqual([]);
+    expect(fixture.db.prepare("SELECT count(*) AS count FROM exact_finance_command").get()).toEqual({ count: 0 });
+  });
+
   it("preserves large exact wages, A/B/A ordering, optional days and shared durable receipt across reopen", () => {
     const fixture = setup(key);
     const { service, repository } = fixture.compose();

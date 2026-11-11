@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { entityIdSchema } from "./core";
 import { Money, allocateMoney, sumMoney } from "./exact-money";
-import { exactSalaryAmountSchema, exactSalaryDaysSchema, exactSalaryApprovalInputSchema } from "./workforce-exact";
+import { exactSalaryAmountSchema, exactSalaryDaysSchema, exactSalaryApprovalInputSchema, exactSalarySegmentSchema } from "./workforce-exact";
 
 export const exactSalaryMonthSchema = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Expected an ISO earning month");
 export const exactSalaryMonthAmountSchema = z.object({
@@ -29,6 +29,40 @@ export const exactSalaryMonthlyAmountsSchema = z.object({
 }));
 export type ExactSalaryMonthAmount = z.infer<typeof exactSalaryMonthAmountSchema>;
 export type ExactSalaryMonthlyAmounts = z.infer<typeof exactSalaryMonthlyAmountsSchema>;
+
+function coveredMonth(month: string) {
+  const last = new Date(`${month}-01T00:00:00.000Z`);
+  last.setUTCMonth(last.getUTCMonth() + 1, 0);
+  return { periodStart: `${month}-01`, periodEnd: last.toISOString().slice(0, 10) };
+}
+
+/** Explicit per-month allocations become independent originals in one atomic command. */
+export const exactSalaryMonthlyApprovalInputSchema = z.object({
+  requestId: entityIdSchema,
+  employeeId: entityIdSchema,
+  currency: z.literal("DZD"),
+  months: z.array(exactSalaryMonthAmountSchema.extend({
+    unallocatedAmount: exactSalaryAmountSchema,
+    segments: z.array(exactSalarySegmentSchema).max(10000),
+  })).min(1).max(10000),
+}).strict().superRefine((value, ctx) => {
+  const amounts = exactSalaryMonthlyAmountsSchema.safeParse({ currency: value.currency, months: value.months.map(({ id, month, amount }) => ({ id, month, amount })) });
+  if (!amounts.success) for (const issue of amounts.error.issues) ctx.addIssue({ ...issue });
+  value.months.forEach((row, index) => {
+    // Invalid month syntax may still reach a refinement; the field error is sufficient.
+    if (!exactSalaryMonthSchema.safeParse(row.month).success) return;
+    const approval = exactSalaryApprovalInputSchema.safeParse({
+      requestId: value.requestId, employeeId: value.employeeId, currency: value.currency,
+      ...coveredMonth(row.month), approvedAmount: row.amount, unallocatedAmount: row.unallocatedAmount, segments: row.segments,
+    });
+    if (!approval.success) for (const issue of approval.error.issues) ctx.addIssue({ ...issue, path: ["months", index, ...issue.path.map(key => key === "approvedAmount" ? "amount" : key)] });
+  });
+}).transform(value => ({
+  ...value,
+  totalAmount: sumMoney(value.months.map(row => Money.parse(row.amount))),
+  months: value.months.map(row => ({ ...row, ...coveredMonth(row.month) })),
+}));
+export type ExactSalaryMonthlyApprovalInput = z.input<typeof exactSalaryMonthlyApprovalInputSchema>;
 
 const monthSuggestionSchema = z.object({
   currency: z.literal("DZD"),

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { Money, exactSalaryApprovalInputSchema, type ExactSalaryApprovalInput } from "@tuari/contracts";
+import { Money, exactSalaryApprovalInputSchema, exactSalaryMonthlyApprovalInputSchema, type ExactSalaryApprovalInput, type ExactSalaryMonthlyApprovalInput } from "@tuari/contracts";
 import { ExactFinanceService, ExactDebtError, type ExactDebtAudit } from "./exact-finance.service";
 import type { ExactSalaryEarning, ExactWorkforceRepository } from "./workforce-exact.repository";
 
@@ -11,6 +11,26 @@ const auditOf = (value: ExactDebtAudit): Required<ExactDebtAudit> => ({
 /** Opt-in payroll composition. Source and ledger writes share the merged aggregate receipt. */
 export class ExactWorkforceService {
   constructor(private readonly repository: ExactWorkforceRepository, private readonly finance: ExactFinanceService, private readonly dependencies: { id(): string; now(): string }) {}
+
+  approveMonthlyEarnings(raw: ExactSalaryMonthlyApprovalInput & ExactDebtAudit) {
+    const { actorUserId, actorLabel, transactionId, ...domain } = raw;
+    const input = exactSalaryMonthlyApprovalInputSchema.parse(domain);
+    const audit = auditOf({ actorUserId, actorLabel, transactionId });
+    const owner = { type: "PAYROLL_EARNINGS" as const, id: request(input.requestId, "monthly-approval") };
+    return this.finance.runAggregate({ requestId: input.requestId, producer: owner, intent: { kind: "approve-monthly-earnings", input }, ...audit }, this.repository, () => ({
+      currency: input.currency,
+      totalAmount: input.totalAmount,
+      months: input.months.map(row => ({
+        id: row.id,
+        month: row.month,
+        earning: this.approveEarnings({
+          requestId: request(input.requestId, `monthly-earning:${row.id}`), employeeId: input.employeeId, currency: input.currency,
+          periodStart: row.periodStart, periodEnd: row.periodEnd, approvedAmount: row.amount,
+          unallocatedAmount: row.unallocatedAmount, segments: row.segments, ...audit,
+        }),
+      })),
+    }));
+  }
 
   approveEarnings(raw: ExactSalaryApprovalInput & ExactDebtAudit): ExactSalaryEarning {
     const { actorUserId, actorLabel, transactionId, ...domain } = raw;
