@@ -39,7 +39,7 @@ describe("exact employee page seams", () => {
   it("keeps large MONTHLY exact value and NULL distinct from zero in submitted batches", async () => {
     const props = ctx()
     const onDone = vi.fn()
-    render(<EmployeeBatchCreatePage mode="exact" {...props} onDone={onDone} onCancel={vi.fn()} />)
+    render(<EmployeeBatchCreatePage mode="exact" operation="batch" {...props} onDone={onDone} onCancel={vi.fn()} />)
     fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.firstNameLabel")), { target: { value: "Amina" } })
     fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.lastNameLabel")), { target: { value: "Kaci" } })
     fireEvent.change(screen.getByLabelText(i18n.t("auth.phoneLabel")), { target: { value: "0551234567" } })
@@ -51,6 +51,23 @@ describe("exact employee page seams", () => {
     expect(onDone).toHaveBeenCalledOnce()
   })
 
+  it("sends a batch only once for two synchronous submits", async () => {
+    const props = ctx()
+    const onDone = vi.fn()
+    let resolveBatch!: (result: unknown) => void
+    vi.mocked(props.client.employeesBatchCreate).mockImplementation(() => new Promise(resolve => { resolveBatch = resolve }) as never)
+    render(<EmployeeBatchCreatePage mode="exact" operation="batch" {...props} onDone={onDone} onCancel={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.firstNameLabel")), { target: { value: "Amina" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.lastNameLabel")), { target: { value: "Kaci" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("auth.phoneLabel")), { target: { value: "0551234567" } })
+    const form = screen.getByRole("button", { name: i18n.t("employeeForm.submitBatch") }).closest("form")!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect(props.client.employeesBatchCreate).toHaveBeenCalledOnce()
+    resolveBatch({ success: true, item: { employees: [employee], managerAssignments: [], projectAssignments: [] } })
+    await waitFor(() => expect(onDone).toHaveBeenCalledOnce())
+  })
+
   it("renders stored history through the exact reference renderer and surfaces delete refusal without dropping the row", async () => {
     const props = ctx()
     vi.mocked(props.client.employeesDelete).mockResolvedValue({ success: false, error: { message: "Employee has linked work history" } } as never)
@@ -60,6 +77,64 @@ describe("exact employee page seams", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("Employee has linked work history")
     expect(await screen.findByRole("heading", { name: "Amina Kaci" })).toBeTruthy()
     expect(props.client.employeeStateHistoryList).toHaveBeenCalledWith({ employeeId: "employee-a" })
+  })
+
+  it("keeps the edit draft and relationship edits after a rejected save, then submits them on retry", async () => {
+    const manager = { id: "manager-a", label: "Manager A", projectOptions: [{ id: "project-a", label: "Project A" }] }
+    const props = ctx({ managerOptions: [manager] })
+    vi.mocked(props.client.employeesSave)
+      .mockRejectedValueOnce(new Error("Server refused this change"))
+      .mockResolvedValueOnce({ success: true, item: employee } as never)
+    render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
+    await screen.findByRole("heading", { name: i18n.t("detailPages.employee.editTitle") })
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.firstNameLabel")), { target: { value: "Amina revised" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("status.active")), { target: { value: "ACTIVE" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("detailPages.employee.editPage.workplaceType")), { target: { value: "PROJECT" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.managerLabel")), { target: { value: "manager-a" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.projectLabel")), { target: { value: "project-a" } })
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("common.save") }))
+    expect((await screen.findByRole("alert")).textContent).toContain("Server refused this change")
+    expect((screen.getByLabelText(i18n.t("employeeForm.firstNameLabel")) as HTMLInputElement).value).toBe("Amina revised")
+    expect((screen.getByLabelText(i18n.t("employeeForm.managerLabel")) as HTMLSelectElement).value).toBe("manager-a")
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("common.save") }))
+    await waitFor(() => expect(props.client.employeesSave).toHaveBeenCalledTimes(2))
+    expect(props.client.employeesSave).toHaveBeenLastCalledWith(expect.objectContaining({ firstName: "Amina revised", placement: { nextType: "PROJECT", managerId: "manager-a", projectId: "project-a" } }))
+  })
+
+  it("sends only one edit mutation for two synchronous submits and unlocks after rejection", async () => {
+    const props = ctx()
+    let rejectSave!: (error: Error) => void
+    vi.mocked(props.client.employeesSave).mockImplementation(() => new Promise((_, reject) => { rejectSave = reject }) as never)
+    render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
+    await screen.findByRole("heading", { name: i18n.t("detailPages.employee.editTitle") })
+    const form = screen.getByRole("button", { name: i18n.t("common.save") }).closest("form")!
+    fireEvent.submit(form)
+    fireEvent.submit(form)
+    expect(props.client.employeesSave).toHaveBeenCalledOnce()
+    rejectSave(new Error("Retry allowed"))
+    await screen.findByText("Retry allowed")
+    fireEvent.submit(form)
+    await waitFor(() => expect(props.client.employeesSave).toHaveBeenCalledTimes(2))
+  })
+
+  it("routes exact single create through the exported page and keeps success terminal if onDone throws", async () => {
+    const props = ctx({ managerOptions: [{ id: "manager-a", label: "Manager A", projectOptions: [{ id: "project-a", label: "Project A" }] }] })
+    const onDone = vi.fn(() => { throw new Error("Refresh failed") })
+    render(<EmployeeBatchCreatePage {...props} mode="exact" operation="create" onDone={onDone} onCancel={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.firstNameLabel")), { target: { value: "Amina" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.lastNameLabel")), { target: { value: "Kaci" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("auth.phoneLabel")), { target: { value: "0551234567" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.managerLabel")), { target: { value: "manager-a" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.projectLabel")), { target: { value: "project-a" } })
+    const form = screen.getByRole("button", { name: i18n.t("common.create") }).closest("form")!
+    fireEvent.submit(form)
+    await waitFor(() => expect(props.client.employeesCreate).toHaveBeenCalledOnce())
+    expect(onDone).toHaveBeenCalledOnce()
+    expect((await screen.findByRole("alert")).textContent).toBe(i18n.t("employeeForm.exactCompletionFailed", { error: "Refresh failed" }))
+    fireEvent.submit(form)
+    expect(props.client.employeesCreate).toHaveBeenCalledOnce()
+    expect((screen.getByRole("button", { name: i18n.t("common.loading") }) as HTMLButtonElement).disabled).toBe(true)
+    expect(props.client.employeesBatchCreate).not.toHaveBeenCalled()
   })
 
   it("keeps exact reads as errors instead of falling back to legacy handlers", async () => {

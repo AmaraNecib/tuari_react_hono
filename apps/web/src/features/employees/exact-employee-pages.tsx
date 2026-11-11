@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { i18n } from "@/i18n"
 import type { ExactEmployee, ExactEmployeeBatchCreateInput, ExactEmployeeClient, ExactEmployeeCreateInput, ExactEmployeeSaveInput, ExactEmployeeStateHistory, ExactSalaryReference, Role } from "@tuari/contracts"
@@ -60,6 +60,7 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
   const [managedProjectIds, setManagedProjectIds] = useState<string[]>(currentManagedProjectIds ?? [])
   const [managedWarehouseIds, setManagedWarehouseIds] = useState<string[]>(currentManagedWarehouseIds ?? [])
   const [failure, setFailure] = useState<string | null>(null)
+  const submitting = useRef(false)
   const selectedManager = managers.find(manager => manager.id === managerId)
   const selectedRole = roles.find(role => role.id === roleId)
   const worker = selectedRole?.key === "worker"
@@ -67,6 +68,8 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
   const warehouseManagerRole = selectedRole?.key === "warehouse_manager"
   async function submit(event: FormEvent) {
     event.preventDefault()
+    if (submitting.current || busy) return
+    submitting.current = true
     setFailure(null)
     try {
       const reference = salaryReference(period, amount)
@@ -85,6 +88,7 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
         ...(warehouseManagerRole && status === "ACTIVE" && managedWarehouseIds.join("|") !== (currentManagedWarehouseIds ?? []).join("|") ? { managedWarehouseIds } : {}),
       })
     } catch (error) { setFailure(serverError(error)) }
+    finally { submitting.current = false }
   }
   return <form className="space-y-4" onSubmit={submit} aria-busy={busy}>
     <div className="grid gap-3 sm:grid-cols-2">
@@ -116,29 +120,59 @@ export function ExactEmployeeEditPage(props: ExactEmployeePageProps) {
   const { t } = useTranslation()
   const [employee, setEmployee] = useState<ExactEmployee | null>(null)
   const [loading, setLoading] = useState(true)
-  const [failure, setFailure] = useState<string | null>(null)
+  const [readFailure, setReadFailure] = useState<string | null>(null)
+  const [saveFailure, setSaveFailure] = useState<string | null>(null)
+  const [completionFailure, setCompletionFailure] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  useEffect(() => { let live = true; setLoading(true); client.employeesGet({ id: employeeId }).then(result => { if (live) { setEmployee(requireSuccess(result)); setFailure(null) } }).catch(error => { if (live) setFailure(serverError(error)) }).finally(() => { if (live) setLoading(false) }); return () => { live = false } }, [client, employeeId])
+  const mutationLocked = useRef(false)
+  const [saved, setSaved] = useState(false)
+  const load = useCallback(() => {
+    setLoading(true); setReadFailure(null)
+    void client.employeesGet({ id: employeeId }).then(result => { setEmployee(requireSuccess(result)) }).catch(error => { setReadFailure(serverError(error)) }).finally(() => setLoading(false))
+  }, [client, employeeId])
+  useEffect(() => { load() }, [load])
   if (loading) return <p role="status">{t("common.loading")}</p>
-  if (failure) return <section><p role="alert">{failure}</p><Button onClick={() => { setFailure(null); setLoading(true); client.employeesGet({ id: employeeId }).then(result => setEmployee(requireSuccess(result))).catch(error => setFailure(serverError(error))).finally(() => setLoading(false)) }}>{t("common.retry")}</Button></section>
+  if (readFailure) return <section><p role="alert">{readFailure}</p><Button onClick={load}>{t("common.retry")}</Button></section>
   if (!employee) return <p>{t("common.none")}</p>
-  return <section className="space-y-4"><h1 className="text-xl font-semibold">{t("detailPages.employee.editTitle")}</h1><FormFields roles={props.roles} managers={props.managerOptions} projects={props.projectOptions} warehouses={props.warehouseOptions} managedProjects={props.managedProjectOptions} managedWarehouses={props.managedWarehouseOptions} currentManagedProjectIds={props.currentManagedProjectIds} currentManagedWarehouseIds={props.currentManagedWarehouseIds} currentPlacement={props.currentPlacement} initial={employee} editing busy={saving} serverFailure={failure} onSubmit={async data => {
-    setSaving(true); setFailure(null)
-    try { const item = requireSuccess(await client.employeesSave({ id: employee.id, ...data } as ExactEmployeeSaveInput)); setEmployee(item); onDone() }
-    catch (error) { setFailure(serverError(error)) }
-    finally { setSaving(false) }
-  }} /><Button type="button" variant="outline" onClick={props.onCancel}>{t("common.cancel")}</Button></section>
+  return <section className="space-y-4"><h1 className="text-xl font-semibold">{t("detailPages.employee.editTitle")}</h1>
+    {completionFailure ? <p role="alert">{completionFailure}</p> : null}
+    <FormFields roles={props.roles} managers={props.managerOptions} projects={props.projectOptions} warehouses={props.warehouseOptions} managedProjects={props.managedProjectOptions} managedWarehouses={props.managedWarehouseOptions} currentManagedProjectIds={props.currentManagedProjectIds} currentManagedWarehouseIds={props.currentManagedWarehouseIds} currentPlacement={props.currentPlacement} initial={employee} editing busy={saving || saved} serverFailure={saveFailure} onSubmit={async data => {
+      if (mutationLocked.current || saved) return
+      mutationLocked.current = true
+      setSaving(true); setSaveFailure(null); setCompletionFailure(null)
+      let committed = false
+      try { const item = requireSuccess(await client.employeesSave({ id: employee.id, ...data } as ExactEmployeeSaveInput)); setEmployee(item); setSaved(true); committed = true }
+      catch (error) { mutationLocked.current = false; setSaveFailure(serverError(error)); setSaving(false); return }
+      if (committed) {
+        setSaving(false)
+        try { onDone() } catch (error) { setCompletionFailure(t("employeeForm.exactCompletionFailed", { error: serverError(error) })) }
+      }
+    }} />
+    <Button type="button" variant="outline" disabled={saving || saved} onClick={props.onCancel}>{t("common.cancel")}</Button>
+  </section>
 }
 
 export function ExactEmployeeCreatePage(props: ExactEmployeeBatchProps) {
   const { t } = useTranslation()
   const [saving, setSaving] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
+  const [completionFailure, setCompletionFailure] = useState<string | null>(null)
+  const mutationLocked = useRef(false)
+  const [saved, setSaved] = useState(false)
   const { client, onDone } = props
-  return <section className="space-y-4"><h1 className="text-xl font-semibold">{t("employeeForm.pageTitle")}</h1><FormFields roles={props.roles} managers={props.managerOptions} projects={props.projectOptions} warehouses={props.warehouseOptions} managedProjects={props.managedProjectOptions} managedWarehouses={props.managedWarehouseOptions} busy={saving} serverFailure={failure} onSubmit={async data => {
-    setSaving(true); setFailure(null)
-    try { requireSuccess(await client.employeesCreate(data as ExactEmployeeCreateInput)); onDone() } catch (error) { setFailure(serverError(error)) } finally { setSaving(false) }
-  }} /><Button type="button" variant="outline" onClick={props.onCancel}>{t("common.cancel")}</Button></section>
+  return <section className="space-y-4"><h1 className="text-xl font-semibold">{t("employeeForm.pageTitle")}</h1>
+    {completionFailure ? <p role="alert">{completionFailure}</p> : null}
+    <FormFields roles={props.roles} managers={props.managerOptions} projects={props.projectOptions} warehouses={props.warehouseOptions} managedProjects={props.managedProjectOptions} managedWarehouses={props.managedWarehouseOptions} busy={saving || saved} serverFailure={failure} onSubmit={async data => {
+      if (mutationLocked.current || saved) return
+      mutationLocked.current = true
+      setSaving(true); setFailure(null); setCompletionFailure(null)
+      try { requireSuccess(await client.employeesCreate(data as ExactEmployeeCreateInput)); setSaved(true) }
+      catch (error) { mutationLocked.current = false; setFailure(serverError(error)); setSaving(false); return }
+      setSaving(false)
+      try { onDone() } catch (error) { setCompletionFailure(t("employeeForm.exactCompletionFailed", { error: serverError(error) })) }
+    }} />
+    <Button type="button" variant="outline" disabled={saving || saved} onClick={props.onCancel}>{t("common.cancel")}</Button>
+  </section>
 }
 
 type BatchDraft = { firstName: string; lastName: string; phone: string; roleId: string; salaryPeriod: string; salaryAmount: string; occupation: string; notes: string; managerId: string; projectId: string }
@@ -152,10 +186,14 @@ export function ExactEmployeeBatchCreatePage(props: ExactEmployeeBatchProps) {
   const [errors, setErrors] = useState<Record<number, string>>({})
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const mutationLocked = useRef(false)
+  const [saved, setSaved] = useState(false)
+  const [completionFailure, setCompletionFailure] = useState<string | null>(null)
   function patch(index: number, patchValue: Partial<BatchDraft>) { setRows(current => current.map((row, i) => i === index ? { ...row, ...patchValue } : row)) }
   async function submit(event: FormEvent) {
-    event.preventDefault(); if (busy) return
-    setBusy(true); setFailure(null); setErrors({})
+    event.preventDefault(); if (mutationLocked.current || busy || saved) return
+    mutationLocked.current = true
+    setBusy(true); setFailure(null); setCompletionFailure(null); setErrors({})
     try {
       const employees = rows.map((row, index) => {
         if (!row.firstName.trim() || !row.lastName.trim() || !/^0[5-7]\d{8}$/.test(row.phone.trim())) throw new Error(i18n.t("employeeForm.exactBatchRowError", { count: index + 1 }))
@@ -170,13 +208,18 @@ export function ExactEmployeeBatchCreatePage(props: ExactEmployeeBatchProps) {
         }
         throw new Error(result.error.message)
       }
-      onDone()
+      setSaved(true)
     } catch (error) {
+      mutationLocked.current = false
       const message = serverError(error)
       const rowMatch = /^employees\.(\d+)\./.exec(message)
       if (rowMatch) setErrors(current => ({ ...current, [Number(rowMatch[1])]: message }))
       setFailure(message)
-    } finally { setBusy(false) }
+      setBusy(false)
+      return
+    }
+    setBusy(false)
+    try { onDone() } catch (error) { setCompletionFailure(t("employeeForm.exactCompletionFailed", { error: serverError(error) })) }
   }
   return <form className="space-y-4" onSubmit={submit}><h1 className="text-xl font-semibold">{t("employeeForm.pageTitle")}</h1>
     {rows.map((row, index) => <fieldset key={index} className="grid gap-3 rounded-md border p-3 sm:grid-cols-2"><legend>{t("employeeForm.rowTitle", { count: index + 1 })}</legend>
@@ -190,7 +233,7 @@ export function ExactEmployeeBatchCreatePage(props: ExactEmployeeBatchProps) {
       {errors[index] ? <p role="alert" className="sm:col-span-2">{errors[index]}</p> : null}
       {rows.length > 1 ? <Button type="button" variant="outline" onClick={() => setRows(current => current.filter((_, i) => i !== index))}>{t("employeeForm.remove")}</Button> : null}
     </fieldset>)}
-    {failure ? <p role="alert">{failure}</p> : null}<div className="flex gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => setRows(current => [...current, emptyDraft(defaultRole)])}>{t("employeeForm.addAnother")}</Button><Button type="submit" disabled={busy}>{t("employeeForm.submitBatch")}</Button><Button type="button" variant="outline" onClick={props.onCancel}>{t("common.cancel")}</Button></div>
+    {failure ? <p role="alert">{failure}</p> : null}{completionFailure ? <p role="alert">{completionFailure}</p> : null}<div className="flex gap-2"><Button type="button" variant="outline" disabled={busy || saved} onClick={() => setRows(current => [...current, emptyDraft(defaultRole)])}>{t("employeeForm.addAnother")}</Button><Button type="submit" disabled={busy || saved}>{t("employeeForm.submitBatch")}</Button><Button type="button" variant="outline" disabled={busy || saved} onClick={props.onCancel}>{t("common.cancel")}</Button></div>
   </form>
 }
 

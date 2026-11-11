@@ -18,7 +18,7 @@ import {
   type EmployeeDraftErrors,
   validateEmployeeBatch,
 } from "./employee-batch-schema"
-import { ExactEmployeeBatchCreatePage as ExactEmployeeBatch } from "./exact-employee-pages"
+import { ExactEmployeeBatchCreatePage as ExactEmployeeBatch, ExactEmployeeCreatePage as ExactEmployeeCreate } from "./exact-employee-pages"
 import type { ExactEmployeeBatchProps } from "./exact-employee-pages"
 import {
   EmployeeBatchRowCard,
@@ -374,11 +374,13 @@ function NumericEmployeeBatchCreatePage({
   )
 }
 
-export function EmployeeBatchCreatePage(props: { mode: "exact" } & ExactEmployeeBatchProps): ReactElement
+type ExactEmployeeCreatePageProps = { mode: "exact"; operation: "create" } & ExactEmployeeBatchProps
+type ExactEmployeeBatchPageProps = { mode: "exact"; operation: "batch" } & ExactEmployeeBatchProps
+export function EmployeeBatchCreatePage(props: ExactEmployeeCreatePageProps | ExactEmployeeBatchPageProps): ReactElement
 export function EmployeeBatchCreatePage(props: EmployeeBatchCreatePageProps & { mode?: "numeric" }): ReactElement
-export function EmployeeBatchCreatePage(props: ({ mode: "exact" } & ExactEmployeeBatchProps) | (EmployeeBatchCreatePageProps & { mode?: "numeric" })) {
+export function EmployeeBatchCreatePage(props: ExactEmployeeCreatePageProps | ExactEmployeeBatchPageProps | (EmployeeBatchCreatePageProps & { mode?: "numeric" })) {
   if (props.mode === "exact") {
-    return <ExactEmployeeBatch {...props} />
+    return props.operation === "create" ? <ExactEmployeeCreate {...props} /> : <ExactEmployeeBatch {...props} />
   }
   return <NumericEmployeeBatchCreatePage {...props} />
 }

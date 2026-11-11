@@ -14,7 +14,9 @@ Batch creation submits all rows in one `employeesBatchCreate` call. Server failu
 
 Existing page callers keep their numeric props and render the current numeric implementation. Each exported page gains an explicit `mode: "exact"` branch with one supplied `ExactEmployeeClient`; profile/edit/details props use exact IDs and exact records. No numeric hook, workspace query, or implicit client construction enters that branch. Exact table options (roles and workplace/manager choices) are injected as actual typed records by the future root integration.
 
-The exact page module owns loading, error, empty, save, and refresh states. Refresh failures are separate from successful mutations. The parent owns root wiring, pending-write fences, desktop inspection, review lenses, and publication.
+The exact page module owns loading, error, empty, save, and refresh states. Refresh failures are separate from successful mutations. The existing `EmployeeBatchCreatePage` export in `apps/web/src/features/employees/employee-batch-create-page.tsx` is the exact create/batch entry. Its exact mode now requires `operation: "create"` or `operation: "batch"`; the first calls `employeesCreate`, the second calls `employeesBatchCreate`. The application root remains numeric until the parent wires exact mode. No new synthetic page path or root change is part of this correction.
+
+Edit-read failure, edit-save rejection, and post-success callback failure are separate states. A save rejection leaves the mounted form draft and relationship selections intact. Form submission and each mutation seam hold synchronous in-flight refs; they release on mutation rejection and stay locked after confirmed success. Navigation/refresh callback errors are reported as post-success errors, never as failed writes.
 
 ## Verification
 
