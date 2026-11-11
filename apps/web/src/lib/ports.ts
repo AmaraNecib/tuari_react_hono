@@ -4,8 +4,7 @@
  * Parallel Herdr lanes can each run on distinct ports (API_PORT / WEB_PORT)
  * without colliding on the default 4318/3000. Everything here is loopback-only
  * and side-effect free so the same rules are used by:
- *   - apps/web/vite.config.ts  (server/preview + VITE_API_PORT define)
- *   - apps/web/src/lib/analytics-db.ts (browser; VITE_API_PORT fallback)
+ *   - apps/web/vite.config.ts  (server/preview ports)
  *   - playwright.config.ts       (webServer URLs + baseURL)
  *   - tests/e2e/helpers/urls.ts  (specs that hit the API / send an Origin)
  *

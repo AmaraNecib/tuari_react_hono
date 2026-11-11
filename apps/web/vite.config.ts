@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import tailwindcss from "@tailwindcss/vite";
 import type { Plugin, IndexHtmlTransformContext } from "vite";
 import { defineConfig } from "vite";
-import { DEFAULT_WEB_PORT, apiPort, normalizePort } from "./src/lib/ports";
+import { DEFAULT_WEB_PORT, normalizePort } from "./src/lib/ports";
 
 /**
  * Web dev/preview port, env-configurable so parallel worktrees/lanes can run
@@ -13,12 +13,6 @@ import { DEFAULT_WEB_PORT, apiPort, normalizePort } from "./src/lib/ports";
  * back to 3000).
  */
 const WEB_PORT = Number(normalizePort(process.env.WEB_PORT, DEFAULT_WEB_PORT));
-
-// Expose the API port (normalized, default 4318) to the browser via
-// import.meta.env so the analytics client routes to the current lane's API
-// even when only API_PORT is set (no explicit VITE_API_URL), instead of
-// hardcoding 4318.
-const VITE_API_PORT = apiPort();
 
 /**
  * Preload the primary Arabic body font woff2 into the BUILT index.html.
@@ -69,9 +63,6 @@ function preloadArabicFont(): Plugin {
 
 export default defineConfig({
   plugins: [react(), tailwindcss(), preloadArabicFont()],
-  define: {
-    "import.meta.env.VITE_API_PORT": JSON.stringify(VITE_API_PORT),
-  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
