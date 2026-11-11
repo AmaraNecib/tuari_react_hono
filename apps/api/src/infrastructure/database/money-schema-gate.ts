@@ -12,7 +12,7 @@ export async function assertLegacyMoneySchema(db: DbExecutor): Promise<void> {
   if (markers.length) throw new Error(ACTIVATION_REQUIRED);
 
   const payrollSentinels = await db.$queryRawUnsafe<{ name: string }[]>(
-    "SELECT name FROM sqlite_master WHERE lower(name) IN ('employee_salary_earning','employee_salary_earning_segment','employee_salary_correction','employee_salary_opening_review','employee_salary_advance','employee_salary_payment_allocation','employee_salary_settlement')",
+    "SELECT name FROM sqlite_master WHERE lower(name) IN ('employee_salary_cash','employee_salary_earning','employee_salary_earning_segment','employee_salary_correction','employee_salary_opening_review','employee_salary_advance','employee_salary_payment_allocation','employee_salary_settlement')",
   );
   if (payrollSentinels.length) throw new Error(ACTIVATION_REQUIRED);
 

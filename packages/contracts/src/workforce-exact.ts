@@ -133,6 +133,19 @@ export const exactSalaryCashInputSchema = z.object({
 });
 export type ExactSalaryCashInput = z.input<typeof exactSalaryCashInputSchema>;
 export type ExactSalaryOpeningReviewInput = z.input<typeof exactSalaryOpeningReviewInputSchema>;
+export const exactSalaryAdvanceRepaymentInputSchema = z.object({
+  ...payrollCommand,
+  source: z.object({ kind: z.enum(["ADVANCE", "OPENING_ADVANCE"]), id: entityIdSchema }).strict(),
+  amount: exactSalaryAmountSchema.refine(value => value !== "0.00", "Repayment must be positive"),
+  paymentDate: timestampSchema,
+}).strict();
+export type ExactSalaryAdvanceRepaymentInput = z.input<typeof exactSalaryAdvanceRepaymentInputSchema>;
+export const exactSalaryCorrectionInputSchema = z.object({
+  ...payrollCommand, earningId: entityIdSchema,
+  newAmount: exactSalaryAmountSchema.refine(value => value !== "0.00", "Correction cannot remove the original obligation direction"),
+  reason: z.string().trim().min(1).max(1000),
+}).strict();
+export type ExactSalaryCorrectionInput = z.input<typeof exactSalaryCorrectionInputSchema>;
 
 /** Suggestions do not approve earnings or create an obligation. */
 export function suggestExactSalaryAmount(reference: ExactSalaryReference | null, days: number): string | null {
