@@ -26,7 +26,7 @@ Focused native tests use actual plain and keyed database factory drivers, the re
 
 Focused contract tests validate actual lifecycle DTO shape and reject malformed cash outputs. Existing cash native cases retain fixture corrections for real project/debt dependencies and keyed on-disk databases. Earlier missing-module and fixture-shape failures are setup reds, not behavioral regressions. No log is treated as a behavioral red unless its assertion reached the claimed contract.
 
-Current local commands, exact SHA, native exit codes, counts, durations and raw log paths are recorded in `.scratch/reviews/527/child-backend-2026-11-12/verification.md` after commit. Full suites, root integration, browser/UI, current-head CI, effective protection, review lenses and owner acceptance remain parent gates. No application acceptance or issue completion is claimed.
+Current local commands, exact SHA, native exit codes, counts, durations and raw log paths are recorded in `.scratch/reviews/527/child-backend-2026-11-12-retry1/verification.md`. The first evidence-script attempt used PowerShell argument splatting incorrectly; those setup logs are preserved separately and are not test verdicts. Full suites, root integration, browser/UI, current-head CI, effective protection, review lenses and owner acceptance remain parent gates. No application acceptance or issue completion is claimed.
 
 ## Lessons
 
