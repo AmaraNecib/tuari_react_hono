@@ -148,6 +148,32 @@ describe.each([["plain", ""], ["keyed", "527-cash-public-fixture-key"]])("actual
     expect(c.service.recordCash({ ...command, amount: "20000", wageAllocations: [command.wageAllocations[0]!] }).amount).toBe("20000.00");
   });
 
+  it("rolls back opening, repayment and correction sources when the aggregate receipt fails", () => {
+    const f = fixture(key); const c = f.compose();
+    const openingCommand = { requestId: "opening-receipt-failure", employeeId: "worker", currency: "DZD" as const, review: { status: "REVIEWED" as const, wagesOwed: "0", advancesOwed: "1000" }, ...audit };
+    vi.spyOn(c.ledger, "saveAggregateCommand").mockImplementationOnce(() => { throw new Error("opening receipt failure"); });
+    expect(() => c.service.reviewOpening(openingCommand)).toThrow("opening receipt failure");
+    expect(c.cash.getEmployeeOpening("worker")).toBeNull();
+    expect(c.finance.listAccounts()).toEqual([]);
+    const opening = c.service.reviewOpening(openingCommand);
+    const repayCommand = { requestId: "repayment-receipt-failure", employeeId: "worker", currency: "DZD" as const, source: { kind: "OPENING_ADVANCE" as const, id: opening.id }, amount: "250", paymentDate: now, ...audit };
+    vi.spyOn(c.ledger, "saveAggregateCommand").mockImplementationOnce(() => { throw new Error("repayment receipt failure"); });
+    expect(() => c.service.repayAdvance(repayCommand)).toThrow("repayment receipt failure");
+    expect(c.cash.listSettlements("worker")).toEqual([]);
+    expect(c.finance.remaining(opening.advanceDebtEntryId!)).toBe("1000.00");
+    const settlement = c.service.repayAdvance(repayCommand);
+    expect(settlement.amount).toBe("250.00");
+    const earning = c.workforce.approveEarnings(approve);
+    const correctionCommand = { requestId: "correction-receipt-failure", employeeId: "worker", currency: "DZD" as const, earningId: earning.id, newAmount: "36000", reason: "Receipt retry", ...audit };
+    vi.spyOn(c.ledger, "saveAggregateCommand").mockImplementationOnce(() => { throw new Error("correction receipt failure"); });
+    expect(() => c.service.correctEarning(correctionCommand)).toThrow("correction receipt failure");
+    expect(c.cash.listCorrections("worker")).toEqual([]);
+    expect(c.finance.remaining(earning.debtEntryId!)).toBe("35000.00");
+    const correction = c.service.correctEarning(correctionCommand);
+    expect(correction.newAmount).toBe("36000.00");
+    expect(c.finance.remaining(earning.debtEntryId!)).toBe("36000.00");
+  });
+
   it("rolls back source, wage payments, advances and child receipts if the aggregate receipt cannot persist", () => {
     const f = fixture(key); const c = f.compose(); const earned = c.workforce.approveEarnings(approve);
     const command = { requestId: "receipt-failure", employeeId: "worker", currency: "DZD" as const, amount: "40000", paymentDate: now, wageAllocations: [{ id: "wage", source: { kind: "EARNING" as const, id: earned.id }, amount: "35000" }], advance: { id: "advance", amount: "5000" }, ...audit };
