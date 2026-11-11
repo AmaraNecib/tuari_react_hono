@@ -173,8 +173,10 @@ export class SqliteExactEmployeeRepository implements ExactEmployeeRepository {
         ["project_manager_ownership_history", "manager_id=?", [id]], ["warehouse_manager_ownership_history", "manager_id=?", [id]],
         ["project", "manager_id=?", [id]], ["warehouse", "manager_id=?", [id]],
         ["employee_salary_payment", "employee_id=?", [id]], ["employee_salary_earning", "employee_id=?", [id]],
-        ["employee_salary_correction", "employee_id=?", [id]], ["employee_salary_opening_review", "employee_id=?", [id]],
-        ["employee_salary_advance", "employee_id=?", [id]], ["employee_salary_payment_allocation", "employee_id=?", [id]],
+        ["employee_salary_cash", "employee_id=?", [id]], ["employee_salary_correction", "employee_id=?", [id]],
+        ["employee_salary_opening_review", "employee_id=?", [id]],
+        ["employee_salary_advance", "cash_id IN (SELECT id FROM employee_salary_cash WHERE employee_id=?)", [id]],
+        ["employee_salary_payment_allocation", "cash_id IN (SELECT id FROM employee_salary_cash WHERE employee_id=?)", [id]],
         ["employee_salary_settlement", "employee_id=?", [id]], ["debt_account", "worker_id=?", [id]],
       ] as const;
       for (const [table, predicate, values] of references) {

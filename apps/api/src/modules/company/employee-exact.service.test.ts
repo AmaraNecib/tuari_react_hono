@@ -79,6 +79,10 @@ describe.each([["plain", ""], ["keyed", "527-employee-service-public-fixture-key
       f.db.prepare("INSERT INTO employee_manager_assignment(id,worker_id,manager_id,status) VALUES ('old-link',?,?,'ENDED')").run(replacement.id, manager.id);
       expect(() => f.service.deleteEmployee(replacement.id, audit)).toThrow();
       expect(() => f.service.deleteEmployee(manager.id, audit)).toThrow();
+      const paidWorker = f.service.createEmployee({ firstName: "Paid", lastName: "Worker", phone: "0550000002", roleId: "worker-role" }, audit).item;
+      f.db.prepare("INSERT INTO employee_salary_cash(id,employee_id,currency,amount_minor,payment_date,actor_user_id,actor_label,transaction_id,created_at) VALUES ('cash-evidence',?,'DZD',100,'2026-11-01T00:00:00.000Z',NULL,NULL,NULL,'2026-11-01T00:00:00.000Z')").run(paidWorker.id);
+      expect(() => f.service.deleteEmployee(paidWorker.id, audit)).toThrow();
+      expect(f.repository.getEmployeeById(paidWorker.id)).toEqual(paidWorker);
       expect(f.repository.getEmployeeById(replacement.id)).toEqual(replacement);
       expect(() => f.service.deleteEmployee("missing", audit)).toThrow();
     } finally { f.db.close(); }

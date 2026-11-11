@@ -17,6 +17,11 @@ export type PayrollOpeningReview = Required<ExactDebtAudit> & {
   createdAt: string;
 };
 
+export type PayrollCorrection = Required<ExactDebtAudit> & {
+  id: string; employeeId: string; earningId: string; currency: "DZD"; previousAmount: string; newAmount: string;
+  reason: string; correctionEntryId: string; createdAt: string;
+};
+
 export type PayrollSettlement = Omit<ExactSalaryAdvanceRepaymentInput, "requestId"> & Required<ExactDebtAudit> & {
   id: string; createdAt: string; debtAccountId: string; debtEntryId: string; paymentEntryId: string;
 };
@@ -33,4 +38,6 @@ export interface PayrollCashRepository extends ExactTransactionParticipant {
   getSettlement(id: string): PayrollSettlement | null;
   listSettlements(employeeId: string): PayrollSettlement[];
   saveSettlement(settlement: PayrollSettlement): void;
+  listCorrections(employeeId: string): PayrollCorrection[];
+  saveCorrection(correction: PayrollCorrection): void;
 }

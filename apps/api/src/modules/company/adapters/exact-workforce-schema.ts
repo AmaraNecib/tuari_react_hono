@@ -97,8 +97,20 @@ export const exactWorkforceSchemaStatements = [
     debt_account_id TEXT NOT NULL REFERENCES debt_account(id) ON DELETE RESTRICT,
     debt_entry_id TEXT NOT NULL UNIQUE REFERENCES debt_entry(id) ON DELETE RESTRICT
   )`,
+  `CREATE TABLE employee_salary_correction (
+    id TEXT NOT NULL PRIMARY KEY, employee_id TEXT NOT NULL REFERENCES employee(id) ON DELETE RESTRICT,
+    earning_id TEXT NOT NULL REFERENCES employee_salary_earning(id) ON DELETE RESTRICT,
+    currency TEXT NOT NULL CHECK(currency='DZD'), previous_amount_minor INTEGER NOT NULL CHECK(typeof(previous_amount_minor)='integer' AND previous_amount_minor>0),
+    new_amount_minor INTEGER NOT NULL CHECK(typeof(new_amount_minor)='integer' AND new_amount_minor>0), reason TEXT NOT NULL CHECK(length(trim(reason)) BETWEEN 1 AND 1000),
+    correction_entry_id TEXT NOT NULL UNIQUE REFERENCES debt_entry(id) ON DELETE RESTRICT,
+    actor_user_id TEXT, actor_label TEXT, transaction_id TEXT, created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX exact_employee_salary_correction_employee_idx ON employee_salary_correction(employee_id,created_at,id)`,
+  `CREATE TRIGGER employee_salary_correction_no_replace BEFORE INSERT ON employee_salary_correction
+    WHEN EXISTS(SELECT 1 FROM employee_salary_correction WHERE id=NEW.id OR correction_entry_id=NEW.correction_entry_id)
+    BEGIN SELECT RAISE(ABORT,'Payroll correction source is immutable'); END`,
   `CREATE INDEX exact_employee_salary_cash_employee_idx ON employee_salary_cash(employee_id,created_at,id)`,
-  ...["employee_salary_cash", "employee_salary_payment_allocation", "employee_salary_advance", "employee_salary_opening_review", "employee_salary_settlement"].flatMap(table => [
+  ...["employee_salary_correction", "employee_salary_cash", "employee_salary_payment_allocation", "employee_salary_advance", "employee_salary_opening_review", "employee_salary_settlement"].flatMap(table => [
     `CREATE TRIGGER ${table}_immutable_update BEFORE UPDATE ON ${table} BEGIN SELECT RAISE(ABORT,'Payroll cash source is immutable'); END`,
     `CREATE TRIGGER ${table}_immutable_delete BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Payroll cash source is immutable'); END`,
   ]),
