@@ -106,11 +106,11 @@ describe.each([["plain", ""], ["keyed", "527-rpc-public-synthetic-key"]])("exact
       expect(await client.getProjectSalaryCost({ projectId: "A" })).toEqual(cost);
       const advanceCash = await client.recordPayrollCash({ requestId: "explicit-advance", employeeId: "worker", currency: "DZD", amount: "5000", paymentDate: "2026-11-11T12:00:00.000Z", wageAllocations: [], advance: { id: "recoverable", amount: "5000" } });
       expect(advanceCash.advance).toMatchObject({ id: "recoverable", amount: "5000.00" });
-      expect(await client.getEmployeePayrollLifecycle({ employeeId: "worker" })).toMatchObject({ advances: [{ id: "recoverable", cashId: advanceCash.id, amount: "5000.00" }] });
+      expect(await client.getEmployeePayrollLifecycle({ employeeId: "worker" })).toMatchObject({ advances: [{ id: "recoverable", cashId: advanceCash.id, amount: "5000.00", remainingAmount: "5000.00" }] });
       const opening = await client.reviewPayrollOpening({ requestId: "review-opening", employeeId: "worker", currency: "DZD", review: { status: "REVIEWED", wagesOwed: "0", advancesOwed: "2000" } });
       const settlement = await client.repayPayrollAdvance({ requestId: "repay-opening", employeeId: "worker", currency: "DZD", source: { kind: "OPENING_ADVANCE", id: opening.id }, amount: "500", paymentDate: "2026-11-12T12:00:00.000Z" });
       expect(settlement).toMatchObject({ amount: "500.00", source: { kind: "OPENING_ADVANCE", id: opening.id }, actorUserId: user.id });
-      expect(await client.getEmployeePayrollLifecycle({ employeeId: "worker" })).toMatchObject({ opening: { status: "REVIEWED", wagesOwed: "0.00", advancesOwed: "2000.00" }, settlements: [settlement] });
+      expect(await client.getEmployeePayrollLifecycle({ employeeId: "worker" })).toMatchObject({ opening: { status: "REVIEWED", reminder: false, wagesOwed: "0.00", wagesRemaining: "0.00", advancesOwed: "2000.00", advancesRemaining: "1500.00" }, settlements: [settlement] });
       await expect(client.approveMonthlyEarnings({ ...plan, months: [{ ...plan.months[0]!, amount: "35001", unallocatedAmount: "1" }] })).rejects.toMatchObject({ code: "CONFLICT" });
       await expect(client.listEmployeeEarnings({ employeeId: "missing" })).rejects.toMatchObject({ code: "NOT_FOUND" });
       await expect(client.getProjectSalaryCost({ projectId: "missing" })).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -131,7 +131,7 @@ describe.each([["plain", ""], ["keyed", "527-rpc-public-synthetic-key"]])("exact
       expect(await reopened.approveMonthlyEarnings(plan)).toEqual(approved);
       expect(await reopened.recordPayrollCash({ requestId: "actual-cash", employeeId: "worker", currency: "DZD", amount: "25000", paymentDate: "2026-11-10T12:00:00.000Z", wageAllocations: [{ id: "wage-part", source: { kind: "EARNING", id: earning.id }, amount: "25000" }], advance: null })).toEqual(cash);
       expect(await reopened.correctPayrollEarning({ requestId: "increase-earning", employeeId: "worker", currency: "DZD", earningId: earning.id, newAmount: "40000", reason: "Approved wage correction" })).toEqual(corrected);
-      expect(await reopened.getEmployeePayrollLifecycle({ employeeId: "worker" })).toMatchObject({ corrections: expect.arrayContaining([reduced, corrected]), opening, settlements: [settlement] });
+      expect(await reopened.getEmployeePayrollLifecycle({ employeeId: "worker" })).toMatchObject({ corrections: expect.arrayContaining([reduced, corrected]), opening: { ...opening, reminder: false, wagesRemaining: "0.00", advancesRemaining: "1500.00" }, settlements: [settlement] });
       expect(await reopened.getProjectSalaryCost({ projectId: "A" })).toEqual(cost);
       expect(await reopened.listEmployeeEarnings({ employeeId: "worker" })).toHaveLength(1);
       expect(() => JSON.stringify(cost)).not.toThrow();

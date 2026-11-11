@@ -18,6 +18,10 @@ Opening review distinguishes `UNREVIEWED` from reviewed zero. Opening originals 
 
 The correction table links to the approved earning and finance correction entry. Readback cross-checks cash allocations, their original and payment entries, advances, settlements and correction entries against the finance ledger before returning lifecycle data. Reads and writes stay within the existing bounded materialization limits.
 
+Lifecycle readback now returns finance-backed `remainingAmount` on each cash advance and `wagesRemaining` / `advancesRemaining` on a reviewed opening. It keeps the original reviewed amounts and includes `reminder`, so `UNREVIEWED` remains distinct from reviewed zero. The read caches `finance.detail` once per account for earnings, opening sources, cash allocations, advances, settlements and corrections. It checks opening originals, stored settlement links, account party/direction/currency, payment producer/type and correction state before returning rows. The authenticated opening-review mutation returns the same enriched opening DTO as lifecycle readback. A native plain/keyed regression verifies repeated allocations against one earning trigger one account detail read.
+
+The combined 10,000-record lifecycle pre-hydration budget is still missing: existing source-list limits remain separate, so parent must not treat this handoff as completing the requested total-bound guarantee. Corrupt-link cases for every requested physical mismatch and targeted source-write rollback remain unadded. The supplied retry4 verification report path was absent in this worktree, so it could not be checked or preserved from here.
+
 No startup, root mount, AppContract, UI, migration, finance implementation, generic gate, debt/invoice/inventory code or dependency changed. Root still owns the later normal mount at `/rpc/workforceExact`; no alternate host or employee namespace was added.
 
 ## Proof plan and results
@@ -26,7 +30,7 @@ Focused native tests use actual plain and keyed database factory drivers, the re
 
 Focused contract tests validate actual lifecycle DTO shape and reject malformed cash outputs. Existing cash native cases retain fixture corrections for real project/debt dependencies and keyed on-disk databases. Earlier missing-module and fixture-shape failures are setup reds, not behavioral regressions. No log is treated as a behavioral red unless its assertion reached the claimed contract.
 
-Current local commands, exact SHA, native exit codes, counts, durations and raw log paths are recorded in `.scratch/reviews/527/child-backend-2026-11-12-retry3/verification.md`. The first evidence-script attempts used PowerShell argument handling incorrectly; those setup logs are preserved separately and are not test verdicts. Full suites, root integration, browser/UI, current-head CI, effective protection, review lenses and owner acceptance remain parent gates. No application acceptance or issue completion is claimed.
+This continuation added no evidence-only commit or local review report. Focused commands passed: contracts `vitest run src/workforce-exact-contract.test.ts` (4 tests); API `vitest run src/modules/company/payroll-cash.service.test.ts src/rpc/workforce-exact-router.test.ts` (26 tests, plain and keyed); API and contracts `typecheck`. The contracts package build passed through `heavy_run` after the initial slash-path invocation failed in cmd.exe. ESLint could not run because `eslint` is not installed/available to pnpm in this worktree. Run durations and native exit codes are in the command output; there is no raw-log evidence bundle. Full suites, root integration, browser/UI, current-head CI, effective protection, review lenses and owner acceptance remain parent gates. No application acceptance or issue completion is claimed.
 
 ## Lessons
 

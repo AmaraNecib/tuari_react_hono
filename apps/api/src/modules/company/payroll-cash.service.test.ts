@@ -69,6 +69,16 @@ describe.each([["plain", ""], ["keyed", "527-cash-public-fixture-key"]])("actual
     }
   });
 
+  it("hydrates each distinct finance account once for lifecycle rows with repeated allocations", () => {
+    const f = fixture(key); const c = f.compose();
+    const earning = c.workforce.approveEarnings({ ...approve, approvedAmount: "1000", segments: [{ id: "project", projectId: "A", amount: "1000" }] });
+    c.service.recordCash({ requestId: "repeat-account", employeeId: "worker", currency: "DZD", amount: "200", paymentDate: now, wageAllocations: [{ id: "first", source: { kind: "EARNING", id: earning.id }, amount: "100" }, { id: "second", source: { kind: "EARNING", id: earning.id }, amount: "100" }], advance: null, ...audit });
+    const detail = vi.spyOn(c.finance, "detail");
+    const lifecycle = c.service.listEmployeeLifecycle("worker");
+    expect(lifecycle.earnings[0]?.remainingAmount).toBe("800.00");
+    expect(detail.mock.calls.filter(([accountId]) => accountId === earning.debtAccountId)).toHaveLength(1);
+  });
+
   it("records actual cash against an explicit earning without fabricating a salary period or expected wage, and replays after reopening", () => {
     const f = fixture(key); const c = f.compose(); const earned = c.workforce.approveEarnings(approve);
     const command = { requestId: "cash", employeeId: "worker", currency: "DZD" as const, amount: "25000", paymentDate: "2026-11-11T09:00:00.000Z", wageAllocations: [{ id: "allocation", source: { kind: "EARNING" as const, id: earned.id }, amount: "25000" }], advance: null, ...audit };

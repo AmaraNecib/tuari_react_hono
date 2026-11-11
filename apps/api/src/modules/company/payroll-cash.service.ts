@@ -20,7 +20,14 @@ export class PayrollCashService {
     this.requireConnection();
     return this.repository.withTransaction(() => {
       if (!this.earnings.employeeExists(employeeId)) throw new ExactDebtError("Employee not found", "NOT_FOUND");
-      const opening = this.repository.getEmployeeOpening(employeeId);
+      const openingSource = this.repository.getEmployeeOpening(employeeId);
+      const detailByAccount = new Map<string, ReturnType<ExactFinanceService["detail"]>>();
+      const detailFor = (accountId: string) => {
+        let detail = detailByAccount.get(accountId);
+        if (!detail) { detail = this.finance.detail(accountId); detailByAccount.set(accountId, detail); }
+        return detail;
+      };
+      const opening = openingSource ? { ...openingSource, reminder: openingSource.status !== "REVIEWED", wagesRemaining: openingSource.wageDebtEntryId ? detailFor(openingSource.wageDebtAccountId!).entries.find(row => row.id === openingSource.wageDebtEntryId)?.remainingDzd ?? null : openingSource.wagesOwed, advancesRemaining: openingSource.advanceDebtEntryId ? detailFor(openingSource.advanceDebtAccountId!).entries.find(row => row.id === openingSource.advanceDebtEntryId)?.remainingDzd ?? null : openingSource.advancesOwed } : null;
       const earningRows = this.earnings.listEarnings(employeeId);
       const remainingByAccount = new Map<string, Map<string, string>>();
       const earnings = earningRows.map(earning => {
@@ -28,7 +35,7 @@ export class PayrollCashService {
         if (!earning.debtAccountId) throw new ExactDebtError("Live debt entry not found", "NOT_FOUND");
         let remaining = remainingByAccount.get(earning.debtAccountId);
         if (!remaining) {
-          const detail = this.finance.detail(earning.debtAccountId);
+          const detail = detailFor(earning.debtAccountId);
           remaining = new Map(detail.entries.filter(row => row.remainingDzd !== null && row.signedAmountDzd !== "0.00").map(row => [row.id, row.remainingDzd!]));
           remainingByAccount.set(earning.debtAccountId, remaining);
         }
@@ -36,6 +43,17 @@ export class PayrollCashService {
         if (amount === undefined) throw new ExactDebtError("Live debt entry not found", "NOT_FOUND");
         return { earning, remainingAmount: amount };
       });
+      if (openingSource?.status === "REVIEWED") {
+        for (const [amount, accountId, entryId, direction, producerType] of [[openingSource.wagesOwed, openingSource.wageDebtAccountId, openingSource.wageDebtEntryId, "PAYABLE", "PAYROLL_OPENING"], [openingSource.advancesOwed, openingSource.advanceDebtAccountId, openingSource.advanceDebtEntryId, "RECEIVABLE", "PAYROLL_OPENING"]] as const) {
+          const zero = amount === "0.00";
+          if (zero !== (accountId === null && entryId === null) || (accountId === null) !== (entryId === null)) throw new ExactDebtError("Payroll opening source link mismatch");
+          if (!zero) {
+            const account = this.finance.getAccount(accountId!);
+            const original = detailFor(accountId!).entries.find(row => row.id === entryId);
+            if (account.workerId !== employeeId || account.partyType !== "INTERNAL_WORKER" || account.direction !== direction || account.currency !== openingSource.currency || !original || original.status !== "LIVE" || original.producerType !== producerType || original.producerId !== openingSource.id || original.signedAmountDzd !== amount || original.entryType !== "ADJUSTMENT" || original.targetEntryId || original.correctionOfEntryId) throw new ExactDebtError("Payroll opening source ledger mismatch");
+          }
+        }
+      }
       const cash = this.repository.listCash(employeeId);
       const settlements = this.repository.listSettlements(employeeId);
       const corrections = this.repository.listCorrections(employeeId);
@@ -43,7 +61,7 @@ export class PayrollCashService {
         for (const allocation of payment.wageAllocations) {
           const source = allocation.source.kind === "EARNING" ? this.earnings.getEarning(allocation.source.id) : this.repository.getOpening(allocation.source.id);
           const account = this.finance.getAccount(allocation.debtAccountId);
-          const detail = this.finance.detail(allocation.debtAccountId);
+          const detail = detailFor(allocation.debtAccountId);
           const original = detail.entries.find(entry => entry.id === allocation.debtEntryId);
           const receipt = detail.entries.find(entry => entry.id === allocation.paymentEntryId);
           const producerType = allocation.source.kind === "EARNING" ? "PAYROLL_EARNINGS" : "PAYROLL_OPENING";
@@ -52,7 +70,7 @@ export class PayrollCashService {
         }
         if (payment.advance) {
           const account = this.finance.getAccount(payment.advance.debtAccountId);
-          const entry = this.finance.detail(payment.advance.debtAccountId).entries.find(row => row.id === payment.advance!.debtEntryId);
+          const entry = detailFor(payment.advance.debtAccountId).entries.find(row => row.id === payment.advance!.debtEntryId);
           if (!entry || entry.status !== "LIVE" || entry.entryType !== "ADVANCE" || entry.producerType !== "PAYROLL_ADVANCE" || entry.producerId !== payment.advance.id || entry.signedAmountDzd !== payment.advance.amount || account.workerId !== employeeId || account.direction !== "RECEIVABLE" || account.currency !== payment.currency) throw new ExactDebtError("Payroll advance source ledger mismatch");
         }
       }
@@ -61,19 +79,25 @@ export class PayrollCashService {
         const advanceTarget = target as { debtAccountId: string; debtEntryId: string } | null;
         const debtAccountId = settlement.source.kind === "ADVANCE" ? advanceTarget?.debtAccountId : (target as PayrollOpeningReview | null)?.advanceDebtAccountId;
         const debtEntryId = settlement.source.kind === "ADVANCE" ? advanceTarget?.debtEntryId : (target as PayrollOpeningReview | null)?.advanceDebtEntryId;
-        const detail = debtAccountId ? this.finance.detail(debtAccountId) : null;
+        const targetAmount = settlement.source.kind === "ADVANCE" ? (advanceTarget as { amount: string } | null)?.amount : (target as PayrollOpeningReview | null)?.advancesOwed;
+        const detail = debtAccountId ? detailFor(debtAccountId) : null;
         const original = detail?.entries.find(row => row.id === debtEntryId);
         const payment = detail?.entries.find(row => row.id === settlement.paymentEntryId);
-        if (!target || target.employeeId !== employeeId || target.currency !== settlement.currency || !original || original.status !== "LIVE" || original.producerType !== (settlement.source.kind === "ADVANCE" ? "PAYROLL_ADVANCE" : "PAYROLL_OPENING") || original.producerId !== settlement.source.id || !payment || payment.status !== "LIVE" || payment.targetEntryId !== original.id || payment.signedAmountDzd !== Money.parse(settlement.amount).negate().toWire()) throw new ExactDebtError("Payroll settlement source ledger mismatch");
+        if (!target || target.employeeId !== employeeId || target.currency !== settlement.currency || settlement.debtAccountId !== debtAccountId || settlement.debtEntryId !== debtEntryId || !debtAccountId || !debtEntryId || !original || original.status !== "LIVE" || original.producerType !== (settlement.source.kind === "ADVANCE" ? "PAYROLL_ADVANCE" : "PAYROLL_OPENING") || original.producerId !== settlement.source.id || original.entryType !== (settlement.source.kind === "ADVANCE" ? "ADVANCE" : "ADJUSTMENT") || original.signedAmountDzd !== targetAmount || !payment || payment.status !== "LIVE" || payment.entryType !== "PAYMENT" || payment.producerType !== original.producerType || payment.producerId !== original.producerId || payment.targetEntryId !== original.id || payment.correctionOfEntryId || payment.signedAmountDzd !== Money.parse(settlement.amount).negate().toWire()) throw new ExactDebtError("Payroll settlement source ledger mismatch");
+        const account = this.finance.getAccount(debtAccountId);
+        if (account.workerId !== employeeId || account.partyType !== "INTERNAL_WORKER" || account.direction !== "RECEIVABLE" || account.currency !== settlement.currency) throw new ExactDebtError("Payroll settlement account mismatch");
       }
       for (const correction of corrections) {
         const earning = this.earnings.getEarning(correction.earningId);
-        const detail = earning?.debtAccountId ? this.finance.detail(earning.debtAccountId) : null;
+        const detail = earning?.debtAccountId ? detailFor(earning.debtAccountId) : null;
         const entry = detail?.entries.find(row => row.id === correction.correctionEntryId);
         const delta = Money.parse(correction.newAmount).subtract(Money.parse(correction.previousAmount));
-        if (!earning || earning.employeeId !== employeeId || earning.debtEntryId !== entry?.correctionOfEntryId || entry?.producerType !== "PAYROLL_EARNINGS" || entry.producerId !== earning.id || Money.parse(entry.signedAmountDzd).compare(delta) !== 0) throw new ExactDebtError("Payroll correction source ledger mismatch");
+        if (!earning || earning.employeeId !== employeeId || earning.currency !== correction.currency || !earning.debtAccountId || earning.debtEntryId !== entry?.correctionOfEntryId || entry?.status !== "LIVE" || entry?.entryType !== "ADJUSTMENT" || entry.producerType !== "PAYROLL_EARNINGS" || entry.producerId !== earning.id || entry.targetEntryId || Money.parse(entry.signedAmountDzd).compare(delta) !== 0) throw new ExactDebtError("Payroll correction source ledger mismatch");
+        const account = this.finance.getAccount(earning.debtAccountId);
+        if (account.workerId !== employeeId || account.partyType !== "INTERNAL_WORKER" || account.direction !== "PAYABLE" || account.currency !== correction.currency) throw new ExactDebtError("Payroll correction account mismatch");
       }
-      return { opening, earnings, cash, settlements, corrections };
+      const advances = cash.flatMap(payment => payment.advance ? [{ id: payment.advance.id, cashId: payment.id, employeeId, currency: payment.currency, amount: payment.advance.amount, remainingAmount: detailFor(payment.advance.debtAccountId).entries.find(row => row.id === payment.advance!.debtEntryId)?.remainingDzd ?? (() => { throw new ExactDebtError("Payroll advance source ledger mismatch"); })(), paymentDate: payment.paymentDate, debtAccountId: payment.advance.debtAccountId, debtEntryId: payment.advance.debtEntryId }] : []);
+      return { opening, earnings, cash, advances, settlements, corrections };
     });
   }
   correctEarning(raw: ExactSalaryCorrectionInput & ExactDebtAudit) {

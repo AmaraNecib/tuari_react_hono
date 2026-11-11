@@ -33,13 +33,15 @@ export function createExactWorkforceRouter(service: ExactWorkforceService, middl
   const correctEarning = middleware.mutationAudit(({ input, auditContext }: { context: RpcContext; input: z.output<typeof exactSalaryCorrectionInputSchema>; auditContext: MutationAuditContext }) => payroll.correctEarning({ ...input, ...auditContext }), resolveError);
   return os.router({
     recordPayrollCash: os.recordPayrollCash.handler(async params => exactPayrollCashRecordSchema.parse(await recordCash(params))),
-    reviewPayrollOpening: os.reviewPayrollOpening.handler(async params => exactPayrollOpeningRecordSchema.parse(await reviewOpening(params))),
+    reviewPayrollOpening: os.reviewPayrollOpening.handler(async params => {
+      await reviewOpening(params);
+      return exactPayrollOpeningRecordSchema.parse(payroll.listEmployeeLifecycle(params.input.employeeId).opening);
+    }),
     repayPayrollAdvance: os.repayPayrollAdvance.handler(async params => exactPayrollSettlementRecordSchema.parse(await repayAdvance(params))),
     correctPayrollEarning: os.correctPayrollEarning.handler(async params => exactPayrollCorrectionRecordSchema.parse(await correctEarning(params))),
     getEmployeePayrollLifecycle: os.getEmployeePayrollLifecycle.handler(middleware.queryAuth(async ({ input }) => {
       const lifecycle = payroll.listEmployeeLifecycle(input.employeeId);
-      const advances = lifecycle.cash.flatMap(cash => cash.advance ? [{ id: cash.advance.id, cashId: cash.id, employeeId: cash.employeeId, currency: cash.currency, amount: cash.advance.amount, paymentDate: cash.paymentDate, debtAccountId: cash.advance.debtAccountId, debtEntryId: cash.advance.debtEntryId }] : []);
-      return exactPayrollLifecycleSchema.parse({ ...lifecycle, advances });
+      return exactPayrollLifecycleSchema.parse(lifecycle);
     }, resolveError)),
     approveMonthlyEarnings: os.approveMonthlyEarnings.handler(async params => exactSalaryMonthlyApprovalResultSchema.parse(await approve(params))),
     listEmployeeEarnings: os.listEmployeeEarnings.handler(middleware.queryAuth(async ({ input }) => service.listEmployeeEarnings(input.employeeId), resolveError)),
