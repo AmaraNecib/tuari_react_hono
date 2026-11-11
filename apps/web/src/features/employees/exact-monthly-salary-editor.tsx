@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type FormEvent } from "react"
+import { useId, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { exactSalaryMonthlyAmountsSchema, suggestExactSalaryMonthAmounts, exactSalaryDaysSchema, type ExactSalaryMonthAmount, type ExactSalaryMonthlyAmounts, type ExactSalaryMonthProposal } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,10 @@ type Props = {
   initialMonths?: readonly ExactSalaryMonthAmount[]
   onApprove: (value: ExactSalaryMonthlyAmounts) => void | Promise<void>
   busy?: boolean
+  lockDraft?: boolean
+  approvalReady?: (plan: ExactSalaryMonthlyAmounts) => boolean
+  submitLabel?: string
+  renderMonthDetails?: (row: ExactSalaryMonthAmount, index: number) => ReactNode
 }
 
 function normalize(rows: readonly ExactSalaryMonthAmount[]): ExactSalaryMonthlyAmounts | null {
@@ -23,7 +27,7 @@ function normalize(rows: readonly ExactSalaryMonthAmount[]): ExactSalaryMonthlyA
 }
 
 /** Mount keyed by employee. Initial months seed a draft once; this form never posts cash. */
-export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprove, busy = false }: Props) {
+export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprove, busy = false, lockDraft = false, approvalReady, submitLabel, renderMonthDetails }: Props) {
   const { t, i18n } = useTranslation()
   const id = useId()
   const [rows, setRows] = useState<DraftMonth[]>(() => initialMonths?.map(row => ({ ...row, days: "" })) ?? [{ id: crypto.randomUUID(), month: defaultMonth, amount: "", days: "" }])
@@ -44,6 +48,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
   const fingerprint = plan ? JSON.stringify(plan) : null
   const alreadySubmitted = submitted !== null && submitted === fingerprint
   const disabled = busy || submitting
+  const ready = plan !== null && (approvalReady?.(plan) ?? true)
 
   function invalidateSuggestion() {
     setProposal(null)
@@ -52,6 +57,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
   }
 
   function change(next: DraftMonth[]) {
+    if (disabled || lockDraft) return
     setRows(next)
     setFailed(false)
     invalidateSuggestion()
@@ -79,7 +85,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    if (disabled || alreadySubmitted || inFlight.current || !plan) return
+    if (disabled || alreadySubmitted || inFlight.current || !plan || !ready) return
     inFlight.current = true
     setSubmitting(true)
     setFailed(false)
@@ -91,7 +97,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
   }
 
   return <form onSubmit={submit} dir={i18n.dir()} aria-label={t("salaryMonthly.title")}>
-    <fieldset disabled={disabled} className="space-y-4">
+    <fieldset disabled={disabled || lockDraft} className="space-y-4">
       <legend className="text-base font-medium">{t("salaryMonthly.title")}</legend>
       <p className="text-sm text-muted-foreground">{t("salaryMonthly.help")}</p>
       {rows.map((row, index) => <div key={row.id} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
@@ -102,6 +108,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
           <Input className="min-h-11" inputMode="decimal" dir="ltr" value={row.amount} onChange={event => change(rows.map((item, at) => at === index ? { ...item, amount: event.target.value } : item))} aria-describedby={`${id}-status`} />
         </label>
         <Button type="button" variant="outline" className="min-h-11 min-w-11" aria-label={t("salaryMonthly.remove", { index: index + 1 })} disabled={rows.length === 1} onClick={() => change(rows.filter((_, at) => at !== index))}>×</Button>
+        {renderMonthDetails && <div className="col-span-full">{renderMonthDetails(row, index)}</div>}
       </div>)}
       <Button type="button" variant="outline" className="min-h-11" disabled={rows.length >= 10000} onClick={() => change([...rows, { id: crypto.randomUUID(), month: "", amount: "", days: "" }])}>{t("salaryMonthly.add")}</Button>
       <details open={helperOpen} className="space-y-3 border-t pt-3">
@@ -139,7 +146,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
         <div className="flex flex-wrap justify-between gap-2"><span>{t("salaryMonthly.currentTotal")}</span><MoneyValue exact aggregate value={plan.totalAmount} currencyLabel={t("common.currency")} /></div>
       </div>}
       {failed && <p role="alert" className="text-sm text-destructive">{t("salaryMonthly.approvalFailed")}</p>}
-      <Button type="submit" className="min-h-11" disabled={!plan || alreadySubmitted}>{submitting ? t("common.loading") : <>{t("salaryMonthly.approve")} {plan && <MoneyValue exact aggregate value={plan.totalAmount} currencyLabel={t("common.currency")} />}</>}</Button>
     </fieldset>
+    <Button type="submit" className="mt-4 min-h-11" disabled={disabled || !ready || alreadySubmitted}>{submitting ? t("common.loading") : <>{submitLabel ?? t("salaryMonthly.approve")} {plan && !submitLabel && <MoneyValue exact aggregate value={plan.totalAmount} currencyLabel={t("common.currency")} />}</>}</Button>
   </form>
 }

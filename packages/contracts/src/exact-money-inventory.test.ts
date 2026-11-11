@@ -54,6 +54,7 @@ describe("inert foundation inventory", () => {
       "apps/api/src/modules/invoice/adapters/sqlite-exact-invoice.repository.ts",
       "apps/api/src/modules/invoice/invoice-exact.service.ts",
       "apps/web/src/components/ui/currency-amount-input.tsx",
+      "apps/web/src/features/employees/exact-monthly-salary-allocation.ts",
       "apps/web/src/features/employees/exact-salary-reference-value.tsx",
       "apps/web/src/features/inventory/inventory-exact-movement-form.tsx",
       "apps/web/src/features/inventory/inventory-exact-page.tsx",
