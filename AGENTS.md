@@ -104,6 +104,10 @@ Only the parent writes repeated lessons. Workers read matching lessons and
 record applied/excluded ones plus candidates in their commit body.
 Read `writing-for-agents` before editing agent instructions or briefs.
 
+When the owner requests a session retrospective, load
+[retro](.agents/skills/retro/SKILL.md). Return evidence-backed recommendations
+before making follow-up changes. Retro is optional, not a completion gate.
+
 Each delegation names the absolute tree, exact revision, goal, required
 reading, verification mode, writable files, exclusions, proof and completion.
 Write ordinary sentences, not compressed words. The parent owns ambiguous
