@@ -1,6 +1,7 @@
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fs::{copy, create_dir_all, read_to_string, remove_file, write, File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -2126,6 +2127,14 @@ fn license_failure_env_map(error: &crate::error::RustCoreError) -> HashMap<Strin
     ])
 }
 
+fn debug_api_path(debug_build: bool, inherited_path: Option<OsString>) -> Option<OsString> {
+    if debug_build {
+        inherited_path
+    } else {
+        None
+    }
+}
+
 fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
     let attachments_root = resolve_attachments_root(&app_db_path);
@@ -2191,6 +2200,12 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .env("DATABASE_URL", to_sqlite_url(&app_db_path))
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
+
+    // The debug pnpm script launches Node through PATH. Keep that one lookup
+    // variable for debug only; release still receives only the curated env.
+    if let Some(path) = debug_api_path(cfg!(debug_assertions), std::env::var_os("PATH")) {
+        command.env("PATH", path);
+    }
 
     // The bundled Node runtime needs `SystemRoot`: Node seeds its OpenSSL CSPRNG
     // from the Windows security provider through that path, and `env_clear()`
@@ -2357,7 +2372,7 @@ mod tests {
         api_sidecar_entry_path,
         has_portable_runtime_layout, is_allowed_desktop_bridge_path,
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
-        license_failure_env_map, license_status_for_error,
+        debug_api_path, license_failure_env_map, license_status_for_error,
         load_or_create_secret, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
         complete_db_key_rotation_in_store, restore_db_key_in_store, rotate_db_key_in_store,
@@ -2367,11 +2382,57 @@ mod tests {
         BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
         SecretStore, clear_app_ready, mark_app_ready_if_first,
     };
+    use std::ffi::OsString;
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
+    use std::process::Command;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use crate::error::RustCoreError;
+
+    #[test]
+    fn api_child_path_is_available_for_debug_and_excluded_from_release() {
+        let inherited = OsString::from("C:\\tools\\node;C:\\windows\\system32");
+        let mut debug_command = Command::new("pnpm.cmd");
+        debug_command.env_clear();
+        if let Some(path) = debug_api_path(true, Some(inherited.clone())) {
+            debug_command.env("PATH", path);
+        }
+        let debug_env: Vec<_> = debug_command
+            .get_envs()
+            .map(|(key, value)| (key.to_string_lossy().into_owned(), value.is_some()))
+            .collect();
+        assert_eq!(debug_env, vec![("PATH".to_string(), true)]);
+
+        let mut release_command = Command::new("node.exe");
+        release_command.env_clear();
+        if let Some(path) = debug_api_path(false, Some(inherited)) {
+            release_command.env("PATH", path);
+        }
+        assert_eq!(release_command.get_envs().count(), 0);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn debug_child_path_resolves_node_after_environment_is_cleared() {
+        let inherited_path = std::env::var_os("PATH").expect("test runner PATH is required");
+        let mut command = Command::new("cmd.exe");
+        command.args(["/d", "/c", "node --version"]).env_clear();
+        command.env(
+            "PATH",
+            debug_api_path(true, Some(inherited_path)).expect("debug PATH is retained"),
+        );
+        if let Ok(system_root) = std::env::var("SystemRoot") {
+            command.env("SystemRoot", system_root);
+        }
+        let output = command.output().expect("start Windows command shell");
+        assert!(
+            output.status.success(),
+            "node lookup failed with cleared environment: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout).starts_with('v'));
+    }
 
     fn unique_temp_dir() -> PathBuf {
         let unique_suffix = SystemTime::now()

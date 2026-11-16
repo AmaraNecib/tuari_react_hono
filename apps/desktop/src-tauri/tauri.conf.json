@@ -6,7 +6,7 @@
   "build": {
     "frontendDist": "../../web/dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "pnpm --filter @tuari/web dev",
+    "beforeDevCommand": "pnpm --filter @tuari/web dev --port 1420",
     "beforeBuildCommand": "pnpm --filter @tuari/web build"
   },
   "app": {
