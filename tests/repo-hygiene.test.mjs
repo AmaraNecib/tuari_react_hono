@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, readFile } from 'node:fs/promises';
+import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { constants } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -31,6 +31,28 @@ test('api tsconfig does not include the removed prisma.config.ts', async () => {
 
   assert.doesNotMatch(tsconfig, /prisma\.config\.ts/);
   assert.match(tsconfig, /"include": \["src\/\*\*\/\*\.ts"\]/);
+});
+
+test('obsolete onboarding analytics definitions and client are absent', async () => {
+  const removedPaths = [
+    'api/src/schema/analytics.ts',
+    'api/src/modules/analytics/analytics.service.ts',
+    'api/src/modules/analytics/analytics.routes.ts',
+    'apps/web/src/lib/analytics-db.ts',
+    'apps/web/src/hooks/use-analytics.ts',
+  ];
+  for (const file of removedPaths) {
+    await assert.rejects(access(resolveRepoPath(file)), { code: 'ENOENT' }, file);
+  }
+});
+
+test('web source has no orphan onboarding analytics requests or imports', async () => {
+  const sourceRoot = resolveRepoPath('apps/web/src');
+  const files = await readdir(sourceRoot, { recursive: true });
+  for (const file of files.filter((file) => /\.[cm]?[jt]sx?$/.test(file))) {
+    const source = await readFile(path.join(sourceRoot, file), 'utf8');
+    assert.doesNotMatch(source, /\/api\/analytics\b|(?:lib\/analytics-db|hooks\/use-analytics)\b/, file);
+  }
 });
 
 test('global focus ring uses the full-opacity outline color', async () => {
