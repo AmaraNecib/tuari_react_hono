@@ -6,7 +6,7 @@ import { i18n } from "@/i18n"
 import { buildHomeViewCopy } from "./home-view-copy"
 import { WorkspaceShell } from "./workspace-shell"
 
-vi.mock("@tanstack/react-router", () => ({ useBlocker: vi.fn() }))
+vi.mock("@tanstack/react-router", () => ({ useBlocker: vi.fn(() => ({ status: "idle", proceed: undefined, reset: undefined })) }))
 vi.mock("@/router/navigation", () => ({ WorkspaceLink: ({ children, target }: { children: React.ReactNode; target: { to: string } }) => <a href={target.to}>{children}</a> }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: "signed-in-user" } } }) }))
 

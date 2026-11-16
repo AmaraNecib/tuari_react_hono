@@ -3,7 +3,9 @@ import { useTranslation } from "react-i18next"
 import { type ExactSalaryMonthAmount, type ExactSalaryMonthlyAmounts, type ExactSalaryMonthlyApprovalInput, type ExactWorkforceEarningsClient } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
 import { MoneyValue } from "@/features/shared/money-value"
+import { Surface } from "@/features/shared/page-primitives"
 import { ExactMonthlySalaryEditor } from "./exact-monthly-salary-editor"
 import { buildSalaryMonthlyApproval, emptySalaryAllocation, salaryAllocationRemainder, type SalaryAllocationDraft } from "./exact-monthly-salary-allocation"
 import { browserMonthlyApprovalStore, createMonthlyApprovalExecutor } from "./exact-monthly-approval-recovery"
@@ -68,7 +70,7 @@ export function ExactMonthlySalaryApprovalForm({ employeeId, workspaceId, userId
     }
   }
 
-  return <section dir={i18n.dir()} className="space-y-4">
+  return <Surface as="section" dir={i18n.dir()} className="min-w-0 space-y-4 p-4 sm:p-5">
     <ExactMonthlySalaryEditor defaultMonth={defaultMonth} initialMonths={recovered?.payload.months ?? initialMonths} onApprove={approve} busy={busy || approved !== null} lockDraft={locked}
       approvalReady={plan => attempt.current !== null || valid(plan.months)} submitLabel={uncertain ? t("salaryAllocations.retrySame") : undefined}
       renderMonthDetails={(row, index) => {
@@ -80,13 +82,13 @@ export function ExactMonthlySalaryApprovalForm({ employeeId, workspaceId, userId
           <p className="text-sm text-muted-foreground">{t("salaryAllocations.help")}</p>
           {draft.segments.map((segment, at) => <div key={segment.id} className="grid gap-2 sm:grid-cols-2">
             <label className="min-w-0 space-y-1 text-sm">{t("salaryAllocations.project", { index: index + 1, segment: at + 1 })}
-              <select className="min-h-11 w-full rounded-md border border-input bg-background px-3" value={segment.projectId} onChange={event => change(row.id, value => ({ ...value, segments: value.segments.map(item => item.id === segment.id ? { ...item, projectId: event.target.value } : item) }))}>
+              <NativeSelect value={segment.projectId} onChange={event => change(row.id, value => ({ ...value, segments: value.segments.map(item => item.id === segment.id ? { ...item, projectId: event.target.value } : item) }))}>
                 <option value="">{t("salaryAllocations.selectProject")}</option>
                 {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
-              </select>
+              </NativeSelect>
             </label>
             <label className="min-w-0 space-y-1 text-sm">{t("salaryAllocations.amount", { index: index + 1, segment: at + 1 })}
-              <Input className="min-h-11" dir="ltr" inputMode="decimal" value={segment.amount} onChange={event => change(row.id, value => ({ ...value, segments: value.segments.map(item => item.id === segment.id ? { ...item, amount: event.target.value } : item) }))} />
+              <CurrencyInput className="min-h-11" currencyLabel={t("common.currency")} aria-label={t("salaryAllocations.amount", { index: index + 1, segment: at + 1 })} value={segment.amount} onChange={event => change(row.id, value => ({ ...value, segments: value.segments.map(item => item.id === segment.id ? { ...item, amount: event.target.value } : item) }))} />
             </label>
             <label className="min-w-0 space-y-1 text-sm">{t("salaryAllocations.days", { index: index + 1, segment: at + 1 })}
               <Input className="min-h-11" dir="ltr" type="number" min={1} step={1} value={segment.days} onChange={event => change(row.id, value => ({ ...value, segments: value.segments.map(item => item.id === segment.id ? { ...item, days: event.target.value } : item) }))} />
@@ -96,7 +98,7 @@ export function ExactMonthlySalaryApprovalForm({ employeeId, workspaceId, userId
           <Button type="button" variant="outline" className="min-h-11" disabled={projects.length === 0 || draft.segments.length >= 9999} onClick={() => change(row.id, value => ({ ...value, segments: [...value.segments, { id: crypto.randomUUID(), projectId: "", amount: "", days: "" }] }))}>{t("salaryAllocations.add", { index: index + 1 })}</Button>
           <div className="flex flex-wrap items-end gap-2">
             <label className="min-w-0 space-y-1 text-sm">{t("salaryAllocations.unallocated", { index: index + 1 })}
-              <Input className="min-h-11" dir="ltr" inputMode="decimal" value={draft.unallocatedAmount} onChange={event => change(row.id, value => ({ ...value, unallocatedAmount: event.target.value }))} />
+              <CurrencyInput className="min-h-11" currencyLabel={t("common.currency")} aria-label={t("salaryAllocations.unallocated", { index: index + 1 })} value={draft.unallocatedAmount} onChange={event => change(row.id, value => ({ ...value, unallocatedAmount: event.target.value }))} />
             </label>
             <Button type="button" variant="outline" className="min-h-11" disabled={remainder === null} onClick={() => { if (remainder !== null) change(row.id, value => ({ ...value, unallocatedAmount: remainder })) }}>{t("salaryAllocations.useRemainder", { index: index + 1 })}</Button>
           </div>
@@ -111,5 +113,5 @@ export function ExactMonthlySalaryApprovalForm({ employeeId, workspaceId, userId
       <ul className="space-y-2">{approved.months.map(row => <li key={row.id} className="flex flex-wrap justify-between gap-2"><bdi dir="ltr">{row.month}</bdi><MoneyValue exact value={row.earning.approvedAmount} currencyLabel={t("common.currency")} /></li>)}</ul>
       <div className="flex flex-wrap justify-between gap-2 font-medium"><span>{t("salaryMonthly.total")}</span><MoneyValue exact aggregate value={approved.totalAmount} currencyLabel={t("common.currency")} /></div>
     </section>}
-  </section>
+  </Surface>
 }

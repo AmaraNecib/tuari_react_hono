@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { exactSalaryMonthlyAmountsSchema, suggestExactSalaryMonthAmounts, exactSalaryDaysSchema, type ExactSalaryMonthAmount, type ExactSalaryMonthlyAmounts, type ExactSalaryMonthProposal } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
 import { MoneyValue } from "@/features/shared/money-value"
 import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
 
@@ -100,12 +101,12 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
     <fieldset disabled={disabled || lockDraft} className="space-y-4">
       <legend className="text-base font-medium">{t("salaryMonthly.title")}</legend>
       <p className="text-sm text-muted-foreground">{t("salaryMonthly.help")}</p>
-      {rows.map((row, index) => <div key={row.id} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+      {rows.map((row, index) => <div key={row.id} className="grid min-w-0 grid-cols-1 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
         <label className="min-w-0 space-y-1 text-sm">{t("salaryMonthly.month", { index: index + 1 })}
           <Input className="min-h-11" type="month" dir="ltr" value={row.month} onChange={event => change(rows.map((item, at) => at === index ? { ...item, month: event.target.value } : item))} aria-describedby={`${id}-status`} />
         </label>
         <label className="min-w-0 space-y-1 text-sm">{t("salaryMonthly.amount", { index: index + 1 })}
-          <Input className="min-h-11" inputMode="decimal" dir="ltr" value={row.amount} onChange={event => change(rows.map((item, at) => at === index ? { ...item, amount: event.target.value } : item))} aria-describedby={`${id}-status`} />
+          <CurrencyInput className="min-h-11" currencyLabel={t("common.currency")} aria-label={t("salaryMonthly.amount", { index: index + 1 })} value={row.amount} onChange={event => change(rows.map((item, at) => at === index ? { ...item, amount: event.target.value } : item))} aria-describedby={`${id}-status`} />
         </label>
         <Button type="button" variant="outline" className="min-h-11 min-w-11" aria-label={t("salaryMonthly.remove", { index: index + 1 })} disabled={rows.length === 1} onClick={() => change(rows.filter((_, at) => at !== index))}>×</Button>
         {renderMonthDetails && <div className="col-span-full">{renderMonthDetails(row, index)}</div>}
@@ -115,10 +116,10 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
         <summary className="min-h-11 cursor-pointer py-2 font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring" onClick={event => { event.preventDefault(); setHelperOpen(!helperOpen) }}><span>{t("salaryMonthly.distribute")}</span>{" "}<small className="text-muted-foreground">{t("salaryMonthly.optional")}</small></summary>
         <p className="text-sm text-muted-foreground">{t("salaryMonthly.helperHelp")}</p>
         <div className="grid gap-3 sm:grid-cols-2">
-          <label className="space-y-1 text-sm">{t("salaryMonthly.target")}<Input className="min-h-11" dir="ltr" inputMode="decimal" value={target} onChange={event => { setTarget(event.target.value); invalidateSuggestion() }} /></label>
-          <label className="space-y-1 text-sm">{t("salaryMonthly.basis")}<select className="min-h-11 w-full rounded-md border border-input bg-background px-3" value={basis} onChange={event => { setBasis(event.target.value as Basis); invalidateSuggestion() }}>
+          <label className="space-y-1 text-sm">{t("salaryMonthly.target")}<CurrencyInput className="min-h-11" currencyLabel={t("common.currency")} aria-label={t("salaryMonthly.target")} value={target} onChange={event => { setTarget(event.target.value); invalidateSuggestion() }} /></label>
+          <label className="space-y-1 text-sm">{t("salaryMonthly.basis")}<NativeSelect value={basis} onChange={event => { setBasis(event.target.value as Basis); invalidateSuggestion() }}>
             <option value="EQUAL">{t("salaryMonthly.equal")}</option><option value="WORK_DAYS">{t("salaryMonthly.workDays")}</option><option value="CALENDAR_DAYS">{t("salaryMonthly.calendarDays")}</option>
-          </select></label>
+          </NativeSelect></label>
         </div>
         {basis === "WORK_DAYS" && rows.map((row, index) => <label key={row.id} className="block space-y-1 text-sm">{t("salaryMonthly.days", { index: index + 1 })}<Input className="min-h-11" type="text" inputMode="numeric" dir="ltr" value={row.days} onChange={event => change(rows.map((item, at) => at === index ? { ...item, days: event.target.value } : item))} /></label>)}
         {basis === "CALENDAR_DAYS" && <><div className="grid gap-3 sm:grid-cols-2">

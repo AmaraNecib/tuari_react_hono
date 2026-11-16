@@ -4,18 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "@/i18n"
 import { ar } from "@/i18n/resources/ar"
 import { ExactSalaryEarningsSection } from "./exact-salary-earnings-section"
+import { createMonthlyApprovalStore } from "./exact-monthly-approval-recovery"
 
 const employees = [{ id: "real-worker", firstName: "Current", lastName: "Worker", phone: "0555000001", roleId: "worker-role", status: "ACTIVE" as const, salaryReference: null, currency: "DZD" as const, notes: null, occupation: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }]
 let currentEmployees = employees
-const state = vi.hoisted(() => ({ blocker: vi.fn(), pending: vi.fn() }))
-vi.mock("@tanstack/react-router", () => ({ useBlocker: (options: unknown) => state.blocker(options) }))
+const state = vi.hoisted(() => ({ blocker: vi.fn(), pending: vi.fn(), blockerState: { status: "idle", proceed: vi.fn(), reset: vi.fn() } }))
+vi.mock("@tanstack/react-router", () => ({ useBlocker: (options: unknown) => { state.blocker(options); return state.blockerState } }))
 vi.mock("@/router/navigation", () => ({ WorkspaceLink: ({ children, target }: { children: React.ReactNode; target: { to: string } }) => <a href={target.to}>{children}</a> }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: "actual-workspace-user" } } }) }))
 vi.mock("@/features/app-shell/workspace-queries", () => ({
   useWorkspaceScopedQuery: ({ key, queryFn, enabled }: { key: (user: string) => readonly unknown[]; queryFn: () => Promise<unknown>; enabled: boolean }) => useQuery({ queryKey: key("actual-workspace-user"), queryFn, enabled, retry: false }),
 }))
 afterEach(cleanup)
-beforeEach(() => { currentEmployees = employees; window.localStorage.clear(); state.blocker.mockClear(); state.pending.mockClear() })
+beforeEach(() => { currentEmployees = employees; window.localStorage.clear(); state.blocker.mockClear(); state.pending.mockClear(); state.blockerState.status = "idle"; state.blockerState.proceed.mockClear(); state.blockerState.reset.mockClear() })
 const label = (key: string) => i18n.t(`salaryEarnings.${key}`)
 function mount() {
   const query = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
@@ -39,6 +40,22 @@ describe("real workspace salary earnings page", () => {
     await waitFor(() => expect(client.getProjectSalaryCost).toHaveBeenCalledWith({ projectId: "actual-project" }))
     expect(query.getQueryCache().getAll().some(row => JSON.stringify(row.queryKey) === JSON.stringify(["workspace", "11111111-1111-4111-8111-111111111111", "actual-workspace-user", "exact-workforce", "employee", "real-worker"]))).toBe(true)
   })
+  it("uses the real oRPC proxy method path at the page seam without property-name requests", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({ json: [] }), { headers: { "content-type": "application/json" } }))
+    vi.stubGlobal("fetch", fetch)
+    try {
+      const { createExactWorkforceClient } = await import("./exact-workforce-client")
+      const query = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+      const workforceClient = createExactWorkforceClient("rpc/workforceExact")
+      render(<QueryClientProvider client={query}><ExactSalaryEarningsSection projects={[]} employees={employees} workspaceId="11111111-1111-4111-8111-111111111111" userId="actual-workspace-user" workforceClient={workforceClient} onPendingCommandChange={state.pending} /></QueryClientProvider>)
+      fireEvent.change(screen.getByLabelText(label("employee")), { target: { value: "real-worker" } })
+      await waitFor(() => expect(fetch).toHaveBeenCalledOnce())
+      const request = fetch.mock.calls[0]![0] as Request
+      expect(request.url).toMatch(/\/rpc\/workforceExact\/listEmployeeEarnings$/)
+      expect(request.url).not.toMatch(/\/(?:name|valueOf|toString)\//)
+    } finally { vi.unstubAllGlobals() }
+  })
+
   it("renders actual exact project labor totals instead of a numeric fallback", async () => {
     const { client } = mount()
     client.getProjectSalaryCost.mockResolvedValue({ projectId: "actual-project", currency: "DZD", totalAmount: "25000.00", segments: [{
@@ -69,7 +86,7 @@ describe("real workspace salary earnings page", () => {
     i18n.addResourceBundle("ar", "translation", { salaryEarnings: translated }, true, true)
     try {
       mount()
-      expect(screen.getByRole("region", { name: "sentinel-title" })).toBeTruthy()
+      expect(screen.getByRole("main", { name: "sentinel-title" })).toBeTruthy()
       fireEvent.change(screen.getByLabelText("sentinel-employee"), { target: { value: "real-worker" } })
       await waitFor(() => expect(screen.getByText("sentinel-empty")).toBeTruthy())
       fireEvent.change(screen.getByLabelText("sentinel-project"), { target: { value: "actual-project" } })
@@ -98,6 +115,41 @@ describe("real workspace salary earnings page", () => {
     expect(screen.queryByText("private missing activation detail")).toBeNull()
     expect(client.approveMonthlyEarnings).not.toHaveBeenCalled()
   })
+  it("shows a resolver for blocked navigation and lets the operator stay or leave with recovery saved", async () => {
+    state.blockerState.status = "blocked"
+    const { client } = mount()
+    client.approveMonthlyEarnings.mockRejectedValueOnce(new Error("response lost"))
+    await chooseWorker()
+    fireEvent.change(screen.getByLabelText(i18n.t("salaryMonthly.amount", { index: 1 })), { target: { value: "100" } })
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("salaryAllocations.useRemainder", { index: 1 }) }))
+    fireEvent.submit(screen.getByRole("form", { name: i18n.t("salaryMonthly.title") }))
+    await waitFor(() => expect(screen.getByRole("button", { name: i18n.t("salaryAllocations.retrySame") })).toBeTruthy())
+    const options = state.blocker.mock.lastCall![0] as { withResolver: boolean; shouldBlockFn: () => boolean }
+    expect(options.withResolver).toBe(true)
+    expect(options.shouldBlockFn()).toBe(true)
+    expect(screen.getByRole("alert", { name: i18n.t("salaryEarnings.navigationTitle") })).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("salaryEarnings.stay") }))
+    expect(state.blockerState.reset).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("salaryEarnings.leaveAndRecover") }))
+    expect(state.blockerState.proceed).toHaveBeenCalledOnce()
+  })
+
+  it("unblocks employee selection after retry confirms a restored intent", async () => {
+    const store = createMonthlyApprovalStore(window.localStorage, "11111111-1111-4111-8111-111111111111", "actual-workspace-user")
+    const payload = { requestId: "saved-request", employeeId: "real-worker", currency: "DZD" as const, months: [{ id: "saved-month", month: "2026-10", amount: "100.00", unallocatedAmount: "100.00", segments: [] }] }
+    store.save({ version: 1, workspaceId: store.workspaceId, userId: store.userId, employeeId: payload.employeeId, requestId: payload.requestId, payload, ambiguous: true })
+    const { client } = mount()
+    client.approveMonthlyEarnings.mockImplementationOnce(async () => ({ currency: "DZD", totalAmount: "100.00", months: [{ id: "saved-month", month: "2026-10", earning: { id: "earning-a", employeeId: "real-worker", currency: "DZD", periodStart: "2026-10-01", periodEnd: "2026-10-31", approvedAmount: "100.00", unallocatedAmount: "100.00", segments: [], debtAccountId: "account-a", debtEntryId: "entry-a", actorUserId: "actual-workspace-user", actorLabel: "Operator", transactionId: "transaction-a", createdAt: "2026-11-11T00:00:00.000Z" } }] } as never))
+    await waitFor(() => expect(screen.getByRole("button", { name: i18n.t("salaryAllocations.retrySame") })).toBeTruthy())
+    fireEvent.submit(screen.getByRole("form", { name: i18n.t("salaryMonthly.title") }))
+    await waitFor(() => expect(screen.getByText(i18n.t("salaryAllocations.approved"))).toBeTruthy())
+    expect(client.approveMonthlyEarnings).toHaveBeenCalledWith(payload)
+    expect(store.load()).toBeNull()
+    await waitFor(() => expect((screen.getByLabelText(label("employee")) as HTMLSelectElement).disabled).toBe(false))
+    const blocker = state.blocker.mock.lastCall![0] as { shouldBlockFn: () => boolean }
+    expect(blocker.shouldBlockFn()).toBe(false)
+  })
+
   it("blocks employee/navigation changes and keeps an uncertain intent mounted when background reads fail", async () => {
     const { query, client } = mount()
     client.approveMonthlyEarnings.mockRejectedValueOnce(new Error("response lost"))
