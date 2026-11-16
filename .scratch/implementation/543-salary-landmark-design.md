@@ -1,0 +1,3 @@
+# Salary landmark integration
+
+At base `7aa4e80d248f94800712cf6e2de5cb93125ec39b`, the production shell already owns the main landmark. The rebuilt salary module must be a labelled section, not a second nested main. Change only its outer semantic element and update the translated-accessibility regression to require the named region and absence of a local main. The test failed before the correction because only the nested main existed. No layout, approval, transport, recovery or money behavior changes. Verification stays focused-local / CI-final-pending. Full production integration and owner-deferred native acceptance remain separate.

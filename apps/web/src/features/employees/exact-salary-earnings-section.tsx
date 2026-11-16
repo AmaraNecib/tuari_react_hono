@@ -64,7 +64,7 @@ export function ExactSalaryEarningsSection({ projects, employees, workspaceId, u
   })
   const now = new Date()
   const defaultMonth = `${now.getFullYear().toString().padStart(4, "0")}-${(now.getMonth() + 1).toString().padStart(2, "0")}`
-  return <main dir={i18n.dir()} className="mx-auto w-full max-w-6xl space-y-6 px-3 py-5 sm:px-6 lg:py-8" aria-label={t("salaryEarnings.title")}>
+  return <section dir={i18n.dir()} className="mx-auto w-full max-w-6xl space-y-6 px-3 py-5 sm:px-6 lg:py-8" aria-label={t("salaryEarnings.title")}>
     <PageHeader title={t("salaryEarnings.title")} description={t("salaryEarnings.description")} />
     {(pending || recovery.error || recoveredRecord) && <Surface variant={recovery.error ? "panel" : "subtle"} role={recovery.error ? "alert" : "status"} className="space-y-3 p-4 sm:p-5">
       <SurfaceHeader title={recovery.error ? t("salaryEarnings.recoveryUnreadable") : t("salaryEarnings.pendingTitle")} description={recovery.error ? t("salaryEarnings.recoveryUnreadableHelp") : approvalState === "pending" ? t("salaryEarnings.pending") : t("salaryEarnings.recoveryHelp")} />
@@ -108,5 +108,5 @@ export function ExactSalaryEarningsSection({ projects, employees, workspaceId, u
         </Surface>}
       </div>
     </Surface>}
-  </main>
+  </section>
 }

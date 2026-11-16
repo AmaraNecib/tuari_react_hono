@@ -86,7 +86,8 @@ describe("real workspace salary earnings page", () => {
     i18n.addResourceBundle("ar", "translation", { salaryEarnings: translated }, true, true)
     try {
       mount()
-      expect(screen.getByRole("main", { name: "sentinel-title" })).toBeTruthy()
+      expect(screen.getByRole("region", { name: "sentinel-title" })).toBeTruthy()
+      expect(screen.queryByRole("main")).toBeNull()
       fireEvent.change(screen.getByLabelText("sentinel-employee"), { target: { value: "real-worker" } })
       await waitFor(() => expect(screen.getByText("sentinel-empty")).toBeTruthy())
       fireEvent.change(screen.getByLabelText("sentinel-project"), { target: { value: "actual-project" } })
