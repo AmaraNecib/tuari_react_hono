@@ -2139,6 +2139,7 @@ struct ApiChildEnvironment<'a> {
     debug_build: bool,
     inherited_path: Option<OsString>,
     system_root: Option<OsString>,
+    temp_dir: &'a Path,
     better_auth_secret: &'a str,
     auth_db_path: &'a Path,
     app_db_path: &'a Path,
@@ -2164,7 +2165,9 @@ fn configure_api_child_environment(command: &mut Command, environment: ApiChildE
             "APP_ATTACHMENTS_ROOT",
             environment.attachments_root.as_os_str(),
         )
-        .env("DATABASE_URL", environment.database_url);
+        .env("DATABASE_URL", environment.database_url)
+        .env("TEMP", environment.temp_dir.as_os_str())
+        .env("TMP", environment.temp_dir.as_os_str());
 
     if let Some(path) = debug_api_path(environment.debug_build, environment.inherited_path) {
         command.env("PATH", path);
@@ -2266,12 +2269,14 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let system_root = None;
 
     let database_url = to_sqlite_url(&app_db_path);
+    let temp_dir = std::env::temp_dir();
     configure_api_child_environment(
         &mut command,
         ApiChildEnvironment {
             debug_build: cfg!(debug_assertions),
             inherited_path: std::env::var_os("PATH"),
             system_root,
+            temp_dir: &temp_dir,
             better_auth_secret: &runtime_secrets.better_auth_secret,
             auth_db_path: &auth_db_path,
             app_db_path: &app_db_path,
@@ -2434,6 +2439,7 @@ mod tests {
         );
         assert!(super::debug_api_path(false, Some(inherited_path.clone())).is_none());
         let system_root = Some(OsString::from("C:\\windows"));
+        let temp_dir = std::env::temp_dir();
         let config_file = PathBuf::from("C:\\users\\test\\config.json");
         let auth_db_path = PathBuf::from("C:\\users\\test\\auth.sqlite");
         let app_db_path = PathBuf::from("C:\\users\\test\\app.sqlite");
@@ -2481,6 +2487,7 @@ mod tests {
                     debug_build,
                     inherited_path: Some(inherited_path.clone()),
                     system_root: system_root.clone(),
+                    temp_dir: &temp_dir,
                     better_auth_secret: "test-auth-secret",
                     auth_db_path: &auth_db_path,
                     app_db_path: &app_db_path,
@@ -2492,6 +2499,14 @@ mod tests {
                 },
             );
 
+            for key in ["TEMP", "TMP"] {
+                let configured = command
+                    .get_envs()
+                    .find(|(name, _)| name.to_string_lossy().eq_ignore_ascii_case(key))
+                    .and_then(|(_, value)| value)
+                    .unwrap_or_else(|| panic!("missing curated {key}"));
+                assert_eq!(configured, temp_dir.as_os_str(), "incorrect {key}");
+            }
             let path_entries: Vec<_> = command
                 .get_envs()
                 .filter(|(key, _)| key.to_string_lossy().eq_ignore_ascii_case("PATH"))
@@ -2552,6 +2567,7 @@ mod tests {
                 debug_build: true,
                 inherited_path: Some(inherited_path),
                 system_root: std::env::var("SystemRoot").ok().map(OsString::from),
+                temp_dir: &std::env::temp_dir(),
                 better_auth_secret: "test-auth-secret",
                 auth_db_path: &auth_db_path,
                 app_db_path: &app_db_path,
