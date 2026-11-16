@@ -68,6 +68,15 @@ describe("exact employee page seams", () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledOnce())
   })
 
+  it("composes exact employee details from the production record frame and translated history table", async () => {
+    const props = ctx()
+    render(<EmployeeDetailsPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
+    await screen.findByRole("heading", { name: "Amina Kaci" })
+    expect(screen.getAllByText(i18n.t("status.inactive")).length).toBeGreaterThan(0)
+    expect(screen.getByRole("table")).toBeTruthy()
+    expect(screen.getByText(i18n.t("detailPages.employee.notes"))).toBeTruthy()
+  })
+
   it("renders stored history through the exact reference renderer and surfaces delete refusal without dropping the row", async () => {
     const props = ctx()
     vi.mocked(props.client.employeesDelete).mockResolvedValue({ success: false, error: { message: "Employee has linked work history" } } as never)

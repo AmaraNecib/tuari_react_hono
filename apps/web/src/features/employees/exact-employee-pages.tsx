@@ -8,6 +8,8 @@ import { AppDate } from "@/components/app-date"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { ExactSalaryReferenceValue } from "./exact-salary-reference-value"
+import { RecordHistoryTable, RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shared/record-page-frame"
+import { AppShellTableFrame, AppShellTableHead, AppShellTableHeaderCell, AppShellTableRow } from "@/features/shared/table-primitives"
 import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
 
 type Choice = { id: string; label: string }
@@ -256,10 +258,29 @@ export function ExactEmployeeDetailsPage(props: ExactEmployeePageProps) {
   if (loading) return <p role="status">{t("common.loading")}</p>
   if (failure || !employee) return <section><p role="alert">{failure ?? t("common.none")}</p><Button onClick={() => void load()}>{t("common.retry")}</Button></section>
   const role = props.roles.find(value => value.id === employee.roleId)
-  return <article className="space-y-5"><header className="flex flex-wrap items-center justify-between gap-3"><h1 className="text-xl font-semibold">{employee.firstName} {employee.lastName}</h1><Button variant="destructive" disabled={deleting} onClick={async () => { setDeleting(true); setDeleteError(null); try { const result = await client.employeesDelete({ id: employee.id }); if (!result.success) throw new Error(result.error.message); props.onDone() } catch (error) { setDeleteError(serverError(error)) } finally { setDeleting(false) } }}>{t("common.delete")}</Button></header>
-    {deleteError ? <p role="alert">{deleteError}</p> : null}<dl className="grid gap-3 sm:grid-cols-2"><div><dt>{t("employeeForm.roleLabel")}</dt><dd>{role?.name ?? employee.roleId}</dd></div><div><dt>{t("auth.phoneLabel")}</dt><dd><bdi dir="ltr">{employee.phone}</bdi></dd></div><div><dt>{t("employeeForm.salaryAmountLabel")}</dt><dd><ExactSalaryReferenceValue reference={employee.salaryReference} /></dd></div><div><dt>{t("status.active")}</dt><dd>{employee.status}</dd></div></dl>
-    <section><h2 className="font-semibold">{t("detailPages.employee.historyTab")}</h2>{history.length === 0 ? <p>{t("detailPages.employee.noWorkHistory")}</p> : <ol className="divide-y">{history.map(entry => <li key={entry.id} className="grid gap-1 py-3"><time dateTime={entry.startDate}><AppDate value={entry.startDate} includeTime /></time><span>{entry.eventType} · {entry.status} · {props.roles.find(value => value.id === entry.roleId)?.name ?? entry.roleId}</span><span><ExactSalaryReferenceValue reference={entry.salaryReference} /></span><span>{entry.notes}</span></li>)}</ol>}</section>
-  </article>
+  const statusLabel = employee.status === "ACTIVE" ? t("status.active") : employee.status === "LEFT" ? t("status.left") : t("status.inactive")
+  const historyRows = history.map(entry => ({
+    id: entry.id,
+    typeLabel: entry.eventType,
+    title: props.roles.find(value => value.id === entry.roleId)?.name ?? entry.roleId,
+    detail: entry.notes,
+    periodLabel: <AppDate value={entry.startDate} includeTime />,
+    statusLabel: entry.status === "ACTIVE" ? t("status.active") : entry.status === "LEFT" ? t("status.left") : t("status.inactive"),
+  }))
+  return <RecordPageFrame title={`${employee.firstName} ${employee.lastName}`} editLabel={t("detailPages.employee.edit")} action={<Button variant="destructive" disabled={deleting} onClick={async () => { setDeleting(true); setDeleteError(null); try { const result = await client.employeesDelete({ id: employee.id }); if (!result.success) throw new Error(result.error.message); props.onDone() } catch (error) { setDeleteError(serverError(error)) } finally { setDeleting(false) } }}>{t("common.delete")}</Button>}>
+    {deleteError ? <p role="alert">{deleteError}</p> : null}
+    <RecordInfoGrid>
+      <RecordInfoCard label={t("detailPages.employee.fullName")} value={`${employee.firstName} ${employee.lastName}`} />
+      <RecordInfoCard label={t("employeeForm.roleLabel")} value={role?.name ?? employee.roleId} />
+      <RecordInfoCard label={t("auth.phoneLabel")} value={<bdi dir="ltr">{employee.phone}</bdi>} valueClassName="font-mono" />
+      <RecordInfoCard label={t("status.active")} value={statusLabel} />
+      <RecordInfoCard label={t("employeeForm.salaryAmountLabel")} value={<ExactSalaryReferenceValue reference={employee.salaryReference} />} />
+      <RecordInfoCard label={t("detailPages.employee.notes")} value={employee.notes?.trim() || t("common.noNotes")} wide />
+    </RecordInfoGrid>
+    <section className="space-y-3"><h2 className="text-lg font-semibold">{t("detailPages.employee.historyTab")}</h2>
+      <RecordHistoryTable emptyLabel={t("detailPages.employee.noWorkHistory")} rows={historyRows} />
+    </section>
+  </RecordPageFrame>
 }
 
 export function ExactEmployeeTable({ client, roles, onView, onEdit, onAdd }: ExactEmployeeUiContext & { onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void }) {
@@ -275,5 +296,12 @@ export function ExactEmployeeTable({ client, roles, onView, onEdit, onAdd }: Exa
   if (loading) return <p role="status">{t("common.loading")}</p>
   if (failure) return <section><p role="alert">{failure}</p><Button onClick={() => setRefreshKey(value => value + 1)}>{t("common.retry")}</Button></section>
   if (!employees.length) return <section className="space-y-3"><p>{t("employeeForm.exactEmpty")}</p>{onAdd ? <Button onClick={onAdd}>{t("employeeForm.submitSingle")}</Button> : null}</section>
-  return <div className="space-y-3">{deleteFailure ? <p role="alert">{deleteFailure}</p> : null}{onAdd ? <Button onClick={onAdd}>{t("employeeForm.submitSingle")}</Button> : null}<div className="overflow-x-auto"><table className="w-full text-start"><thead><tr><th>{t("employeeForm.firstNameLabel")}</th><th>{t("employeeForm.roleLabel")}</th><th>{t("auth.phoneLabel")}</th><th>{t("employeeForm.salaryAmountLabel")}</th><th>{t("common.actions")}</th></tr></thead><tbody>{employees.map(employee => <tr className="border-t" key={employee.id}><td>{employee.firstName} {employee.lastName}</td><td>{roles.find(role => role.id === employee.roleId)?.name ?? employee.roleId}</td><td><bdi dir="ltr">{employee.phone}</bdi></td><td><ExactSalaryReferenceValue reference={employee.salaryReference} /></td><td className="flex flex-wrap gap-2 py-2"><Button size="xs" onClick={() => onView(employee.id)}>{t("common.view")}</Button><Button size="xs" variant="outline" onClick={() => onEdit(employee.id)}>{t("detailPages.employee.edit")}</Button><Button size="xs" variant="destructive" disabled={deletingId === employee.id} onClick={() => void remove(employee.id)}>{t("common.delete")}</Button></td></tr>)}</tbody></table></div></div>
+  return <RecordPageFrame title={t("employeeForm.pageTitle")} action={onAdd ? <Button onClick={onAdd}>{t("employeeForm.submitSingle")}</Button> : undefined}>
+    {deleteFailure ? <p role="alert">{deleteFailure}</p> : null}
+    <AppShellTableFrame><table className="min-w-full text-sm"><AppShellTableHead><tr>
+      <AppShellTableHeaderCell>{t("employeeForm.firstNameLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("employeeForm.roleLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("auth.phoneLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("status.active")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("employeeForm.salaryAmountLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("common.actions")}</AppShellTableHeaderCell>
+    </tr></AppShellTableHead><tbody>{employees.map(employee => <AppShellTableRow key={employee.id}>
+      <td className="px-4 py-3 font-medium">{employee.firstName} {employee.lastName}</td><td className="px-4 py-3">{roles.find(role => role.id === employee.roleId)?.name ?? employee.roleId}</td><td className="px-4 py-3"><bdi dir="ltr">{employee.phone}</bdi></td><td className="px-4 py-3">{employee.status === "ACTIVE" ? t("status.active") : employee.status === "LEFT" ? t("status.left") : t("status.inactive")}</td><td className="px-4 py-3"><ExactSalaryReferenceValue reference={employee.salaryReference} /></td><td className="px-4 py-3"><div className="flex flex-wrap gap-2"><Button size="xs" onClick={() => onView(employee.id)}>{t("common.view")}</Button><Button size="xs" variant="outline" onClick={() => onEdit(employee.id)}>{t("detailPages.employee.edit")}</Button><Button size="xs" variant="destructive" disabled={deletingId === employee.id} onClick={() => void remove(employee.id)}>{t("common.delete")}</Button></div></td>
+    </AppShellTableRow>)}</tbody></table></AppShellTableFrame>
+  </RecordPageFrame>
 }
