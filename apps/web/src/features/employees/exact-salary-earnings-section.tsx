@@ -30,15 +30,18 @@ export function ExactSalaryEarningsSection({ projects, employees, workspaceId, u
     try { return { record: browserMonthlyApprovalStore(workspaceId, userId).load(), error: null as string | null } }
     catch (error) { return { record: null, error: error instanceof Error ? error.message : "Monthly approval recovery is unreadable" } }
   }, [workspaceId, userId])
+  const [confirmedRecoveryRecord, setConfirmedRecoveryRecord] = useState<typeof recovery.record>(null)
+  const recoveredRecord = recovery.record === confirmedRecoveryRecord ? null : recovery.record
   const [employeeId, setEmployeeId] = useState(() => recovery.record?.employeeId ?? "")
   const [projectId, setProjectId] = useState("")
   const [approvalState, setApprovalState] = useState<SalaryApprovalState>(() => recovery.record || recovery.error ? "uncertain" : "idle")
   const pending = approvalState === "pending" || approvalState === "uncertain"
-  const blocked = !scopeValid || recovery.error !== null || (recovery.record !== null && approvalState !== "approved") || pending
+  const blocked = !scopeValid || recovery.error !== null || recoveredRecord !== null || pending
   const handleApprovalState = useCallback((state: SalaryApprovalState) => {
+    if (state === "approved") setConfirmedRecoveryRecord(recovery.record)
     setApprovalState(state)
     onPendingCommandChange(state === "pending" || state === "uncertain")
-  }, [onPendingCommandChange])
+  }, [onPendingCommandChange, recovery.record])
   useEffect(() => { onPendingCommandChange(blocked) }, [blocked, onPendingCommandChange])
   const blocker = useBlocker({ shouldBlockFn: () => blocked, enableBeforeUnload: blocked, withResolver: true })
   const selected = employees.find(employee => employee.id === employeeId) ?? (blocked && employeeId ? { id: employeeId } : undefined)
@@ -63,9 +66,9 @@ export function ExactSalaryEarningsSection({ projects, employees, workspaceId, u
   const defaultMonth = `${now.getFullYear().toString().padStart(4, "0")}-${(now.getMonth() + 1).toString().padStart(2, "0")}`
   return <main dir={i18n.dir()} className="mx-auto w-full max-w-6xl space-y-6 px-3 py-5 sm:px-6 lg:py-8" aria-label={t("salaryEarnings.title")}>
     <PageHeader title={t("salaryEarnings.title")} description={t("salaryEarnings.description")} />
-    {(pending || recovery.error || recovery.record && approvalState !== "approved") && <Surface variant={recovery.error ? "panel" : "subtle"} role={recovery.error ? "alert" : "status"} className="space-y-3 p-4 sm:p-5">
+    {(pending || recovery.error || recoveredRecord) && <Surface variant={recovery.error ? "panel" : "subtle"} role={recovery.error ? "alert" : "status"} className="space-y-3 p-4 sm:p-5">
       <SurfaceHeader title={recovery.error ? t("salaryEarnings.recoveryUnreadable") : t("salaryEarnings.pendingTitle")} description={recovery.error ? t("salaryEarnings.recoveryUnreadableHelp") : approvalState === "pending" ? t("salaryEarnings.pending") : t("salaryEarnings.recoveryHelp")} />
-      {recovery.record && approvalState !== "approved" && <p className="text-sm text-ink-2">{t("salaryEarnings.recoveryRetryHelp")}</p>}
+      {recoveredRecord && <p className="text-sm text-ink-2">{t("salaryEarnings.recoveryRetryHelp")}</p>}
     </Surface>}
     {blocker.status === "blocked" && <Surface as="section" role="alert" aria-labelledby="salary-navigation-title" aria-describedby="salary-navigation-description" className="space-y-3 p-4 sm:p-5">
       <h2 id="salary-navigation-title" className="text-sm font-semibold text-ink">{t("salaryEarnings.navigationTitle")}</h2>
@@ -87,7 +90,7 @@ export function ExactSalaryEarningsSection({ projects, employees, workspaceId, u
             </NativeSelect>
           </Field>
           {selected && <div className="min-w-0 space-y-5">
-            {scopeValid && !recovery.error && (!earnings.isError || recovery.record !== null || pending || approvalState === "approved") && <ExactMonthlySalaryApprovalForm key={`${workspaceId}:${userId}:${selected.id}`} employeeId={selected.id} workspaceId={workspaceId} userId={userId} defaultMonth={defaultMonth} projects={projects} client={client} onAttemptStateChange={handleApprovalState} />}
+            {scopeValid && !recovery.error && (!earnings.isError || recoveredRecord !== null || pending || approvalState === "approved") && <ExactMonthlySalaryApprovalForm key={`${workspaceId}:${userId}:${selected.id}`} employeeId={selected.id} workspaceId={workspaceId} userId={userId} defaultMonth={defaultMonth} projects={projects} client={client} onAttemptStateChange={handleApprovalState} />}
             {earnings.isPending && <p role="status" className="text-sm text-ink-3">{t("salaryEarnings.loading")}</p>}
             {earnings.isError && <div role="alert" className="space-y-3"><p>{t("salaryEarnings.error")}</p><Button onClick={() => { void earnings.refetch() }}>{t("salaryEarnings.retry")}</Button></div>}
             {earnings.data !== undefined && <Surface variant="inset" className="min-w-0 space-y-4 p-4 sm:p-5" aria-label={t("salaryEarnings.saved")}>

@@ -134,7 +134,8 @@ describe("real workspace salary earnings page", () => {
     expect(state.blockerState.proceed).toHaveBeenCalledOnce()
   })
 
-  it("unblocks employee selection after retry confirms a restored intent", async () => {
+  it("keeps employee selection and navigation unlocked after a confirmed recovery and employee switch", async () => {
+    currentEmployees = [...employees, { ...employees[0]!, id: "another-worker", firstName: "Other" }]
     const store = createMonthlyApprovalStore(window.localStorage, "11111111-1111-4111-8111-111111111111", "actual-workspace-user")
     const payload = { requestId: "saved-request", employeeId: "real-worker", currency: "DZD" as const, months: [{ id: "saved-month", month: "2026-10", amount: "100.00", unallocatedAmount: "100.00", segments: [] }] }
     store.save({ version: 1, workspaceId: store.workspaceId, userId: store.userId, employeeId: payload.employeeId, requestId: payload.requestId, payload, ambiguous: true })
@@ -148,6 +149,13 @@ describe("real workspace salary earnings page", () => {
     await waitFor(() => expect((screen.getByLabelText(label("employee")) as HTMLSelectElement).disabled).toBe(false))
     const blocker = state.blocker.mock.lastCall![0] as { shouldBlockFn: () => boolean }
     expect(blocker.shouldBlockFn()).toBe(false)
+    fireEvent.change(screen.getByLabelText(label("employee")), { target: { value: "another-worker" } })
+    await waitFor(() => expect(client.listEmployeeEarnings).toHaveBeenCalledWith({ employeeId: "another-worker" }))
+    await waitFor(() => expect((screen.getByLabelText(label("employee")) as HTMLSelectElement).disabled).toBe(false))
+    expect((state.blocker.mock.lastCall![0] as { shouldBlockFn: () => boolean }).shouldBlockFn()).toBe(false)
+    expect(screen.queryByText(label("recoveryHelp"))).toBeNull()
+    expect(state.pending).toHaveBeenLastCalledWith(false)
+    expect(client.approveMonthlyEarnings).toHaveBeenCalledTimes(1)
   })
 
   it("blocks employee/navigation changes and keeps an uncertain intent mounted when background reads fail", async () => {
