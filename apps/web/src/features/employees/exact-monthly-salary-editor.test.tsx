@@ -1,3 +1,4 @@
+import { ORPCError } from "@orpc/client"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "@/i18n"
@@ -13,6 +14,16 @@ afterEach(cleanup)
 beforeEach(() => setMoneyGrouping(false))
 
 describe("approved month-first salary editor", () => {
+  it("explains a license refusal without leaking server diagnostics or clearing the draft", async () => {
+    const onApprove = vi.fn().mockRejectedValue(new ORPCError("UPGRADE_REQUIRED", { message: "private license diagnostic" }))
+    render(<ExactMonthlySalaryEditor defaultMonth="2026-10" initialMonths={months} onApprove={onApprove} />)
+    fireEvent.submit(screen.getByRole("form", { name: i18n.t("salaryMonthly.title") }))
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("الترخيص"))
+    expect(screen.queryByText("private license diagnostic")).toBeNull()
+    expect((screen.getByLabelText(i18n.t("salaryMonthly.amount", { index: 1 })) as HTMLInputElement).value).toBe("12000.00")
+    expect(onApprove).toHaveBeenCalledTimes(1)
+  })
+
   it.each(["0", "1.5"])("does not let unused work-day helper value %s block native approval submission", async days => {
     const onApprove = vi.fn()
     render(<ExactMonthlySalaryEditor defaultMonth="2026-10" initialMonths={months} onApprove={onApprove} />)
@@ -37,7 +48,7 @@ describe("approved month-first salary editor", () => {
       title: "monthly-title", help: "monthly-help", month: "monthly-month {{index}}",
       amount: "monthly-amount {{index}}", remove: "monthly-remove {{index}}", add: "monthly-add",
       total: "monthly-total", invalid: "monthly-invalid", approve: "monthly-approve",
-      approvalFailed: "monthly-approval-failed", distribute: "monthly-distribute", optional: "monthly-optional",
+      approvalFailed: "monthly-approval-failed", licenseRequired: "monthly-license-required", distribute: "monthly-distribute", optional: "monthly-optional",
       target: "monthly-target", basis: "monthly-basis", equal: "monthly-equal", workDays: "monthly-work-days",
       calendarDays: "monthly-calendar-days", days: "monthly-days {{index}}", daysWeight: "monthly-weight {{days}}",
       periodStart: "monthly-start", periodEnd: "monthly-end", calendarHelp: "monthly-calendar-help",

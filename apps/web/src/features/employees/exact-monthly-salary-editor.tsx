@@ -1,3 +1,4 @@
+import { ORPCError } from "@orpc/client"
 import { useId, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { exactSalaryMonthlyAmountsSchema, suggestExactSalaryMonthAmounts, exactSalaryDaysSchema, type ExactSalaryMonthAmount, type ExactSalaryMonthlyAmounts, type ExactSalaryMonthProposal } from "@tuari/contracts"
@@ -43,7 +44,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
   const [suggestionFailed, setSuggestionFailed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState<string | null>(null)
-  const [failed, setFailed] = useState(false)
+  const [failed, setFailed] = useState<"generic" | "license" | null>(null)
   const inFlight = useRef(false)
   const plan = normalize(rows)
   const fingerprint = plan ? JSON.stringify(plan) : null
@@ -60,7 +61,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
   function change(next: DraftMonth[]) {
     if (disabled || lockDraft) return
     setRows(next)
-    setFailed(false)
+    setFailed(null)
     invalidateSuggestion()
   }
 
@@ -89,11 +90,11 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
     if (disabled || alreadySubmitted || inFlight.current || !plan || !ready) return
     inFlight.current = true
     setSubmitting(true)
-    setFailed(false)
+    setFailed(null)
     try {
       await onApprove(plan)
       setSubmitted(JSON.stringify(plan))
-    } catch { setFailed(true) }
+    } catch (error) { setFailed(error instanceof ORPCError && error.code === "UPGRADE_REQUIRED" ? "license" : "generic") }
     finally { inFlight.current = false; setSubmitting(false) }
   }
 
@@ -146,7 +147,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
         <div className="flex flex-wrap justify-between gap-2"><span>{t("salaryMonthly.suggestedTotal")}</span><MoneyValue exact aggregate value={baseline} currencyLabel={t("common.currency")} /></div>
         <div className="flex flex-wrap justify-between gap-2"><span>{t("salaryMonthly.currentTotal")}</span><MoneyValue exact aggregate value={plan.totalAmount} currencyLabel={t("common.currency")} /></div>
       </div>}
-      {failed && <p role="alert" className="text-sm text-destructive">{t("salaryMonthly.approvalFailed")}</p>}
+      {failed && <p role="alert" className="text-sm text-destructive">{t(failed === "license" ? "salaryMonthly.licenseRequired" : "salaryMonthly.approvalFailed")}</p>}
     </fieldset>
     <Button type="submit" className="mt-4 min-h-11" disabled={disabled || !ready || alreadySubmitted}>{submitting ? t("common.loading") : <>{submitLabel ?? t("salaryMonthly.approve")} {plan && !submitLabel && <MoneyValue exact aggregate value={plan.totalAmount} currencyLabel={t("common.currency")} />}</>}</Button>
   </form>
