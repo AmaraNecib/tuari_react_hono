@@ -1,4 +1,4 @@
-import type { FormEvent, ReactNode } from "react"
+import type { FormEvent, ReactNode, ReactElement } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { type Role } from "@tuari/contracts"
 import { useNavigate } from "@tanstack/react-router"
@@ -16,6 +16,8 @@ import type { EmployeeManagerOption } from "./employee-batch-row-card"
 import type { EmployeeSavePlan } from "./employee-save-reconcile"
 import type { EmployeeTableRow } from "./employee-table"
 import { classifyWorkforceRole, isEmployeeRoleSelectable } from "./role-classification"
+import { ExactEmployeeEditPage as ExactEmployeeEdit } from "./exact-employee-pages"
+import type { ExactEmployeePageProps } from "./exact-employee-pages"
 
 type FormState = {
   firstName: string
@@ -85,7 +87,7 @@ function parseSalaryAmount(value: string) {
 /**
  * @description Component
  */
-export function EmployeeEditPage({
+function NumericEmployeeEditPage({
   currentManagedProjectIds,
   currentManagedWarehouseIds,
   employee,
@@ -645,4 +647,14 @@ function Field({
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
     </label>
   )
+}
+
+type NumericEmployeeEditProps = Parameters<typeof NumericEmployeeEditPage>[0]
+export function EmployeeEditPage(props: { mode: "exact" } & ExactEmployeePageProps): ReactElement
+export function EmployeeEditPage(props: NumericEmployeeEditProps & { mode?: "numeric" }): ReactElement
+export function EmployeeEditPage(props: ({ mode: "exact" } & ExactEmployeePageProps) | (NumericEmployeeEditProps & { mode?: "numeric" })) {
+  if (props.mode === "exact") {
+    return <ExactEmployeeEdit {...props} />
+  }
+  return <NumericEmployeeEditPage {...props} />
 }
