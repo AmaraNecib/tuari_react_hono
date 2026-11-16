@@ -48,6 +48,7 @@ export function HomeViewSignedInShell({
   session,
   sidebarCollapsed,
   signOutPending,
+  signOutBlocked = false,
   signOutOpen,
   theme,
   showRestartModal,
@@ -59,6 +60,7 @@ export function HomeViewSignedInShell({
   onSetSidebarCollapsed,
   onSignOutOpenChange,
   onThemeToggle,
+  exactMode = false,
 }: {
   breadcrumbItems: HomeViewBreadcrumbItem[]
   children: ReactNode
@@ -69,6 +71,7 @@ export function HomeViewSignedInShell({
   session: NonNullable<DemoSession>
   sidebarCollapsed: boolean
   signOutPending: boolean
+  signOutBlocked?: boolean
   signOutOpen: boolean
   theme: "light" | "dark"
   showRestartModal: boolean
@@ -80,6 +83,7 @@ export function HomeViewSignedInShell({
   onSetSidebarCollapsed: (value: boolean) => void
   onSignOutOpenChange: (value: boolean) => void
   onThemeToggle: () => void
+  exactMode?: boolean
 }) {
   const { t } = useTranslation()
   const { isMobile, sidebarOpen, toggleSidebar, closeSidebar } = useMobileLayout()
@@ -119,13 +123,13 @@ export function HomeViewSignedInShell({
   })
 
   // Fetch data for global search (only when search is open)
-  const employeesQuery = useEmployeesQuery({ enabled: searchOpen })
-  const projectsQuery = useProjectsQuery({ enabled: searchOpen })
-  const warehousesQuery = useWarehousesQuery({ enabled: searchOpen })
-  const debtAccountsQuery = useDebtAccountsQuery({ enabled: searchOpen })
-  const externalsQuery = useExternalCounterpartiesQuery({ enabled: searchOpen })
-  const inventoryQuery = useInventoryItemDefinitionsQuery({ enabled: searchOpen })
-  const invoicesQuery = useInventoryInvoiceGroupsQuery({ enabled: searchOpen })
+  const employeesQuery = useEmployeesQuery({ enabled: searchOpen && !exactMode })
+  const projectsQuery = useProjectsQuery({ enabled: searchOpen && !exactMode })
+  const warehousesQuery = useWarehousesQuery({ enabled: searchOpen && !exactMode })
+  const debtAccountsQuery = useDebtAccountsQuery({ enabled: searchOpen && !exactMode })
+  const externalsQuery = useExternalCounterpartiesQuery({ enabled: searchOpen && !exactMode })
+  const inventoryQuery = useInventoryItemDefinitionsQuery({ enabled: searchOpen && !exactMode })
+  const invoicesQuery = useInventoryInvoiceGroupsQuery({ enabled: searchOpen && !exactMode })
 
   // Build the unified search corpus + Fuse index lazily — they only exist
   // while the dialog is open and rebuild only when the query DATA changes,
@@ -537,7 +541,7 @@ export function HomeViewSignedInShell({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={signOutPending}>{copy.common.cancel}</AlertDialogCancel>
-            <AlertDialogAction disabled={signOutPending} onClick={onConfirmSignOut}>{copy.common.confirm}</AlertDialogAction>
+            <AlertDialogAction disabled={signOutPending || signOutBlocked} onClick={onConfirmSignOut}>{copy.common.confirm}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -696,8 +696,14 @@ export const ar = {
       cases: "الحالات",
       notes: "ملاحظات",
     },
+    slice543: {
+      unavailable: "هذا القسم المالي غير متاح في هذه النسخة.",
+    },
     salaryEarnings: {
       title: "اعتماد الأجور الشهرية",
+      cashUnavailable: "تسجيل الدفعات النقدية غير متاح هنا.",
+      allocations: "توزيع المشروع",
+      unallocated: "غير منسوب لمشروع",
       employee: "العامل",
       chooseEmployee: "اختر عاملًا من مساحة العمل",
       noEmployees: "أضف عاملًا أولًا، ثم اعتمد أجرته هنا. المرجع المالي ليس شرطًا لتسجيل الأجرة.",
@@ -724,6 +730,7 @@ export const ar = {
       selectProject: "اختر مشروعًا",
       amount: "مبلغ الجزء {{segment}} من الشهر {{index}}",
       days: "أيام الجزء {{segment}} من الشهر {{index}} — اختياري",
+      daysUnit: "يوم",
       remove: "حذف الجزء {{segment}} من الشهر {{index}}",
       unallocated: "المبلغ غير المنسوب لمشروع في الشهر {{index}}",
       useRemainder: "إبقاء المتبقي دون مشروع للشهر {{index}}",

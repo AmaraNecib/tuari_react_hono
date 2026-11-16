@@ -1,14 +1,19 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import type { ComponentProps } from "react"
 import { ORPCError } from "@orpc/client"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { exactSalaryMonthlyApprovalInputSchema, type ExactSalaryMonthlyApprovalInput, type ExactWorkforceClient } from "@tuari/contracts"
 import { i18n } from "@/i18n"
 import { ar } from "@/i18n/resources/ar"
-import { ExactMonthlySalaryApprovalForm } from "./exact-monthly-salary-approval-form"
+import { ExactMonthlySalaryApprovalForm as ApprovalForm } from "./exact-monthly-salary-approval-form"
 
 const projects = [{ id: "A", name: "Project A" }, { id: "B", name: "Project B" }]
 const months = [{ id: "oct", month: "2026-10", amount: "12000.00" }, { id: "nov", month: "2026-11", amount: "18000.00" }]
-afterEach(cleanup)
+beforeEach(() => window.localStorage.clear())
+afterEach(() => { cleanup(); window.localStorage.clear() })
+function ExactMonthlySalaryApprovalForm(props: Omit<ComponentProps<typeof ApprovalForm>, "workspaceId" | "userId">) {
+  return <ApprovalForm {...props} workspaceId="11111111-1111-4111-8111-111111111111" userId="operator" />
+}
 const label = (key: string, index = 1, segment = 1) => i18n.t(`salaryAllocations.${key}`, { index, segment })
 function response(raw: ExactSalaryMonthlyApprovalInput) {
   const parsed = exactSalaryMonthlyApprovalInputSchema.parse(raw)
@@ -55,7 +60,7 @@ describe("opt-in allocation-capable monthly payroll form", () => {
     const original = { ...ar.translation.salaryAllocations }
     const translated: Record<keyof typeof original, string> = {
       title: "alloc-title {{index}}", help: "alloc-help", add: "alloc-add {{index}}", project: "alloc-project {{index}} {{segment}}",
-      selectProject: "alloc-select", amount: "alloc-amount {{index}} {{segment}}", days: "alloc-days {{index}} {{segment}}", remove: "alloc-remove {{index}} {{segment}}",
+      selectProject: "alloc-select", amount: "alloc-amount {{index}} {{segment}}", days: "alloc-days {{index}} {{segment}}", daysUnit: "alloc-day", remove: "alloc-remove {{index}} {{segment}}",
       unallocated: "alloc-unallocated {{index}}", useRemainder: "alloc-remainder {{index}}", invalid: "alloc-invalid", valid: "alloc-valid",
       retrySame: "alloc-retry", uncertain: "alloc-uncertain", approved: "alloc-approved", approvedHelp: "alloc-approved-help", noProjects: "alloc-no-projects",
     }
@@ -89,6 +94,34 @@ describe("opt-in allocation-capable monthly payroll form", () => {
       cleanup()
       i18n.addResourceBundle("ar", "translation", { salaryAllocations: original }, true, true)
     }
+  })
+
+  it("approves the exact ordered A/B/A allocation with optional work days and no numeric conversion", async () => {
+    const approve = vi.fn(async (raw: ExactSalaryMonthlyApprovalInput) => response(raw))
+    render(<ExactMonthlySalaryApprovalForm employeeId="worker" defaultMonth="2026-10" initialMonths={[{ id: "oct-62500", month: "2026-10", amount: "62500" }]} projects={projects} client={{ approveMonthlyEarnings: approve }} />)
+    for (let index = 0; index < 3; index++) fireEvent.click(screen.getByRole("button", { name: label("add", 1) }))
+    const entries = [
+      { project: "A", amount: "10000", days: "5" },
+      { project: "B", amount: "37500", days: "15" },
+      { project: "A", amount: "15000", days: "5" },
+    ]
+    for (let index = 0; index < entries.length; index++) {
+      const item = entries[index]!
+      fireEvent.change(screen.getByLabelText(label("project", 1, index + 1)), { target: { value: item.project } })
+      fireEvent.change(screen.getByLabelText(label("amount", 1, index + 1)), { target: { value: item.amount } })
+      fireEvent.change(screen.getByLabelText(label("days", 1, index + 1)), { target: { value: item.days } })
+    }
+    unallocated()
+    submit()
+    await waitFor(() => expect(approve).toHaveBeenCalledTimes(1))
+    expect(approve.mock.calls[0]![0].months).toEqual([{
+      id: "oct-62500", month: "2026-10", amount: "62500.00", unallocatedAmount: "0.00",
+      segments: [
+        { id: expect.any(String), projectId: "A", amount: "10000.00", days: 5 },
+        { id: expect.any(String), projectId: "B", amount: "37500.00", days: 15 },
+        { id: expect.any(String), projectId: "A", amount: "15000.00", days: 5 },
+      ],
+    }])
   })
 
   it("keeps zero approval explicit and usable without projects", async () => {

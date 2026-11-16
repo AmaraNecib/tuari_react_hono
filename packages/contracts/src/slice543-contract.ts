@@ -8,11 +8,13 @@ import { operationsContract } from "./operations-contract";
 import { backupContract } from "./backup-contract";
 import { rbacContract } from "./rbac-contract";
 import { exactWorkforceEarningsContract } from "./workforce-exact-earnings-contract";
+import { systemContract } from "./system-contract";
 import type { ContractRouterClient } from "@orpc/contract";
 
 const nonfinancialWorkforceContract = {
   rolesList: workforceContract.rolesList,
   rolesGet: workforceContract.rolesGet,
+  managerAssignmentsList: workforceContract.managerAssignmentsList,
   projectAssignmentsList: workforceContract.projectAssignmentsList,
   projectAssignmentsGet: workforceContract.projectAssignmentsGet,
   projectAssignmentsCreate: workforceContract.projectAssignmentsCreate,
@@ -24,6 +26,7 @@ const nonfinancialWorkforceContract = {
 };
 
 export const slice543CapabilitiesSchema = z.object({
+  workspaceId: z.uuid(),
   employees: z.literal("exact"),
   approvedEarnings: z.literal("available"),
   projectLaborCost: z.literal("exact-ledger"),
@@ -38,6 +41,16 @@ export const slice543CapabilitiesSchema = z.object({
   fullProjectCost: z.literal("unavailable"),
 }).strict();
 
+export type Slice543Capabilities = z.infer<typeof slice543CapabilitiesSchema>;
+
+const slice543SecurityContract = {
+  getRecoveryKeyPool: systemContract.getRecoveryKeyPool,
+  generateRecoveryKeys: systemContract.generateRecoveryKeys,
+  consumeRecoveryKey: systemContract.consumeRecoveryKey,
+  revokeRecoveryKey: systemContract.revokeRecoveryKey,
+  changeDbEncryptionKey: systemContract.changeDbEncryptionKey,
+} as const;
+
 export const slice543CapabilitiesContract = {
   slice543Capabilities: oc.output(slice543CapabilitiesSchema),
 } as const;
@@ -51,6 +64,7 @@ export const slice543Contract = {
   ...operationsContract,
   ...backupContract,
   ...rbacContract,
+  ...slice543SecurityContract,
   ...slice543CapabilitiesContract,
   workforceExact: exactWorkforceEarningsContract,
 } as const;

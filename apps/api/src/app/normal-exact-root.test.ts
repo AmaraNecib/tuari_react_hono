@@ -57,8 +57,16 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
       });
       const app = createApp(deps, { allowedOrigins: ["http://localhost"] });
 
+      await expect(rpcCall(app, "slice543Capabilities")).rejects.toMatchObject({ status: 401 });
       const caps = await rpcCall<Record<string, string>>(app, "slice543Capabilities", undefined, signIn.token);
       expect(caps).toMatchObject({ employees: "exact", approvedEarnings: "available", cashPayments: "unavailable", fullProjectCost: "unavailable" });
+      expect(caps.workspaceId).toMatch(/^[0-9a-f-]{36}$/i);
+      await expect(rpcCall(app, "getRecoveryKeyPool")).rejects.toMatchObject({ status: 401 });
+      expect(await rpcCall(app, "getRecoveryKeyPool", undefined, signIn.token)).toMatchObject({ availableCount: 0, totalCount: 0, maxPoolSize: expect.any(Number), maskedKeys: [] });
+      const generatedKeys = await rpcCall<{ keys: { key: string; prefix: string }[] }>(app, "generateRecoveryKeys", undefined, signIn.token);
+      expect(generatedKeys.keys).toHaveLength(3);
+      expect(generatedKeys.keys.every(row => row.key.startsWith(row.prefix))).toBe(true);
+      expect(await rpcCall(app, "getRecoveryKeyPool", undefined, signIn.token)).toMatchObject({ availableCount: 3, totalCount: 3 });
       const inventoryPath = "http://localhost/api/inventory/attachments/unavailable-in-exact-mode";
       expect((await app.fetch(new Request(inventoryPath, { headers: { Origin: "http://localhost" } }))).status).toBe(401);
       expect((await app.fetch(new Request(inventoryPath, { headers: { Origin: "http://localhost", Authorization: `Bearer ${signIn.token}` } }))).status).toBe(503);
@@ -89,6 +97,8 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
       const assignments = await rpcCall<{ items: { employeeId: string; projectId: string }[] }>(app, "projectAssignmentsList", { employeeId: employee.item.id }, signIn.token);
       expect(assignments.items).toHaveLength(1);
       expect(assignments.items[0]).toMatchObject({ employeeId: employee.item.id, projectId: projectsA.item.id });
+      const managerAssignments = await rpcCall<{ items: { workerId: string; managerId: string; status: string }[] }>(app, "managerAssignmentsList", { workerId: employee.item.id, status: "ACTIVE" }, signIn.token);
+      expect(managerAssignments.items).toEqual([expect.objectContaining({ workerId: employee.item.id, managerId: manager.item.id, status: "ACTIVE" })]);
 
       const approvalInput = {
         ...approval,
@@ -161,6 +171,8 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
       try {
         if (backupDeps.mode !== "slice543") throw new Error("Snapshot reopened outside slice 543");
         const backupApp = createApp(backupDeps, { allowedOrigins: ["http://localhost"] });
+        expect(await rpcCall<{ workspaceId: string }>(backupApp, "slice543Capabilities", undefined, signIn.token)).toEqual({ ...caps, workspaceId: caps.workspaceId });
+        expect(await rpcCall(backupApp, "getRecoveryKeyPool", undefined, signIn.token)).toMatchObject({ availableCount: 3, totalCount: 3 });
         expect(await rpcCall(backupApp, "workforceExact/listEmployeeEarnings", { employeeId: employee.item.id }, signIn.token)).toEqual([
           { earning: result.months[0]!.earning, remainingAmount: "62500.00" },
           { earning: partialPeriod.months[0]!.earning, remainingAmount: "10000.00" },
@@ -171,6 +183,8 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
       deps = await createAppDependencies({ databasePath, databaseKey: key }, config);
       if (deps.mode !== "slice543") throw new Error("Reopened root changed runtime mode");
       const reopenedApp = createApp(deps, { allowedOrigins: ["http://localhost"] });
+      expect(await rpcCall<{ workspaceId: string }>(reopenedApp, "slice543Capabilities", undefined, signIn.token)).toEqual({ ...caps, workspaceId: caps.workspaceId });
+      expect(await rpcCall(reopenedApp, "getRecoveryKeyPool", undefined, signIn.token)).toMatchObject({ availableCount: 3, totalCount: 3 });
       const reopenedEarnings = await rpcCall<unknown[]>(reopenedApp, "workforceExact/listEmployeeEarnings", { employeeId: employee.item.id }, signIn.token);
       expect(reopenedEarnings).toEqual([
         { earning: result.months[0]!.earning, remainingAmount: "62500.00" },

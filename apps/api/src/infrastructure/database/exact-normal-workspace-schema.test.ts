@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
-import { ensureExactNormalWorkspaceSchema } from "./exact-normal-workspace-schema";
+import { ensureExactNormalWorkspaceSchema, getExactWorkspaceId } from "./exact-normal-workspace-schema";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
 
 function fresh() {
@@ -23,6 +23,8 @@ describe("normal exact workspace schema", () => {
         { name: "debt_account" }, { name: "debt_entry" }, { name: "employee_salary_earning" }, { name: "employee_salary_earning_segment" },
       ]);
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='employee_salary_cash'").get()).toBeUndefined();
+      expect(getExactWorkspaceId(db)).toMatch(/^[0-9a-f-]{36}$/i);
+      expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='recovery_key'").get()).toEqual({ name: "recovery_key" });
     } finally { db.close(); }
   });
 
@@ -30,9 +32,24 @@ describe("normal exact workspace schema", () => {
     const db = fresh();
     try {
       ensureExactNormalWorkspaceSchema(db);
+      const workspaceId = getExactWorkspaceId(db);
       ensureExactNormalWorkspaceSchema(db);
+      expect(getExactWorkspaceId(db)).toBe(workspaceId);
       db.exec("ALTER TABLE employee_salary_earning RENAME COLUMN approved_amount_minor TO wrong_units");
       expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(/invalid exact.*schema|exact.*column/i);
+    } finally { db.close(); }
+  });
+
+  it.each([
+    ["missing identity", "DROP TABLE exact_workspace_identity"],
+    ["corrupt identity", "UPDATE exact_workspace_identity SET workspace_id='not-a-uuid'"],
+    ["empty identity", "DELETE FROM exact_workspace_identity"],
+  ])("refuses %s without silently recreating it", (_name, corrupt) => {
+    const db = fresh();
+    try {
+      ensureExactNormalWorkspaceSchema(db);
+      db.exec(corrupt);
+      expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(/exact workspace identity/i);
     } finally { db.close(); }
   });
 

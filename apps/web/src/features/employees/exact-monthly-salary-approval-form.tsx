@@ -1,34 +1,46 @@
-import { useRef, useState } from "react"
-import { ORPCError } from "@orpc/client"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { exactSalaryMonthlyApprovalResultSchema, type ExactSalaryMonthAmount, type ExactSalaryMonthlyAmounts, type ExactSalaryMonthlyApprovalInput, type ExactWorkforceClient } from "@tuari/contracts"
+import { type ExactSalaryMonthAmount, type ExactSalaryMonthlyAmounts, type ExactSalaryMonthlyApprovalInput, type ExactWorkforceEarningsClient } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoneyValue } from "@/features/shared/money-value"
 import { ExactMonthlySalaryEditor } from "./exact-monthly-salary-editor"
 import { buildSalaryMonthlyApproval, emptySalaryAllocation, salaryAllocationRemainder, type SalaryAllocationDraft } from "./exact-monthly-salary-allocation"
+import { browserMonthlyApprovalStore, createMonthlyApprovalExecutor } from "./exact-monthly-approval-recovery"
 
-type ApprovalResult = Awaited<ReturnType<ExactWorkforceClient["approveMonthlyEarnings"]>>
+type ApprovalResult = Awaited<ReturnType<ExactWorkforceEarningsClient["approveMonthlyEarnings"]>>
 export type SalaryApprovalState = "idle" | "pending" | "uncertain" | "approved"
 type Props = {
   employeeId: string
+  workspaceId: string
+  userId: string
   defaultMonth: string
   initialMonths?: readonly ExactSalaryMonthAmount[]
   projects: readonly { id: string; name: string }[]
-  client: Pick<ExactWorkforceClient, "approveMonthlyEarnings">
+  client: Pick<ExactWorkforceEarningsClient, "approveMonthlyEarnings">
   busy?: boolean
   onAttemptStateChange?: (state: SalaryApprovalState) => void
 }
 
-/** Inject an opt-in client and mount keyed by workspace/employee. Never registers a production route. */
-export function ExactMonthlySalaryApprovalForm({ employeeId, defaultMonth, initialMonths, projects, client, busy = false, onAttemptStateChange }: Props) {
+/** Uses the normal authenticated workforce client and a workspace/user-scoped durable approval intent. */
+export function ExactMonthlySalaryApprovalForm({ employeeId, workspaceId, userId, defaultMonth, initialMonths, projects, client, busy = false, onAttemptStateChange }: Props) {
   const { t, i18n } = useTranslation()
-  const [allocations, setAllocations] = useState<Record<string, SalaryAllocationDraft>>({})
-  const [locked, setLocked] = useState(false)
-  const [uncertain, setUncertain] = useState(false)
+  const [executorState] = useState(() => {
+    const store = browserMonthlyApprovalStore(workspaceId, userId)
+    const executor = createMonthlyApprovalExecutor({ store, execute: input => client.approveMonthlyEarnings(input) })
+    return { executor, record: executor.record }
+  })
+  const recovered = executorState.record
+  const [allocations, setAllocations] = useState<Record<string, SalaryAllocationDraft>>(() => Object.fromEntries((recovered?.payload.months ?? []).map(month => [month.id, {
+    unallocatedAmount: month.unallocatedAmount,
+    segments: month.segments.map(segment => ({ id: segment.id, projectId: segment.projectId, amount: segment.amount, days: segment.days === undefined ? "" : String(segment.days) })),
+  }])))
+  const [locked, setLocked] = useState(Boolean(recovered))
+  const [uncertain, setUncertain] = useState(Boolean(recovered))
   const [approved, setApproved] = useState<ApprovalResult | null>(null)
-  const attempt = useRef<{ input: ExactSalaryMonthlyApprovalInput; ambiguous: boolean } | null>(null)
+  const attempt = useRef<{ input: ExactSalaryMonthlyApprovalInput; ambiguous: boolean } | null>(recovered ? { input: recovered.payload, ambiguous: true } : null)
   const projectIds = new Set(projects.map(row => row.id))
+  useEffect(() => { onAttemptStateChange?.(recovered ? "uncertain" : "idle") }, [onAttemptStateChange, recovered])
 
   function change(id: string, update: (value: SalaryAllocationDraft) => SalaryAllocationDraft) {
     if (busy || attempt.current !== null || approved !== null) return
@@ -43,21 +55,21 @@ export function ExactMonthlySalaryApprovalForm({ employeeId, defaultMonth, initi
     setLocked(true)
     onAttemptStateChange?.("pending")
     try {
-      const result = exactSalaryMonthlyApprovalResultSchema.parse(await client.approveMonthlyEarnings(structuredClone(current.input)))
+      const result = await executorState.executor.run(current.input) as ApprovalResult
       setApproved(result)
       setUncertain(false)
       onAttemptStateChange?.("approved")
     } catch (error) {
-      // Only a first, explicit pre-commit rejection permits a new intent. An earlier lost response stays unresolved.
-      const rejected = !current.ambiguous && error instanceof ORPCError && ["BAD_REQUEST", "NOT_FOUND", "UNAUTHORIZED", "FORBIDDEN"].includes(error.code)
-      if (rejected) { attempt.current = null; setLocked(false); onAttemptStateChange?.("idle") }
+      const stillPending = executorState.executor.record !== null
+      if (!stillPending) { attempt.current = null; setLocked(false) }
       else { current.ambiguous = true; setUncertain(true); onAttemptStateChange?.("uncertain") }
+      if (!executorState.executor.record) onAttemptStateChange?.("idle")
       throw error
     }
   }
 
   return <section dir={i18n.dir()} className="space-y-4">
-    <ExactMonthlySalaryEditor defaultMonth={defaultMonth} initialMonths={initialMonths} onApprove={approve} busy={busy || approved !== null} lockDraft={locked}
+    <ExactMonthlySalaryEditor defaultMonth={defaultMonth} initialMonths={recovered?.payload.months ?? initialMonths} onApprove={approve} busy={busy || approved !== null} lockDraft={locked}
       approvalReady={plan => attempt.current !== null || valid(plan.months)} submitLabel={uncertain ? t("salaryAllocations.retrySame") : undefined}
       renderMonthDetails={(row, index) => {
         const draft = allocations[row.id] ?? emptySalaryAllocation()

@@ -8,6 +8,9 @@ import type { ExactWorkforceService } from "../modules/company/workforce-exact.s
 import type { RoleModule } from "../modules/rbac/role.module";
 import type { BackupService } from "../modules/backup/backup.types";
 import type { BackupFolderPersister } from "../infrastructure/config/backup-folder-persister";
+import type { RecoveryKeyService } from "../modules/auth/recovery-key.service";
+import type { DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
+import type { DatabaseKeyPersister } from "../infrastructure/database/database-key-persister";
 import type { RpcContext } from "./context";
 import { createAlgeriaTimestamp } from "../modules/company/company-time";
 import { getCurrentUser } from "./context";
@@ -17,6 +20,7 @@ import { createExactWorkforceEarningsRouter } from "./workforce-exact-earnings-r
 import { createOperationsHandlers } from "./handlers/operations";
 import { createBackupHandlers } from "./handlers/backup";
 import { createRbacHandlers } from "./handlers/rbac";
+import { createRecoverySecurityHandlers } from "./handlers/system";
 
 type Slice543RouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
@@ -27,6 +31,10 @@ type Slice543RouterDependencies = {
   roleModule: RoleModule;
   backupService: BackupService;
   backupFolderPersister: BackupFolderPersister;
+  workspaceId: string;
+  recoveryKeyService: RecoveryKeyService;
+  databaseKeyManager: DatabaseKeyManager;
+  databaseKeyPersister: DatabaseKeyPersister;
 };
 
 const slice543Capabilities = {
@@ -66,13 +74,15 @@ export function createSlice543Router(
     }),
     rolesList: os.rolesList.handler(middleware.withPermission("employees:read", middleware.withAuth(async () => dependencies.workforceService.listRoles()))),
     rolesGet: os.rolesGet.handler(middleware.withPermission("employees:read", middleware.withAuth(async ({ input }) => dependencies.workforceService.getRole(input.id)))),
+    managerAssignmentsList: os.managerAssignmentsList.handler(middleware.queryAuth(async ({ input }) => dependencies.workforceService.listManagerAssignments(input))),
     projectManagerOwnershipHistoryList: os.projectManagerOwnershipHistoryList.handler(middleware.queryAuth(async ({ input }) => dependencies.workforceService.listProjectManagerOwnershipHistory(input))),
     warehouseManagerOwnershipHistoryList: os.warehouseManagerOwnershipHistoryList.handler(middleware.queryAuth(async ({ input }) => dependencies.workforceService.listWarehouseManagerOwnershipHistory(input))),
     ...exactEmployees,
     ...operations,
     ...createBackupHandlers(os, middleware, dependencies.backupService, dependencies.backupFolderPersister),
     ...createRbacHandlers(os, middleware, dependencies.roleModule),
-    slice543Capabilities: os.slice543Capabilities.handler(middleware.withAuth(async () => slice543Capabilities)),
+    ...createRecoverySecurityHandlers(os, middleware, dependencies.recoveryKeyService, dependencies.databaseKeyManager, dependencies.databaseKeyPersister),
+    slice543Capabilities: os.slice543Capabilities.handler(middleware.withAuth(async () => ({ ...slice543Capabilities, workspaceId: dependencies.workspaceId }))),
     workforceExact: exactEarnings,
   };
   return os.router(allHandlers);

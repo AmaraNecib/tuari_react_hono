@@ -7,7 +7,7 @@ import { createConfigFileKeyPersister, type DatabaseKeyPersister } from "../infr
 import { createDatabaseKeyManager, type DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
 import { ensureDatabaseSchema } from "../infrastructure/database/schema";
-import { ensureExactNormalWorkspaceSchema } from "../infrastructure/database/exact-normal-workspace-schema";
+import { ensureExactNormalWorkspaceSchema, getExactWorkspaceId } from "../infrastructure/database/exact-normal-workspace-schema";
 import { BetterSqlite3Executor } from "../infrastructure/database/sqlite-executor";
 import { createAppConfig, type AppConfig } from "../config";
 import { createCompanyRepository } from "../config/database";
@@ -149,6 +149,8 @@ export type Slice543AppDependencies = SharedAppDependencies & {
   databaseKeyManager: DatabaseKeyManager;
   databaseKeyPersister: DatabaseKeyPersister;
   exactFinanceService: ExactFinanceService;
+  recoveryKeyService: RecoveryKeyService;
+  workspaceId: string;
 };
 
 export type AppDependencies = LegacyAppDependencies | Slice543AppDependencies;
@@ -370,9 +372,11 @@ async function createSlice543Dependencies(
 
   try {
     ensureExactNormalWorkspaceSchema(sharedDatabase);
+    const workspaceId = getExactWorkspaceId(sharedDatabase);
     const db = createDrizzleFromSqlite(sharedDatabase);
     const auth = config.authInstance ?? createAuth(db, appConfig);
     const connectionLock = createFifoLock({ timeoutMs: 30_000 });
+    const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase, connectionLock));
     const dependencies = { id: randomUUID, now: () => new Date().toISOString() };
     const companyRepository = createCompanyRepository(sharedDatabase, appConfig, connectionLock);
     const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
@@ -412,6 +416,8 @@ async function createSlice543Dependencies(
       exactWorkforceService,
       roleModule,
       exactFinanceService: financeService,
+      recoveryKeyService,
+      workspaceId,
       databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
       databaseKeyPersister: createConfigFileKeyPersister(
         process.env.APP_DB_KEY ? null : process.env.TUARI_CONFIG_FILE?.trim() || null,

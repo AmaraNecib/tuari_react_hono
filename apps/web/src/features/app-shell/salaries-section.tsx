@@ -1,5 +1,4 @@
-import { lazy, Suspense, useState } from "react"
-import type { ExactWorkforceClient } from "@tuari/contracts"
+import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { PageHeader } from "@/features/shared/page-primitives"
@@ -8,10 +7,6 @@ import { AddSalaryPaymentDialog } from "@/features/employees/add-salary-payment-
 
 import { SalaryPaymentsTable, type SalaryPaymentRow } from "./salary-payments-table"
 import { SalariedWorkersTable, type SalariedWorkerRow } from "./salaried-workers-table"
-
-const ExactSalaryEarningsSection = lazy(() => import("@/features/employees/exact-salary-earnings-section").then(module => ({ default: module.ExactSalaryEarningsSection })))
-
-type ExactPayrollIntegration = { workforceClient: ExactWorkforceClient; onPendingCommandChange: (pending: boolean) => void } | { workforceClient?: never; onPendingCommandChange?: never }
 
 /**
  * The salaries screen: a tab shell that chooses between the payment-history
@@ -23,16 +18,14 @@ export function SalariesSection({
   workers,
   projects,
   onEditSalary,
-  workforceClient,
-  onPendingCommandChange,
 }: {
   recentPayments: SalaryPaymentRow[]
   workers: SalariedWorkerRow[]
   projects: Array<{ id: string; name: string }>
   onEditSalary: (employeeId: string) => void
-} & ExactPayrollIntegration) {
+}) {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState(workforceClient ? "earnings" : "recent")
+  const [activeTab, setActiveTab] = useState("recent")
   // Only the identity is snapshotted when the dialog opens; the wage, period,
   // and assignment windows are read from the live query data below so a
   // workspace refresh cannot leave a stale proposal or day default behind.
@@ -66,12 +59,9 @@ export function SalariesSection({
         tabs={[
           { id: "recent", label: t("salaries.recentTitle") },
           { id: "workers", label: t("salaries.workersTitle") },
-          ...(workforceClient ? [{ id: "earnings", label: t("salaryEarnings.title") }] : []),
         ]}
         onChange={setActiveTab}
       />
-
-      {workforceClient && <div hidden={activeTab !== "earnings"}><Suspense fallback={<p role="status">{t("common.loading")}</p>}><ExactSalaryEarningsSection projects={projects} workforceClient={workforceClient} onPendingCommandChange={onPendingCommandChange} /></Suspense></div>}
 
       {/* Both tables stay mounted and the inactive one is hidden, so each tab
           keeps its own query, filters and page across a tab switch — the same
