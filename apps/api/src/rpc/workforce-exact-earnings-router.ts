@@ -15,7 +15,7 @@ function resolveExactEarningsError(error: unknown): unknown {
   if (error instanceof FifoLockBusyError || (error && typeof error === "object" && "code" in error && String(error.code).startsWith("SQLITE_BUSY"))) {
     return new ORPCError("CONFLICT", { message: "Financial transaction is busy. Retry the same request." });
   }
-  return error;
+  throw error;
 }
 
 /** Authenticated normal application earnings routes. Cash lifecycle procedures are not mounted here. */
