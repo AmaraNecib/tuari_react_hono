@@ -7,6 +7,7 @@ import type { EmployeeTransitionLinks } from "./company.entity-resolvers";
 export interface ExactEmployeeRepository extends TransactionalRepository {
   getRoleById(id: string): RoleRecord | null;
   getEmployeeById(id: string): ExactEmployee | null;
+  getActiveManagerAssignmentByWorkerId(id: string): EmployeeManagerAssignment | null;
   getEmployeeByPhone(phone: string): ExactEmployee | null;
   listEmployees(filters?: EmployeeListFilters): ExactEmployee[];
   listEmployeesPaged(query: { filters?: EmployeeListFilters; cursor?: string; limit: number }): { items: ExactEmployee[]; total: number; nextCursor: string | null };

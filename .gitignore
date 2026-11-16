@@ -49,6 +49,9 @@ Thumbs.db
 /.scratch/*/
 !/.scratch/implementation/
 !/.scratch/planning/
+/.scratch/implementation/427-money-wayfinder.md
+/.scratch/implementation/427-money-spec.md
+/.scratch/implementation/427-money-tickets.md
 
 .claude/
 .opencode/

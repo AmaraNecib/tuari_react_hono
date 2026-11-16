@@ -17,6 +17,9 @@ import {
   ASSIGNABLE_ROLE_KEYS,
   isAcceptedEmployeeRoleKey,
   LEGACY_WORKFORCE_ROLE_KEYS,
+  type EmployeeRecord,
+  type EmployeeManagerAssignmentRecord,
+  type RoleRecord,
 } from "./company.types";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
@@ -106,13 +109,20 @@ export function requireEmployee(repository: WorkforceRepository, employeeId: str
   return employee;
 }
 
-export function requireEmployeeWithRoleKey(
-  repository: WorkforceRepository,
+export type OperationsWorkforceReader = {
+  getEmployeeById(id: string): Pick<EmployeeRecord, "id" | "roleId" | "status"> | null;
+  getRoleById(id: string): RoleRecord | null;
+  getActiveManagerAssignmentByWorkerId(id: string): EmployeeManagerAssignmentRecord | null;
+};
+
+export function requireEmployeeWithRoleKey<T extends Pick<EmployeeRecord, "id" | "roleId" | "status">>(
+  repository: { getEmployeeById(id: string): T | null; getRoleById(id: string): RoleRecord | null },
   employeeId: string,
   roleKey: string,
   field: string,
-) {
-  const employee = requireEmployee(repository, employeeId);
+): T {
+  const employee = repository.getEmployeeById(employeeId);
+  if (!employee) throw new CompanyError("NOT_FOUND", "تعذر العثور على العامل المطلوب.");
   const role = requireRole(repository, employee.roleId);
 
   if (role.key !== roleKey) {
@@ -282,7 +292,7 @@ export function assertEmployeeTransitionAllowed(currentRoleKey: string, nextRole
 
 export function ensureProjectTransitionAllowed(
   operationsRepo: OperationsRepository,
-  workforceRepo: WorkforceRepository,
+  workforceRepo: OperationsWorkforceReader,
   projectId: string,
   currentManagerId: string | null,
   nextManagerId: string | null | undefined,
@@ -385,7 +395,7 @@ export function ensureWarehouseTransitionAllowed(
 
 export function listActiveWorkerIdsForProject(
   operationsRepo: OperationsRepository,
-  workforceRepo: WorkforceRepository,
+  workforceRepo: OperationsWorkforceReader,
   projectId: string,
   options?: { requireManagerConsistencyWith?: string | null },
 ) {

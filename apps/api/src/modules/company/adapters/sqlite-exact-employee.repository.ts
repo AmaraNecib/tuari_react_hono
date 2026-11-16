@@ -1,4 +1,4 @@
-import { employeeManagerAssignmentSchema, employeeProjectAssignmentSchema, roleSchema, exactEmployeeSchema, exactEmployeeStateHistorySchema, type ExactEmployee, type ExactEmployeeStateHistory, type EmployeeAssignWorkplaceInput } from "@tuari/contracts";
+import { employeeManagerAssignmentSchema, employeeProjectAssignmentSchema, roleSchema, exactEmployeeSchema, exactEmployeeStateHistorySchema, type ExactEmployee, type ExactEmployeeStateHistory, type EmployeeAssignWorkplaceInput, type EmployeeManagerAssignment } from "@tuari/contracts";
 import { requireExactMoneySchema } from "../../../infrastructure/database/money-schema-gate";
 import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
@@ -38,6 +38,13 @@ export class SqliteExactEmployeeRepository implements ExactEmployeeRepository {
     return this.withTransaction(() => {
       const row = this.db.prepare(`SELECT id,key,name,description,is_system AS isSystem,created_at AS createdAt,updated_at AS updatedAt FROM role WHERE id=?`).get(id) as (Omit<RoleRecord, "isSystem"> & { isSystem: number }) | undefined;
       return row ? roleSchema.parse({ ...row, isSystem: row.isSystem === 1 }) : null;
+    });
+  }
+
+  getActiveManagerAssignmentByWorkerId(id: string): EmployeeManagerAssignment | null {
+    return this.withTransaction(() => {
+      const row = this.db.prepare(`SELECT id,worker_id AS workerId,manager_id AS managerId,status,start_date AS startDate,end_date AS endDate,notes,actor_user_id AS actorUserId,actor_label AS actorLabel,transaction_id AS transactionId,created_at AS createdAt,updated_at AS updatedAt FROM employee_manager_assignment WHERE worker_id=? AND status='ACTIVE' ORDER BY created_at DESC,id DESC LIMIT 1`).get(id);
+      return row ? employeeManagerAssignmentSchema.parse(row) : null;
     });
   }
 

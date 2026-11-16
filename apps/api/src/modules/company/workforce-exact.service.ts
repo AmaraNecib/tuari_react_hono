@@ -13,6 +13,8 @@ const auditOf = (value: ExactDebtAudit): Required<ExactDebtAudit> => ({
 export class ExactWorkforceService {
   constructor(private readonly repository: ExactWorkforceRepository, private readonly finance: ExactFinanceService, private readonly dependencies: { id(): string; now(): string }) {}
 
+  get financeService(): ExactFinanceService { return this.finance; }
+
   private snapshot<T>(work: () => T): T {
     const source = this.repository.transactionIdentity;
     const ledger = this.finance.transactionIdentity;
