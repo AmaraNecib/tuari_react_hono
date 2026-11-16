@@ -52,7 +52,7 @@ export function ExactProjectWarehousePages({ client, workspaceId, userId, page, 
   const projectManagerRoleId = roleRows.find(role => role.key === "project_manager")?.id ?? ""
   const warehouseManagerRoleId = roleRows.find(role => role.key === "warehouse_manager")?.id ?? ""
   const allAssignments = useQuery({ queryKey: queryKey(workspaceId, userId, `project-assignments:${page}:${projectId ?? "all"}`), queryFn: () => client.projectAssignmentsList(page === "projects" ? {} : { projectId }), enabled: page === "projects" || ((page === "project-details" || page === "project-edit") && Boolean(projectId)) })
-  const allWarehouseAssignments = useQuery({ queryKey: queryKey(workspaceId, userId, "warehouse-assignments"), queryFn: () => client.warehouseAssignmentsList({ warehouseId }), enabled: page === "warehouse-details" && Boolean(warehouseId) })
+  const allWarehouseAssignments = useQuery({ queryKey: queryKey(workspaceId, userId, `warehouse-assignments:${warehouseId}`), queryFn: () => client.warehouseAssignmentsList({ warehouseId }), enabled: page === "warehouse-details" && Boolean(warehouseId) })
   const projectHistory = useQuery({ queryKey: queryKey(workspaceId, userId, `project-history:${projectId}`), queryFn: () => client.projectManagerOwnershipHistoryList({ projectId }), enabled: page === "project-details" && Boolean(projectId) })
   const warehouseHistory = useQuery({ queryKey: queryKey(workspaceId, userId, `warehouse-history:${warehouseId}`), queryFn: () => client.warehouseManagerOwnershipHistoryList({ warehouseId }), enabled: page === "warehouse-details" && Boolean(warehouseId) })
   const [archiveError, setArchiveError] = useState<string | null>(null)
@@ -62,7 +62,7 @@ export function ExactProjectWarehousePages({ client, workspaceId, userId, page, 
   const activeQueries = [projectPage ? projectsQuery : warehousesQuery, employeesQuery, ...(needsRoles ? [rolesQuery] : []), ...(page === "projects" || page === "project-edit" ? [allAssignments] : [])]
   if (activeQueries.some(query => query.isPending)) return <p role="status">{t("common.loading")}</p>
   const failed = activeQueries.some(query => query.isError)
-  if (failed) return <Surface role="alert" variant="panel" className="p-5"><p>{t("shell.loadWorkspaceError")}</p><Button onClick={() => { void Promise.all([projectsQuery.refetch(), warehousesQuery.refetch(), employeesQuery.refetch(), rolesQuery.refetch()]) }}>{t("common.retry")}</Button></Surface>
+  if (failed) return <Surface role="alert" variant="panel" className="p-5"><p>{t("shell.loadWorkspaceError")}</p><Button onClick={() => { void Promise.all(activeQueries.map(query => query.refetch())) }}>{t("common.retry")}</Button></Surface>
 
   const refresh = (resource: string) => queryClient.invalidateQueries({ queryKey: queryKey(workspaceId, userId, resource) }).then(() => undefined)
   if (page === "projects") {
@@ -87,7 +87,7 @@ export function ExactProjectWarehousePages({ client, workspaceId, userId, page, 
     const workerRows = assignments.map(item => { const person = people.find(row => row.id === item.employeeId); return { id: item.id, typeLabel: t("detailPages.project.workersRole"), title: person ? `${person.firstName} ${person.lastName}` : item.employeeId, detail: item.notes, periodLabel: `${item.startDate} – ${item.endDate ?? "—"}`, statusLabel: item.status } })
     const managementHistoryRows = (projectHistory.data?.items ?? []).map(item => ({ id: item.id, typeLabel: t("detailPages.project.manager"), title: people.find(person => person.id === item.managerId) ? managerName(item.managerId) : item.managerId, detail: item.notes, periodLabel: `${item.startDate} – ${item.endDate ?? "—"}`, statusLabel: item.status }))
     if (!project) return <p role="alert">{t("detailPages.shared.missingRecordDescription")}</p>
-    return <ProjectDetailsPage activeTab={detailTab ?? "overview"} project={{ ...project, managerName: managerName(project.managerId), activeWorkers: new Set(assignments.filter(item => item.status === "ACTIVE").map(item => item.employeeId)).size }} workerRows={workerRows} managementHistoryRows={managementHistoryRows} capabilityMode workforceClient={workforceClient} onTabChange={tab => onProjectTab(project.id, tab)} />
+    return <ProjectDetailsPage activeTab={detailTab ?? "overview"} project={{ ...project, managerName: managerName(project.managerId), activeWorkers: new Set(assignments.filter(item => item.status === "ACTIVE").map(item => item.employeeId)).size }} workerRows={workerRows} managementHistoryRows={managementHistoryRows} capabilityMode workforceClient={workforceClient} workforceScope={{ workspaceId, userId }} onTabChange={tab => onProjectTab(project.id, tab)} />
   }
   if (page === "warehouses") {
     const rows: WarehouseRow[] = (warehousesQuery.data?.items ?? []).map(row => ({ ...row, managerName: managerName(row.managerId), canArchive: row.status !== "ARCHIVED", archiveDisabledReason: null }))

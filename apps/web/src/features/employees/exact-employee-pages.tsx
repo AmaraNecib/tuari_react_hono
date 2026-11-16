@@ -296,7 +296,7 @@ export function ExactEmployeeTable({ client, roles, onView, onEdit, onAdd }: Exa
   const { t } = useTranslation()
   if (loading) return <p role="status">{t("common.loading")}</p>
   if (failure) return <section><p role="alert">{failure}</p><Button onClick={() => setRefreshKey(value => value + 1)}>{t("common.retry")}</Button></section>
-  if (!employees.length) return <section className="space-y-3"><p>{t("employeeForm.exactEmpty")}</p>{onAdd ? <Button onClick={onAdd}>{t("employeeForm.submitSingle")}</Button> : null}</section>
+  if (!employees.length) return <RecordPageFrame title={t("sections.employees.label")} action={onAdd ? <Button onClick={onAdd}>{t("shell.addWorker")}</Button> : undefined}><p>{t("employeeForm.exactEmpty")}</p></RecordPageFrame>
   return <RecordPageFrame title={t("sections.employees.label")} action={onAdd ? <Button onClick={onAdd}>{t("shell.addWorker")}</Button> : undefined}>
     {deleteFailure ? <p role="alert">{deleteFailure}</p> : null}
     <AppShellTableFrame><table className="min-w-full text-sm"><AppShellTableHead><tr>

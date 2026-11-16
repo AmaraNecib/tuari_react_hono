@@ -5,6 +5,7 @@ import { i18n } from "@/i18n"
 import { EmployeeEditPage } from "./employee-edit-page"
 import { EmployeeDetailsPage } from "./employee-details-page"
 import { EmployeeBatchCreatePage } from "./employee-batch-create-page"
+import { ExactEmployeeTable } from "./exact-employee-pages"
 
 const role: Role = { id: "role-worker", key: "worker", name: "Worker", description: null, isSystem: true, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
 const employee = { id: "employee-a", firstName: "Amina", lastName: "Kaci", phone: "0551234567", roleId: role.id, status: "INACTIVE" as const, occupation: null, notes: null, salaryReference: { period: "DAILY" as const, amount: "0.0001" }, currency: "DZD" as const, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
@@ -24,6 +25,14 @@ const ctx = (overrides: Record<string, unknown> = {}) => ({
 afterEach(cleanup)
 
 describe("exact employee page seams", () => {
+  it("retains one production heading when the workspace has no employees", async () => {
+    const props = ctx()
+    vi.mocked(props.client.employeesList).mockResolvedValue({ items: [] })
+    render(<ExactEmployeeTable {...props} onView={vi.fn()} onEdit={vi.fn()} onAdd={vi.fn()} />)
+    await screen.findByText(i18n.t("employeeForm.exactEmpty"))
+    expect(screen.getAllByRole("heading", { level: 1, name: i18n.t("sections.employees.label") })).toHaveLength(1)
+  })
+
   it("uses exact get and atomic save with a canonical DAILY reference, preserving the numeric page as a separate mode", async () => {
     const props = ctx()
     render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
