@@ -264,10 +264,11 @@ export function ExactEmployeeDetailsPage(props: ExactEmployeePageProps) {
     typeLabel: entry.eventType,
     title: props.roles.find(value => value.id === entry.roleId)?.name ?? entry.roleId,
     detail: entry.notes,
+    detailContent: <ExactSalaryReferenceValue reference={entry.salaryReference} />,
     periodLabel: <AppDate value={entry.startDate} includeTime />,
     statusLabel: entry.status === "ACTIVE" ? t("status.active") : entry.status === "LEFT" ? t("status.left") : t("status.inactive"),
   }))
-  return <RecordPageFrame title={`${employee.firstName} ${employee.lastName}`} editLabel={t("detailPages.employee.edit")} action={<Button variant="destructive" disabled={deleting} onClick={async () => { setDeleting(true); setDeleteError(null); try { const result = await client.employeesDelete({ id: employee.id }); if (!result.success) throw new Error(result.error.message); props.onDone() } catch (error) { setDeleteError(serverError(error)) } finally { setDeleting(false) } }}>{t("common.delete")}</Button>}>
+  return <RecordPageFrame title={`${employee.firstName} ${employee.lastName}`} action={<><Button type="button" variant="outline" onClick={props.onCancel}>{t("common.back")}</Button><Button variant="destructive" disabled={deleting} onClick={async () => { setDeleting(true); setDeleteError(null); try { const result = await client.employeesDelete({ id: employee.id }); if (!result.success) throw new Error(result.error.message); props.onDone() } catch (error) { setDeleteError(serverError(error)) } finally { setDeleting(false) } }}>{t("common.delete")}</Button></>}>
     {deleteError ? <p role="alert">{deleteError}</p> : null}
     <RecordInfoGrid>
       <RecordInfoCard label={t("detailPages.employee.fullName")} value={`${employee.firstName} ${employee.lastName}`} />
@@ -296,7 +297,7 @@ export function ExactEmployeeTable({ client, roles, onView, onEdit, onAdd }: Exa
   if (loading) return <p role="status">{t("common.loading")}</p>
   if (failure) return <section><p role="alert">{failure}</p><Button onClick={() => setRefreshKey(value => value + 1)}>{t("common.retry")}</Button></section>
   if (!employees.length) return <section className="space-y-3"><p>{t("employeeForm.exactEmpty")}</p>{onAdd ? <Button onClick={onAdd}>{t("employeeForm.submitSingle")}</Button> : null}</section>
-  return <RecordPageFrame title={t("employeeForm.pageTitle")} action={onAdd ? <Button onClick={onAdd}>{t("employeeForm.submitSingle")}</Button> : undefined}>
+  return <RecordPageFrame title={t("sections.employees.label")} action={onAdd ? <Button onClick={onAdd}>{t("shell.addWorker")}</Button> : undefined}>
     {deleteFailure ? <p role="alert">{deleteFailure}</p> : null}
     <AppShellTableFrame><table className="min-w-full text-sm"><AppShellTableHead><tr>
       <AppShellTableHeaderCell>{t("employeeForm.firstNameLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("employeeForm.roleLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("auth.phoneLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("status.active")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("employeeForm.salaryAmountLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("common.actions")}</AppShellTableHeaderCell>

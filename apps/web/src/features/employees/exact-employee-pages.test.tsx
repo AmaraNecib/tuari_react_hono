@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ExactEmployeeClient, Role } from "@tuari/contracts"
 import { i18n } from "@/i18n"
@@ -73,7 +73,8 @@ describe("exact employee page seams", () => {
     render(<EmployeeDetailsPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
     await screen.findByRole("heading", { name: "Amina Kaci" })
     expect(screen.getAllByText(i18n.t("status.inactive")).length).toBeGreaterThan(0)
-    expect(screen.getByRole("table")).toBeTruthy()
+    expect(within(screen.getByRole("table")).getByText("0.0001")).toBeTruthy()
+    expect(screen.getByRole("button", { name: i18n.t("common.back") })).toBeTruthy()
     expect(screen.getByText(i18n.t("detailPages.employee.notes"))).toBeTruthy()
   })
 
