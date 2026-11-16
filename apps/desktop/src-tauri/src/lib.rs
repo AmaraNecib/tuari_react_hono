@@ -2135,6 +2135,57 @@ fn debug_api_path(debug_build: bool, inherited_path: Option<OsString>) -> Option
     }
 }
 
+struct ApiChildEnvironment<'a> {
+    debug_build: bool,
+    inherited_path: Option<OsString>,
+    system_root: Option<OsString>,
+    better_auth_secret: &'a str,
+    auth_db_path: &'a Path,
+    app_db_path: &'a Path,
+    attachments_root: &'a Path,
+    database_url: &'a str,
+    config_file: Option<&'a Path>,
+    license_environment: &'a HashMap<String, String>,
+    app_db_key: Option<&'a str>,
+}
+
+/// Clears inherited variables, then adds only the API child's explicit allowlist.
+fn configure_api_child_environment(command: &mut Command, environment: ApiChildEnvironment<'_>) {
+    command
+        .env_clear()
+        .env("API_HOST", API_HOST)
+        .env("API_PORT", API_PORT.to_string())
+        .env("ALLOWED_ORIGINS", ALLOWED_ORIGINS)
+        .env("BETTER_AUTH_SECRET", environment.better_auth_secret)
+        .env("BETTER_AUTH_URL", format!("http://{API_HOST}:{API_PORT}"))
+        .env("AUTH_DB_PATH", environment.auth_db_path.as_os_str())
+        .env("APP_DB_PATH", environment.app_db_path.as_os_str())
+        .env(
+            "APP_ATTACHMENTS_ROOT",
+            environment.attachments_root.as_os_str(),
+        )
+        .env("DATABASE_URL", environment.database_url);
+
+    if let Some(path) = debug_api_path(environment.debug_build, environment.inherited_path) {
+        command.env("PATH", path);
+    }
+
+    if let Some(system_root) = environment.system_root {
+        command.env("SystemRoot", system_root);
+    }
+
+    if let Some(config_file) = environment.config_file {
+        command.env("TUARI_CONFIG_FILE", config_file.as_os_str());
+    }
+
+    for (key, value) in environment.license_environment {
+        command.env(key, value);
+    }
+    if let Some(app_db_key) = environment.app_db_key {
+        command.env("APP_DB_KEY", app_db_key);
+    }
+}
+
 fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
     let attachments_root = resolve_attachments_root(&app_db_path);
@@ -2184,73 +2235,56 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     #[cfg(target_os = "windows")]
     command.creation_flags(CREATE_NO_WINDOW);
 
-    command
-        .env_clear()
-        .env("API_HOST", API_HOST)
-        .env("API_PORT", API_PORT.to_string())
-        .env("ALLOWED_ORIGINS", ALLOWED_ORIGINS)
-        .env("BETTER_AUTH_SECRET", runtime_secrets.better_auth_secret)
-        .env(
-            "BETTER_AUTH_URL",
-            format!("http://{API_HOST}:{API_PORT}"),
-        )
-        .env("AUTH_DB_PATH", auth_db_path.as_os_str())
-        .env("APP_DB_PATH", app_db_path.as_os_str())
-        .env("APP_ATTACHMENTS_ROOT", attachments_root.as_os_str())
-        .env("DATABASE_URL", to_sqlite_url(&app_db_path))
-        .stdout(Stdio::from(log_file))
-        .stderr(Stdio::from(error_log_file));
-
-    // The debug pnpm script launches Node through PATH. Keep that one lookup
-    // variable for debug only; release still receives only the curated env.
-    if let Some(path) = debug_api_path(cfg!(debug_assertions), std::env::var_os("PATH")) {
-        command.env("PATH", path);
-    }
-
-    // The bundled Node runtime needs `SystemRoot`: Node seeds its OpenSSL CSPRNG
-    // from the Windows security provider through that path, and `env_clear()`
-    // above removes it. Without it Node aborts during startup with
-    // `Assertion failed: ncrypto::CSPRNG(nullptr, 0)` and the sidecar dies
-    // before it can bind the API port. `windir`, `PATH`, and `TEMP` were each
-    // tested and made no difference; see scripts/smoke/sidecar-env-repro.ps1.
-    #[cfg(target_os = "windows")]
-    if let Ok(system_root) = std::env::var("SystemRoot") {
-        command.env("SystemRoot", system_root);
-    }
-
     // Point the API sidecar at the user-editable config.json (may not exist
     // yet — the API treats a missing file as "use env/defaults").
-    if let Ok(tuari_dir) = resolve_tuari_dir(app) {
-        command.env(
-            "TUARI_CONFIG_FILE",
-            tuari_dir.join("config.json").as_os_str(),
-        );
-    }
+    let config_file = resolve_tuari_dir(app)
+        .ok()
+        .map(|tuari_dir| tuari_dir.join("config.json"));
 
     // Set structured license env vars for the API sidecar per Licensing Architecture §15.5.
     // #399: on an initialization failure the block is still emitted, with an
     // explicit status (clock -> "suspicious", everything else -> "unknown"), so
     // the API and support can tell WHY licensing failed instead of seeing an
     // omitted variable. The API keeps its own fail-closed default regardless.
-    if let Ok(tuari_dir) = resolve_tuari_dir(app) {
-        match crate::license::LicenseManager::initialize(&tuari_dir) {
+    let (license_environment, app_db_key) = match resolve_tuari_dir(app) {
+        Ok(tuari_dir) => match crate::license::LicenseManager::initialize(&tuari_dir) {
             Ok(manager) => {
-                let env_map = manager.to_env_map();
-                for (key, value) in &env_map {
-                    command.env(key, value);
-                }
-                // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
-                if manager.has_feature("encrypted_db") {
-                    command.env("APP_DB_KEY", runtime_secrets.app_db_key);
-                }
+                let license_environment = manager.to_env_map();
+                let app_db_key = manager
+                    .has_feature("encrypted_db")
+                    .then_some(runtime_secrets.app_db_key.as_str());
+                (license_environment, app_db_key)
             }
-            Err(error) => {
-                for (key, value) in license_failure_env_map(&error) {
-                    command.env(key, value);
-                }
-            }
-        }
-    }
+            Err(error) => (license_failure_env_map(&error), None),
+        },
+        Err(_) => (HashMap::new(), None),
+    };
+
+    #[cfg(target_os = "windows")]
+    let system_root = std::env::var("SystemRoot").ok().map(OsString::from);
+    #[cfg(not(target_os = "windows"))]
+    let system_root = None;
+
+    let database_url = to_sqlite_url(&app_db_path);
+    configure_api_child_environment(
+        &mut command,
+        ApiChildEnvironment {
+            debug_build: cfg!(debug_assertions),
+            inherited_path: std::env::var_os("PATH"),
+            system_root,
+            better_auth_secret: &runtime_secrets.better_auth_secret,
+            auth_db_path: &auth_db_path,
+            app_db_path: &app_db_path,
+            attachments_root: &attachments_root,
+            database_url: &database_url,
+            config_file: config_file.as_deref(),
+            license_environment: &license_environment,
+            app_db_key,
+        },
+    );
+    command
+        .stdout(Stdio::from(log_file))
+        .stderr(Stdio::from(error_log_file));
 
     let mut child = command
         .spawn()
@@ -2382,6 +2416,7 @@ mod tests {
         BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
         SecretStore, clear_app_ready, mark_app_ready_if_first,
     };
+    use std::collections::HashMap;
     use std::ffi::OsString;
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
@@ -2391,40 +2426,142 @@ mod tests {
     use crate::error::RustCoreError;
 
     #[test]
-    fn api_child_path_is_available_for_debug_and_excluded_from_release() {
-        let inherited = OsString::from("C:\\tools\\node;C:\\windows\\system32");
-        let mut debug_command = Command::new("pnpm.cmd");
-        debug_command.env_clear();
-        if let Some(path) = debug_api_path(true, Some(inherited.clone())) {
-            debug_command.env("PATH", path);
-        }
-        let debug_env: Vec<_> = debug_command
-            .get_envs()
-            .map(|(key, value)| (key.to_string_lossy().into_owned(), value.is_some()))
-            .collect();
-        assert_eq!(debug_env, vec![("PATH".to_string(), true)]);
+    fn api_child_environment_is_curated_for_debug_and_release() {
+        let inherited_path = OsString::from("C:\\tools\\node;C:\\windows\\system32");
+        assert_eq!(
+            super::debug_api_path(true, Some(inherited_path.clone())).as_deref(),
+            Some(inherited_path.as_os_str())
+        );
+        assert!(super::debug_api_path(false, Some(inherited_path.clone())).is_none());
+        let system_root = Some(OsString::from("C:\\windows"));
+        let config_file = PathBuf::from("C:\\users\\test\\config.json");
+        let auth_db_path = PathBuf::from("C:\\users\\test\\auth.sqlite");
+        let app_db_path = PathBuf::from("C:\\users\\test\\app.sqlite");
+        let attachments_root = PathBuf::from("C:\\users\\test\\attachments");
+        let license_environment = HashMap::from([
+            ("TUARI_LICENSE_EDITION".to_string(), "standard".to_string()),
+            ("TUARI_LICENSE_STATUS".to_string(), "valid".to_string()),
+        ]);
+        let expected = [
+            ("API_HOST", "127.0.0.1"),
+            ("API_PORT", "4318"),
+            (
+                "ALLOWED_ORIGINS",
+                "http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost,tauri://localhost",
+            ),
+            ("BETTER_AUTH_SECRET", "test-auth-secret"),
+            ("BETTER_AUTH_URL", "http://127.0.0.1:4318"),
+            ("AUTH_DB_PATH", "C:\\users\\test\\auth.sqlite"),
+            ("APP_DB_PATH", "C:\\users\\test\\app.sqlite"),
+            ("APP_ATTACHMENTS_ROOT", "C:\\users\\test\\attachments"),
+            ("DATABASE_URL", "file:C:/users/test/app.sqlite"),
+            ("TUARI_CONFIG_FILE", "C:\\users\\test\\config.json"),
+            ("TUARI_LICENSE_EDITION", "standard"),
+            ("TUARI_LICENSE_STATUS", "valid"),
+            ("APP_DB_KEY", "test-db-key"),
+        ];
 
-        let mut release_command = Command::new("node.exe");
-        release_command.env_clear();
-        if let Some(path) = debug_api_path(false, Some(inherited)) {
-            release_command.env("PATH", path);
+        for (debug_build, expected_path) in
+            [(true, Some(inherited_path.as_os_str())), (false, None)]
+        {
+            let mut command = if cfg!(target_os = "windows") {
+                let mut command = Command::new("cmd.exe");
+                command.args(["/d", "/c", "set"]);
+                command
+            } else {
+                Command::new("/usr/bin/env")
+            };
+            command
+                .env("NODE_OPTIONS", "--require=untrusted.js")
+                .env("TUARI_PARENT_SECRET", "must-not-leak")
+                .env("PATH", "stale-parent-path");
+            super::configure_api_child_environment(
+                &mut command,
+                super::ApiChildEnvironment {
+                    debug_build,
+                    inherited_path: Some(inherited_path.clone()),
+                    system_root: system_root.clone(),
+                    better_auth_secret: "test-auth-secret",
+                    auth_db_path: &auth_db_path,
+                    app_db_path: &app_db_path,
+                    attachments_root: &attachments_root,
+                    database_url: "file:C:/users/test/app.sqlite",
+                    config_file: Some(&config_file),
+                    license_environment: &license_environment,
+                    app_db_key: Some("test-db-key"),
+                },
+            );
+
+            let path_entries: Vec<_> = command
+                .get_envs()
+                .filter(|(key, _)| key.to_string_lossy().eq_ignore_ascii_case("PATH"))
+                .collect();
+            assert_eq!(path_entries.len(), usize::from(expected_path.is_some()));
+            if let Some(expected_path) = expected_path {
+                assert_eq!(path_entries[0].1, Some(expected_path));
+            }
+            let output = command.output().expect("run environment probe");
+            assert!(output.status.success());
+            let environment = String::from_utf8_lossy(&output.stdout);
+            for (key, value) in expected {
+                assert!(
+                    environment
+                        .lines()
+                        .any(|line| line == format!("{key}={value}")),
+                    "missing {key} in child environment"
+                );
+            }
+            assert!(!environment
+                .lines()
+                .any(|line| line.starts_with("NODE_OPTIONS=")));
+            assert!(!environment
+                .lines()
+                .any(|line| line.starts_with("TUARI_PARENT_SECRET=")));
+            assert!(!environment
+                .lines()
+                .any(|line| line == "APP_DB_KEY=must-not-leak"));
+            let child_paths: Vec<_> = environment
+                .lines()
+                .filter_map(|line| line.split_once('='))
+                .filter(|(key, _)| key.eq_ignore_ascii_case("PATH"))
+                .collect();
+            assert_eq!(child_paths.len(), usize::from(expected_path.is_some()));
+            if let Some((_, value)) = child_paths.first() {
+                assert_eq!(*value, expected_path.unwrap().to_string_lossy().as_ref());
+            }
+            if cfg!(target_os = "windows") {
+                assert!(environment
+                    .lines()
+                    .any(|line| line.eq_ignore_ascii_case("SystemRoot=C:\\windows")));
+            }
         }
-        assert_eq!(release_command.get_envs().count(), 0);
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn debug_child_path_resolves_node_after_environment_is_cleared() {
         let inherited_path = std::env::var_os("PATH").expect("test runner PATH is required");
+        let auth_db_path = PathBuf::from("C:\\temp\\auth.sqlite");
+        let app_db_path = PathBuf::from("C:\\temp\\app.sqlite");
+        let attachments_root = PathBuf::from("C:\\temp\\attachments");
         let mut command = Command::new("cmd.exe");
-        command.args(["/d", "/c", "node --version"]).env_clear();
-        command.env(
-            "PATH",
-            debug_api_path(true, Some(inherited_path)).expect("debug PATH is retained"),
+        command.args(["/d", "/c", "node --version"]);
+        super::configure_api_child_environment(
+            &mut command,
+            super::ApiChildEnvironment {
+                debug_build: true,
+                inherited_path: Some(inherited_path),
+                system_root: std::env::var("SystemRoot").ok().map(OsString::from),
+                better_auth_secret: "test-auth-secret",
+                auth_db_path: &auth_db_path,
+                app_db_path: &app_db_path,
+                attachments_root: &attachments_root,
+                database_url: "file:C:/temp/app.sqlite",
+                config_file: None,
+                license_environment: &HashMap::new(),
+                app_db_key: None,
+            },
         );
-        if let Ok(system_root) = std::env::var("SystemRoot") {
-            command.env("SystemRoot", system_root);
-        }
         let output = command.output().expect("start Windows command shell");
         assert!(
             output.status.success(),
