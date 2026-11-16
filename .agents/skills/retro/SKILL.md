@@ -10,6 +10,10 @@ Use when the owner requests a retrospective. Review how the work happened,
 not just the code it produced. Default to the current session when no session
 is named. A retrospective produces recommendations, not implementation.
 
+Resolve paths beginning with `../` from this skill's directory. Resolve all
+other repository paths in this skill from the repository root, not the session's
+working directory. Locate that root from this skill at `../../../`.
+
 Read `../writing-for-agents/SKILL.md` and `../unslop/SKILL.md` before writing.
 `docs/engineering-workflow.md` remains the lifecycle authority.
 
