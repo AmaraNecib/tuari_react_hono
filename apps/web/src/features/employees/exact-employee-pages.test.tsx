@@ -71,6 +71,60 @@ describe("exact employee page seams", () => {
     expect(notes.closest("fieldset")?.disabled).toBe(true)
   })
 
+  it("selects WEEKLY through the original form and enforces money precision before exact serialization", async () => {
+    const props = ctx()
+    render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
+    const period = await screen.findByLabelText(i18n.t("employeeForm.salaryPeriodLabel"))
+    fireEvent.change(period, { target: { value: "WEEKLY" } })
+    const amount = screen.getByLabelText(i18n.t("employeeForm.salaryAmountLabel"))
+    fireEvent.change(amount, { target: { value: "12.3456" } })
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("detailPages.employee.editPage.saveAll") }))
+    await screen.findByRole("alert")
+    expect(props.client.employeesSave).not.toHaveBeenCalled()
+    fireEvent.change(amount, { target: { value: "١٢٣٤٥٫٦٧" } })
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("detailPages.employee.editPage.saveAll") }))
+    await waitFor(() => expect(props.client.employeesSave).toHaveBeenCalledOnce())
+    expect(props.client.employeesSave).toHaveBeenCalledWith(expect.objectContaining({ salaryReference: { period: "WEEKLY", amount: "12345.67" } }))
+  })
+
+  it.each([
+    { name: "unset", period: "", amount: "", reference: null },
+    { name: "zero", period: "WEEKLY", amount: "0", reference: { period: "WEEKLY", amount: "0.00" } },
+  ])("preserves $name salary as distinct from the other through exact edit", async ({ period, amount, reference }) => {
+    const props = ctx()
+    render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
+    fireEvent.change(await screen.findByLabelText(i18n.t("employeeForm.salaryPeriodLabel")), { target: { value: period } })
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.salaryAmountLabel")), { target: { value: amount } })
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("detailPages.employee.editPage.saveAll") }))
+    await waitFor(() => expect(props.client.employeesSave).toHaveBeenCalledOnce())
+    expect(props.client.employeesSave).toHaveBeenCalledWith(expect.objectContaining({ salaryReference: reference }))
+  })
+
+  it.each(["PROJECT", "WAREHOUSE"] as const)("removes an existing %s placement with an explicit atomic NONE directive", async nextType => {
+    const currentPlacement = nextType === "PROJECT" ? { nextType, managerId: "manager-a", projectId: "project-a" } : { nextType, warehouseId: "warehouse-a" }
+    const props = ctx({ currentPlacement, managerOptions: [{ id: "manager-a", label: "Manager A", projectOptions: [{ id: "project-a", label: "Project A" }] }], warehouseOptions: [{ id: "warehouse-a", label: "Warehouse A" }] })
+    vi.mocked(props.client.employeesGet).mockResolvedValue({ success: true, message: "Loaded", item: { ...employee, status: "ACTIVE" } })
+    render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
+    const placement = await screen.findByLabelText(i18n.t("detailPages.employee.editPage.workplaceType")) as HTMLSelectElement
+    expect(placement.value).toBe(nextType)
+    fireEvent.change(placement, { target: { value: "NONE" } })
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("detailPages.employee.editPage.saveAll") }))
+    await waitFor(() => expect(props.client.employeesSave).toHaveBeenCalledOnce())
+    expect(props.client.employeesSave).toHaveBeenCalledWith(expect.objectContaining({ placement: { nextType: "NONE" } }))
+  })
+
+  it.each(["PROJECT", "WAREHOUSE"] as const)("omits an untouched existing %s placement from a profile-only save", async nextType => {
+    const currentPlacement = nextType === "PROJECT" ? { nextType, managerId: "manager-a", projectId: "project-a" } : { nextType, warehouseId: "warehouse-a" }
+    const props = ctx({ currentPlacement, managerOptions: [{ id: "manager-a", label: "Manager A", projectOptions: [{ id: "project-a", label: "Project A" }] }], warehouseOptions: [{ id: "warehouse-a", label: "Warehouse A" }] })
+    vi.mocked(props.client.employeesGet).mockResolvedValue({ success: true, message: "Loaded", item: { ...employee, status: "ACTIVE" } })
+    render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
+    fireEvent.change(await screen.findByLabelText(i18n.t("employeeForm.notesLabel")), { target: { value: "Profile only" } })
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("detailPages.employee.editPage.saveAll") }))
+    await waitFor(() => expect(props.client.employeesSave).toHaveBeenCalledOnce())
+    expect(vi.mocked(props.client.employeesSave).mock.calls[0]?.[0]).not.toHaveProperty("placement")
+    expect(vi.mocked(props.client.employeesSave).mock.calls[0]?.[0]).toHaveProperty("notes", "Profile only")
+  })
+
   it("uses exact get and atomic save with a canonical DAILY reference, preserving the numeric page as a separate mode", async () => {
     const props = ctx()
     render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
