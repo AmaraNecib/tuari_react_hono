@@ -4,6 +4,9 @@ import { i18n } from "@/i18n"
 import type { ExactEmployee, ExactEmployeeBatchCreateInput, ExactEmployeeClient, ExactEmployeeCreateInput, ExactEmployeeSaveInput, ExactEmployeeStateHistory, ExactSalaryReference, Role } from "@tuari/contracts"
 import { SalaryReference } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
+import { EmployeeEditForm } from "./employee-edit-form"
+import type { EmployeeEditFormProps } from "./employee-edit-form"
+import type { FormState } from "./employee-edit-form"
 import { AppDate } from "@/components/app-date"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
@@ -25,7 +28,7 @@ export type ExactEmployeeUiContext = {
   currentManagedWarehouseIds?: string[]
   currentPlacement?: { nextType: "NONE" | "PROJECT" | "WAREHOUSE"; managerId?: string; projectId?: string; warehouseId?: string }
 }
-export type ExactEmployeePageProps = ExactEmployeeUiContext & { employeeId: string; onDone: () => void; onCancel: () => void }
+export type ExactEmployeePageProps = ExactEmployeeUiContext & { employeeId: string; onDone: () => void; onCancel: () => void; onBackToEmployees?: () => void }
 export type ExactEmployeeBatchProps = ExactEmployeeUiContext & { onDone: () => void; onCancel: () => void }
 
 function serverError(error: unknown): string {
@@ -41,7 +44,8 @@ function salaryReference(period: string, amount: string): ExactSalaryReference |
   const value = period === "DAILY" ? parseLocalizedUnitPriceInput(amount).toWire() : parseLocalizedMoneyInput(amount).toWire()
   return SalaryReference.parse(period as "DAILY" | "WEEKLY" | "MONTHLY", value).toWire()
 }
-function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, projects, warehouses, managedProjects, managedWarehouses, editing = false, currentManagedProjectIds, currentManagedWarehouseIds, currentPlacement }: {
+function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, projects, warehouses, managedProjects, managedWarehouses, editing = false, currentManagedProjectIds, currentManagedWarehouseIds, currentPlacement, onCancel, onBackToEmployees }: {
+  onCancel?: () => void; onBackToEmployees?: () => void
   roles: Role[]; initial?: ExactEmployee; onSubmit: (value: Record<string, unknown>) => Promise<void>; busy?: boolean; serverFailure: string | null
   managers: ExactEmployeeUiContext["managerOptions"]; projects: Choice[]; warehouses: Choice[]; managedProjects: Choice[]; managedWarehouses: Choice[]; editing?: boolean
   currentManagedProjectIds?: string[]; currentManagedWarehouseIds?: string[]; currentPlacement?: ExactEmployeeUiContext["currentPlacement"]
@@ -93,6 +97,37 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
     } catch (error) { setFailure(serverError(error)) }
     finally { submitting.current = false }
   }
+  if (editing && initial) {
+    const state: FormState = { firstName, lastName, phone, roleId, status, salaryPeriod: period as FormState["salaryPeriod"], salaryAmountDzd: amount, occupation, notes }
+    const update: EmployeeEditFormProps["setState"] = action => {
+      const next = typeof action === "function" ? action(state) : action
+      setFirstName(next.firstName); setLastName(next.lastName); setPhone(next.phone)
+      setRoleId(next.roleId); setStatus(next.status); setPeriod(next.salaryPeriod)
+      setAmount(next.salaryAmountDzd); setOccupation(next.occupation); setNotes(next.notes)
+    }
+    return <EmployeeEditForm
+      employee={{ id: initial.id, name: `${initial.firstName} ${initial.lastName}` }}
+      state={state} setState={update} errors={{}} saveError={failure ?? serverFailure}
+      isSaving={Boolean(busy)} onSubmit={submit}
+      onBackToRecord={onCancel ?? (() => {})} onBackToEmployees={onBackToEmployees ?? onCancel ?? (() => {})}
+      roles={roles.filter(role => role.isSystem)} currentRoleKey={roles.find(role => role.id === initial.roleId)?.key ?? ""} updateRole={setRoleId}
+      selectableRole={key => ["admin", "worker", "project_manager", "warehouse_manager"].includes(key)} allowWorkerRoleChange
+      isWorker={worker && status === "ACTIVE"} isProjectManager={managerRole && status === "ACTIVE"} isWarehouseManager={warehouseManagerRole && status === "ACTIVE"}
+      statusOptions={[{ value: "ACTIVE", label: t("status.active") }, { value: "INACTIVE", label: t("status.inactive") }, { value: "LEFT", label: t("status.left") }]}
+      salaryPeriodOptions={[{ value: "DAILY", label: t("detailPages.salary.daily") }, { value: "WEEKLY", label: t("detailPages.salary.weekly") }, { value: "MONTHLY", label: t("detailPages.salary.monthly") }]}
+      workplaceType={workplaceType} setWorkplaceType={setWorkplaceType}
+      workerManagerId={managerId} setWorkerManagerId={setManagerId}
+      workerProjectId={projectId} setWorkerProjectId={setProjectId}
+      workerWarehouseId={warehouseId} setWorkerWarehouseId={setWarehouseId}
+      setPlacementDirty={() => {}} managerOptions={managers} workerProjectOptions={selectedManager?.projectOptions ?? projects}
+      warehouseOptions={warehouses}
+      managedProjectOptions={managedProjects.map(row => ({ ...row, secondary: null }))}
+      managedWarehouseOptions={managedWarehouses.map(row => ({ ...row, secondary: null }))}
+      selectedManagedProjectIds={managedProjectIds} setSelectedManagedProjectIds={setManagedProjectIds}
+      selectedManagedWarehouseIds={managedWarehouseIds} setSelectedManagedWarehouseIds={setManagedWarehouseIds}
+      setManagedProjectsDirty={() => {}} setManagedWarehousesDirty={() => {}}
+    />
+  }
   return <form className="space-y-4" onSubmit={submit} aria-busy={busy}>
     <div className="grid gap-3 sm:grid-cols-2">
       <label className="grid gap-1">{t("employeeForm.firstNameLabel")}<Input required value={firstName} onChange={event => setFirstName(event.target.value)} /></label>
@@ -137,9 +172,7 @@ export function ExactEmployeeEditPage(props: ExactEmployeePageProps) {
   if (loading) return <p role="status">{t("common.loading")}</p>
   if (readFailure) return <section><p role="alert">{readFailure}</p><Button onClick={load}>{t("common.retry")}</Button></section>
   if (!employee) return <p>{t("common.none")}</p>
-  return <section className="space-y-4"><h1 className="text-xl font-semibold">{t("detailPages.employee.editTitle")}</h1>
-    {completionFailure ? <p role="alert">{completionFailure}</p> : null}
-    <FormFields roles={props.roles} managers={props.managerOptions} projects={props.projectOptions} warehouses={props.warehouseOptions} managedProjects={props.managedProjectOptions} managedWarehouses={props.managedWarehouseOptions} currentManagedProjectIds={props.currentManagedProjectIds} currentManagedWarehouseIds={props.currentManagedWarehouseIds} currentPlacement={props.currentPlacement} initial={employee} editing busy={saving || saved} serverFailure={saveFailure} onSubmit={async data => {
+  return <FormFields roles={props.roles} managers={props.managerOptions} projects={props.projectOptions} warehouses={props.warehouseOptions} managedProjects={props.managedProjectOptions} managedWarehouses={props.managedWarehouseOptions} currentManagedProjectIds={props.currentManagedProjectIds} currentManagedWarehouseIds={props.currentManagedWarehouseIds} currentPlacement={props.currentPlacement} initial={employee} editing onCancel={props.onCancel} onBackToEmployees={props.onBackToEmployees} busy={saving || saved} serverFailure={completionFailure ?? saveFailure} onSubmit={async data => {
       if (mutationLocked.current || saved) return
       mutationLocked.current = true
       setSaving(true); setSaveFailure(null); setCompletionFailure(null)
@@ -151,8 +184,6 @@ export function ExactEmployeeEditPage(props: ExactEmployeePageProps) {
         try { onDone() } catch (error) { setCompletionFailure(t("employeeForm.exactCompletionFailed", { error: serverError(error) })) }
       }
     }} />
-    <Button type="button" variant="outline" disabled={saving || saved} onClick={props.onCancel}>{t("common.cancel")}</Button>
-  </section>
 }
 
 export function ExactEmployeeCreatePage(props: ExactEmployeeBatchProps) {
