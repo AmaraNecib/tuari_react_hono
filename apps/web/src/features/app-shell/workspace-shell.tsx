@@ -1,7 +1,7 @@
-import { useState, type FormEvent } from "react"
+import { useMemo, useState, type FormEvent } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import type { ApplicationCapabilities, ApplicationClient } from "@tuari/contracts"
+import type { ApplicationCapabilities, ApplicationClient, ExactWorkforceEarningsClient } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Surface } from "@/features/shared/page-primitives"
@@ -39,6 +39,11 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, page, s
   const queryClient = useQueryClient()
   const userId = session.id
   const workspaceId = capabilities.workspaceId
+  const workforceClient = useMemo<ExactWorkforceEarningsClient>(() => ({
+    approveMonthlyEarnings: input => client.workforceExact.approveMonthlyEarnings(input),
+    listEmployeeEarnings: input => client.workforceExact.listEmployeeEarnings(input),
+    getProjectSalaryCost: input => client.workforceExact.getProjectSalaryCost(input),
+  }), [client])
   const needsWorkspaceReferences = page === "employees" || page === "employees-create" || page === "employee-details" || page === "employee-edit" || page === "salaries" || page === "projects" || page === "project-create" || page === "warehouses" || page === "warehouse-create"
   const employees = useQuery({ queryKey: idKey(workspaceId, userId, "employees"), queryFn: () => client.employeesList(), enabled: needsWorkspaceReferences })
   const roles = useQuery({ queryKey: idKey(workspaceId, userId, "roles"), queryFn: () => client.rolesList(), enabled: needsWorkspaceReferences })
@@ -106,7 +111,7 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, page, s
     if (projectAssignments.isError || warehouseAssignments.isError || managerAssignments.isError) return <Surface role="alert" variant="panel" className="p-5">{t("shell.loadWorkspaceError")}</Surface>
     return <EmployeeEditPage mode="exact" {...scopedContext} employeeId={employeeId} onDone={onDone} onCancel={onDone} />
   }
-  if (page === "salaries") return <ExactSalaryEarningsSection employees={people} projects={projectRows.map(project => ({ id: project.id, name: project.name }))} workforceClient={client.workforceExact} workspaceId={workspaceId} userId={userId} onPendingCommandChange={onPendingCommandChange} />
+  if (page === "salaries") return <ExactSalaryEarningsSection employees={people} projects={projectRows.map(project => ({ id: project.id, name: project.name }))} workforceClient={workforceClient} workspaceId={workspaceId} userId={userId} onPendingCommandChange={onPendingCommandChange} />
   if (page === "projects" || page === "project-create") return <ProjectReferencePage projects={projectRows} managers={managerRows.map(manager => ({ id: manager.id, label: `${manager.firstName} ${manager.lastName}` }))} client={client} onSaved={() => void queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "projects") })} />
   if (page === "warehouses" || page === "warehouse-create") return <WarehouseReferencePage warehouses={warehouseRows} managers={people.filter(person => person.status === "ACTIVE" && roleRows.find(role => role.id === person.roleId)?.key === "warehouse_manager").map(manager => ({ id: manager.id, label: `${manager.firstName} ${manager.lastName}` }))} client={client} onSaved={() => void queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "warehouses") })} />
   if (page === "dashboard") return <section className="space-y-5"><h1 className="text-2xl font-semibold">{t("shell.dashboard")}</h1><p>{t("salaryEarnings.title")}</p><nav className="flex flex-wrap gap-4"><WorkspaceLink target={workspaceRoutes.employees()}>{t("sections.employees.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.salaries()}>{t("sections.salaries.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.projects()}>{t("sections.projects.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.warehouses()}>{t("sections.warehouses.label")}</WorkspaceLink></nav><p className="text-sm">{t("application.unavailable")}</p></section>
