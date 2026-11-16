@@ -4,9 +4,13 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createAppConfig } from "../config";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
+import { ensureExactNormalWorkspaceSchema } from "../infrastructure/database/exact-normal-workspace-schema";
+import { exactWorkforceSchemaStatements } from "../modules/company/adapters/exact-workforce-schema";
 import { createWorkerSnapshotter } from "../modules/backup/backup.snapshot";
 import { createApp } from "./create-app";
 import { createAppDependencies } from "./dependencies";
+
+const deferredAllocationDdl = exactWorkforceSchemaStatements.find(sql => sql.startsWith("CREATE TABLE employee_salary_payment_allocation ("))!;
 
 const approval = {
   requestId: "normal-root-543-approval",
@@ -38,6 +42,35 @@ const config = createAppConfig({
 });
 
 describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal exact app root (%s database)", (_kind, key) => {
+  it.each([
+    ["deferred payroll allocation table", deferredAllocationDdl, /unexpected exact workspace tables.*employee_salary_payment_allocation/i],
+    ["no-op earning immutability guard", "DROP TRIGGER exact_salary_earning_no_replace; CREATE TRIGGER exact_salary_earning_no_replace BEFORE INSERT ON employee_salary_earning BEGIN SELECT 1; END", /physical schema.*trigger exact_salary_earning_no_replace/i],
+  ])("refuses a marked native database with %s before normal app writes", async (_driftName, driftSql, expectedError) => {
+    const directory = mkdtempSync(join(tmpdir(), "tuari-543-schema-refusal-"));
+    const databasePath = join(directory, "workspace.sqlite");
+    const db = createDatabaseConnection(databasePath, key);
+    let dbClosed = false;
+    try {
+      ensureExactNormalWorkspaceSchema(db);
+      db.exec(driftSql);
+      const before = db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all();
+      const markerBefore = db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all();
+      const sourceRowsBefore = db.prepare("SELECT id,key FROM role ORDER BY id").all();
+      db.close();
+      dbClosed = true;
+      await expect(createAppDependencies({ databasePath, databaseKey: key }, config)).rejects.toThrow(expectedError);
+      const reopened = createDatabaseConnection(databasePath, key);
+      try {
+        expect(reopened.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all()).toEqual(before);
+        expect(reopened.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all()).toEqual(markerBefore);
+        expect(reopened.prepare("SELECT id,key FROM role ORDER BY id").all()).toEqual(sourceRowsBefore);
+      } finally { reopened.close(); }
+    } finally {
+      if (!dbClosed) db.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("starts the authenticated root, preserves exact identities and earnings through reopen", async () => {
     const directory = mkdtempSync(join(tmpdir(), "tuari-543-normal-root-"));
     const databasePath = join(directory, "workspace.sqlite");

@@ -1,10 +1,25 @@
 import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import { ensureExactNormalWorkspaceSchema, getExactWorkspaceId } from "./exact-normal-workspace-schema";
+import { exactWorkforceSchemaStatements } from "../../modules/company/adapters/exact-workforce-schema";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
+
+const deferredAllocationDdl = exactWorkforceSchemaStatements.find(sql => sql.startsWith("CREATE TABLE employee_salary_payment_allocation ("))!;
 
 function fresh() {
   return new Database(":memory:") as unknown as BetterSqliteDatabase;
+}
+
+function replaceTableDefinition(db: BetterSqliteDatabase, table: string, editSql: (sql: string) => string): void {
+  const definition = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(table) as { sql: string };
+  const dependentObjects = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name=? AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name").all(table) as { sql: string }[];
+  const changed = editSql(definition.sql);
+  if (changed === definition.sql) throw new Error(`Test mutation did not change ${table} DDL`);
+  db.pragma("foreign_keys = OFF");
+  db.exec(`DROP TABLE "${table}"`);
+  db.exec(changed);
+  for (const { sql } of dependentObjects) db.exec(sql);
+  db.pragma("foreign_keys = ON");
 }
 
 describe("normal exact workspace schema", () => {
@@ -37,6 +52,81 @@ describe("normal exact workspace schema", () => {
       expect(getExactWorkspaceId(db)).toBe(workspaceId);
       db.exec("ALTER TABLE employee_salary_earning RENAME COLUMN approved_amount_minor TO wrong_units");
       expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(/invalid exact.*schema|exact.*column/i);
+    } finally { db.close(); }
+  });
+
+  it("refuses a marked workspace containing the real deferred payroll allocation table without changing it", () => {
+    const db = fresh();
+    try {
+      ensureExactNormalWorkspaceSchema(db);
+      const markerBefore = db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all();
+      db.exec(deferredAllocationDdl);
+      const tableBefore = db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name='employee_salary_payment_allocation'").all();
+      expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(/unexpected exact workspace tables: employee_salary_payment_allocation/i);
+      expect(db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all()).toEqual(markerBefore);
+      expect(db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name='employee_salary_payment_allocation'").all()).toEqual(tableBefore);
+    } finally { db.close(); }
+  });
+
+  it.each([
+    ["missing no-replace guard", "DROP TRIGGER exact_salary_earning_no_replace"],
+    ["missing immutable update guard", "DROP TRIGGER employee_salary_earning_update_immutable"],
+    ["missing immutable delete guard", "DROP TRIGGER employee_salary_earning_delete_immutable"],
+  ])("refuses %s before accepting the marked workspace", (_name, drift) => {
+    const db = fresh();
+    try {
+      ensureExactNormalWorkspaceSchema(db);
+      db.exec(drift);
+      const markerBefore = db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all();
+      const guard = drift.split(" ").at(-1);
+      const triggerBefore = db.prepare("SELECT type,name,sql FROM sqlite_master WHERE type='trigger' AND name=?").all(guard);
+      expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(/physical schema|trigger/i);
+      expect(db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all()).toEqual(markerBefore);
+      expect(db.prepare("SELECT type,name,sql FROM sqlite_master WHERE type='trigger' AND name=?").all(guard)).toEqual(triggerBefore);
+    } finally { db.close(); }
+  });
+
+  it("refuses a no-op replacement of the earning no-replace guard", () => {
+    const db = fresh();
+    try {
+      ensureExactNormalWorkspaceSchema(db);
+      db.exec("DROP TRIGGER exact_salary_earning_no_replace; CREATE TRIGGER exact_salary_earning_no_replace BEFORE INSERT ON employee_salary_earning BEGIN SELECT 1; END");
+      const triggerBefore = db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='exact_salary_earning_no_replace'").get();
+      expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(/physical schema|trigger/i);
+      expect(db.prepare("SELECT sql FROM sqlite_master WHERE type='trigger' AND name='exact_salary_earning_no_replace'").get()).toEqual(triggerBefore);
+    } finally { db.close(); }
+  });
+
+  it.each([
+    ["lost earning segment ordinal uniqueness", (sql: string) => sql.replace(", UNIQUE(earning_id,ordinal)", "")],
+    ["changed earning segment project foreign key", (sql: string) => sql.replace("REFERENCES project(id) ON DELETE RESTRICT", "REFERENCES role(id) ON DELETE RESTRICT")],
+    ["lost earning segment integer and nonnegative check", (sql: string) => sql.replace("CHECK(typeof(amount_minor)='integer' AND amount_minor>=0)", "")],
+  ])("refuses %s without repairing schema or marker", (_name, editSql) => {
+    const db = fresh();
+    try {
+      ensureExactNormalWorkspaceSchema(db);
+      replaceTableDefinition(db, "employee_salary_earning_segment", editSql);
+      const schemaBefore = db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all();
+      const markerBefore = db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all();
+      expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(/physical schema.*employee_salary_earning_segment/i);
+      expect(db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all()).toEqual(schemaBefore);
+      expect(db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all()).toEqual(markerBefore);
+    } finally { db.close(); }
+  });
+
+  it.each([
+    ["removed debt account currency check", (db: BetterSqliteDatabase) => replaceTableDefinition(db, "debt_account", sql => sql.replace("CHECK(currency='DZD')", "")), /physical schema.*table debt_account/i],
+    ["removed debt posting order index", (db: BetterSqliteDatabase) => db.exec("DROP INDEX debt_entry_posting_order"), /physical schema.*index debt_entry_posting_order/i],
+  ])("refuses %s while debt column names remain unchanged", (_name, drift, expectedError) => {
+    const db = fresh();
+    try {
+      ensureExactNormalWorkspaceSchema(db);
+      drift(db);
+      const accountColumns = db.pragma("table_info(debt_account)") as { name: string }[];
+      const schemaBefore = db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all();
+      expect(accountColumns.map(({ name }) => name)).toContain("currency");
+      expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(expectedError);
+      expect(db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all()).toEqual(schemaBefore);
     } finally { db.close(); }
   });
 

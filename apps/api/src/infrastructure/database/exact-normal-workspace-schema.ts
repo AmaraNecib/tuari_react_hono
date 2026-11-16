@@ -75,6 +75,88 @@ export function getExactWorkspaceId(db: BetterSqliteDatabase): string {
   return validateWorkspaceIdentity(db);
 }
 
+const exactEarningTableNames = new Set(["employee_salary_earning", "employee_salary_earning_segment"]);
+const exactDebtTableNames = new Set(["debt_account", "debt_entry"]);
+const exactStructuralTables = new Map<string, string>([
+  ...exactEmployeeProfileSchemaStatements
+    .filter(sql => /^CREATE TABLE employee(?:_state_history)? \(/.test(sql))
+    .map(sql => [sql.match(/^CREATE TABLE (\w+)/)![1]!, sql] as const),
+  ...exactDebtSchemaStatements
+    .filter(sql => /^CREATE TABLE /.test(sql))
+    .map(sql => [sql.match(/^CREATE TABLE (?:IF NOT EXISTS )?["']?(\w+)/)![1]!, sql] as const)
+    .filter(([name]) => exactDebtTableNames.has(name)),
+  ...exactWorkforceEarningSchemaStatements
+    .filter(sql => /^CREATE TABLE (?:IF NOT EXISTS )?(?:employee_salary_earning|employee_salary_earning_segment)\b/.test(sql))
+    .map(sql => [sql.match(/^CREATE TABLE (?:IF NOT EXISTS )?(\w+)/)![1]!, sql] as const),
+]);
+const exactStructuralObjects = new Map<string, { type: string; sql: string }>();
+for (const statement of [...exactDebtSchemaStatements, ...exactWorkforceEarningSchemaStatements]) {
+  const match = statement.match(/^CREATE (UNIQUE )?(INDEX|TRIGGER) (?:IF NOT EXISTS )?(\w+)/);
+  if (match) exactStructuralObjects.set(match[3]!, { type: match[2]!.toLowerCase(), sql: statement });
+}
+for (const statement of companyIndexStatements) {
+  const match = statement.match(/^CREATE (?:UNIQUE )?INDEX IF NOT EXISTS "([^"]+)"/);
+  if (match && referenceIndexes.has(match[1]!)) exactStructuralObjects.set(match[1]!, { type: "index", sql: statement });
+}
+exactStructuralObjects.set("exact_employee_history_employee_idx", {
+  type: "index",
+  sql: "CREATE INDEX exact_employee_history_employee_idx ON employee_state_history(employee_id,start_date,id)",
+});
+
+const allowedApplicationTables = new Set([
+  ...referenceTables,
+  "exact_money_schema", "exact_workspace_identity", "employee", "employee_state_history",
+  "external_counterparty", "invoice", "debt_account", "debt_entry", "debt_command",
+  "exact_finance_command", ...exactEarningTableNames,
+]);
+
+function canonicalSql(sql: string): string {
+  const withoutIfNotExists = sql.replace(/^(CREATE (?:TABLE|(?:UNIQUE )?INDEX)) IF NOT EXISTS\s+/i, "$1 ");
+  let result = "";
+  let quote = "";
+  let pendingSpace = false;
+  for (let index = 0; index < withoutIfNotExists.length; index += 1) {
+    const character = withoutIfNotExists[index]!;
+    if (quote) {
+      result += character;
+      if (character === quote) {
+        if (withoutIfNotExists[index + 1] === quote) result += withoutIfNotExists[++index]!;
+        else quote = "";
+      }
+      continue;
+    }
+    if (/\s/.test(character)) {
+      pendingSpace = result.length > 0;
+      continue;
+    }
+    if (pendingSpace) result += " ";
+    pendingSpace = false;
+    result += character;
+    if (character === "'" || character === '"' || character === "`") quote = character;
+    else if (character === "[") quote = "]";
+  }
+  return result.trim();
+}
+
+function validatePhysicalSchema(db: BetterSqliteDatabase): void {
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as { name: string }[];
+  const unexpected = tables.map(({ name }) => name).filter(name => !allowedApplicationTables.has(name));
+  if (unexpected.length) throw new Error(`Unexpected exact workspace tables: ${unexpected.join(", ")}`);
+
+  for (const [name, expectedSql] of exactStructuralTables) {
+    const actual = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(name) as { sql: string | null } | undefined;
+    if (!actual?.sql || canonicalSql(actual.sql) !== canonicalSql(expectedSql)) {
+      throw new Error(`Invalid exact workspace physical schema for table ${name}`);
+    }
+  }
+  for (const [name, expected] of exactStructuralObjects) {
+    const actual = db.prepare("SELECT type,sql FROM sqlite_master WHERE name=?").get(name) as { type: string; sql: string | null } | undefined;
+    if (actual?.type !== expected.type || !actual.sql || canonicalSql(actual.sql) !== canonicalSql(expected.sql)) {
+      throw new Error(`Invalid exact workspace physical schema for ${expected.type} ${name}`);
+    }
+  }
+}
+
 function validateExactWorkspace(db: BetterSqliteDatabase): void {
   validateExactMarker(db);
   validateWorkspaceIdentity(db);
@@ -100,8 +182,7 @@ function validateExactWorkspace(db: BetterSqliteDatabase): void {
   requireColumns(db, "employee_salary_earning_segment", { earning_id: "TEXT", id: "TEXT", ordinal: "INTEGER", project_id: "TEXT", amount_minor: "INTEGER", days: "INTEGER" });
   requireColumns(db, "debt_account", { current_balance_minor: "INTEGER", currency: "TEXT" });
   requireColumns(db, "debt_entry", { signed_amount_minor: "INTEGER", balance_after_minor: "INTEGER", posting_sequence: "INTEGER" });
-  const forbidden = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('employee_salary_cash','employee_salary_payment','employee_salary_payment_split','employee_salary_advance','employee_salary_opening_review','employee_salary_settlement','employee_salary_correction') ORDER BY name").all();
-  if (forbidden.length) throw new Error("Later payroll lifecycle schema is not part of the exact workspace");
+  validatePhysicalSchema(db);
   const legacy = db.pragma("table_info(employee)") as { name: string }[];
   if (legacy.some(column => column.name === "salary_amount_dzd")) throw new Error("Legacy employee money cannot coexist with exact workspace storage");
 }
