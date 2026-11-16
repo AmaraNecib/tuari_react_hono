@@ -42,7 +42,7 @@ const config = createAppConfig({
   ALLOWED_ORIGINS: "http://localhost",
 });
 
-describe.each([["plain", ""], ["keyed", "application-normal-root-fixture-key"])("normal application root (%s database)", (_kind, key) => {
+describe.each([["plain", ""], ["keyed", "application-normal-root-fixture-key"]])("normal application root (%s database)", (_kind, key) => {
   it.each([
     ["deferred payroll allocation table", deferredAllocationDdl, /unexpected exact workspace tables.*employee_salary_payment_allocation/i],
     ["no-op earning immutability guard", "DROP TRIGGER exact_salary_earning_no_replace; CREATE TRIGGER exact_salary_earning_no_replace BEFORE INSERT ON employee_salary_earning BEGIN SELECT 1; END", /physical schema.*trigger exact_salary_earning_no_replace/i],
