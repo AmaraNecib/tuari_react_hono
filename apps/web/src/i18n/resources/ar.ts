@@ -696,7 +696,7 @@ export const ar = {
       cases: "الحالات",
       notes: "ملاحظات",
     },
-    slice543: {
+    application: {
       unavailable: "هذا القسم المالي غير متاح في هذه النسخة.",
     },
     salaryEarnings: {

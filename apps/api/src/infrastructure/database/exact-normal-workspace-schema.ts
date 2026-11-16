@@ -143,6 +143,14 @@ function validatePhysicalSchema(db: BetterSqliteDatabase): void {
   const unexpected = tables.map(({ name }) => name).filter(name => !allowedApplicationTables.has(name));
   if (unexpected.length) throw new Error(`Unexpected exact workspace tables: ${unexpected.join(", ")}`);
 
+  const explicitObjects = db.prepare("SELECT type,name FROM sqlite_master WHERE type IN ('index','trigger') AND name NOT LIKE 'sqlite_%' AND sql IS NOT NULL ORDER BY type,name").all() as { type: string; name: string }[];
+  const expectedObjectNames = new Set(exactStructuralObjects.keys());
+  const unexpectedObjects = explicitObjects.filter(({ name }) => !expectedObjectNames.has(name));
+  if (unexpectedObjects.length) {
+    const { type, name } = unexpectedObjects[0]!;
+    throw new Error(`Unexpected exact workspace ${type}: ${name}`);
+  }
+
   for (const [name, expectedSql] of exactStructuralTables) {
     const actual = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(name) as { sql: string | null } | undefined;
     if (!actual?.sql || canonicalSql(actual.sql) !== canonicalSql(expectedSql)) {
@@ -203,7 +211,7 @@ function seedRoles(db: BetterSqliteDatabase): void {
   }
 }
 
-/** Create and validate a fresh slice-543 workspace. Existing databases are never migrated here. */
+/** Create and validate a fresh normal application workspace. Existing databases are never migrated here. */
 export function ensureExactNormalWorkspaceSchema(db: BetterSqliteDatabase): void {
   const hasMarker = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE lower(name)='exact_money_schema'").get());
   if (hasMarker) {

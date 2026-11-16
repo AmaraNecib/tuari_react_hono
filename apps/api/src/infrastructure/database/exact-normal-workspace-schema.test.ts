@@ -86,6 +86,37 @@ describe("normal exact workspace schema", () => {
     } finally { db.close(); }
   });
 
+  it("refuses an unapproved trigger without changing master, markers, or employee data", () => {
+    const db = fresh();
+    try {
+      ensureExactNormalWorkspaceSchema(db);
+      const role = db.prepare("SELECT id FROM role ORDER BY id LIMIT 1").get() as { id: string };
+      db.prepare("INSERT INTO employee(id,first_name,last_name,phone,role_id,status,salary_reference_units,salary_period,created_at,updated_at) VALUES (?,?,?,?,?,'ACTIVE',10,'MONTHLY','now','now')")
+        .run("employee-1", "A", "One", "0555000001", role.id);
+      db.exec("CREATE TRIGGER unapproved_salary_rewrite AFTER UPDATE OF salary_reference_units ON employee BEGIN UPDATE employee SET salary_reference_units=999 WHERE id=NEW.id; END");
+      const schemaBefore = db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all();
+      const markerBefore = db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all();
+      const employeeBefore = db.prepare("SELECT id,salary_reference_units FROM employee ORDER BY id").all();
+      expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(/unexpected exact workspace trigger: unapproved_salary_rewrite/i);
+      expect(db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all()).toEqual(schemaBefore);
+      expect(db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all()).toEqual(markerBefore);
+      expect(db.prepare("SELECT id,salary_reference_units FROM employee ORDER BY id").all()).toEqual(employeeBefore);
+    } finally { db.close(); }
+  });
+
+  it("refuses an unapproved explicit index without changing the schema marker", () => {
+    const db = fresh();
+    try {
+      ensureExactNormalWorkspaceSchema(db);
+      db.exec("CREATE INDEX unapproved_employee_salary_idx ON employee(salary_reference_units)");
+      const schemaBefore = db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all();
+      const markerBefore = db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all();
+      expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(/unexpected exact workspace index: unapproved_employee_salary_idx/i);
+      expect(db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all()).toEqual(schemaBefore);
+      expect(db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all()).toEqual(markerBefore);
+    } finally { db.close(); }
+  });
+
   it("refuses a no-op replacement of the earning no-replace guard", () => {
     const db = fresh();
     try {

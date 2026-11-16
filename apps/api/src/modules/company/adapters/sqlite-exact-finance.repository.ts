@@ -14,7 +14,7 @@ const entryFields = {
 } as const;
 const projection = (fields: Record<string, string>) => Object.entries(fields).map(([property, column]) => `"${column}" AS "${property}"`).join(",");
 
-/** Exact ledger adapter used by the slice-543 normal workspace root. */
+/** Exact ledger adapter used by the normal application normal workspace root. */
 export class SqliteExactFinanceRepository implements ExactFinanceRepository {
   get transactionIdentity() { return { connection: this.db, lock: this.lock }; }
   constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock) {

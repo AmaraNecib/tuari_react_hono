@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { applicationCapabilitiesSchema } from "@tuari/contracts";
 import { createAppConfig } from "../config";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
 import { ensureExactNormalWorkspaceSchema } from "../infrastructure/database/exact-normal-workspace-schema";
@@ -13,7 +14,7 @@ import { createAppDependencies } from "./dependencies";
 const deferredAllocationDdl = exactWorkforceSchemaStatements.find(sql => sql.startsWith("CREATE TABLE employee_salary_payment_allocation ("))!;
 
 const approval = {
-  requestId: "normal-root-543-approval",
+  requestId: "normal-root-application-approval",
   employeeId: "employee-will-be-replaced",
   currency: "DZD" as const,
   months: [{ id: "october", month: "2026-10", amount: "62500", unallocatedAmount: "0", segments: [
@@ -41,12 +42,12 @@ const config = createAppConfig({
   ALLOWED_ORIGINS: "http://localhost",
 });
 
-describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal exact app root (%s database)", (_kind, key) => {
+describe.each([["plain", ""], ["keyed", "application-normal-root-fixture-key"])("normal application root (%s database)", (_kind, key) => {
   it.each([
     ["deferred payroll allocation table", deferredAllocationDdl, /unexpected exact workspace tables.*employee_salary_payment_allocation/i],
     ["no-op earning immutability guard", "DROP TRIGGER exact_salary_earning_no_replace; CREATE TRIGGER exact_salary_earning_no_replace BEFORE INSERT ON employee_salary_earning BEGIN SELECT 1; END", /physical schema.*trigger exact_salary_earning_no_replace/i],
   ])("refuses a marked native database with %s before normal app writes", async (_driftName, driftSql, expectedError) => {
-    const directory = mkdtempSync(join(tmpdir(), "tuari-543-schema-refusal-"));
+    const directory = mkdtempSync(join(tmpdir(), "tuari-application-schema-refusal-"));
     const databasePath = join(directory, "workspace.sqlite");
     const db = createDatabaseConnection(databasePath, key);
     let dbClosed = false;
@@ -72,12 +73,12 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
   });
 
   it("starts the authenticated root, preserves exact identities and earnings through reopen", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "tuari-543-normal-root-"));
+    const directory = mkdtempSync(join(tmpdir(), "tuari-application-normal-root-"));
     const databasePath = join(directory, "workspace.sqlite");
     let deps = await createAppDependencies({ databasePath, databaseKey: key }, config);
     try {
-      expect(deps.mode).toBe("slice543");
-      if (deps.mode !== "slice543") throw new Error("Normal startup did not select slice 543");
+      expect(deps.mode).toBe("application");
+      if (deps.mode !== "application") throw new Error("Normal startup did not select the application composition");
       expect(deps.exactWorkforceService.financeService).toBe(deps.exactFinanceService);
       const owner = await deps.authBootstrapService.bootstrapFirstUser({
         name: "Payroll operator", phone: "0612345001", password: "normal-root-password",
@@ -90,8 +91,8 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
       });
       const app = createApp(deps, { allowedOrigins: ["http://localhost"] });
 
-      await expect(rpcCall(app, "slice543Capabilities")).rejects.toMatchObject({ status: 401 });
-      const caps = await rpcCall<Record<string, string>>(app, "slice543Capabilities", undefined, signIn.token);
+      await expect(rpcCall(app, "applicationCapabilities")).rejects.toMatchObject({ status: 401 });
+      const caps = applicationCapabilitiesSchema.parse(await rpcCall(app, "applicationCapabilities", undefined, signIn.token));
       expect(caps).toMatchObject({ employees: "exact", approvedEarnings: "available", cashPayments: "unavailable", fullProjectCost: "unavailable" });
       expect(caps.workspaceId).toMatch(/^[0-9a-f-]{36}$/i);
       await expect(rpcCall(app, "getRecoveryKeyPool")).rejects.toMatchObject({ status: 401 });
@@ -155,7 +156,7 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
       expect(costB.totalAmount).toBe("37500.00");
       expect(await rpcCall(app, "workforceExact/approveMonthlyEarnings", approvalInput, signIn.token)).toEqual(result);
       const partialPeriod = await rpcCall<{ months: { earning: { unallocatedAmount: string } }[] }>(app, "workforceExact/approveMonthlyEarnings", {
-        requestId: "normal-root-543-partial-approval", employeeId: employee.item.id, currency: "DZD",
+        requestId: "normal-root-application-partial-approval", employeeId: employee.item.id, currency: "DZD",
         months: [{ id: "november-partial", month: "2026-11", amount: "10000", unallocatedAmount: "2500", segments: [
           { id: "november-a", projectId: projectsA.item.id, amount: "7500", days: 3 },
         ] }],
@@ -164,13 +165,13 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
       expect((await rpcCall<{ totalAmount: string }>(app, "workforceExact/getProjectSalaryCost", { projectId: projectsA.item.id }, signIn.token)).totalAmount).toBe("32500.00");
       const earningsBeforeInvalid = await rpcCall<unknown[]>(app, "workforceExact/listEmployeeEarnings", { employeeId: employee.item.id }, signIn.token);
       await expect(rpcCall(app, "workforceExact/approveMonthlyEarnings", {
-        requestId: "normal-root-543-invalid-project", employeeId: employee.item.id, currency: "DZD",
+        requestId: "normal-root-application-invalid-project", employeeId: employee.item.id, currency: "DZD",
         months: [{ id: "invalid-project-month", month: "2026-12", amount: "100", unallocatedAmount: "0", segments: [
           { id: "invalid-project-segment", projectId: "missing-project", amount: "100" },
         ] }],
       }, signIn.token)).rejects.toMatchObject({ status: 404 });
       await expect(rpcCall(app, "workforceExact/approveMonthlyEarnings", {
-        requestId: "normal-root-543-invalid-days", employeeId: employee.item.id, currency: "DZD",
+        requestId: "normal-root-application-invalid-days", employeeId: employee.item.id, currency: "DZD",
         months: [{ id: "invalid-days-month", month: "2026-12", amount: "100", unallocatedAmount: "0", segments: [
           { id: "invalid-days-segment", projectId: projectsA.item.id, amount: "100", days: 0 },
         ] }],
@@ -202,9 +203,9 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
       expect(snapshot).toEqual({ schemaVersion: 0, encrypted: Boolean(key) });
       const backupDeps = await createAppDependencies({ databasePath: snapshotPath, databaseKey: key }, config);
       try {
-        if (backupDeps.mode !== "slice543") throw new Error("Snapshot reopened outside slice 543");
+        if (backupDeps.mode !== "application") throw new Error("Snapshot reopened outside the application composition");
         const backupApp = createApp(backupDeps, { allowedOrigins: ["http://localhost"] });
-        expect(await rpcCall<{ workspaceId: string }>(backupApp, "slice543Capabilities", undefined, signIn.token)).toEqual({ ...caps, workspaceId: caps.workspaceId });
+        expect(await rpcCall<{ workspaceId: string }>(backupApp, "applicationCapabilities", undefined, signIn.token)).toEqual({ ...caps, workspaceId: caps.workspaceId });
         expect(await rpcCall(backupApp, "getRecoveryKeyPool", undefined, signIn.token)).toMatchObject({ availableCount: 3, totalCount: 3 });
         expect(await rpcCall(backupApp, "workforceExact/listEmployeeEarnings", { employeeId: employee.item.id }, signIn.token)).toEqual([
           { earning: result.months[0]!.earning, remainingAmount: "62500.00" },
@@ -214,9 +215,9 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
 
       deps.close();
       deps = await createAppDependencies({ databasePath, databaseKey: key }, config);
-      if (deps.mode !== "slice543") throw new Error("Reopened root changed runtime mode");
+      if (deps.mode !== "application") throw new Error("Reopened root changed runtime mode");
       const reopenedApp = createApp(deps, { allowedOrigins: ["http://localhost"] });
-      expect(await rpcCall<{ workspaceId: string }>(reopenedApp, "slice543Capabilities", undefined, signIn.token)).toEqual({ ...caps, workspaceId: caps.workspaceId });
+      expect(await rpcCall<{ workspaceId: string }>(reopenedApp, "applicationCapabilities", undefined, signIn.token)).toEqual({ ...caps, workspaceId: caps.workspaceId });
       expect(await rpcCall(reopenedApp, "getRecoveryKeyPool", undefined, signIn.token)).toMatchObject({ availableCount: 3, totalCount: 3 });
       const reopenedEarnings = await rpcCall<unknown[]>(reopenedApp, "workforceExact/listEmployeeEarnings", { employeeId: employee.item.id }, signIn.token);
       expect(reopenedEarnings).toEqual([
@@ -233,7 +234,7 @@ describe.each([["plain", ""], ["keyed", "543-normal-root-fixture-key"]])("normal
 
 describe("normal exact workspace refusal", () => {
   it("leaves an existing legacy database unchanged instead of running legacy DDL", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "tuari-543-legacy-refusal-"));
+    const directory = mkdtempSync(join(tmpdir(), "tuari-application-legacy-refusal-"));
     const databasePath = join(directory, "legacy.sqlite");
     const db = createDatabaseConnection(databasePath, "");
     db.exec("CREATE TABLE employee(id TEXT PRIMARY KEY,salary_amount_dzd REAL); INSERT INTO employee VALUES ('old-employee',1250.5)");

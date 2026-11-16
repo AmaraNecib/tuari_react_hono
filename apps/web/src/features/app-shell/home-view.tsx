@@ -31,8 +31,8 @@ import { isRolesEndpointUnavailable, useCompositeWorkspaceQuery, useSystemLogQue
 import type { HomeViewPage } from "./home-view-types"
 import { TableQueryState } from "@/features/shared/table-primitives"
 import { ErrorBoundary } from "@/components/error-boundary"
-import { slice543Client } from "@/lib/slice543-client"
-import { Slice543Workspace } from "./slice543-workspace"
+import { applicationClient } from "@/lib/application-client"
+import { WorkspaceShell } from "./workspace-shell"
 
 export type { HomeViewPage } from "./home-view-types"
 
@@ -128,8 +128,8 @@ export function HomeView({
     toggleTheme,
   })
   const capabilitiesQuery = useQuery({
-    queryKey: ["slice543", "capabilities", auth.session?.id ?? null],
-    queryFn: () => slice543Client.slice543Capabilities(),
+    queryKey: ["application", "capabilities", auth.session?.id ?? null],
+    queryFn: () => applicationClient.applicationCapabilities(),
     enabled: Boolean(auth.session),
     retry: false,
     staleTime: 60_000,
@@ -218,7 +218,7 @@ export function HomeView({
         exactMode
       >
         <ErrorBoundary key={contentBoundaryKey}>
-          <Slice543Workspace key={`${capabilitiesQuery.data.workspaceId}:${exactSession.id}`} client={slice543Client} capabilities={capabilitiesQuery.data} copy={copy} employeeId={employeeId} page={page} session={exactSession} theme={theme} resetWorkspacePending={resetWorkspaceMutation.isPending} updateAccountPending={updateAccountSettingsMutation.isPending} onResetWorkspace={() => shell.handleResetWorkspace()} onSaveAccount={payload => updateAccountSettingsMutation.mutateAsync(payload)} onThemeToggle={toggleTheme} onUpdateApplied={() => shell.setShowRestartModal(true)} onPendingCommandChange={handleExactPendingChange} />
+          <WorkspaceShell key={`${capabilitiesQuery.data.workspaceId}:${exactSession.id}`} client={applicationClient} capabilities={capabilitiesQuery.data} copy={copy} employeeId={employeeId} page={page} session={exactSession} theme={theme} resetWorkspacePending={resetWorkspaceMutation.isPending} updateAccountPending={updateAccountSettingsMutation.isPending} onResetWorkspace={() => shell.handleResetWorkspace()} onSaveAccount={payload => updateAccountSettingsMutation.mutateAsync(payload)} onThemeToggle={toggleTheme} onUpdateApplied={() => shell.setShowRestartModal(true)} onPendingCommandChange={handleExactPendingChange} />
         </ErrorBoundary>
       </HomeViewSignedInShell>
     )

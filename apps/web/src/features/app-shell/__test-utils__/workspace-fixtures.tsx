@@ -16,19 +16,19 @@ import { type Mock, vi } from "vitest"
 // evaluation time, which races with vitest RPC teardown on loaded CI
 // runners causing EnvironmentTeardownError.
 // The spy is restored after module evaluation via restoreConsoleLog().
-const { restoreConsoleLog, slice543ClientMock } = vi.hoisted(() => {
+const { restoreConsoleLog, applicationClientMock } = vi.hoisted(() => {
   const spy = vi.spyOn(console, "log").mockImplementation(() => {})
   return {
     restoreConsoleLog: () => spy.mockRestore(),
-    slice543ClientMock: { slice543Capabilities: vi.fn(async () => { throw Object.assign(new Error("Capability method unavailable"), { code: "NOT_FOUND" }) }) } as Record<string, unknown>,
+    applicationClientMock: { applicationCapabilities: vi.fn(async () => { throw Object.assign(new Error("Capability method unavailable"), { code: "NOT_FOUND" }) }) } as Record<string, unknown>,
   }
 })
 
-vi.mock("@/lib/slice543-client", () => ({ slice543Client: slice543ClientMock }))
+vi.mock("@/lib/application-client", () => ({ applicationClient: applicationClientMock }))
 
-export function setSlice543ClientMock(client: Record<string, unknown> | null) {
-  for (const key of Object.keys(slice543ClientMock)) delete slice543ClientMock[key]
-  Object.assign(slice543ClientMock, client ?? { slice543Capabilities: vi.fn(async () => { throw Object.assign(new Error("Capability method unavailable"), { code: "NOT_FOUND" }) }) })
+export function setApplicationClientMock(client: Record<string, unknown> | null) {
+  for (const key of Object.keys(applicationClientMock)) delete applicationClientMock[key]
+  Object.assign(applicationClientMock, client ?? { applicationCapabilities: vi.fn(async () => { throw Object.assign(new Error("Capability method unavailable"), { code: "NOT_FOUND" }) }) })
 }
 
 import "@/i18n"

@@ -44,6 +44,7 @@ function canonical(value: unknown): string {
   return encoded
 }
 
+/** Existing v1 browser-storage protocol key. Keep it stable across application module renames so unresolved approvals remain recoverable. */
 function storageKey(workspaceId: string, userId: string): string {
   return `tuari:slice543:monthly-approval:v1:${encodeURIComponent(workspaceId)}:${encodeURIComponent(userId)}`
 }

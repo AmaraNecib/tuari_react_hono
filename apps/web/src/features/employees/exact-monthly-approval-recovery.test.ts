@@ -27,6 +27,14 @@ class MemoryStorage implements MonthlyApprovalStorage {
 }
 
 describe("monthly approval recovery storage", () => {
+  it("recovers an unresolved record from the established v1 browser-storage key", () => {
+    const storage = new MemoryStorage()
+    const key = "tuari:slice543:monthly-approval:v1:11111111-1111-4111-8111-111111111111:user-a"
+    storage.values.set(key, JSON.stringify({ version: 1, ...scope, employeeId: input.employeeId, requestId: input.requestId, payload: input, ambiguous: true }))
+    const store = createMonthlyApprovalStore(storage, scope.workspaceId, scope.userId)
+    expect(store.load()).toMatchObject({ requestId: input.requestId, payload: normalizedInput, ambiguous: true })
+  })
+
   it("persists the full normalized intent before dispatch and clears only after a valid response", async () => {
     const storage = new MemoryStorage()
     const store = createMonthlyApprovalStore(storage, scope.workspaceId, scope.userId)

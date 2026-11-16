@@ -93,7 +93,7 @@ export type CreateAppDependenciesConfig = {
   backupsRootPath?: string;
   /** Injected clock for the backup service (tests pin "due" without waiting). */
   now?: () => Date;
-  /** Isolated legacy composition for legacy migration tests only. Normal startup uses slice 543. */
+  /** Isolated legacy composition for legacy migration tests only. Normal startup uses the application composition. */
   legacyNumericTestMode?: true;
 };
 
@@ -108,7 +108,7 @@ export type CreateAppDependenciesConfig = {
  */
 type SharedAppDependencies = {
   auth: BetterAuthInstance;
-  mode: "legacy" | "slice543";
+  mode: "legacy" | "application";
   accountService: AccountService;
   authBootstrapService: AuthBootstrapService;
   sessionService: SessionService;
@@ -138,8 +138,8 @@ export type LegacyAppDependencies = SharedAppDependencies & {
   databaseKeyPersister: DatabaseKeyPersister;
 };
 
-export type Slice543AppDependencies = SharedAppDependencies & {
-  mode: "slice543";
+export type ApplicationDependencies = SharedAppDependencies & {
+  mode: "application";
   accountService: AccountService;
   workforceService: WorkforceService;
   operationsService: OperationsService;
@@ -153,10 +153,10 @@ export type Slice543AppDependencies = SharedAppDependencies & {
   workspaceId: string;
 };
 
-export type AppDependencies = LegacyAppDependencies | Slice543AppDependencies;
+export type AppDependencies = LegacyAppDependencies | ApplicationDependencies;
 
 /**
- * Build the normal slice-543 dependency graph on the configured database.
+ * Build the normal application dependency graph on the configured database.
  *
  * The default path creates or validates a fresh exact workspace before
  * building auth, the employee module and approved-earnings services. It
@@ -180,7 +180,7 @@ export async function createAppDependencies(
   appConfig: AppConfig = createAppConfig(),
 ): Promise<AppDependencies> {
   if (config.legacyNumericTestMode) return createLegacyNumericTestDependencies(config, appConfig);
-  return createSlice543Dependencies(config, appConfig);
+  return createApplicationDependencies(config, appConfig);
 }
 
 async function createLegacyNumericTestDependencies(
@@ -355,11 +355,11 @@ async function createLegacyNumericTestDependencies(
   }
 }
 
-async function createSlice543Dependencies(
+async function createApplicationDependencies(
   config: CreateAppDependenciesConfig,
   appConfig: AppConfig,
-): Promise<Slice543AppDependencies> {
-  if (appConfig.dbAdapter !== "sqlite") throw new Error("Slice 543 requires the configured SQLite workspace");
+): Promise<ApplicationDependencies> {
+  if (appConfig.dbAdapter !== "sqlite") throw new Error("The normal application requires the configured SQLite workspace");
   const databasePath = config.databasePath?.trim() ? config.databasePath : appConfig.databasePath;
   const resolvedDatabaseKey = config.databaseKey ?? appConfig.databaseKey;
   const sharedDatabase = createDatabaseConnection(databasePath, resolvedDatabaseKey);
@@ -402,7 +402,7 @@ async function createSlice543Dependencies(
     });
 
     return {
-      mode: "slice543",
+      mode: "application",
       auth,
       accountService: new AccountService(new DrizzleAccountRepository(db, connectionLock), auth),
       authBootstrapService,

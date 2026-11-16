@@ -25,7 +25,7 @@ const nonfinancialWorkforceContract = {
   warehouseAssignmentsEnd: workforceContract.warehouseAssignmentsEnd,
 };
 
-export const slice543CapabilitiesSchema = z.object({
+export const applicationCapabilitiesSchema = z.object({
   workspaceId: z.uuid(),
   employees: z.literal("exact"),
   approvedEarnings: z.literal("available"),
@@ -41,9 +41,9 @@ export const slice543CapabilitiesSchema = z.object({
   fullProjectCost: z.literal("unavailable"),
 }).strict();
 
-export type Slice543Capabilities = z.infer<typeof slice543CapabilitiesSchema>;
+export type ApplicationCapabilities = z.infer<typeof applicationCapabilitiesSchema>;
 
-const slice543SecurityContract = {
+const applicationSecurityContract = {
   getRecoveryKeyPool: systemContract.getRecoveryKeyPool,
   generateRecoveryKeys: systemContract.generateRecoveryKeys,
   consumeRecoveryKey: systemContract.consumeRecoveryKey,
@@ -51,12 +51,12 @@ const slice543SecurityContract = {
   changeDbEncryptionKey: systemContract.changeDbEncryptionKey,
 } as const;
 
-export const slice543CapabilitiesContract = {
-  slice543Capabilities: oc.output(slice543CapabilitiesSchema),
+export const applicationCapabilitiesContract = {
+  applicationCapabilities: oc.output(applicationCapabilitiesSchema),
 } as const;
 
-/** Normal API contract for slice 543. Employee method names stay top-level. */
-export const slice543Contract = {
+/** Normal application contract. Employee method names stay top-level. */
+export const applicationContract = {
   health: oc.output(healthCheckSchema),
   ...authContract,
   ...nonfinancialWorkforceContract,
@@ -64,10 +64,10 @@ export const slice543Contract = {
   ...operationsContract,
   ...backupContract,
   ...rbacContract,
-  ...slice543SecurityContract,
-  ...slice543CapabilitiesContract,
+  ...applicationSecurityContract,
+  ...applicationCapabilitiesContract,
   workforceExact: exactWorkforceEarningsContract,
 } as const;
 
-export type Slice543Contract = typeof slice543Contract;
-export type Slice543Client = ContractRouterClient<Slice543Contract>;
+export type ApplicationContract = typeof applicationContract;
+export type ApplicationClient = ContractRouterClient<ApplicationContract>;

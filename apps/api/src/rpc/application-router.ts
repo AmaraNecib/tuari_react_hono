@@ -1,5 +1,5 @@
 import { implement } from "@orpc/server";
-import { slice543Contract } from "@tuari/contracts";
+import { applicationContract } from "@tuari/contracts";
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import type { WorkforceService } from "../modules/company/workforce.service";
 import type { OperationsService } from "../modules/company/operations.service";
@@ -22,7 +22,7 @@ import { createBackupHandlers } from "./handlers/backup";
 import { createRbacHandlers } from "./handlers/rbac";
 import { createRecoverySecurityHandlers } from "./handlers/system";
 
-type Slice543RouterDependencies = {
+export type ApplicationRouterDependencies = {
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
   workforceService: WorkforceService;
   operationsService: OperationsService;
@@ -37,7 +37,7 @@ type Slice543RouterDependencies = {
   databaseKeyPersister: DatabaseKeyPersister;
 };
 
-const slice543Capabilities = {
+const applicationCapabilities = {
   employees: "exact",
   approvedEarnings: "available",
   projectLaborCost: "exact-ledger",
@@ -52,11 +52,11 @@ const slice543Capabilities = {
   fullProjectCost: "unavailable",
 } as const;
 
-export function createSlice543Router(
-  dependencies: Slice543RouterDependencies,
+export function createApplicationRouter(
+  dependencies: ApplicationRouterDependencies,
   options: { trustProxyHeaders?: boolean } = {},
 ) {
-  const os = implement(slice543Contract).$context<RpcContext>();
+  const os = implement(applicationContract).$context<RpcContext>();
   const middleware = createRpcMiddleware({
     authBootstrapService: dependencies.authBootstrapService,
     trustProxyHeaders: options.trustProxyHeaders,
@@ -82,7 +82,7 @@ export function createSlice543Router(
     ...createBackupHandlers(os, middleware, dependencies.backupService, dependencies.backupFolderPersister),
     ...createRbacHandlers(os, middleware, dependencies.roleModule),
     ...createRecoverySecurityHandlers(os, middleware, dependencies.recoveryKeyService, dependencies.databaseKeyManager, dependencies.databaseKeyPersister),
-    slice543Capabilities: os.slice543Capabilities.handler(middleware.withAuth(async () => ({ ...slice543Capabilities, workspaceId: dependencies.workspaceId }))),
+    applicationCapabilities: os.applicationCapabilities.handler(middleware.withAuth(async () => ({ ...applicationCapabilities, workspaceId: dependencies.workspaceId }))),
     workforceExact: exactEarnings,
   };
   return os.router(allHandlers);

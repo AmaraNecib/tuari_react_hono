@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import type { Slice543Capabilities, Slice543Client } from "@tuari/contracts"
+import type { ApplicationCapabilities, ApplicationClient } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Surface } from "@/features/shared/page-primitives"
@@ -17,11 +17,11 @@ import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewPage } from "./home-view-types"
 import { SettingsSection } from "./settings-section"
 
-const idKey = (workspaceId: string, userId: string, resource: string) => ["slice543", workspaceId, userId, resource] as const
+const idKey = (workspaceId: string, userId: string, resource: string) => ["application", workspaceId, userId, resource] as const
 
-export function Slice543Workspace({ client, capabilities, copy, employeeId, page, session, theme, resetWorkspacePending, updateAccountPending, onResetWorkspace, onSaveAccount, onThemeToggle, onUpdateApplied, onPendingCommandChange }: {
-  client: Slice543Client
-  capabilities: Slice543Capabilities
+export function WorkspaceShell({ client, capabilities, copy, employeeId, page, session, theme, resetWorkspacePending, updateAccountPending, onResetWorkspace, onSaveAccount, onThemeToggle, onUpdateApplied, onPendingCommandChange }: {
+  client: ApplicationClient
+  capabilities: ApplicationCapabilities
   copy: HomeViewCopy
   employeeId?: string
   page: HomeViewPage
@@ -109,7 +109,7 @@ export function Slice543Workspace({ client, capabilities, copy, employeeId, page
   if (page === "salaries") return <ExactSalaryEarningsSection employees={people} projects={projectRows.map(project => ({ id: project.id, name: project.name }))} workforceClient={client.workforceExact} workspaceId={workspaceId} userId={userId} onPendingCommandChange={onPendingCommandChange} />
   if (page === "projects" || page === "project-create") return <ProjectReferencePage projects={projectRows} managers={managerRows.map(manager => ({ id: manager.id, label: `${manager.firstName} ${manager.lastName}` }))} client={client} onSaved={() => void queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "projects") })} />
   if (page === "warehouses" || page === "warehouse-create") return <WarehouseReferencePage warehouses={warehouseRows} managers={people.filter(person => person.status === "ACTIVE" && roleRows.find(role => role.id === person.roleId)?.key === "warehouse_manager").map(manager => ({ id: manager.id, label: `${manager.firstName} ${manager.lastName}` }))} client={client} onSaved={() => void queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "warehouses") })} />
-  if (page === "dashboard") return <section className="space-y-5"><h1 className="text-2xl font-semibold">{t("shell.dashboard")}</h1><p>{t("salaryEarnings.title")}</p><nav className="flex flex-wrap gap-4"><WorkspaceLink target={workspaceRoutes.employees()}>{t("sections.employees.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.salaries()}>{t("sections.salaries.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.projects()}>{t("sections.projects.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.warehouses()}>{t("sections.warehouses.label")}</WorkspaceLink></nav><p className="text-sm">{t("slice543.unavailable")}</p></section>
+  if (page === "dashboard") return <section className="space-y-5"><h1 className="text-2xl font-semibold">{t("shell.dashboard")}</h1><p>{t("salaryEarnings.title")}</p><nav className="flex flex-wrap gap-4"><WorkspaceLink target={workspaceRoutes.employees()}>{t("sections.employees.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.salaries()}>{t("sections.salaries.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.projects()}>{t("sections.projects.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.warehouses()}>{t("sections.warehouses.label")}</WorkspaceLink></nav><p className="text-sm">{t("application.unavailable")}</p></section>
   if (page === "settings") return <SettingsSection
     accountCurrentPasswordLabel={copy.shell.settingsAccountCurrentPassword}
     accountCurrentPasswordPlaceholder={copy.shell.settingsAccountCurrentPasswordPlaceholder}
@@ -156,7 +156,7 @@ export function Slice543Workspace({ client, capabilities, copy, employeeId, page
     onToggleTheme={onThemeToggle}
     onUpdateApplied={onUpdateApplied}
   />
-  return <section className="space-y-3" role="status"><p>{t("slice543.unavailable")}</p><nav className="flex flex-wrap gap-4"><WorkspaceLink target={workspaceRoutes.employees()}>{t("sections.employees.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.salaries()}>{t("sections.salaries.label")}</WorkspaceLink></nav></section>
+  return <section className="space-y-3" role="status"><p>{t("application.unavailable")}</p><nav className="flex flex-wrap gap-4"><WorkspaceLink target={workspaceRoutes.employees()}>{t("sections.employees.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.salaries()}>{t("sections.salaries.label")}</WorkspaceLink></nav></section>
 }
 
 function EmployeeCreateSection({ context, onCancel, onDone }: { context: Omit<ExactEmployeeBatchProps, "onDone" | "onCancel">; onCancel: () => void; onDone: () => void }) {
@@ -165,7 +165,7 @@ function EmployeeCreateSection({ context, onCancel, onDone }: { context: Omit<Ex
   return <section className="space-y-4"><nav className="flex gap-3" aria-label={t("employeeForm.pageTitle")}><Button type="button" variant={batch ? "outline" : "default"} onClick={() => setBatch(false)}>{t("employeeForm.submitSingle")}</Button><Button type="button" variant={batch ? "default" : "outline"} onClick={() => setBatch(true)}>{t("employeeForm.submitBatch")}</Button></nav><EmployeeBatchCreatePage mode="exact" operation={batch ? "batch" : "create"} {...context} onDone={onDone} onCancel={onCancel} /></section>
 }
 
-function ProjectReferencePage({ projects, managers, client, onSaved }: { projects: Array<{ id: string; name: string; managerId: string | null; status: string }>; managers: Array<{ id: string; label: string }>; client: Slice543Client; onSaved: () => void }) {
+function ProjectReferencePage({ projects, managers, client, onSaved }: { projects: Array<{ id: string; name: string; managerId: string | null; status: string }>; managers: Array<{ id: string; label: string }>; client: ApplicationClient; onSaved: () => void }) {
   const { t } = useTranslation()
   const [name, setName] = useState("")
   const [managerId, setManagerId] = useState("")
@@ -174,7 +174,7 @@ function ProjectReferencePage({ projects, managers, client, onSaved }: { project
   return <section className="space-y-4"><h1 className="text-xl font-semibold">{t("sections.projects.label")}</h1><form className="flex flex-wrap items-end gap-3" onSubmit={event => void submit(event)}><label className="grid gap-1">{t("detailPages.project.name")}<Input required value={name} onChange={event => setName(event.target.value)} /></label><label className="grid gap-1">{t("employeeForm.managerLabel")}<select className="min-h-11 rounded-md border px-3" value={managerId} onChange={event => setManagerId(event.target.value)}><option value="">{t("common.none")}</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.label}</option>)}</select></label><Button type="submit">{t("common.create")}</Button>{failure && <p role="alert">{failure}</p>}</form><ul>{projects.map(project => <li key={project.id} className="border-b py-2">{project.name}</li>)}</ul></section>
 }
 
-function WarehouseReferencePage({ warehouses, managers, client, onSaved }: { warehouses: Array<{ id: string; name: string }>; managers: Array<{ id: string; label: string }>; client: Slice543Client; onSaved: () => void }) {
+function WarehouseReferencePage({ warehouses, managers, client, onSaved }: { warehouses: Array<{ id: string; name: string }>; managers: Array<{ id: string; label: string }>; client: ApplicationClient; onSaved: () => void }) {
   const { t } = useTranslation()
   const [name, setName] = useState("")
   const [managerId, setManagerId] = useState("")

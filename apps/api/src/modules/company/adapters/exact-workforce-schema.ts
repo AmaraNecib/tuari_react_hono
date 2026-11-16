@@ -131,7 +131,7 @@ export const exactWorkforceSchemaStatements = [
   `CREATE INDEX exact_employee_salary_split_payment_idx ON employee_salary_payment_split(payment_id,id)`,
 ] as const;
 
-/** Employee profile and history tables only. Cash and later lifecycle tables stay out of slice 543. */
+/** Employee profile and history tables only. Cash and later lifecycle tables stay out of the normal application. */
 export const exactEmployeeProfileSchemaStatements = exactWorkforceSchemaStatements.filter(sql =>
   /^CREATE TABLE employee(?:_state_history)? \(/.test(sql),
 );

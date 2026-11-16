@@ -1,6 +1,6 @@
 import { schemaStatements } from "../../../infrastructure/database/schema-definitions";
 
-/** Exact debt DDL shared by isolated storage fixtures and fresh slice-543 startup. It never migrates a legacy database. */
+/** Exact debt DDL shared by isolated storage fixtures and fresh normal application startup. It never migrates a legacy database. */
 export const exactDebtSchemaStatements: readonly string[] = (() => {
   const account = schemaStatements.find(sql => sql.startsWith('CREATE TABLE IF NOT EXISTS "debt_account"'))!;
   const entry = schemaStatements.find(sql => sql.startsWith('CREATE TABLE IF NOT EXISTS "debt_entry"'))!;

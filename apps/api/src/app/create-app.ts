@@ -27,7 +27,7 @@ import { AccountServiceError } from "../modules/account/account.service";
 import { InventoryError } from "../modules/inventory/inventory.errors";
 import type { InventoryUploadFile } from "../modules/inventory/inventory.types";
 import { createRouter } from "../rpc/router";
-import { createSlice543Router } from "../rpc/slice543-router";
+import { createApplicationRouter } from "../rpc/application-router";
 import { createRpcContext, type RpcContext } from "../rpc/context";
 
 export type TransportSecurityConfig = {
@@ -93,21 +93,21 @@ function shouldDisableCaching(path: string) {
   return path.startsWith("/api/auth/") || path.startsWith("/api/inventory/") || path === "/rpc/session";
 }
 
-const slice543DeferredRpcPrefixes = [
+const applicationDeferredRpcPrefixes = [
   "salaryPayments", "debt", "debts", "externalCounterparties", "employeeDebtEntry",
   "invoices", "payments", "expenses", "inventory", "assetCharges", "reports", "projectCost",
 ] as const;
-const slice543DeferredPayrollProcedures = new Set([
+const applicationDeferredPayrollProcedures = new Set([
   "recordPayrollCash", "reviewPayrollOpening", "repayPayrollAdvance", "correctPayrollEarning", "getEmployeePayrollLifecycle",
 ]);
 
-function isSlice543DeferredRpc(path: string): boolean {
+function isApplicationDeferredRpc(path: string): boolean {
   const normalized = path.replace(/^\/+/, "");
   if (!normalized.startsWith("rpc/")) return false;
   const procedures = normalized.slice("rpc/".length).split(/[/.]/);
   const procedure = procedures[0] ?? "";
-  if (procedure === "workforceExact") return slice543DeferredPayrollProcedures.has(procedures[1] ?? "");
-  return slice543DeferredRpcPrefixes.some(prefix => procedure.startsWith(prefix));
+  if (procedure === "workforceExact") return applicationDeferredPayrollProcedures.has(procedures[1] ?? "");
+  return applicationDeferredRpcPrefixes.some(prefix => procedure.startsWith(prefix));
 }
 
 function getRemoteAddress(env: unknown) {
@@ -146,7 +146,7 @@ export function createApp(
   transportSecurity: TransportSecurityConfig,
 ) {
   const app = new Hono();
-  const refuseSlice543Deferred = async (c: Context) => {
+  const refuseDeferredApplicationOperation = async (c: Context) => {
     try {
       await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers);
     } catch (error) {
@@ -154,10 +154,10 @@ export function createApp(
       throw error;
     }
     c.header("Cache-Control", "no-store, private");
-    return c.json({ code: "SERVICE_UNAVAILABLE", message: "This financial operation is unavailable in slice 543." }, 503);
+    return c.json({ code: "SERVICE_UNAVAILABLE", message: "This financial operation is unavailable in the normal application." }, 503);
   };
-  const router = dependencies.mode === "slice543"
-    ? createSlice543Router(dependencies, { trustProxyHeaders: transportSecurity.trustProxyHeaders ?? false })
+  const router = dependencies.mode === "application"
+    ? createApplicationRouter(dependencies, { trustProxyHeaders: transportSecurity.trustProxyHeaders ?? false })
     : createRouter(dependencies, { trustProxyHeaders: transportSecurity.trustProxyHeaders ?? false });
   const transport = createTransportSecurity(transportSecurity);
   const authRateLimiter = new SlidingWindowRateLimiter(
@@ -372,7 +372,7 @@ export function createApp(
 
   app.use("/rpc/*", createOriginBlockingMiddleware((origin) => transport.isAllowedOrigin(origin)));
   app.use("/rpc/*", async (c, next) => {
-    if (dependencies.mode === "slice543" && isSlice543DeferredRpc(c.req.path)) return refuseSlice543Deferred(c);
+    if (dependencies.mode === "application" && isApplicationDeferredRpc(c.req.path)) return refuseDeferredApplicationOperation(c);
     await next();
   });
 
@@ -425,7 +425,7 @@ export function createApp(
   });
 
   app.post("/api/inventory/invoice-groups/:invoiceGroupId/attachments", async (c) => {
-    if (dependencies.mode === "slice543") return refuseSlice543Deferred(c);
+    if (dependencies.mode === "application") return refuseDeferredApplicationOperation(c);
     try {
       const currentUser = await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers)
       if (!(await dependencies.authBootstrapService.isBootstrapOwner(currentUser.id))) {
@@ -482,7 +482,7 @@ export function createApp(
   })
 
   app.get("/api/inventory/attachments/:attachmentId", async (c) => {
-    if (dependencies.mode === "slice543") return refuseSlice543Deferred(c);
+    if (dependencies.mode === "application") return refuseDeferredApplicationOperation(c);
     try {
       const currentUser = await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers)
       if (!(await dependencies.authBootstrapService.isBootstrapOwner(currentUser.id))) {

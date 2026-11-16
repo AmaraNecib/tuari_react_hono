@@ -18,7 +18,7 @@ function resolveExactEarningsError(error: unknown): unknown {
   return error;
 }
 
-/** Authenticated slice-543 earnings routes. Cash lifecycle procedures are not mounted here. */
+/** Authenticated normal application earnings routes. Cash lifecycle procedures are not mounted here. */
 export function createExactWorkforceEarningsRouter(service: ExactWorkforceService, middleware: RpcMiddleware) {
   const os = implement(exactWorkforceEarningsContract).$context<RpcContext>();
   const approve = middleware.mutationAudit(({ input, auditContext }: {

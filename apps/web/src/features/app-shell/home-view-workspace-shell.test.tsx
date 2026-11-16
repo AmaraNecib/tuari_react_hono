@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { demoUser, mockAllMutations, renderWorkspace, setSlice543ClientMock } from "./__test-utils__/workspace-fixtures"
+import { demoUser, mockAllMutations, renderWorkspace, setApplicationClientMock } from "./__test-utils__/workspace-fixtures"
 import { i18n } from "@/i18n"
 import * as workspaceQueries from "./workspace-queries"
 
@@ -26,8 +26,8 @@ vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => 
 
 beforeEach(() => {
   window.localStorage.setItem("journey-home-tour-status", "skipped")
-  setSlice543ClientMock({
-  slice543Capabilities: mocks.capabilities,
+  setApplicationClientMock({
+  applicationCapabilities: mocks.capabilities,
   employeesList: mocks.employeesList,
   rolesList: mocks.rolesList,
   projectsList: mocks.projectsList,
@@ -41,9 +41,9 @@ beforeEach(() => {
   },
   })
 })
-afterEach(() => { cleanup(); window.localStorage.clear(); setSlice543ClientMock(null) })
+afterEach(() => { cleanup(); window.localStorage.clear(); setApplicationClientMock(null) })
 
-describe("normal HomeView Slice 543 selector", () => {
+describe("normal HomeView normal application selector", () => {
   it("selects exact signed-in pages after authenticated capabilities without loading numeric workspace data", async () => {
     const workspaceQuery = vi.spyOn(workspaceQueries, "useCompositeWorkspaceQuery")
     renderWorkspace("salaries", { sessionUser: demoUser })
