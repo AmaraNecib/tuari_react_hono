@@ -25,6 +25,7 @@ export type WarehousePageRecord = {
   managerName: string
   status: string
   notes: string | null
+  activeWorkers?: number
 }
 
 /**
@@ -36,6 +37,7 @@ export function WarehouseDetailsPage({
   onTabChange,
   teamRows,
   warehouse,
+  capabilityMode = false,
 }: {
   activeTab: string
   managementHistoryRows: Array<{
@@ -56,9 +58,11 @@ export function WarehouseDetailsPage({
     statusLabel: string
   }>
   warehouse: WarehousePageRecord
+  capabilityMode?: boolean
 }) {
   const { t } = useTranslation()
-  const resolvedTab = ["overview", "history", "team", "items", "transfers"].includes(activeTab) ? activeTab : "overview"
+  const supportedTabs = capabilityMode ? ["overview", "history", "team"] : ["overview", "history", "team", "items", "transfers"]
+  const resolvedTab = supportedTabs.includes(activeTab) ? activeTab : "overview"
   const hasExpandedNotes = (warehouse.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `warehouse-record-${warehouse.id}`
 
@@ -78,8 +82,7 @@ export function WarehouseDetailsPage({
           { id: "overview", label: t("detailPages.warehouse.overviewTab") },
           { id: "history", label: t("detailPages.warehouse.historyTab") },
           { id: "team", label: t("detailPages.warehouse.teamTab") },
-          { id: "items", label: "العناصر" },
-          { id: "transfers", label: "سجل التحويلات" },
+          ...(!capabilityMode ? [{ id: "items", label: "العناصر" }, { id: "transfers", label: "سجل التحويلات" }] : []),
         ]}
         onChange={onTabChange}
       />
@@ -90,7 +93,7 @@ export function WarehouseDetailsPage({
           <RecordInfoCard label={t("detailPages.warehouse.status")} value={getArabicStatusLabel(warehouse.status)} />
           <RecordInfoCard label={t("detailPages.warehouse.manager")} value={warehouse.managerName} />
           <RecordInfoCard label={t("detailPages.warehouse.address")} value={warehouse.address ?? t("shell.noAddress")} />
-          <RecordInfoCard label={t("detailPages.warehouse.teamCount")} value={String(teamRows.length)} />
+          <RecordInfoCard label={t("detailPages.warehouse.teamCount")} value={String(warehouse.activeWorkers ?? teamRows.length)} />
           <RecordInfoCard label={t("detailPages.warehouse.notes")} value={warehouse.notes ?? t("common.noNotes")} wide={hasExpandedNotes} />
         </RecordInfoGrid>
       </RecordTabPanel>
@@ -120,13 +123,8 @@ export function WarehouseDetailsPage({
         />
       </RecordTabPanel>
 
-      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items">
-        <InventoryLocationContentsSection warehouseId={warehouse.id} />
-      </RecordTabPanel>
-
-      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers">
-        <LocationTransferHistory locationId={warehouse.id} locationType="WAREHOUSE" />
-      </RecordTabPanel>
+      {!capabilityMode && resolvedTab === "items" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items"><InventoryLocationContentsSection warehouseId={warehouse.id} /></RecordTabPanel> : null}
+      {!capabilityMode && resolvedTab === "transfers" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers"><LocationTransferHistory locationId={warehouse.id} locationType="WAREHOUSE" /></RecordTabPanel> : null}
     </RecordPageFrame>
   )
 }

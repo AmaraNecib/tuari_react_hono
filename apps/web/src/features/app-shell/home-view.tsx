@@ -192,10 +192,10 @@ export function HomeView({
 
   if (capabilitiesQuery.data && auth.session) {
     const exactSession = auth.session
-    const contentBoundaryKey = [page, detailTab, employeeId].filter(Boolean).join(":")
+    const contentBoundaryKey = [page, detailTab, employeeId, projectId, warehouseId].filter(Boolean).join(":")
     return (
       <HomeViewSignedInShell
-        breadcrumbItems={[]}
+        breadcrumbItems={breadcrumbItems}
         copy={copy}
         deletePending={false}
         page={page}
@@ -218,7 +218,7 @@ export function HomeView({
         exactMode
       >
         <ErrorBoundary key={contentBoundaryKey}>
-          <WorkspaceShell key={`${capabilitiesQuery.data.workspaceId}:${exactSession.id}`} client={applicationClient} capabilities={capabilitiesQuery.data} copy={copy} employeeId={employeeId} page={page} session={exactSession} theme={theme} resetWorkspacePending={resetWorkspaceMutation.isPending} updateAccountPending={updateAccountSettingsMutation.isPending} onResetWorkspace={() => shell.handleResetWorkspace()} onSaveAccount={payload => updateAccountSettingsMutation.mutateAsync(payload)} onThemeToggle={toggleTheme} onUpdateApplied={() => shell.setShowRestartModal(true)} onPendingCommandChange={handleExactPendingChange} />
+          <WorkspaceShell key={`${capabilitiesQuery.data.workspaceId}:${exactSession.id}`} client={applicationClient} capabilities={capabilitiesQuery.data} copy={copy} employeeId={employeeId} projectId={projectId} warehouseId={warehouseId} detailTab={detailTab} onProjectTab={(id, tab) => void navigation.setProjectTab(id, tab)} onWarehouseTab={(id, tab) => void navigation.setWarehouseTab(id, tab)} page={page} session={exactSession} theme={theme} resetWorkspacePending={resetWorkspaceMutation.isPending} updateAccountPending={updateAccountSettingsMutation.isPending} onResetWorkspace={() => shell.handleResetWorkspace()} onSaveAccount={payload => updateAccountSettingsMutation.mutateAsync(payload)} onThemeToggle={toggleTheme} onUpdateApplied={() => shell.setShowRestartModal(true)} onPendingCommandChange={handleExactPendingChange} />
         </ErrorBoundary>
       </HomeViewSignedInShell>
     )

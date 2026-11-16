@@ -1,9 +1,8 @@
-import { useMemo, useState, type FormEvent } from "react"
+import { useMemo, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import type { ApplicationCapabilities, ApplicationClient, ExactWorkforceEarningsClient } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Surface } from "@/features/shared/page-primitives"
 import { EmployeeTable } from "@/features/employees/employee-table"
 import { EmployeeBatchCreatePage } from "@/features/employees/employee-batch-create-page"
@@ -16,14 +15,20 @@ import type { DemoSession } from "./workspace-mutations"
 import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewPage } from "./home-view-types"
 import { SettingsSection } from "./settings-section"
+import { ExactProjectWarehousePages } from "./exact-project-warehouse-pages"
 
 const idKey = (workspaceId: string, userId: string, resource: string) => ["application", workspaceId, userId, resource] as const
 
-export function WorkspaceShell({ client, capabilities, copy, employeeId, page, session, theme, resetWorkspacePending, updateAccountPending, onResetWorkspace, onSaveAccount, onThemeToggle, onUpdateApplied, onPendingCommandChange }: {
+export function WorkspaceShell({ client, capabilities, copy, employeeId, projectId, warehouseId, detailTab, onProjectTab = () => {}, onWarehouseTab = () => {}, page, session, theme, resetWorkspacePending, updateAccountPending, onResetWorkspace, onSaveAccount, onThemeToggle, onUpdateApplied, onPendingCommandChange }: {
   client: ApplicationClient
   capabilities: ApplicationCapabilities
   copy: HomeViewCopy
   employeeId?: string
+  projectId?: string
+  warehouseId?: string
+  detailTab?: string
+  onProjectTab?: (id: string, tab: string) => void
+  onWarehouseTab?: (id: string, tab: string) => void
   page: HomeViewPage
   session: NonNullable<DemoSession>
   theme: "light" | "dark"
@@ -44,7 +49,7 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, page, s
     listEmployeeEarnings: input => client.workforceExact.listEmployeeEarnings(input),
     getProjectSalaryCost: input => client.workforceExact.getProjectSalaryCost(input),
   }), [client])
-  const needsWorkspaceReferences = page === "employees" || page === "employees-create" || page === "employee-details" || page === "employee-edit" || page === "salaries" || page === "projects" || page === "project-create" || page === "warehouses" || page === "warehouse-create"
+  const needsWorkspaceReferences = page === "employees" || page === "employees-create" || page === "employee-details" || page === "employee-edit" || page === "salaries"
   const employees = useQuery({ queryKey: idKey(workspaceId, userId, "employees"), queryFn: () => client.employeesList(), enabled: needsWorkspaceReferences })
   const roles = useQuery({ queryKey: idKey(workspaceId, userId, "roles"), queryFn: () => client.rolesList(), enabled: needsWorkspaceReferences })
   const projects = useQuery({ queryKey: idKey(workspaceId, userId, "projects"), queryFn: () => client.projectsList(), enabled: needsWorkspaceReferences })
@@ -99,6 +104,7 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, page, s
     void queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "warehouses") })
     window.location.href = "/employees"
   }
+  if (page.startsWith("project") || page.startsWith("warehouse")) return <ExactProjectWarehousePages client={client} workspaceId={workspaceId} userId={userId} page={page} projectId={projectId} warehouseId={warehouseId} detailTab={detailTab} onProjectTab={onProjectTab} onWarehouseTab={onWarehouseTab} />
   if (needsWorkspaceReferences && [employees, roles, projects, warehouses].some(query => query.isPending)) return <p role="status">{t("common.loading")}</p>
   const failed = needsWorkspaceReferences ? [employees, roles, projects, warehouses].find(query => query.isError) : undefined
   if (failed) return <Surface role="alert" variant="panel" className="p-5"><p>{t("shell.loadWorkspaceError")}</p><Button onClick={() => { void Promise.all([employees.refetch(), roles.refetch(), projects.refetch(), warehouses.refetch()]) }}>{t("common.retry")}</Button></Surface>
@@ -112,8 +118,6 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, page, s
     return <EmployeeEditPage mode="exact" {...scopedContext} employeeId={employeeId} onDone={onDone} onCancel={onDone} />
   }
   if (page === "salaries") return <ExactSalaryEarningsSection employees={people} projects={projectRows.map(project => ({ id: project.id, name: project.name }))} workforceClient={workforceClient} workspaceId={workspaceId} userId={userId} onPendingCommandChange={onPendingCommandChange} />
-  if (page === "projects" || page === "project-create") return <ProjectReferencePage projects={projectRows} managers={managerRows.map(manager => ({ id: manager.id, label: `${manager.firstName} ${manager.lastName}` }))} client={client} onSaved={() => void queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "projects") })} />
-  if (page === "warehouses" || page === "warehouse-create") return <WarehouseReferencePage warehouses={warehouseRows} managers={people.filter(person => person.status === "ACTIVE" && roleRows.find(role => role.id === person.roleId)?.key === "warehouse_manager").map(manager => ({ id: manager.id, label: `${manager.firstName} ${manager.lastName}` }))} client={client} onSaved={() => void queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "warehouses") })} />
   if (page === "dashboard") return <section className="space-y-5"><h1 className="text-2xl font-semibold">{t("shell.dashboard")}</h1><p>{t("salaryEarnings.title")}</p><nav className="flex flex-wrap gap-4"><WorkspaceLink target={workspaceRoutes.employees()}>{t("sections.employees.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.salaries()}>{t("sections.salaries.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.projects()}>{t("sections.projects.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.warehouses()}>{t("sections.warehouses.label")}</WorkspaceLink></nav><p className="text-sm">{t("application.unavailable")}</p></section>
   if (page === "settings") return <SettingsSection
     accountCurrentPasswordLabel={copy.shell.settingsAccountCurrentPassword}
@@ -168,22 +172,4 @@ function EmployeeCreateSection({ context, onCancel, onDone }: { context: Omit<Ex
   const { t } = useTranslation()
   const [batch, setBatch] = useState(false)
   return <section className="space-y-4"><nav className="flex gap-3" aria-label={t("employeeForm.pageTitle")}><Button type="button" variant={batch ? "outline" : "default"} onClick={() => setBatch(false)}>{t("employeeForm.submitSingle")}</Button><Button type="button" variant={batch ? "default" : "outline"} onClick={() => setBatch(true)}>{t("employeeForm.submitBatch")}</Button></nav><EmployeeBatchCreatePage mode="exact" operation={batch ? "batch" : "create"} {...context} onDone={onDone} onCancel={onCancel} /></section>
-}
-
-function ProjectReferencePage({ projects, managers, client, onSaved }: { projects: Array<{ id: string; name: string; managerId: string | null; status: string }>; managers: Array<{ id: string; label: string }>; client: ApplicationClient; onSaved: () => void }) {
-  const { t } = useTranslation()
-  const [name, setName] = useState("")
-  const [managerId, setManagerId] = useState("")
-  const [failure, setFailure] = useState<string | null>(null)
-  async function submit(event: FormEvent) { event.preventDefault(); setFailure(null); try { const result = await client.projectsCreate({ name, ...(managerId ? { managerId } : {}) }); if (!result.success) throw new Error(result.error.message); setName(""); onSaved() } catch (error) { setFailure(error instanceof Error ? error.message : t("shell.loadWorkspaceError")) } }
-  return <section className="space-y-4"><h1 className="text-xl font-semibold">{t("sections.projects.label")}</h1><form className="flex flex-wrap items-end gap-3" onSubmit={event => void submit(event)}><label className="grid gap-1">{t("detailPages.project.name")}<Input required value={name} onChange={event => setName(event.target.value)} /></label><label className="grid gap-1">{t("employeeForm.managerLabel")}<select className="min-h-11 rounded-md border px-3" value={managerId} onChange={event => setManagerId(event.target.value)}><option value="">{t("common.none")}</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.label}</option>)}</select></label><Button type="submit">{t("common.create")}</Button>{failure && <p role="alert">{failure}</p>}</form><ul>{projects.map(project => <li key={project.id} className="border-b py-2">{project.name}</li>)}</ul></section>
-}
-
-function WarehouseReferencePage({ warehouses, managers, client, onSaved }: { warehouses: Array<{ id: string; name: string }>; managers: Array<{ id: string; label: string }>; client: ApplicationClient; onSaved: () => void }) {
-  const { t } = useTranslation()
-  const [name, setName] = useState("")
-  const [managerId, setManagerId] = useState("")
-  const [failure, setFailure] = useState<string | null>(null)
-  async function submit(event: FormEvent) { event.preventDefault(); setFailure(null); try { const result = await client.warehousesCreate({ name, ...(managerId ? { managerId } : {}) }); if (!result.success) throw new Error(result.error.message); setName(""); onSaved() } catch (error) { setFailure(error instanceof Error ? error.message : t("shell.loadWorkspaceError")) } }
-  return <section className="space-y-4"><h1 className="text-xl font-semibold">{t("sections.warehouses.label")}</h1><form className="flex flex-wrap items-end gap-3" onSubmit={event => void submit(event)}><label className="grid gap-1">{t("detailPages.warehouse.name")}<Input required value={name} onChange={event => setName(event.target.value)} /></label><label className="grid gap-1">{t("detailPages.warehouse.manager")}<select className="min-h-11 rounded-md border px-3" value={managerId} onChange={event => setManagerId(event.target.value)}><option value="">{t("common.none")}</option>{managers.map(manager => <option key={manager.id} value={manager.id}>{manager.label}</option>)}</select></label><Button type="submit">{t("common.create")}</Button>{failure && <p role="alert">{failure}</p>}</form><ul>{warehouses.map(warehouse => <li key={warehouse.id} className="border-b py-2">{warehouse.name}</li>)}</ul></section>
 }

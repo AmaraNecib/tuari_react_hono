@@ -15,9 +15,11 @@ import { useEmployeeInlineCreateSelection } from "@/features/employees/use-emplo
 export function useWarehouseManagerInlineCreateSelection({
   warehouseManagerRoleId,
   selectedManagerId,
+  enabled = true,
 }: {
   warehouseManagerRoleId: string
   selectedManagerId: string
+  enabled?: boolean
 }) {
   const { t } = useTranslation()
 
@@ -46,5 +48,6 @@ export function useWarehouseManagerInlineCreateSelection({
       },
     ],
     selectedEmployeeId: selectedManagerId,
+    enabled,
   })
 }

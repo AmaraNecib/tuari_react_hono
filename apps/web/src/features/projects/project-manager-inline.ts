@@ -10,9 +10,11 @@ import { useEmployeeInlineCreateSelection } from "@/features/employees/use-emplo
 export function useProjectManagerInlineCreateSelection({
   projectManagerRoleId,
   selectedManagerId,
+  enabled = true,
 }: {
   projectManagerRoleId: string
   selectedManagerId: string
+  enabled?: boolean
 }) {
   const { t } = useTranslation()
 
@@ -41,5 +43,6 @@ export function useProjectManagerInlineCreateSelection({
       },
     ],
     selectedEmployeeId: selectedManagerId,
+    enabled,
   })
 }
