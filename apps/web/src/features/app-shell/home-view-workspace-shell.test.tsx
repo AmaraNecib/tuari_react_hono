@@ -71,7 +71,7 @@ describe("normal HomeView normal application selector", () => {
     expect(mocks.projectsList).toHaveBeenCalledTimes(1)
     expect(mocks.listEmployeeEarnings).not.toHaveBeenCalled()
     expect(mocks.approveMonthlyEarnings).not.toHaveBeenCalled()
-    expect(screen.getByRole("note").textContent).toContain("تسجيل الدفعات النقدية")
+    expect(screen.getByText(i18n.t("salaryEarnings.cashUnavailable"))).toBeTruthy()
     expect(screen.getByRole("option", { name: "Exact Worker" })).toBeTruthy()
   })
 
@@ -112,7 +112,7 @@ describe("normal HomeView normal application selector", () => {
     let finish: ((value: never) => void) | undefined
     mocks.approveMonthlyEarnings.mockImplementation(() => new Promise(resolve => { finish = resolve }))
     renderWorkspace("salaries", { sessionUser: demoUser })
-    await screen.findByLabelText(i18n.t("salaryEarnings.employee"))
+    await screen.findByRole("option", { name: "Exact Worker" })
     fireEvent.change(screen.getByLabelText(i18n.t("salaryEarnings.employee")), { target: { value: "exact-worker" } })
     await screen.findByRole("form", { name: i18n.t("salaryMonthly.title") })
     fireEvent.change(screen.getByLabelText(i18n.t("salaryMonthly.amount", { index: 1 })), { target: { value: "100" } })

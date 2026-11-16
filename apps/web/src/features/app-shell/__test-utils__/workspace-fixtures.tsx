@@ -321,7 +321,7 @@ vi.mock("@tanstack/react-router", async () => {
       <a {...props}>{children}</a>
     ),
     useNavigate: () => navigateMock,
-    useBlocker: vi.fn(),
+    useBlocker: vi.fn(() => ({ status: "idle", proceed: undefined, reset: undefined })),
   }
 })
 
