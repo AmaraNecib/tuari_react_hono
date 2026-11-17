@@ -24,7 +24,9 @@
  * downstream spec, which all use `bootstrapOrSignIn`.
  */
 
+import { basename } from "node:path"
 import { findE2eDatabase, loadDatabaseConstructor } from "./db-seed"
+import { resetExactFixture } from "./exact-db-isolation"
 
 /**
  * False when the suite targets an externally managed API: there is no local
@@ -90,7 +92,11 @@ const TRANSACTIONAL_TABLES = [
  * (`role`, `role_permission`, `app_schema_state`) are left intact.
  */
 export function resetE2eDatabase(): void {
-  const db = loadDatabaseConstructor()(findE2eDatabase())
+  const path = findE2eDatabase()
+  if (!/^tuari\.phase1\.integration\..+\.sqlite$/.test(basename(path))) {
+    throw new Error("resetE2eDatabase only accepts a disposable tuari.phase1.integration.*.sqlite fixture")
+  }
+  const db = loadDatabaseConstructor()(path)
   try {
     // Fail loudly if a listed table no longer exists (schema rename/migration)
     // instead of silently leaking rows across specs.
@@ -99,6 +105,7 @@ export function resetE2eDatabase(): void {
         (row) => row.name,
       ),
     )
+    if (known.has("exact_money_schema")) { resetExactFixture(db, known); return }
     for (const table of TRANSACTIONAL_TABLES) {
       if (!known.has(table)) {
         throw new Error(

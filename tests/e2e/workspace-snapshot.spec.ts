@@ -1,15 +1,10 @@
-import { expect, test } from "@playwright/test"
+import { expect, test, type Response } from "@playwright/test"
 
 import { bootstrapOrSignIn } from "./helpers/session"
 
 test.describe.configure({ mode: "serial" })
 
-/**
- * The list endpoints the shell used to fan out to individually (issue #276).
- * After the refactor the workspace composite must fetch ONLY the single
- * `workspaceSnapshot` RPC; these must not fire on a plain dashboard load
- * (global search is closed, system log is gated behind the transactions page).
- */
+/** The exact dashboard must not fetch numeric financial or assignment families. */
 const INDIVIDUAL_LIST_RPCS = [
   "rbacRolesList",
   "rolesList",
@@ -26,9 +21,13 @@ const INDIVIDUAL_LIST_RPCS = [
   "warehouseManagerOwnershipHistoryList",
 ]
 
-test("the workspace shell loads via a single workspaceSnapshot RPC (issue #276)", async ({ page }) => {
+test("the exact workspace loads only supported scoped lists and never the numeric snapshot", async ({ page }) => {
   const snapshotRequests: string[] = []
   const individualListRequests: string[] = []
+  const capabilityResponses: Response[] = []
+  page.on("response", response => {
+    if (new URL(response.url()).pathname === "/rpc/applicationCapabilities" && response.request().method() === "POST") capabilityResponses.push(response)
+  })
 
   // Register BEFORE navigation so the post-sign-in workspace fetch is counted.
   // Only POSTs are counted — an OPTIONS CORS preflight to the same URL (if the
@@ -48,11 +47,16 @@ test("the workspace shell loads via a single workspaceSnapshot RPC (issue #276)"
 
   await bootstrapOrSignIn(page)
 
-  // The dashboard heading only renders once the workspace snapshot resolved
-  // (the shell shows a loading state until the composite data is non-null),
-  // so the request counts are stable by this point.
+  // Dashboard counts appear only after the supported reference queries resolve.
   await expect(page.getByRole("heading", { name: "لوحة التحكم" })).toBeVisible()
 
-  expect(snapshotRequests).toHaveLength(1)
-  expect(individualListRequests).toEqual([])
+  expect(capabilityResponses).toHaveLength(1)
+  expect(capabilityResponses[0]!.ok()).toBe(true)
+  const capabilities = await capabilityResponses[0]!.json()
+  expect(capabilities.json).toMatchObject({ employees: "exact", approvedEarnings: "available", cashPayments: "unavailable", projectLaborCost: "exact-ledger" })
+  expect(snapshotRequests).toEqual([])
+  const procedures = individualListRequests.map(url => new URL(url).pathname.split("/").at(-1))
+  expect(procedures.sort()).toEqual(["employeesList", "projectsList", "rolesList", "warehousesList"])
+  await expect(page.getByText("هذا القسم المالي غير متاح في هذه النسخة.").first()).toBeVisible()
+  await expect(page.getByRole("link", { name: /إضافة مشروع/ })).toBeVisible()
 })

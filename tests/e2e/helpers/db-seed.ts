@@ -4,18 +4,9 @@ import { createRequire } from "node:module"
 import { isAbsolute, join } from "node:path"
 
 /**
- * E2E DB seeding helper (issue #183).
- *
- * Employee creation through the UI/RPC is blocked by a pre-existing role
- * rule (legacy roles removed — tracked #227), so the spec seeds employee
- * rows directly into the E2E sqlite database. The API server runs with
- * `APP_DB_PATH=./data/tuari.phase1.integration.<ts>.sqlite` (plain
- * better-sqlite3, WAL mode), and the bootstrap flow has already migrated
- * the schema and seeded the system roles.
- *
- * `better-sqlite3` is not resolvable from the repo root (pnpm isolated
- * linker), so it is located in the pnpm virtual store and loaded through
- * `createRequire` pinned to that package's package.json.
+ * Direct fixtures for the managed Playwright database. Load the API's pinned
+ * SQLite driver from its package context, whether tests run at root or in API.
+ * Exact salary fixtures provide integer units, never a floating money bridge.
  */
 
 type SeedEmployee = {
@@ -27,7 +18,7 @@ type SeedEmployee = {
 }
 
 /** The minimal better-sqlite3 surface the seeding needs. */
-type SeedDatabase = {
+export type SeedDatabase = {
   prepare: (sql: string) => {
     all: (...params: unknown[]) => unknown[]
     get: (...params: unknown[]) => unknown
@@ -44,16 +35,8 @@ let databaseConstructor: ((path: string) => SeedDatabase) | null = null
 
 export function loadDatabaseConstructor() {
   if (databaseConstructor) return databaseConstructor
-  const pnpmDir = join(process.cwd(), "node_modules", ".pnpm")
-  const entry = readdirSync(pnpmDir).find(
-    (dir) => dir.startsWith("better-sqlite3@") && !dir.includes("sqlcipher"),
-  )
-  if (!entry) {
-    throw new Error("better-sqlite3 not found in the pnpm virtual store")
-  }
-  const req = createRequire(
-    join(pnpmDir, entry, "node_modules", "better-sqlite3", "package.json"),
-  )
+  const apiPackage = join(process.cwd(), "apps", "api", "package.json")
+  const req = createRequire(existsSync(apiPackage) ? apiPackage : join(process.cwd(), "package.json"))
   databaseConstructor = req("better-sqlite3") as (path: string) => SeedDatabase
   return databaseConstructor
 }
@@ -134,8 +117,8 @@ export function seedEmployees(employees: SeedEmployee[]): void {
     const insert = db.prepare(
       `INSERT INTO employee
          (id, first_name, last_name, phone, user_id, role_id, status,
-          salary_amount_dzd, salary_period, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, NULL, ?, 'ACTIVE', NULL, NULL, NULL, ?, ?)`,
+          notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, NULL, ?, 'ACTIVE', NULL, ?, ?)`,
     )
     const defaultTs = new Date().toISOString()
     for (const employee of employees) {
@@ -167,6 +150,8 @@ export function seedEmployeeByRole(input: {
   roleKey: string
   status?: "ACTIVE" | "INACTIVE" | "LEFT"
   salaryAmountDzd?: number | null
+  /** Exact stored units: DAILY uses 4 decimal places; WEEKLY/MONTHLY use 2. */
+  salaryReferenceUnits?: bigint | null
   salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null
 }): string {
   const db = loadDatabaseConstructor()(findE2eDatabase())
@@ -179,10 +164,13 @@ export function seedEmployeeByRole(input: {
     }
     const id = randomUUID()
     const ts = new Date().toISOString()
+    const exact = (db.pragma("table_info(employee)") as Array<{ name: string }>).some(column => column.name === "salary_reference_units")
+    if (exact && input.salaryAmountDzd != null) throw new Error("Exact E2E employees require salaryReferenceUnits, not numeric salaryAmountDzd")
+    const salaryColumn = exact ? "salary_reference_units" : "salary_amount_dzd"
     db.prepare(
       `INSERT INTO employee
          (id, first_name, last_name, phone, user_id, role_id, status,
-          salary_amount_dzd, salary_period, notes, created_at, updated_at)
+          ${salaryColumn}, salary_period, notes, created_at, updated_at)
        VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?)`,
     ).run(
       id,
@@ -191,7 +179,7 @@ export function seedEmployeeByRole(input: {
       input.phone,
       roleRow.id,
       input.status ?? "ACTIVE",
-      input.salaryAmountDzd ?? null,
+      exact ? input.salaryReferenceUnits ?? null : input.salaryAmountDzd ?? null,
       input.salaryPeriod ?? null,
       ts,
       ts,
