@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "@playwright/test"
 
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
@@ -11,6 +11,14 @@ const employeeName = `عامل إثبات ${suffix}`
 const managerName = `مدير إثبات ${suffix}`
 const projectA = `مشروع أ ${suffix}`
 const projectB = `مشروع ب ${suffix}`
+
+async function selectOptionContaining(select: Locator, text: string) {
+  const option = select.locator("option").filter({ hasText: text }).first()
+  await expect(option).toBeAttached()
+  const value = await option.getAttribute("value")
+  if (!value) throw new Error(`Could not resolve option value for ${text}`)
+  await select.selectOption(value)
+}
 
 async function openEmployeeCreate(page: Page) {
   await page.getByRole("link", { name: "العاملون" }).first().click()
@@ -39,8 +47,8 @@ async function createEmployee(page: Page, input: {
     await row.getByLabel("دورية الأجر").selectOption({ label: "شهري" })
   }
   if (input.manager && input.project) {
-    await row.getByLabel("المدير المباشر").selectOption({ label: input.manager })
-    await row.getByLabel("المشروع").selectOption({ label: input.project })
+    await selectOptionContaining(row.getByLabel("المدير المباشر"), input.manager)
+    await selectOptionContaining(row.getByLabel("المشروع"), input.project)
   }
   await page.getByRole("button", { name: "حفظ العامل", exact: true }).click()
   await expect(page.getByRole("heading", { name: "العاملون" })).toBeVisible({ timeout: 15_000 })
@@ -55,7 +63,9 @@ async function createProject(page: Page, name: string, manager: string) {
   await page.getByLabel("اسم المشروع").fill(name)
   const managerSelect = page.getByLabel("المدير المسؤول")
   await managerSelect.click()
-  await page.getByRole("option", { name: manager, exact: true }).click()
+  const managerOption = page.getByRole("option").filter({ hasText: manager }).first()
+  await expect(managerOption).toBeVisible()
+  await managerOption.click()
   await page.getByRole("button", { name: "حفظ المشروع" }).click()
   await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible({ timeout: 15_000 })
 }
