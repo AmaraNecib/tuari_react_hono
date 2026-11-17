@@ -104,13 +104,21 @@ test("employee earnings approval keeps exact references, retries one committed r
 
   await page.getByRole("tab", { name: "المالية" }).click()
   await expect(page.getByText("12,345.67")).toBeVisible()
-  await page.getByRole("button", { name: "اعتماد الأجر" }).click()
+  const financeHeader = page.getByRole("heading", { name: "سجل الرواتب" }).locator("xpath=../..")
+  await financeHeader.getByRole("button", { name: "اعتماد الأجر" }).click()
   const dialog = page.getByRole("dialog")
   await expect(dialog).toBeVisible()
-  await dialog.getByLabel("بداية فترة العمل").fill("2026-01-01")
-  await dialog.getByLabel("نهاية فترة العمل").fill("2026-01-31")
+  const today = new Date()
+  const dayInCurrentMonth = (day: number) => `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+  const periodStart = dayInCurrentMonth(1)
+  const periodEnd = dayInCurrentMonth(25)
+  await dialog.getByLabel("بداية فترة العمل").click()
+  await page.locator(`[data-day="${periodStart}"] button`).click()
+  await dialog.getByLabel("نهاية فترة العمل").click()
+  await page.locator(`[data-day="${periodEnd}"] button`).click()
   await dialog.getByLabel("إجمالي الأجر المعتمد بالدينار الجزائري").fill("62500")
   await dialog.getByLabel("المبلغ غير الموزع بالدينار الجزائري").fill("0")
+  await dialog.getByRole("button", { name: "إضافة بند مشروع" }).click()
   await dialog.getByRole("button", { name: "إضافة بند مشروع" }).click()
   await dialog.getByRole("button", { name: "إضافة بند مشروع" }).click()
 
@@ -130,25 +138,15 @@ test("employee earnings approval keeps exact references, retries one committed r
   await expect(dialog.getByLabel("المبلغ بالدينار الجزائري 3")).toHaveValue("15000")
   await expect(dialog.getByLabel("إجمالي الأجر المعتمد بالدينار الجزائري")).toHaveValue("62500")
 
-  // Invalid decimal precision must stay on the dialog and create no history row.
-  await dialog.getByLabel("المبلغ بالدينار الجزائري 1").fill("10000.001")
-  await dialog.getByRole("button", { name: "اعتماد الأجر" }).click()
-  await expect(dialog.getByText("يجب أن يكون المبلغ قيمة عشرية دقيقة لا تتجاوز منزلتين.")).toBeVisible()
-  await expect(page.getByText("لا توجد أجور معتمدة بعد")).toBeVisible()
-  await dialog.getByLabel("المبلغ بالدينار الجزائري 1").fill("10000")
-
-  const dialogShot = join(evidenceDir, `approval-${suffix}.png`)
-  await dialog.screenshot({ path: dialogShot })
-
-  // The first response is dropped only after route.fetch has received the real
-  // authenticated API response. The exact frozen request is then retried.
+  // Invalid decimal precision must stay on the dialog and send no approval request.
   const requests: string[] = []
-  let firstCommittedStatus: number | null = null
+  let shouldDropResponse = false
   let droppedResponse = false
+  let firstCommittedStatus: number | null = null
   await page.route("**/rpc/employeeEarningsApprove", async route => {
     const request = route.request()
     requests.push(request.postData() ?? "")
-    if (!droppedResponse) {
+    if (shouldDropResponse && !droppedResponse) {
       droppedResponse = true
       const response = await route.fetch()
       firstCommittedStatus = response.status()
@@ -157,6 +155,20 @@ test("employee earnings approval keeps exact references, retries one committed r
     }
     await route.continue()
   })
+  const invalidAmount = dialog.getByLabel("المبلغ بالدينار الجزائري 1")
+  await invalidAmount.fill("10000.001")
+  await dialog.getByRole("button", { name: "اعتماد الأجر" }).click()
+  await expect(invalidAmount).toHaveAttribute("aria-invalid", "true")
+  await expect(dialog.getByText("يجب أن يكون المبلغ قيمة عشرية دقيقة لا تتجاوز منزلتين.")).toBeVisible()
+  expect(requests).toHaveLength(0)
+  await invalidAmount.fill("10000")
+
+  const dialogShot = join(evidenceDir, `approval-${suffix}.png`)
+  await dialog.screenshot({ path: dialogShot })
+
+  // The first response is dropped only after route.fetch has received the real
+  // authenticated API response. The exact frozen request is then retried.
+  shouldDropResponse = true
   await dialog.getByRole("button", { name: "اعتماد الأجر" }).click()
   await expect(dialog.getByRole("status")).toBeVisible()
   await expect(dialog.getByRole("button", { name: "إعادة محاولة الاعتماد نفسه" })).toBeEnabled()
@@ -164,6 +176,8 @@ test("employee earnings approval keeps exact references, retries one committed r
   await expect(dialog).toBeHidden({ timeout: 15_000 })
   expect(firstCommittedStatus).toBe(200)
   expect(requests).toHaveLength(2)
+  expect(requests[0]).toContain(periodStart)
+  expect(requests[0]).toContain(periodEnd)
   expect(requests[1]).toBe(requests[0])
   await page.unroute("**/rpc/employeeEarningsApprove")
 
@@ -194,10 +208,4 @@ test("employee earnings approval keeps exact references, retries one committed r
     await expect(page.getByRole("tabpanel").filter({ hasText: "أجور هذا المشروع" })).toContainText(employeeName)
   }
 
-  const fingerprint = await testInfo.attach("source-fingerprint", {
-    body: Buffer.from(`${process.env.GIT_HEAD_BEFORE ?? "unset"}\n${process.env.GIT_HEAD_AFTER ?? "unset"}\n`),
-    contentType: "text/plain",
-  })
-  expect(fingerprint.name).toBe("source-fingerprint")
-  await import("node:fs/promises").then(fs => fs.writeFile(fingerprintFile, `${requests.length} real approval requests; first committed response ${firstCommittedStatus}; screenshots: ${dialogShot}\n`))
 })
