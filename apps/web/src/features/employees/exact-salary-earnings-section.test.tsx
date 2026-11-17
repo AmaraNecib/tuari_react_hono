@@ -5,6 +5,7 @@ import { i18n } from "@/i18n"
 import { ar } from "@/i18n/resources/ar"
 import { ExactSalaryEarningsSection } from "./exact-salary-earnings-section"
 import { createMonthlyApprovalStore } from "./exact-monthly-approval-recovery"
+import { createKeyedAsyncTestLock } from "@/test-utils/keyed-async-test-lock"
 
 const employees = [{ id: "real-worker", firstName: "Current", lastName: "Worker", phone: "0555000001", roleId: "worker-role", status: "ACTIVE" as const, salaryReference: null, currency: "DZD" as const, notes: null, occupation: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }]
 let currentEmployees = employees
@@ -17,15 +18,8 @@ vi.mock("@/features/app-shell/workspace-queries", () => ({
 }))
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 beforeEach(() => {
-  const tails = new Map<string, Promise<void>>()
-  vi.stubGlobal("navigator", { locks: { request: async (name: string, _options: unknown, operation: () => Promise<unknown>) => {
-    const previous = tails.get(name) ?? Promise.resolve()
-    let release = () => {}
-    const tail = new Promise<void>(resolve => { release = resolve })
-    tails.set(name, tail)
-    await previous
-    try { return await operation() } finally { release(); if (tails.get(name) === tail) tails.delete(name) }
-  } } })
+  const runExclusive = createKeyedAsyncTestLock()
+  vi.stubGlobal("navigator", { locks: { request: (name: string, _options: unknown, operation: () => Promise<unknown>) => runExclusive(name, operation) } })
   currentEmployees = employees; window.localStorage.clear(); state.blocker.mockClear(); state.pending.mockClear(); state.blockerState.status = "idle"; state.blockerState.proceed.mockClear(); state.blockerState.reset.mockClear()
 })
 const label = (key: string) => i18n.t(`salaryEarnings.${key}`)

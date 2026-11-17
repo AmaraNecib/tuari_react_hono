@@ -3,21 +3,15 @@ import { waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { browserMonthlyApprovalStore, createMonthlyApprovalExecutor } from "@/features/employees/exact-monthly-approval-recovery"
 import { saveAccountWithoutAnyPendingApproval } from "./approval-account-fence"
+import { createKeyedAsyncTestLock } from "@/test-utils/keyed-async-test-lock"
 
 const user = "shared-owner"
 const workspace = "11111111-1111-4111-8111-111111111111"
 const input = { requestId: "approval-1", employeeId: "worker", currency: "DZD" as const, months: [{ id: "m", month: "2026-10", amount: "10000", unallocatedAmount: "10000", segments: [] }] }
 beforeEach(() => {
   localStorage.clear()
-  const tails = new Map<string, Promise<void>>()
-  vi.stubGlobal("navigator", { locks: { request: async (name: string, _options: unknown, operation: () => Promise<unknown>) => {
-    const previous = tails.get(name) ?? Promise.resolve()
-    let release = () => {}
-    const tail = new Promise<void>(resolve => { release = resolve })
-    tails.set(name, tail)
-    await previous
-    try { return await operation() } finally { release(); if (tails.get(name) === tail) tails.delete(name) }
-  } } })
+  const runExclusive = createKeyedAsyncTestLock()
+  vi.stubGlobal("navigator", { locks: { request: (name: string, _options: unknown, operation: () => Promise<unknown>) => runExclusive(name, operation) } })
 })
 afterEach(() => vi.unstubAllGlobals())
 

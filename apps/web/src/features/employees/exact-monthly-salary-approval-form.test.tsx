@@ -6,21 +6,15 @@ import { exactSalaryMonthlyApprovalInputSchema, type ExactSalaryMonthlyApprovalI
 import { i18n } from "@/i18n"
 import { ar } from "@/i18n/resources/ar"
 import { browserMonthlyApprovalStore } from "./exact-monthly-approval-recovery"
+import { createKeyedAsyncTestLock } from "@/test-utils/keyed-async-test-lock"
 import { ExactMonthlySalaryApprovalForm as ApprovalForm } from "./exact-monthly-salary-approval-form"
 
 const projects = [{ id: "A", name: "Project A" }, { id: "B", name: "Project B" }]
 const months = [{ id: "oct", month: "2026-10", amount: "12000.00" }, { id: "nov", month: "2026-11", amount: "18000.00" }]
 beforeEach(() => {
   window.localStorage.clear()
-  const tails = new Map<string, Promise<void>>()
-  vi.stubGlobal("navigator", { locks: { request: async (name: string, _options: unknown, operation: () => Promise<unknown>) => {
-    const previous = tails.get(name) ?? Promise.resolve()
-    let release = () => {}
-    const tail = new Promise<void>(resolve => { release = resolve })
-    tails.set(name, tail)
-    await previous
-    try { return await operation() } finally { release(); if (tails.get(name) === tail) tails.delete(name) }
-  } } })
+  const runExclusive = createKeyedAsyncTestLock()
+  vi.stubGlobal("navigator", { locks: { request: (name: string, _options: unknown, operation: () => Promise<unknown>) => runExclusive(name, operation) } })
 })
 afterEach(() => { cleanup(); window.localStorage.clear(); vi.unstubAllGlobals() })
 function ExactMonthlySalaryApprovalForm(props: Omit<ComponentProps<typeof ApprovalForm>, "workspaceId" | "userId">) {

@@ -1,5 +1,6 @@
 import { ORPCError } from "@orpc/client"
 import { describe, expect, it, vi } from "vitest"
+import { createKeyedAsyncTestLock } from "@/test-utils/keyed-async-test-lock"
 import type { ExactSalaryMonthlyApprovalInput } from "@tuari/contracts"
 import { browserMonthlyApprovalStore, createMonthlyApprovalExecutor, createMonthlyApprovalStore, type MonthlyApprovalCoordination, type MonthlyApprovalStorage } from "./exact-monthly-approval-recovery"
 
@@ -19,16 +20,8 @@ const validResult = () => {
 }
 
 class MemoryCoordination implements MonthlyApprovalCoordination {
-  private readonly tails = new Map<string, Promise<void>>()
-  async runExclusive<T>(name: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.tails.get(name) ?? Promise.resolve()
-    let release = () => {}
-    const current = new Promise<void>(resolve => { release = resolve })
-    this.tails.set(name, current)
-    await previous
-    try { return await operation() }
-    finally { release(); if (this.tails.get(name) === current) this.tails.delete(name) }
-  }
+  private readonly runLock = createKeyedAsyncTestLock()
+  runExclusive<T>(name: string, operation: () => Promise<T>): Promise<T> { return this.runLock(name, operation) }
 }
 
 class MemoryStorage implements MonthlyApprovalStorage {
