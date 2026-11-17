@@ -12,6 +12,8 @@ const managerName = `مدير إثبات ${suffix}`
 const projectA = `مشروع أ ${suffix}`
 const projectB = `مشروع ب ${suffix}`
 
+test.use({ timezoneId: "Africa/Algiers" })
+
 async function selectOptionContaining(select: Locator, text: string) {
   const option = select.locator("option").filter({ hasText: text }).first()
   await expect(option).toBeAttached()
@@ -82,6 +84,7 @@ async function openEmployeeFinance(page: Page) {
 
 test("employee earnings approval keeps exact references, retries one committed request, and feeds project costs", async ({ page }) => {
   mkdirSync(evidenceDir, { recursive: true })
+  await page.clock.install({ time: new Date("2026-06-15T11:00:00.000Z") })
   await bootstrapOrSignIn(page)
 
   const digits = `${Date.now().toString().slice(-7)}${Math.floor(Math.random() * 1000)}`
@@ -118,13 +121,12 @@ test("employee earnings approval keeps exact references, retries one committed r
   await financeHeader.getByRole("button", { name: "اعتماد الأجر" }).click()
   const dialog = page.getByRole("dialog")
   await expect(dialog).toBeVisible()
-  const today = new Date()
-  const dayInCurrentMonth = (day: number) => `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-  const periodStart = dayInCurrentMonth(1)
-  const periodEnd = dayInCurrentMonth(25)
-  // Independent Algeria-calendar boundaries: UTC+1, with the end inclusive.
-  const expectedPeriodStart = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1) - 60 * 60 * 1000).toISOString()
-  const expectedPeriodEnd = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 25, 23, 59, 59, 999) - 60 * 60 * 1000).toISOString()
+  const periodStart = "2026-06-01"
+  const periodEnd = "2026-06-25"
+  // The browser clock is fixed in Africa/Algiers. These API boundaries are
+  // independently specified in UTC, with the period end inclusive.
+  const expectedPeriodStart = "2026-05-31T23:00:00.000Z"
+  const expectedPeriodEnd = "2026-06-25T22:59:59.999Z"
   await dialog.getByLabel("بداية فترة العمل").click()
   await page.locator(`[data-day="${periodStart}"] button`).click()
   await dialog.getByLabel("نهاية فترة العمل").click()
