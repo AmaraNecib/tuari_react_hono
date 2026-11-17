@@ -16,6 +16,63 @@ describe("employee batch salary reference", () => {
     expect(normalizeEmployeeDraft(draft).salaryReference).toEqual({ period: "DAILY", amount: "1234.5678" })
   })
 
+  it("normalizes a large exact MONTHLY reference within the Money bound", () => {
+    const draft = {
+      ...createEmptyEmployeeDraft("role-worker"),
+      firstName: "سمير",
+      lastName: "بوقرة",
+      phone: "0555123456",
+      salaryReferenceAmount: "92,233,720,368,547,758.07",
+      salaryReferencePeriod: "MONTHLY" as const,
+    }
+
+    expect(normalizeEmployeeDraft(draft).salaryReference).toEqual({
+      period: "MONTHLY",
+      amount: "92233720368547758.07",
+    })
+    expect(validateEmployeeBatch([draft]).isValid).toBe(true)
+  })
+
+  it.each([
+    ["DAILY", "1.00001"],
+    ["MONTHLY", "1.001"],
+  ] as const)("rejects excess %s precision for %s", (period, amount) => {
+    const draft = {
+      ...createEmptyEmployeeDraft("role-worker"),
+      firstName: "سمير", lastName: "بوقرة", phone: "0555123456",
+      salaryReferenceAmount: amount,
+      salaryReferencePeriod: period,
+    }
+
+    const result = validateEmployeeBatch([draft])
+    expect(result.isValid).toBe(false)
+    expect(result.rowErrors[0]?.salaryReferenceAmount).toBe("invalid")
+  })
+
+  it("requires an amount when only a salary reference period is selected", () => {
+    const draft = {
+      ...createEmptyEmployeeDraft("role-worker"),
+      firstName: "سمير", lastName: "بوقرة", phone: "0555123456",
+      salaryReferencePeriod: "MONTHLY" as const,
+    }
+
+    const result = validateEmployeeBatch([draft])
+    expect(result.isValid).toBe(false)
+    expect(result.rowErrors[0]?.salaryReferenceAmount).toBe("required")
+  })
+
+  it("requires a period when only a salary reference amount is entered", () => {
+    const draft = {
+      ...createEmptyEmployeeDraft("role-worker"),
+      firstName: "سمير", lastName: "بوقرة", phone: "0555123456",
+      salaryReferenceAmount: "4500",
+    }
+
+    const result = validateEmployeeBatch([draft])
+    expect(result.isValid).toBe(false)
+    expect(result.rowErrors[0]?.salaryReferencePeriod).toBe("required")
+  })
+
   it("keeps an empty reference distinct from a legal zero reference", () => {
     const blank = { ...createEmptyEmployeeDraft("role-worker"), firstName: "سمير", lastName: "بوقرة", phone: "0555123456" }
     const zero = { ...blank, salaryReferenceAmount: "0", salaryReferencePeriod: "MONTHLY" as const }

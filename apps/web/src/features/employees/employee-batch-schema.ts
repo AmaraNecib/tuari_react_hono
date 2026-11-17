@@ -7,7 +7,7 @@ import {
   type EmployeeBatchCreateInput,
 } from "@tuari/contracts"
 
-import { parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
+import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
 
 export const duplicatePhoneInBatchMessage = "تم تكرار رقم الهاتف داخل نفس الدفعة."
 
@@ -33,13 +33,17 @@ export function createEmptyEmployeeDraft(defaultRoleId = ""): EmployeeDraft {
   }
 }
 
+function parseSalaryReferenceAmount(amount: string, period: SalaryPeriod) {
+  return period === "DAILY" ? parseLocalizedUnitPriceInput(amount) : parseLocalizedMoneyInput(amount)
+}
+
 function salaryReferenceFromDraft(draft: EmployeeDraft) {
   const amount = draft.salaryReferenceAmount.trim()
   const period = draft.salaryReferencePeriod
   if (!amount && !period) return null
   if (!amount || !period) return null
   try {
-    const wire = parseLocalizedUnitPriceInput(amount).toWire()
+    const wire = parseSalaryReferenceAmount(amount, period).toWire()
     return { period, amount: wire.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "") }
   } catch {
     return { period, amount }
@@ -71,7 +75,7 @@ export function validateEmployeeDraft(draft: EmployeeDraft) {
   }
   if (amount && period) {
     try {
-      parseLocalizedUnitPriceInput(amount)
+      parseSalaryReferenceAmount(amount, period)
     } catch {
       errors.salaryReferenceAmount = "invalid"
     }
