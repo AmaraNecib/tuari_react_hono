@@ -165,7 +165,7 @@ describe("SalariedWorkersTable (#453)", () => {
     expect(screen.queryByText("0-0 من 0")).toBeNull()
   })
 
-  it("opens the payment dialog target through onAddPayment", () => {
+  it("opens the earnings approval target through onAddPayment", () => {
     const onAddPayment = vi.fn()
     render(
       <SalariedWorkersTable
@@ -176,7 +176,7 @@ describe("SalariedWorkersTable (#453)", () => {
       />,
     )
 
-    fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "إضافة دفعة" }))
+    fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "اعتماد الأجر" }))
     expect(onAddPayment).toHaveBeenCalledWith("worker-01", "عامل 01")
   })
 

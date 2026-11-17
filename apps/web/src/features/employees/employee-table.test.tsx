@@ -106,7 +106,7 @@ describe("EmployeeTable salary approval entry point", () => {
   it("opens the real approval dialog and submits the exact employee reference", async () => {
     renderTable()
 
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     expect(screen.getByRole("heading", { name: "earnings.title" })).toBeTruthy()
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "50000" } })
     fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "50000" } })
@@ -122,7 +122,7 @@ describe("EmployeeTable salary approval entry point", () => {
 
   it("allows approval entry when the employee has no reference salary", async () => {
     renderTable({ salaryReference: null })
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     expect(screen.getByRole("heading", { name: "earnings.title" })).toBeTruthy()
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "50000" } })
     fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "50000" } })
@@ -135,7 +135,7 @@ describe("EmployeeTable salary approval entry point", () => {
 
   it("uses the refreshed reference while preserving employee identity", async () => {
     const { refresh } = renderTable()
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     refresh({ salaryReference: { period: "DAILY", amount: "1500.00" }, name: "عامل محدّث" })
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "50000" } })
     fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "50000" } })

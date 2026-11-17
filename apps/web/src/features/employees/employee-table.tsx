@@ -162,7 +162,7 @@ export function EmployeeTable({
                           size="xs"
                           onClick={() => setPaymentTarget({ id: row.id, name: row.name })}
                         >
-                          {t("salaries.addPayment")}
+                          {t("earnings.approve")}
                         </Button>
                       ) : null}
                       <Button size="xs" variant="outline" onClick={() => onView(row)}>

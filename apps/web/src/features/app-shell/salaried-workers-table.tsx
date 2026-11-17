@@ -164,7 +164,7 @@ export function SalariedWorkersTable({
                   <td className="px-4 py-3 text-end">
                     <AppShellActionGroup className="justify-end">
                       <Button size="xs" onClick={() => onAddPayment(worker.employeeId, worker.employeeName)}>
-                        {t("salaries.addPayment")}
+                        {t("earnings.approve")}
                       </Button>
                       <Button size="xs" variant="outline" onClick={() => onEditSalary(worker.employeeId)}>
                         {t("salaries.editSalary")}
