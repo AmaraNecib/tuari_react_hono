@@ -12,15 +12,34 @@ function sources(directory: string): string[] {
   });
 }
 
+function initializedMoney(source: string): { declarations: Map<string, string>; candidates: string[] } {
+  const declarations = new Map<string, string>();
+  for (const table of source.matchAll(/CREATE TABLE IF NOT EXISTS\s+(?:"([^"]+)"|([a-z_]+))\s*\(([\s\S]*?)`/gi)) {
+    const tableName = table[1] ?? table[2]!;
+    for (const column of table[3]!.matchAll(/^\s*(?:"([^"]+)"|([a-z_]+))\s+(REAL|TEXT|INTEGER)\b/gmi)) {
+      declarations.set(`${tableName}.${column[1] ?? column[2]!}`, column[3]!.toUpperCase());
+    }
+  }
+  const candidates = [...declarations].flatMap(([field, type]) => {
+    const [tableName, columnName] = field.split(".");
+    if (type === "REAL" && columnName !== "quantity") return [field];
+    if (type === "INTEGER" && /_(?:minor|units)$/.test(columnName!)) return [field];
+    if (type === "TEXT" && columnName === "salary_reference_amount" &&
+      ["employee", "employee_state_history"].includes(tableName!) &&
+      declarations.has(`${tableName}.salary_reference_period`)) return [field];
+    return [];
+  });
+  return { declarations, candidates };
+}
+
+function expectExactInventory(actual: string[], expected: string[]): void {
+  expect([...actual].sort()).toEqual([...expected].sort());
+}
+
 describe("inert foundation inventory", () => {
   it("accounts once for every initialized monetary column, independently of the approved semantic map", () => {
     const source = read("apps/api/src/infrastructure/database/schema-definitions.ts");
-    const declarations = new Map<string, string>();
-    for (const table of source.matchAll(/CREATE TABLE IF NOT EXISTS "([^"]+)" \(([\s\S]*?)`/g)) {
-      for (const column of table[2]!.matchAll(/^\s*"([^"]+)"\s+(REAL|TEXT|INTEGER)\b/gm)) {
-        declarations.set(`${table[1]}.${column[1]}`, column[2]!);
-      }
-    }
+    const { declarations, candidates } = initializedMoney(source);
 
     const matrix = read("docs/money/523-caller-matrix.md");
     const legacySection = matrix.split("## #543 physical-field reconciliation")[0]!;
@@ -40,6 +59,18 @@ describe("inert foundation inventory", () => {
       expect(declarations.get(field)).toBe("REAL");
     }
     expect(new Set(current.map(field => field.split(".")[0])).size).toBe(19);
+    expectExactInventory(candidates, current);
+  });
+  it("rejects added or missing monetary fields in the DDL candidate inventory", () => {
+    const base = `CREATE TABLE IF NOT EXISTS "employee" (\n  "salary_reference_period" TEXT,\n  "salary_reference_amount" TEXT,\n  "quantity" REAL\n)` + "`";
+    const expected = ["employee.salary_reference_amount"];
+    expectExactInventory(initializedMoney(base).candidates, expected);
+    const withExtra = base.replace(/"quantity" REAL/, `"quantity" REAL,\n  "added_amount_dzd" REAL`);
+    expect(() => expectExactInventory(initializedMoney(withExtra).candidates, expected)).toThrow();
+    expect(() => expectExactInventory(
+      initializedMoney(base.replace("salary_reference_amount", "salary_reference_text")).candidates,
+      expected,
+    )).toThrow();
   });
   it("limits exact imports to inert storage, opt-in shared UI and isolated debt/expense/commerce consumers", () => {
     const imports: string[] = [];
