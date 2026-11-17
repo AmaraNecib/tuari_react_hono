@@ -597,6 +597,7 @@ export class WorkforceService {
       segments: parsed.segments.map(segment => ({
         id: segment.id,
         projectId: segment.projectId,
+        days: segment.days,
         amount: Money.parse(segment.amount).toWire(),
       })),
     })).digest("hex");

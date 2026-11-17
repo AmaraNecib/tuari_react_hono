@@ -134,6 +134,18 @@ describe("approved employee earnings through the normal composition root", { tim
     expect(repeated.item.referenceSalary).toEqual({ period: "DAILY", amount: "1250.1250" });
     expect(reopened.workforceService.listEmployeeEarnings(employee).items).toHaveLength(1);
 
+    const daysOnlyConflict = {
+      ...approval,
+      segments: approval.segments.map((segment, index) => ({
+        ...segment,
+        days: index === 0 ? 6 : segment.days,
+      })),
+    };
+    expect(() => reopened.workforceService.approveEmployeeEarning(daysOnlyConflict, audit)).toThrow();
+    const afterDaysConflict = reopened.workforceService.listEmployeeEarnings(employee).items;
+    expect(afterDaysConflict).toHaveLength(1);
+    expect(afterDaysConflict[0]!.segments.map(segment => segment.days)).toEqual([5, 15, 5]);
+
     const conflict = {
       ...approval,
       totalAmount: "63000.00",
