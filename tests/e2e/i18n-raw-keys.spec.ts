@@ -31,7 +31,7 @@ test("the current earning approval page renders Arabic without raw salary keys",
   await bootstrapOrSignIn(page)
   await page.goto("/salaries")
   await expect(page.getByRole("heading", { name: "اعتماد الأجور الشهرية" })).toBeVisible()
-  await expect(page.getByText("أضف عاملًا أولًا، ثم اعتمد أجرته هنا. المرجع المالي ليس شرطًا لتسجيل الأجرة.", { exact: true })).toBeVisible()
+  await expect(page.getByRole("combobox", { name: "العامل", exact: true })).toBeVisible()
   await expectNoRawKeys(page)
 })
 

@@ -14,8 +14,8 @@ const recordSchema = z.object({
 }).strict()
 
 export class MonthlyApprovalRetiredError extends Error {
-  constructor() {
-    super("Monthly approval is no longer pending; reload before continuing")
+  constructor(message = "Monthly approval is no longer pending; reload before continuing") {
+    super(message)
     this.name = "MonthlyApprovalRetiredError"
   }
 }
@@ -159,8 +159,9 @@ export function createMonthlyApprovalExecutor<TResult = z.output<typeof exactSal
           if (durable) {
             record = durable
             if (durable.employeeId !== normalized.employeeId || durable.requestId !== normalized.requestId || canonical(durable.payload) !== canonical(normalized)) {
+              retired = true
               notify("uncertain")
-              throw new Error("Resolve the stored monthly approval intent before changing it")
+              throw new MonthlyApprovalRetiredError("Another tab changed the stored monthly approval intent; reload before continuing")
             }
           }
           const current: MonthlyApprovalRecord = durable ?? record ?? {

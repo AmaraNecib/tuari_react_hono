@@ -296,7 +296,7 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = `/invoices/${inv.id}` },
     }))
 
-    const allSearchItems: SearchItem[] = [...pages, ...employees, ...projects, ...warehouses, ...debts, ...externals, ...inventory, ...invoices]
+    const allSearchItems: SearchItem[] = [...pages, ...employees, ...projects, ...warehouses, ...(exactMode ? [] : [...debts, ...externals, ...inventory, ...invoices])]
 
     // Fuse.js instance — fuzzy search with typo tolerance
     // Also index children so typing "مستودع" or "إنشاء" finds sub-actions
@@ -319,7 +319,7 @@ export function HomeViewSignedInShell({
     })
 
     return { allSearchItems, fuse }
-  }, [searchOpen, t, searchEmployees, searchProjects, searchWarehouses, employeesQuery.data, debtAccountsQuery.data, externalsQuery.data, inventoryQuery.data, invoicesQuery.data])
+  }, [searchOpen, exactMode, t, searchEmployees, searchProjects, searchWarehouses, employeesQuery.data, debtAccountsQuery.data, externalsQuery.data, inventoryQuery.data, invoicesQuery.data])
 
   // Filter search results using fuzzy matching — only the debounced query
   // reaches the expensive fuse.search. Clearing the input restores the

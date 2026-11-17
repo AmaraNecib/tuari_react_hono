@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 import { seedEmployeeByRole } from "./helpers/db-seed"
+import { databaseFixturesAvailable } from "./helpers/db-isolation"
 import { assertCapabilityBoundary } from "./helpers/capability-boundary"
 
 test("admin creates a warehouse and it persists after returning to the production list", async ({ page }) => {
@@ -19,6 +20,7 @@ test("warehouse transfers remain unavailable without invoking the legacy numeric
 })
 
 test("an existing exact warehouse manager stays selected through save and fresh read", async ({ page }) => {
+  test.skip(!databaseFixturesAvailable, "external API: this manager-selection case requires owned direct-SQLite fixtures")
   await bootstrapOrSignIn(page)
   const suffix = uniqueSuffix()
   const firstName = `نبيل-${suffix}`

@@ -70,6 +70,7 @@ export function ExactMonthlySalaryApprovalForm({ employeeId, workspaceId, userId
         setReloadRequired(true)
         setLocked(true)
         setUncertain(false)
+        onAttemptStateChange?.(stillPending ? "uncertain" : "idle")
       } else if (!stillPending) { attempt.current = null; setLocked(false) }
       else { current.ambiguous = true; setUncertain(true); onAttemptStateChange?.("uncertain") }
       if (!executorState.executor.record) onAttemptStateChange?.("idle")

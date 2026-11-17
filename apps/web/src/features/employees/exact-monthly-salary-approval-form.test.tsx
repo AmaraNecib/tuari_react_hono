@@ -38,6 +38,24 @@ function unallocated(index = 1) { fireEvent.click(screen.getByRole("button", { n
 function submit() { fireEvent.submit(screen.getByRole("form", { name: i18n.t("salaryMonthly.title") })) }
 
 describe("opt-in allocation-capable monthly payroll form", () => {
+  it("requires reload rather than retrying a different tab's pending approval", async () => {
+    const approve = vi.fn(async (raw: ExactSalaryMonthlyApprovalInput) => response(raw))
+    mount(approve)
+    unallocated(1)
+    unallocated(2)
+    const payload: ExactSalaryMonthlyApprovalInput = { requestId: "other-tab-request", employeeId: "worker", currency: "DZD", months: [{ id: "other-month", month: "2026-09", amount: "10000", unallocatedAmount: "10000", segments: [] }] }
+    const store = browserMonthlyApprovalStore("11111111-1111-4111-8111-111111111111", "operator")
+    store.save({ version: 1, workspaceId: store.workspaceId, userId: store.userId, employeeId: "worker", requestId: payload.requestId, payload, ambiguous: true })
+    submit()
+    await screen.findByText(label("resolvedElsewhere"))
+    expect(screen.queryByText(label("uncertain"))).toBeNull()
+    expect(screen.queryByText(i18n.t("salaryMonthly.approvalFailed"))).toBeNull()
+    expect(screen.getByRole("button", { name: label("add", 1) }).closest("fieldset")!.disabled).toBe(true)
+    expect(approve).not.toHaveBeenCalled()
+    expect(store.load()?.requestId).toBe("other-tab-request")
+    submit()
+    expect(approve).not.toHaveBeenCalled()
+  })
   it("keeps a stale recovered form locked with reload guidance after another tab resolves the intent", async () => {
     const payload: ExactSalaryMonthlyApprovalInput = { requestId: "shared-request", employeeId: "worker", currency: "DZD", months: [{ id: "oct", month: "2026-10", amount: "10000", unallocatedAmount: "10000", segments: [] }] }
     browserMonthlyApprovalStore("11111111-1111-4111-8111-111111111111", "operator").save({ version: 1, workspaceId: "11111111-1111-4111-8111-111111111111", userId: "operator", employeeId: "worker", requestId: payload.requestId, payload, ambiguous: true })
