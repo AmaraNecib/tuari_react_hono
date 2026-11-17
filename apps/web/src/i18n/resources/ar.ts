@@ -43,7 +43,7 @@ export const ar = {
       storageUnavailable: "تعذر قراءة الطلب المحفوظ أو حفظه. لا تتابع بطلب جديد؛ تحقق من تخزين المتصفح ثم أعد فتح النموذج.",
       submitError: "تعذر اعتماد الأجر أو تأكيد النتيجة. أعد المحاولة من الطلب المحفوظ.",
       historyTitle: "سجل الأجور المعتمدة",
-      historyEmployee: "معرّف الموظف",
+      historyEmployee: "الموظف",
       historyResource: "سجل الأجور المعتمدة",
       historyPeriod: "فترة العمل",
       historyApprovedAt: "تاريخ الاعتماد:",

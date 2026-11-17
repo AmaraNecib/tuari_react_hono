@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { PageHeader } from "@/features/shared/page-primitives"
@@ -27,6 +27,14 @@ export function SalariesSection({
 }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("recent")
+  const employeeNames = useMemo(
+    () => Object.fromEntries(workers.map((worker) => [worker.employeeId, worker.employeeName])),
+    [workers],
+  )
+  const projectNames = useMemo(
+    () => Object.fromEntries(projects.map((project) => [project.id, project.name])),
+    [projects],
+  )
   // Only the identity is snapshotted when the dialog opens; the wage, period,
   // and assignment windows are read from the live query data below so a
   // workspace refresh cannot leave a stale proposal or day default behind.
@@ -86,7 +94,9 @@ export function SalariesSection({
         />
       </div>
 
-      {activeTab === "earnings" ? <EmployeeEarningsHistory /> : null}
+      {activeTab === "earnings" ? (
+        <EmployeeEarningsHistory employeeNames={employeeNames} projectNames={projectNames} />
+      ) : null}
     </div>
   )
 }

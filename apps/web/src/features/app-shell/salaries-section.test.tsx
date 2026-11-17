@@ -34,6 +34,7 @@ function worker(salaryAmount: string | null = "30000") {
     employeeRole: "عامل",
     salaryReference: salaryAmount === null ? null : { period: "MONTHLY" as const, amount: salaryAmount },
     lastPaymentDate: null,
+    projectAssignments: [],
   }
 }
 
@@ -85,12 +86,12 @@ describe("SalariesSection (#412)", () => {
     fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة" }))
 
     expect(screen.getByRole("dialog")).toBeTruthy()
-    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).value).toBe("")
-    fireEvent.change(screen.getByLabelText("earnings.periodStart"), { target: { value: "2026-03-01" } })
-    fireEvent.change(screen.getByLabelText("earnings.periodEnd"), { target: { value: "2026-03-31" } })
-    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "1000" } })
-    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect((screen.getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري") as HTMLInputElement).value).toBe("")
+    fireEvent.change(screen.getByLabelText("بداية فترة العمل"), { target: { value: "2026-03-01" } })
+    fireEvent.change(screen.getByLabelText("نهاية فترة العمل"), { target: { value: "2026-03-31" } })
+    fireEvent.change(screen.getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري"), { target: { value: "1000" } })
+    fireEvent.change(screen.getByLabelText("المبلغ غير الموزع بالدينار الجزائري"), { target: { value: "1000" } })
+    fireEvent.click(screen.getByRole("button", { name: "اعتماد الأجر" }))
 
     await waitFor(() => expect(approveAsync).toHaveBeenCalledTimes(1))
     expect(approveAsync.mock.calls[0]![0]).toMatchObject({
@@ -261,6 +262,7 @@ function makeWorkers(count: number, period: "MONTHLY" | "DAILY", idOffset = 0) {
       employeeRole: "عامل",
       salaryReference: { period, amount: "30000" },
       lastPaymentDate: null,
+      projectAssignments: [],
     }
   })
 }
@@ -580,7 +582,7 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     expect((screen.getByRole("button", { name: "التالي" }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it("does not block a second same-month payment at the screen level (owner item 6, decision C)", () => {
+  it("opens approval after a same-month payment without proposing a numeric payment", () => {
     const paidThisMonth = {
       ...makeWorkers(1, "MONTHLY")[0]!,
       lastPaymentDate: "2026-03-20T00:00:00.000Z",
@@ -606,11 +608,9 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     expect(payButton.hasAttribute("disabled")).toBe(false)
 
     fireEvent.click(payButton)
-    // The dialog opens with a live save control, proving the screen adds no
-    // monthly guard of its own (the API has none either).
+    // Historical cash payment does not fill or block the new earnings approval.
     const dialog = screen.getByRole("dialog")
-    const submit = within(dialog).getByRole("button", { name: "إضافة دفعة" })
-    expect(submit.hasAttribute("disabled")).toBe(false)
+    expect((within(dialog).getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري") as HTMLInputElement).value).toBe("")
   })
 
   it("does not render a remaining or paid-vs-salary balance (owner item 6, decision C)", () => {
