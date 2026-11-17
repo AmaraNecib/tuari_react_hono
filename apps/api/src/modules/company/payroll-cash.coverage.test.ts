@@ -59,4 +59,21 @@ describe("payroll cash source validation", () => {
     expect(f.finance.remaining(earning.debtEntryId!)).toBe("35000.00");
     expect(f.cash.listCash("other-worker")).toEqual([]);
   });
+
+  it("returns reviewed opening, corrected earning, cash, advance, and settlement lifecycle amounts", () => {
+    const f = fixture();
+    const opening = f.service.reviewOpening({ requestId: "lifecycle-opening", employeeId: "worker", currency: "DZD", review: { status: "REVIEWED", wagesOwed: "5000", advancesOwed: "1000" }, ...audit });
+    f.service.recordCash({ requestId: "lifecycle-cash", employeeId: "worker", currency: "DZD", amount: "1500", paymentDate: now, wageAllocations: [{ id: "opening-allocation", source: { kind: "OPENING", id: opening.id }, amount: "1000" }], advance: { id: "lifecycle-advance", amount: "500" }, ...audit });
+    f.service.repayAdvance({ requestId: "lifecycle-repayment", employeeId: "worker", currency: "DZD", source: { kind: "ADVANCE", id: "lifecycle-advance" }, amount: "200", paymentDate: now, ...audit });
+    const earning = f.workforce.approveEarnings(approve);
+    f.service.correctEarning({ requestId: "lifecycle-correction", employeeId: "worker", currency: "DZD", earningId: earning.id, newAmount: "36000", reason: "Lifecycle correction", ...audit });
+
+    const lifecycle = f.service.listEmployeeLifecycle("worker");
+    expect(lifecycle.opening).toMatchObject({ id: opening.id, wagesRemaining: "4000.00", advancesRemaining: "1000.00", reminder: false });
+    expect(lifecycle.earnings).toMatchObject([{ earning: { id: earning.id }, remainingAmount: "36000.00" }]);
+    expect(lifecycle.cash).toHaveLength(1);
+    expect(lifecycle.advances).toMatchObject([{ id: "lifecycle-advance", amount: "500.00", remainingAmount: "300.00" }]);
+    expect(lifecycle.settlements).toMatchObject([{ source: { kind: "ADVANCE", id: "lifecycle-advance" }, amount: "200.00" }]);
+    expect(lifecycle.corrections).toMatchObject([{ earningId: earning.id, previousAmount: "35000.00", newAmount: "36000.00" }]);
+  });
 });
