@@ -65,6 +65,10 @@ test.describe("employees — critical path", () => {
     // The save navigates back to the details page where the new role renders.
     await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText("مدير مخزن")).toBeVisible()
+    await page.getByRole("link", { name: "العاملون" }).first().click()
+    await page.getByRole("row", { name: /بن صالح/ }).getByRole("button", { name: "تعديل", exact: true }).click()
+    await expect(page.getByLabel("دورية الأجر")).toHaveValue("MONTHLY")
+    await expect(page.getByLabel(/قيمة الأجر/)).toHaveValue("10000.00")
   })
 
   test("admin deletes an unreferenced employee only after confirmation", async ({ page }) => {
