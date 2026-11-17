@@ -61,7 +61,7 @@ export type EmployeeEditFormProps = {
   setWorkerProjectId: Setter<string>
   workerWarehouseId: string
   setWorkerWarehouseId: Setter<string>
-  setPlacementDirty: Setter<boolean>
+  setPlacementDirty?: Setter<boolean>
   managerOptions: EmployeeManagerOption[]
   workerProjectOptions: Array<{ id: string; label: string }>
   warehouseOptions: Array<{ id: string; label: string }>
@@ -71,8 +71,8 @@ export type EmployeeEditFormProps = {
   setSelectedManagedProjectIds: Setter<string[]>
   selectedManagedWarehouseIds: string[]
   setSelectedManagedWarehouseIds: Setter<string[]>
-  setManagedProjectsDirty: Setter<boolean>
-  setManagedWarehousesDirty: Setter<boolean>
+  setManagedProjectsDirty?: Setter<boolean>
+  setManagedWarehousesDirty?: Setter<boolean>
 }
 
 /** The original employee edit presentation, shared by both data adapters. */
@@ -216,7 +216,7 @@ export function EmployeeEditForm({
                     value={workplaceType}
                     onChange={(event) => {
                       const next = event.target.value as "NONE" | "PROJECT" | "WAREHOUSE"
-                      setPlacementDirty(true)
+                      setPlacementDirty?.(true)
                       setWorkplaceType(next)
                       if (next === "PROJECT") {
                         setWorkerWarehouseId("")
@@ -244,7 +244,7 @@ export function EmployeeEditForm({
                       <NativeSelect
                         value={workerManagerId}
                         onChange={(event) => {
-                          setPlacementDirty(true)
+                          setPlacementDirty?.(true)
                           setWorkerManagerId(event.target.value)
                           setWorkerProjectId("")
                         }}
@@ -259,7 +259,7 @@ export function EmployeeEditForm({
                     </Field>
                     <Field label={t("detailPages.employee.editPage.currentProject")} error={errors.projectId}>
                       <NativeSelect disabled={!workerManagerId} value={workerProjectId} onChange={(event) => {
-                        setPlacementDirty(true)
+                        setPlacementDirty?.(true)
                         setWorkerProjectId(event.target.value)
                       }}>
                         <option value="">{t("detailPages.employee.editPage.selectManagerProject")}</option>
@@ -276,7 +276,7 @@ export function EmployeeEditForm({
                 {workplaceType === "WAREHOUSE" ? (
                   <Field label={t("detailPages.employee.editPage.warehouse")} error={errors.warehouseId} className="md:col-span-2 xl:col-span-3">
                     <NativeSelect value={workerWarehouseId} onChange={(event) => {
-                      setPlacementDirty(true)
+                      setPlacementDirty?.(true)
                       setWorkerWarehouseId(event.target.value)
                     }}>
                       <option value="">{t("detailPages.employee.editPage.selectWarehouse")}</option>
@@ -299,7 +299,7 @@ export function EmployeeEditForm({
               selectedIds={selectedManagedProjectIds}
               title={t("detailPages.employee.editPage.managedProjectsTitle")}
               onToggle={(projectId) => {
-                setManagedProjectsDirty(true)
+                setManagedProjectsDirty?.(true)
                 setSelectedManagedProjectIds((current) =>
                   current.includes(projectId) ? current.filter((id) => id !== projectId) : [...current, projectId],
                 )
@@ -314,7 +314,7 @@ export function EmployeeEditForm({
               selectedIds={selectedManagedWarehouseIds}
               title={t("detailPages.employee.editPage.managedWarehousesTitle")}
               onToggle={(warehouseId) => {
-                setManagedWarehousesDirty(true)
+                setManagedWarehousesDirty?.(true)
                 setSelectedManagedWarehouseIds((current) =>
                   current.includes(warehouseId) ? current.filter((id) => id !== warehouseId) : [...current, warehouseId],
                 )

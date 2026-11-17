@@ -6,7 +6,6 @@ import { SalaryReference } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
 import { EmployeeEditForm } from "./employee-edit-form"
-import type { EmployeeEditFormProps } from "./employee-edit-form"
 import type { FormState } from "./employee-edit-form"
 import { AppDate } from "@/components/app-date"
 import { ExactSalaryReferenceValue } from "./exact-salary-reference-value"
@@ -62,15 +61,17 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
   currentManagedProjectIds?: string[]; currentManagedWarehouseIds?: string[]; currentPlacement?: ExactEmployeeUiContext["currentPlacement"]
 }) {
   const { t } = useTranslation()
-  const [firstName, setFirstName] = useState(initial.firstName)
-  const [lastName, setLastName] = useState(initial.lastName)
-  const [phone, setPhone] = useState(initial.phone)
-  const [roleId, setRoleId] = useState(initial.roleId)
-  const [status, setStatus] = useState<ExactEmployee["status"]>(initial.status)
-  const [period, setPeriod] = useState(initial.salaryReference?.period ?? "")
-  const [amount, setAmount] = useState(initial.salaryReference?.amount ?? "")
-  const [occupation, setOccupation] = useState(initial.occupation ?? "")
-  const [notes, setNotes] = useState(initial.notes ?? "")
+  const [state, setState] = useState<FormState>(() => ({
+    firstName: initial.firstName,
+    lastName: initial.lastName,
+    phone: initial.phone,
+    roleId: initial.roleId,
+    status: initial.status,
+    salaryPeriod: initial.salaryReference?.period ?? "",
+    salaryAmountDzd: initial.salaryReference?.amount ?? "",
+    occupation: initial.occupation ?? "",
+    notes: initial.notes ?? "",
+  }))
   const [managerId, setManagerId] = useState(currentPlacement?.managerId ?? "")
   const [projectId, setProjectId] = useState(currentPlacement?.projectId ?? "")
   const [warehouseId, setWarehouseId] = useState(currentPlacement?.warehouseId ?? "")
@@ -80,7 +81,7 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
   const [failure, setFailure] = useState<string | null>(null)
   const submitting = useRef(false)
   const selectedManager = managers.find(manager => manager.id === managerId)
-  const selectedRole = roles.find(role => role.id === roleId)
+  const selectedRole = roles.find(role => role.id === state.roleId)
   const worker = selectedRole?.key === "worker"
   const managerRole = selectedRole?.key === "project_manager"
   const warehouseManagerRole = selectedRole?.key === "warehouse_manager"
@@ -90,47 +91,39 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
     submitting.current = true
     setFailure(null)
     try {
-      const reference = salaryReference(period, amount)
-      if (!firstName.trim() || !lastName.trim() || !/^0[5-7]\d{8}$/.test(phone.trim()) || !roleId || occupation.trim().length > 120) throw new Error(i18n.t("employeeForm.exactProfileInvalid"))
-      if (worker && status === "ACTIVE" && workplaceType === "PROJECT" && (!managerId || !projectId)) throw new Error(i18n.t("employeeForm.exactManagerRequired"))
-      if (worker && status === "ACTIVE" && workplaceType === "WAREHOUSE" && !warehouseId) throw new Error(i18n.t("employeeForm.exactWarehouseRequired"))
-      const profile = { firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim(), roleId, status, occupation: occupation.trim() || null, notes: notes.trim() || null, salaryReference: reference }
+      const reference = salaryReference(state.salaryPeriod, state.salaryAmountDzd)
+      if (!state.firstName.trim() || !state.lastName.trim() || !/^0[5-7]\d{8}$/.test(state.phone.trim()) || !state.roleId || state.occupation.trim().length > 120) throw new Error(i18n.t("employeeForm.exactProfileInvalid"))
+      if (worker && state.status === "ACTIVE" && workplaceType === "PROJECT" && (!managerId || !projectId)) throw new Error(i18n.t("employeeForm.exactManagerRequired"))
+      if (worker && state.status === "ACTIVE" && workplaceType === "WAREHOUSE" && !warehouseId) throw new Error(i18n.t("employeeForm.exactWarehouseRequired"))
+      const profile = { firstName: state.firstName.trim(), lastName: state.lastName.trim(), phone: state.phone.trim(), roleId: state.roleId, status: state.status, occupation: state.occupation.trim() || null, notes: state.notes.trim() || null, salaryReference: reference }
       await onSubmit({ ...profile,
-        ...(worker && status === "ACTIVE" && (workplaceType !== (currentPlacement?.nextType ?? "NONE") || workplaceType === "PROJECT" && (managerId !== (currentPlacement?.managerId ?? "") || projectId !== (currentPlacement?.projectId ?? "")) || workplaceType === "WAREHOUSE" && warehouseId !== (currentPlacement?.warehouseId ?? "")) ? { placement: workplaceType === "NONE" ? { nextType: "NONE" } : workplaceType === "PROJECT" ? { nextType: "PROJECT", managerId: managerId || null, projectId: projectId || null } : { nextType: "WAREHOUSE", warehouseId: warehouseId || null } } : {}),
-        ...(managerRole && status === "ACTIVE" && managedProjectIds.join("|") !== (currentManagedProjectIds ?? []).join("|") ? { managedProjectIds } : {}),
-        ...(warehouseManagerRole && status === "ACTIVE" && managedWarehouseIds.join("|") !== (currentManagedWarehouseIds ?? []).join("|") ? { managedWarehouseIds } : {}),
+        ...(worker && state.status === "ACTIVE" && (workplaceType !== (currentPlacement?.nextType ?? "NONE") || workplaceType === "PROJECT" && (managerId !== (currentPlacement?.managerId ?? "") || projectId !== (currentPlacement?.projectId ?? "")) || workplaceType === "WAREHOUSE" && warehouseId !== (currentPlacement?.warehouseId ?? "")) ? { placement: workplaceType === "NONE" ? { nextType: "NONE" } : workplaceType === "PROJECT" ? { nextType: "PROJECT", managerId: managerId || null, projectId: projectId || null } : { nextType: "WAREHOUSE", warehouseId: warehouseId || null } } : {}),
+        ...(managerRole && state.status === "ACTIVE" && managedProjectIds.join("|") !== (currentManagedProjectIds ?? []).join("|") ? { managedProjectIds } : {}),
+        ...(warehouseManagerRole && state.status === "ACTIVE" && managedWarehouseIds.join("|") !== (currentManagedWarehouseIds ?? []).join("|") ? { managedWarehouseIds } : {}),
       })
     } catch (error) { setFailure(serverError(error)) }
     finally { submitting.current = false }
   }
-  const state: FormState = { firstName, lastName, phone, roleId, status, salaryPeriod: period as FormState["salaryPeriod"], salaryAmountDzd: amount, occupation, notes }
-    const update: EmployeeEditFormProps["setState"] = action => {
-      const next = typeof action === "function" ? action(state) : action
-      setFirstName(next.firstName); setLastName(next.lastName); setPhone(next.phone)
-      setRoleId(next.roleId); setStatus(next.status); setPeriod(next.salaryPeriod)
-      setAmount(next.salaryAmountDzd); setOccupation(next.occupation); setNotes(next.notes)
-    }
-    return <EmployeeEditForm
+  return <EmployeeEditForm
       employee={{ id: initial.id, name: `${initial.firstName} ${initial.lastName}` }}
-      state={state} setState={update} errors={{}} saveError={failure ?? serverFailure}
+      state={state} setState={setState} errors={{}} saveError={failure ?? serverFailure}
       isSaving={Boolean(busy)} onSubmit={submit}
       onBackToRecord={onCancel ?? (() => {})} onBackToEmployees={onBackToEmployees ?? onCancel ?? (() => {})}
-      roles={roles.filter(role => role.isSystem)} currentRoleKey={roles.find(role => role.id === initial.roleId)?.key ?? ""} updateRole={setRoleId}
+      roles={roles.filter(role => role.isSystem)} currentRoleKey={roles.find(role => role.id === initial.roleId)?.key ?? ""} updateRole={roleId => setState(current => ({ ...current, roleId }))}
       selectableRole={key => ["admin", "worker", "project_manager", "warehouse_manager"].includes(key)} allowWorkerRoleChange
-      isWorker={worker && status === "ACTIVE"} isProjectManager={managerRole && status === "ACTIVE"} isWarehouseManager={warehouseManagerRole && status === "ACTIVE"}
+      isWorker={worker && state.status === "ACTIVE"} isProjectManager={managerRole && state.status === "ACTIVE"} isWarehouseManager={warehouseManagerRole && state.status === "ACTIVE"}
       statusOptions={[{ value: "ACTIVE", label: t("status.active") }, { value: "INACTIVE", label: t("status.inactive") }, { value: "LEFT", label: t("status.left") }]}
       salaryPeriodOptions={[{ value: "DAILY", label: t("detailPages.salary.daily") }, { value: "WEEKLY", label: t("detailPages.salary.weekly") }, { value: "MONTHLY", label: t("detailPages.salary.monthly") }]}
       workplaceType={workplaceType} setWorkplaceType={setWorkplaceType}
       workerManagerId={managerId} setWorkerManagerId={setManagerId}
       workerProjectId={projectId} setWorkerProjectId={setProjectId}
       workerWarehouseId={warehouseId} setWorkerWarehouseId={setWarehouseId}
-      setPlacementDirty={() => {}} managerOptions={managers} workerProjectOptions={selectedManager?.projectOptions ?? projects}
+      managerOptions={managers} workerProjectOptions={selectedManager?.projectOptions ?? projects}
       warehouseOptions={warehouses}
       managedProjectOptions={managedProjects.map(row => ({ ...row, secondary: null }))}
       managedWarehouseOptions={managedWarehouses.map(row => ({ ...row, secondary: null }))}
       selectedManagedProjectIds={managedProjectIds} setSelectedManagedProjectIds={setManagedProjectIds}
       selectedManagedWarehouseIds={managedWarehouseIds} setSelectedManagedWarehouseIds={setManagedWarehouseIds}
-      setManagedProjectsDirty={() => {}} setManagedWarehousesDirty={() => {}}
     />
 }
 

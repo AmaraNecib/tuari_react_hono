@@ -215,6 +215,16 @@ describe("exact employee page seams", () => {
     expect(notes.closest("fieldset")?.disabled).toBe(true)
   })
 
+  it("preserves a large MONTHLY reference as an exact string through edit", async () => {
+    const props = ctx()
+    render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
+    fireEvent.change(await screen.findByLabelText(i18n.t("employeeForm.salaryPeriodLabel")), { target: { value: "MONTHLY" } })
+    fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.salaryAmountLabel")), { target: { value: "9007199254740993.21" } })
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("detailPages.employee.editPage.saveAll") }))
+    await waitFor(() => expect(props.client.employeesSave).toHaveBeenCalledOnce())
+    expect(props.client.employeesSave).toHaveBeenCalledWith(expect.objectContaining({ salaryReference: { period: "MONTHLY", amount: "9007199254740993.21" } }))
+  })
+
   it("selects WEEKLY through the original form and enforces money precision before exact serialization", async () => {
     const props = ctx()
     render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)

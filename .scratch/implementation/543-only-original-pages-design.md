@@ -45,6 +45,16 @@ Project and warehouse archive clicks now select a pending record and open the ex
 
 `DESIGN.md` and the original develop components are the visual authority. The repository has no `PRODUCT.md`, and the impeccable `reference/product.md` file is absent from the installed skill directory. I did not invent product-reference material or redesign the pages. This lane makes no screenshot claim; parent owns final browser proof after integration.
 
+## Candidate 1 architecture delta
+
+- Worktree: `D:/worktrees/tuari_react_hono/t3-62a39113-5ecfcfb5a840ae43`
+- Base: `b22c94982b21af33a063f1a6ea5445d4bc450f3b`; verification mode: `focused-local / CI-final-pending`.
+- Exact edit now owns one `FormState` draft and passes its React setter to the existing `EmployeeEditForm`. The draft keeps salary amount as the exact input string; exact parsing and wire serialization remain in the existing submit handler.
+- Placement and managed-scope selections remain separate from the profile draft. Their exact adapter compares values against the supplied relationship snapshot; the numeric adapter keeps its dirty flags and stale-write protection.
+- The shared form's three dirty callbacks are optional and invoked only when supplied. This removes exact-mode no-op obligations without masking the numeric adapter's actual callbacks.
+- No JSX, routes, RPC contracts, money rules, transaction behavior or original controls changed. A focused edit assertion now checks that a large MONTHLY amount (`9007199254740993.21`) reaches exact save as an unchanged string; existing tests retain WEEKLY precision, DAILY precision, NULL-versus-zero, rejected-save draft retention and duplicate-submit coverage.
+- Architecture outcome: the exact adapter's nine profile state values, object reconstruction and nine-setter fan-out disappear. This is a real adapter-local reduction; different numeric/exact validation, serialization and relationship concurrency policies remain separate by design.
+
 ## Applied wisdom
 
 - `architecture/deepen-a-leaky-view-model-seam-by-hiding-the-dependency-graph-behind-one-purpose-shaped-operation`: keep exact-to-display mapping at the employee-list adapter instead of leaking salary parsing into the original table.
