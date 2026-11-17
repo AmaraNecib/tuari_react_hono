@@ -75,6 +75,17 @@ describe("normal HomeView normal application selector", () => {
     expect(screen.getByRole("option", { name: "Exact Worker" })).toBeTruthy()
   })
 
+  it("searches exact workspace references through the production global dialog without legacy money reads", async () => {
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+    fireEvent.click(await screen.findByRole("button", { name: i18n.t("shortcuts.search") }))
+    const search = await screen.findByPlaceholderText(i18n.t("search.placeholder"))
+    fireEvent.change(search, { target: { value: "Warehouse A" } })
+    await waitFor(() => expect(screen.getByRole("dialog").textContent).toContain("Warehouse A"))
+    expect(mocks.warehousesList).toHaveBeenCalled()
+    expect(mocks.employeesList).toHaveBeenCalled()
+    expect(mocks.projectsList).toHaveBeenCalled()
+  })
+
   it("routes normal project details through the production worker page and supported history clients", async () => {
     renderWorkspace("project-details", { sessionUser: demoUser, projectId: "project-a", detailTab: "workers" })
     await screen.findByRole("heading", { name: "Project A" })

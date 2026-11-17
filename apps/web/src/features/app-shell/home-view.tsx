@@ -216,6 +216,7 @@ export function HomeView({
         onSignOutOpenChange={shell.setSignOutOpen}
         onThemeToggle={shell.handleThemeToggle}
         exactMode
+        exactSearch={{ workspaceId: capabilitiesQuery.data.workspaceId, userId: exactSession.id, client: applicationClient }}
       >
         <ErrorBoundary key={contentBoundaryKey}>
           <WorkspaceShell key={`${capabilitiesQuery.data.workspaceId}:${exactSession.id}`} client={applicationClient} capabilities={capabilitiesQuery.data} copy={copy} employeeId={employeeId} projectId={projectId} warehouseId={warehouseId} detailTab={detailTab} onProjectTab={(id, tab) => void navigation.setProjectTab(id, tab)} onWarehouseTab={(id, tab) => void navigation.setWarehouseTab(id, tab)} page={page} session={exactSession} theme={theme} resetWorkspacePending={resetWorkspaceMutation.isPending} updateAccountPending={updateAccountSettingsMutation.isPending} onResetWorkspace={() => shell.handleResetWorkspace()} onSaveAccount={payload => updateAccountSettingsMutation.mutateAsync(payload)} onThemeToggle={toggleTheme} onUpdateApplied={() => shell.setShowRestartModal(true)} onPendingCommandChange={handleExactPendingChange} />

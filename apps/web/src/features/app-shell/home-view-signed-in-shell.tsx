@@ -1,4 +1,6 @@
 import type { ReactNode } from "react"
+import { useQuery } from "@tanstack/react-query"
+import type { ApplicationClient } from "@tuari/contracts"
 import { useState, useMemo, useEffect } from "react"
 import Fuse from "fuse.js"
 import { LogOut, MoonStar, PanelRightClose, PanelRightOpen, Settings, SunMedium, Menu, Search, HelpCircle } from "lucide-react"
@@ -62,6 +64,7 @@ export function HomeViewSignedInShell({
   onSignOutOpenChange,
   onThemeToggle,
   exactMode = false,
+  exactSearch,
 }: {
   breadcrumbItems: HomeViewBreadcrumbItem[]
   children: ReactNode
@@ -85,6 +88,7 @@ export function HomeViewSignedInShell({
   onSignOutOpenChange: (value: boolean) => void
   onThemeToggle: () => void
   exactMode?: boolean
+  exactSearch?: { workspaceId: string; userId: string; client: Pick<ApplicationClient, "employeesList" | "projectsList" | "warehousesList"> }
 }) {
   const { t } = useTranslation()
   const { isMobile, sidebarOpen, toggleSidebar, closeSidebar } = useMobileLayout()
@@ -131,6 +135,13 @@ export function HomeViewSignedInShell({
   const externalsQuery = useExternalCounterpartiesQuery({ enabled: searchOpen && !exactMode })
   const inventoryQuery = useInventoryItemDefinitionsQuery({ enabled: searchOpen && !exactMode })
   const invoicesQuery = useInventoryInvoiceGroupsQuery({ enabled: searchOpen && !exactMode })
+
+  const exactEmployees = useQuery({ queryKey: ["application", exactSearch?.workspaceId, exactSearch?.userId, "employees"], queryFn: () => exactSearch!.client.employeesList({}), enabled: searchOpen && exactMode && Boolean(exactSearch) })
+  const exactProjects = useQuery({ queryKey: ["application", exactSearch?.workspaceId, exactSearch?.userId, "projects"], queryFn: () => exactSearch!.client.projectsList({}), enabled: searchOpen && exactMode && Boolean(exactSearch) })
+  const exactWarehouses = useQuery({ queryKey: ["application", exactSearch?.workspaceId, exactSearch?.userId, "warehouses"], queryFn: () => exactSearch!.client.warehousesList({}), enabled: searchOpen && exactMode && Boolean(exactSearch) })
+  const searchEmployees = exactMode ? exactEmployees.data : employeesQuery.data
+  const searchProjects = exactMode ? exactProjects.data : projectsQuery.data
+  const searchWarehouses = exactMode ? exactWarehouses.data : warehousesQuery.data
 
   // Build the unified search corpus + Fuse index lazily — they only exist
   // while the dialog is open and rebuild only when the query DATA changes,
@@ -216,7 +227,7 @@ export function HomeViewSignedInShell({
     ]
 
     // ── Data items from database ──
-    const employees: SearchItem[] = (employeesQuery.data?.items ?? []).map((emp) => ({
+    const employees: SearchItem[] = (searchEmployees?.items ?? []).map((emp) => ({
       id: `emp-${emp.id}`,
       title: `${emp.firstName} ${emp.lastName}`,
       description: emp.phone,
@@ -224,7 +235,7 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = `/employees/${emp.id}` },
     }))
 
-    const projects: SearchItem[] = (projectsQuery.data?.items ?? []).map((p) => ({
+    const projects: SearchItem[] = (searchProjects?.items ?? []).map((p) => ({
       id: `proj-${p.id}`,
       title: p.name,
       description: p.location ?? undefined,
@@ -232,7 +243,7 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = `/projects/${p.id}` },
     }))
 
-    const warehouses: SearchItem[] = (warehousesQuery.data?.items ?? []).map((w) => ({
+    const warehouses: SearchItem[] = (searchWarehouses?.items ?? []).map((w) => ({
       id: `wh-${w.id}`,
       title: w.name,
       description: w.address ?? undefined,
@@ -308,7 +319,7 @@ export function HomeViewSignedInShell({
     })
 
     return { allSearchItems, fuse }
-  }, [searchOpen, t, employeesQuery.data, projectsQuery.data, warehousesQuery.data, debtAccountsQuery.data, externalsQuery.data, inventoryQuery.data, invoicesQuery.data])
+  }, [searchOpen, t, searchEmployees, searchProjects, searchWarehouses, employeesQuery.data, debtAccountsQuery.data, externalsQuery.data, inventoryQuery.data, invoicesQuery.data])
 
   // Filter search results using fuzzy matching — only the debounced query
   // reaches the expensive fuse.search. Clearing the input restores the

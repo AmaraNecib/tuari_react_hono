@@ -15,8 +15,19 @@ vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => 
 vi.mock("@/features/app-shell/workspace-queries", () => ({
   useWorkspaceScopedQuery: ({ key, queryFn, enabled }: { key: (user: string) => readonly unknown[]; queryFn: () => Promise<unknown>; enabled: boolean }) => useQuery({ queryKey: key("actual-workspace-user"), queryFn, enabled, retry: false }),
 }))
-afterEach(cleanup)
-beforeEach(() => { currentEmployees = employees; window.localStorage.clear(); state.blocker.mockClear(); state.pending.mockClear(); state.blockerState.status = "idle"; state.blockerState.proceed.mockClear(); state.blockerState.reset.mockClear() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+beforeEach(() => {
+  const tails = new Map<string, Promise<void>>()
+  vi.stubGlobal("navigator", { locks: { request: async (name: string, _options: unknown, operation: () => Promise<unknown>) => {
+    const previous = tails.get(name) ?? Promise.resolve()
+    let release = () => {}
+    const tail = new Promise<void>(resolve => { release = resolve })
+    tails.set(name, tail)
+    await previous
+    try { return await operation() } finally { release(); if (tails.get(name) === tail) tails.delete(name) }
+  } } })
+  currentEmployees = employees; window.localStorage.clear(); state.blocker.mockClear(); state.pending.mockClear(); state.blockerState.status = "idle"; state.blockerState.proceed.mockClear(); state.blockerState.reset.mockClear()
+})
 const label = (key: string) => i18n.t(`salaryEarnings.${key}`)
 function mount() {
   const query = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
