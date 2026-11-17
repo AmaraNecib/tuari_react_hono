@@ -238,6 +238,34 @@ export const employeeSalaryPaymentSplit = sqliteTable("employee_salary_payment_s
   createdAt: text("created_at").notNull(),
 });
 
+/** Approved employee earnings and their immutable project allocations. */
+export const employeeEarning = sqliteTable("employee_earning", {
+  id: text("id").primaryKey(),
+  employeeId: text("employee_id").notNull().references(() => employee.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  requestId: text("request_id").notNull(),
+  requestHash: text("request_hash").notNull(),
+  periodStart: text("period_start").notNull(),
+  periodEnd: text("period_end").notNull(),
+  currencyCode: text("currency_code").notNull(),
+  totalMinor: integer("total_minor").notNull(),
+  unallocatedMinor: integer("unallocated_minor").notNull(),
+  referenceSalaryPeriod: text("reference_salary_period"),
+  referenceSalaryUnits: integer("reference_salary_units"),
+  approvedAt: text("approved_at").notNull(),
+  actorUserId: text("actor_user_id"),
+  transactionId: text("transaction_id"),
+  createdAt: text("created_at").notNull(),
+}, (table) => [uniqueIndex("employee_earning_request_id_key").on(table.requestId)]);
+
+export const employeeEarningSegment = sqliteTable("employee_earning_segment", {
+  id: text("id").primaryKey(),
+  earningId: text("earning_id").notNull().references(() => employeeEarning.id, { onDelete: "cascade", onUpdate: "cascade" }),
+  projectId: text("project_id").notNull().references(() => project.id, { onDelete: "restrict", onUpdate: "cascade" }),
+  ordinal: integer("ordinal").notNull(),
+  amountMinor: integer("amount_minor").notNull(),
+  createdAt: text("created_at").notNull(),
+}, (table) => [uniqueIndex("employee_earning_segment_order_key").on(table.earningId, table.ordinal)]);
+
 /** External business contacts (suppliers, customers, lenders). */
 export const externalCounterparty = sqliteTable("external_counterparty", {
   id: text("id").primaryKey(),

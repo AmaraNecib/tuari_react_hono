@@ -275,6 +275,42 @@ export const schemaStatements = [
     CONSTRAINT "employee_salary_payment_split_project_id_fkey"
       FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
   )`,
+  `CREATE TABLE IF NOT EXISTS "employee_earning" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "employee_id" TEXT NOT NULL,
+    "request_id" TEXT NOT NULL UNIQUE,
+    "request_hash" TEXT NOT NULL,
+    "period_start" DATETIME NOT NULL,
+    "period_end" DATETIME NOT NULL CHECK ("period_end" > "period_start"),
+    "currency_code" TEXT NOT NULL CHECK ("currency_code" = 'DZD'),
+    "total_minor" INTEGER NOT NULL CHECK (typeof("total_minor") = 'integer' AND "total_minor" > 0),
+    "unallocated_minor" INTEGER NOT NULL CHECK (typeof("unallocated_minor") = 'integer' AND "unallocated_minor" >= 0),
+    "reference_salary_period" TEXT,
+    "reference_salary_units" INTEGER,
+    "approved_at" DATETIME NOT NULL,
+    "actor_user_id" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    CHECK (("reference_salary_period" IS NULL AND "reference_salary_units" IS NULL) OR ("reference_salary_period" IS NOT NULL AND typeof("reference_salary_units") = 'integer')),
+    CHECK ("reference_salary_period" IS NULL OR "reference_salary_period" IN ('DAILY', 'WEEKLY', 'MONTHLY')),
+    CONSTRAINT "employee_earning_employee_id_fkey"
+      FOREIGN KEY ("employee_id") REFERENCES "employee" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS "employee_earning_segment" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "earning_id" TEXT NOT NULL,
+    "project_id" TEXT NOT NULL,
+    "ordinal" INTEGER NOT NULL CHECK ("ordinal" >= 0),
+    "amount_minor" INTEGER NOT NULL CHECK (typeof("amount_minor") = 'integer' AND "amount_minor" >= 0),
+    "created_at" DATETIME NOT NULL,
+    UNIQUE ("earning_id", "ordinal"),
+    CONSTRAINT "employee_earning_segment_earning_id_fkey"
+      FOREIGN KEY ("earning_id") REFERENCES "employee_earning" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "employee_earning_segment_project_id_fkey"
+      FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  )`,
+  `CREATE INDEX IF NOT EXISTS "employee_earning_employee_period_idx" ON "employee_earning" ("employee_id", "period_start", "approved_at")`,
+  `CREATE INDEX IF NOT EXISTS "employee_earning_segment_project_idx" ON "employee_earning_segment" ("project_id", "earning_id")`,
   `CREATE TABLE IF NOT EXISTS "external_counterparty" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "full_name" TEXT NOT NULL,

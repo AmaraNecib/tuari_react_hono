@@ -11,6 +11,9 @@ import {
 } from "./core"
 import {
   employeeAssignWorkplaceInputSchema,
+  employeeEarningApprovalInputSchema,
+  employeeEarningListInputSchema,
+  employeeEarningSchema,
   employeeBatchCreateInputSchema,
   employeeBatchCreateResultSchema,
   employeeCreateInputSchema,
@@ -129,6 +132,12 @@ export const workforceContract = {
   salaryPaymentsCreate: oc
     .input(employeeSalaryPaymentCreateInputSchema)
     .output(createEntityResultSchema(employeeSalaryPaymentSchema)),
+  employeeEarningsList: oc
+    .input(employeeEarningListInputSchema)
+    .output(createListSchema(employeeEarningSchema)),
+  employeeEarningsApprove: oc
+    .input(employeeEarningApprovalInputSchema)
+    .output(createEntityResultSchema(employeeEarningSchema)),
 } as const
 
 export type WorkforceContract = typeof workforceContract

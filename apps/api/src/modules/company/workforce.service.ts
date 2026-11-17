@@ -13,7 +13,13 @@
  * domain.
  */
 
+import { createHash } from "node:crypto";
+
 import {
+  Money,
+  SalaryReference,
+  employeeEarningApprovalInputSchema,
+  type EmployeeEarningApprovalInput,
   type EmployeeAssignWorkplaceInput,
   type EmployeeBatchCreateInput,
   type EmployeeCreateInput,
@@ -42,6 +48,7 @@ import {
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
+import type { EmployeeEarningRepository } from "../workforce/employee-earnings.repository";
 import {
   isAcceptedEmployeeRoleKey,
   ASSIGNABLE_ROLE_KEYS,
@@ -54,7 +61,7 @@ import {
   type WarehouseManagerOwnershipHistoryListFilters,
   LEGACY_WORKFORCE_ROLE_KEYS,
 } from "./company.types";
-import { normalizeAlgeriaTimestamp } from "./company-time";
+import { createAlgeriaTimestamp, normalizeAlgeriaTimestamp } from "./company-time";
 import {
   ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE,
   ensureEmployeeTransitionAllowed,
@@ -74,6 +81,7 @@ export class WorkforceService {
     private readonly repository: WorkforceRepository,
     private readonly operationsRepo: OperationsRepository,
     private readonly mutation: WorkspaceMutationContext,
+    private readonly earningRepository?: EmployeeEarningRepository,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -606,6 +614,56 @@ export class WorkforceService {
 
       this.repository.deleteEmployee(id);
       return deleteResult("تم حذف العامل نهائيًا بنجاح.");
+    });
+  }
+
+  listEmployeeEarnings(employeeId?: string) {
+    if (!this.earningRepository) throw new Error("Employee earning persistence is not configured");
+    return { items: this.earningRepository.list(employeeId) };
+  }
+
+  approveEmployeeEarning(input: EmployeeEarningApprovalInput, auditContext?: MutationAuditContext) {
+    if (!this.earningRepository) throw new Error("Employee earning persistence is not configured");
+    const parsed = employeeEarningApprovalInputSchema.parse(input);
+    const requestHash = createHash("sha256").update(JSON.stringify({
+      employeeId: parsed.employeeId,
+      periodStart: parsed.periodStart,
+      periodEnd: parsed.periodEnd,
+      currencyCode: parsed.currencyCode,
+      totalAmount: Money.parse(parsed.totalAmount).toWire(),
+      unallocatedAmount: Money.parse(parsed.unallocatedAmount).toWire(),
+      referenceSalary: parsed.referenceSalary
+        ? SalaryReference.parse(parsed.referenceSalary.period, parsed.referenceSalary.amount).toWire()
+        : null,
+      segments: parsed.segments.map(segment => ({
+        id: segment.id,
+        projectId: segment.projectId,
+        amount: Money.parse(segment.amount).toWire(),
+      })),
+    })).digest("hex");
+
+    return this.mutation.withTransaction(() => {
+      const audit = this.mutation.createMutationAuditContext(auditContext);
+      requireEmployee(this.repository, parsed.employeeId);
+      for (const segment of parsed.segments) {
+        if (!this.operationsRepo.getProjectById(segment.projectId)) {
+          throw new CompanyError("NOT_FOUND", "تعذر العثور على أحد المشاريع في توزيع الأجر.", [
+            { field: "segments", message: "تعذر العثور على المشروع المطلوب." },
+          ]);
+        }
+      }
+
+      const existing = this.earningRepository!.findByRequestId(parsed.requestId);
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new CompanyError("CONFLICT", "استُخدم معرّف الطلب لاعتماد أجر مختلف.");
+        }
+        return successResult("تم تحميل اعتماد الأجر السابق.", existing.earning);
+      }
+
+      const approvedAt = createAlgeriaTimestamp();
+      const earning = this.earningRepository!.create(parsed, requestHash, approvedAt, audit);
+      return successResult("تم اعتماد الأجر بنجاح.", earning);
     });
   }
 

@@ -14,6 +14,7 @@ import {
   salaryPeriodSchema,
   timestampSchema,
 } from "./core";
+import { Money, SalaryReference } from "./exact-money";
 import { SALARY_DAYS_PER_MONTH } from "./salary-days";
 
 export const roleSchema = z.object({
@@ -99,6 +100,88 @@ export const employeeStateHistorySchema = z.object({
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
+
+const exactMoneyStringSchema = z.string().max(96).superRefine((value, ctx) => {
+  try {
+    Money.parse(value);
+  } catch {
+    ctx.addIssue({ code: "custom", message: "Expected an exact decimal amount with at most two places." });
+  }
+});
+
+export const employeeEarningSegmentSchema = z.object({
+  id: entityIdSchema,
+  projectId: entityIdSchema,
+  amount: exactMoneyStringSchema,
+});
+
+export const employeeSalaryReferenceSchema = z.object({
+  period: salaryPeriodSchema,
+  amount: z.string().max(96),
+}).superRefine((value, ctx) => {
+  try {
+    SalaryReference.parse(value.period, value.amount);
+  } catch {
+    ctx.addIssue({ code: "custom", path: ["amount"], message: "Reference salary must be an exact amount for its period." });
+  }
+});
+
+export const employeeEarningSchema = z.object({
+  id: entityIdSchema,
+  employeeId: entityIdSchema,
+  periodStart: timestampSchema,
+  periodEnd: timestampSchema,
+  currencyCode: z.literal("DZD"),
+  totalAmount: exactMoneyStringSchema,
+  unallocatedAmount: exactMoneyStringSchema,
+  referenceSalary: employeeSalaryReferenceSchema.nullable(),
+  segments: z.array(employeeEarningSegmentSchema),
+  approvedAt: timestampSchema,
+  actorUserId: auditActorUserIdSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+});
+
+export const employeeEarningApprovalInputSchema = z.object({
+  employeeId: entityIdSchema,
+  requestId: z.string().uuid(),
+  periodStart: timestampSchema,
+  periodEnd: timestampSchema,
+  currencyCode: z.literal("DZD"),
+  totalAmount: exactMoneyStringSchema,
+  unallocatedAmount: exactMoneyStringSchema,
+  referenceSalary: employeeSalaryReferenceSchema.nullable().optional(),
+  segments: z.array(employeeEarningSegmentSchema).max(10_000),
+}).superRefine((value, ctx) => {
+  if (Date.parse(value.periodStart) >= Date.parse(value.periodEnd)) {
+    ctx.addIssue({ code: "custom", path: ["periodEnd"], message: "The covered period must end after it starts." });
+  }
+  const ids = new Set<string>();
+  for (const [index, segment] of value.segments.entries()) {
+    if (ids.has(segment.id)) {
+      ctx.addIssue({ code: "custom", path: ["segments", index, "id"], message: "Segment IDs must be unique within an earning." });
+    }
+    ids.add(segment.id);
+  }
+  try {
+    const total = BigInt(Money.parse(value.totalAmount).toMinorUnits());
+    const unallocated = BigInt(Money.parse(value.unallocatedAmount).toMinorUnits());
+    const amounts = value.segments.map(segment => BigInt(Money.parse(segment.amount).toMinorUnits()));
+    const allocated = amounts.reduce((sum, amount) => sum + amount, 0n);
+    if (total <= 0n || unallocated < 0n || amounts.some(amount => amount < 0n)) {
+      ctx.addIssue({ code: "custom", path: ["totalAmount"], message: "Earning total must be positive and allocations cannot be negative." });
+    }
+    if (total !== allocated + unallocated) {
+      ctx.addIssue({ code: "custom", path: ["segments"], message: "Allocated and unallocated amounts must equal the approved total." });
+    }
+  } catch {
+    // Field-level decimal validation above reports malformed or out-of-range values.
+  }
+});
+
+export const employeeEarningListInputSchema = z.object({
+  employeeId: entityIdSchema.optional(),
+}).optional();
 
 export const employeeSalaryPaymentProjectSplitSchema = z.object({
   projectId: entityIdSchema,
@@ -353,6 +436,9 @@ export type EmployeeManagerAssignment = z.infer<typeof employeeManagerAssignment
 export type EmployeeProjectAssignment = z.infer<typeof employeeProjectAssignmentSchema>;
 export type EmployeeWarehouseAssignment = z.infer<typeof employeeWarehouseAssignmentSchema>;
 export type EmployeeStateHistory = z.infer<typeof employeeStateHistorySchema>;
+export type EmployeeEarning = z.infer<typeof employeeEarningSchema>;
+export type EmployeeEarningSegment = z.infer<typeof employeeEarningSegmentSchema>;
+export type EmployeeEarningApprovalInput = z.infer<typeof employeeEarningApprovalInputSchema>;
 export type EmployeeSalaryPayment = z.infer<typeof employeeSalaryPaymentSchema>;
 export type EmployeeSalaryPaymentProjectSplit = z.infer<typeof employeeSalaryPaymentProjectSplitSchema>;
 export type RoleCreateInput = z.infer<typeof roleCreateInputSchema>;

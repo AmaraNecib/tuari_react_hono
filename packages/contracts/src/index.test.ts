@@ -2343,55 +2343,56 @@ describe("contracts", () => {
 
       const base = {
         projectId: "11111111-1111-4111-8111-111111111111",
-        totalDzd: 0,
-        parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 0 },
+        currencyCode: "DZD",
+        totalAmount: "0.00",
+        parts: { expensesAmount: "0.00", salariesAmount: "0.00", stockAmount: "0.00", chargedMaterialsAmount: "0.00" },
         expenses: [],
         salaries: [],
         stock: [],
         materialMovements: [],
-        parkedInventory: { totalDzd: 0, assets: [] },
+        parkedInventory: { totalAmount: "0.00", assets: [] },
       };
       expect(projectCostSchema.safeParse(base).success).toBe(true);
       // A negative total is a legal computed value (a negative material net can
       // outweigh the positive parts). It must not lock the operator out of the
       // screen; the UI warns instead.
-      expect(projectCostSchema.safeParse({ ...base, totalDzd: -1 }).success).toBe(true);
-      // ... but leaving the representable range on either side is refused.
+      expect(projectCostSchema.safeParse({ ...base, totalAmount: "-0.01" }).success).toBe(true);
+      // The wire remains an exact string outside JavaScript's safe-integer range.
       expect(
-        projectCostSchema.safeParse({ ...base, totalDzd: -(Number.MAX_SAFE_INTEGER + 1) }).success,
-      ).toBe(false);
+        projectCostSchema.safeParse({ ...base, totalAmount: "-9007199254740992.00" }).success,
+      ).toBe(true);
       expect(
         projectCostSchema.safeParse({
           ...base,
-          parts: { ...base.parts, chargedMaterialsDzd: -1 },
+          parts: { ...base.parts, chargedMaterialsAmount: "-0.01" },
         }).success,
       ).toBe(true);
-      // The part is bounded on BOTH sides, not just made non-negative.
+      // Signed material totals are valid exact report amounts.
       expect(
         projectCostSchema.safeParse({
           ...base,
-          parts: { ...base.parts, chargedMaterialsDzd: -(Number.MAX_SAFE_INTEGER + 1) },
+          parts: { ...base.parts, chargedMaterialsAmount: "-9007199254740992.00" },
         }).success,
-      ).toBe(false);
+      ).toBe(true);
       expect(
         projectCostSchema.safeParse({
           ...base,
-          parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0 },
+          parts: { expensesAmount: "0.00", salariesAmount: "0.00", stockAmount: "0.00" },
         }).success,
       ).toBe(false);
     });
 
     it("labels material charged to the project, not consumed", () => {
-      // The direction carries the sign; valueDzd stays a positive magnitude.
+      // The direction carries the sign; valueAmount stays a positive exact magnitude.
       expect(
         projectCostMaterialMovementSchema.safeParse({
           id: "11111111-1111-4111-8111-111111111111",
           itemDefinitionId: null,
           itemName: null,
           unit: null,
-          quantity: 3,
-          unitPriceDzd: 500,
-          valueDzd: 1_500,
+          quantity: "3",
+          unitPrice: "500.0000",
+          valueAmount: "1500.00",
           direction: "OUT",
           occurredAt: "2026-05-20T00:00:00.000Z",
         }).success,
@@ -2403,9 +2404,9 @@ describe("contracts", () => {
           itemDefinitionId: null,
           itemName: null,
           unit: null,
-          quantity: 3,
-          unitPriceDzd: 500,
-          valueDzd: 1_500,
+          quantity: "3",
+          unitPrice: "500.0000",
+          valueAmount: "1500.00",
           direction: "CONSUMED",
           occurredAt: "2026-05-20T00:00:00.000Z",
         }).success,
@@ -2416,30 +2417,32 @@ describe("contracts", () => {
       expect("projectCostGet" in appContract).toBe(true);
     });
 
-    it("keeps stored rows permissive but computed aggregates bounded", () => {
-      const aboveBound = Number.MAX_SAFE_INTEGER + 1;
-      // A legacy stored row reads back (it predates the write bound) ...
+    it("keeps project-cost money in exact decimal strings, including wide aggregates", () => {
+      const aboveSafeInteger = "9007199254740992.00";
       expect(
         projectCostExpenseRowSchema.safeParse({
           id: "11111111-1111-4111-8111-111111111111",
           expenseDate: "2026-05-10T00:00:00.000Z",
           whatFor: null,
-          amountDzd: aboveBound,
+          amount: aboveSafeInteger,
           responsibleWorkerId: null,
           responsibleWorkerName: null,
           sellerId: null,
           sellerName: null,
         }).success,
       ).toBe(true);
-      // ... but a computed part/total may never leave the representable range.
-      expect(
-        projectCostPartsSchema.safeParse({
-          expensesDzd: aboveBound,
-          salariesDzd: 0,
-          stockDzd: 0,
-          chargedMaterialsDzd: 0,
-        }).success,
-      ).toBe(false);
+      expect(projectCostPartsSchema.safeParse({
+        expensesAmount: aboveSafeInteger,
+        salariesAmount: "0.00",
+        stockAmount: "0.00",
+        chargedMaterialsAmount: "0.00",
+      }).success).toBe(true);
+      expect(projectCostPartsSchema.safeParse({
+        expensesAmount: 1,
+        salariesAmount: "0.00",
+        stockAmount: "0.00",
+        chargedMaterialsAmount: "0.00",
+      }).success).toBe(false);
     });
   });
 });

@@ -1,0 +1,51 @@
+# Issue 543 in-place employee earnings
+
+## Authority and base
+
+Worktree: `D:/worktrees/tuari_react_hono/t3-b9a2bc4f-01d0b3f1b7f8da66`. Branch: `feat/543-employee-earnings-backend`. Base: `0fdaff8fe76771c12a32bbe7bdd93f6c6935656f`. This is an isolated backend/contract implementation delegated by the parent. The owner requested issue #543, permitted selected logic reuse from closed PR #555 and open PR #541, and rejected copying their UI or replacing production pages with simplified pages. Preserve both earlier worktrees and their local changes.
+
+The owner explicitly confirms there is no old database, deployed user data, or historical dataset to migrate. This supersedes historical migration and rehearsal language in prior notes: do not invent a migration tool, request a migration decision, or block on nonexistent data. The owner authorizes implementing against the normal application's configured database, preserving its existing initializer, finance owner, FIFO, production pages and capabilities. This does not authorize modifying any unrelated database, deleting records, weakening verification, publishing, merging or releasing. Do not create a second authoritative balance. Cash, advances, opening balances and corrections remain later slices.
+
+The parent owns orchestration; this child owns backend code, shared contracts, affected API/contract tests, and this design note in its isolated worktree. Do not edit `apps/web` or browser tests. The owner permits organization of existing code inside this feature and direct callers. No whole-app cleanup, replacement shell, unrelated UI redesign, dependency additions, child agents or imported later-slice code. No push, PR, merge or release.
+
+## Workflow and TDD
+
+Verification mode: `focused-local / CI-final-pending`. The protection inspection returned HTTP 404, Branch not protected. High-assurance applies because authenticated employee operations, money, ledger atomicity and recovery are reachable. Current-head CI and review remain independent gates. The owner explicitly prioritizes red-green TDD over 100% coverage. Do not generate tests solely to cover lines. Existing verification policy changes, if needed, must remain explicit rather than quietly bypassed.
+
+Backend acceptance in this lane is authenticated RPC, normal-root persistence, close/reopen, exact earnings, and authoritative project-cost readback. The original-page UI and browser tests are a separate handoff; this lane does not edit `apps/web` or browser tests. Work one behavior at a time: first a failing test with an independent expected result, then the smallest implementation, then the next behavior. Use the real database and shared composition root.
+
+The A/B/A example has ordered segments of 10,000, 37,500 and 15,000 DZD. After close/reopen, the earning total is 62,500, project A's labor cost is 25,000 and project B's is 37,500. The exact project-cost RPC reports decimal strings for every amount and exposes each approved segment with its stable ID and original order. Approval uses `employeeEarningsApprove`; history uses `employeeEarningsList`. Each approval carries a durable UUID `requestId`, exact `totalAmount`, explicit `unallocatedAmount`, period bounds, and ordered segments with stable IDs. Repeated project IDs are valid; segment IDs are unique within one approval. The optional `referenceSalary` is `{ period, amount }`: DAILY permits four decimal places; WEEKLY and MONTHLY permit two. Omitted references read back as null. `projectCostGet` is authoritative for project labor and returns finalized segment amounts without recomputing day rates. Unallocated and partial-period approvals, duplicate/conflicting request IDs, invalid references, authorization and rollback remain in the focused tests.
+
+## Module and persistence design
+
+Business operations own approval, conserved amounts, reference checks and idempotency. Persistence stays in focused adapters.
+
+This lane leaves the existing employee repository ownership untouched. The new earning repository is separate because it owns immutable approvals, request idempotency and ordered segments; the project-cost adapter consumes it as a read model. Do not add another forwarding layer or refactor unrelated persistence paths.
+
+The feature's schema/adapter map is `schema/company.ts` for Drizzle declarations, `infrastructure/database/schema-definitions.ts` and `schema.ts` for initialized SQLite, the focused workforce earning adapter for persistence, and `modules/project-cost/adapters/sqlite-project-cost.repository.ts` for labor-cost reads. Align declarations with normal initialization and test through the production root. Replace the old cash-payment salary join with approved segments at this owning project-cost adapter. The authoritative project-cost response now uses exact decimal strings for expenses, labor, stock, materials, totals and parked assets; read legacy SQLite numerics as decimal text and never bridge approved amounts through JavaScript `Number`.
+
+New ordinary data queries use Drizzle table definitions. Keep SQLite DDL, migrations and necessary driver-specific exact reads explicit where the ORM cannot express their requirements. Test-only SQL is justified for deliberate schema corruption or a specific storage contract, not as a duplicate application initializer. No truncation, data reset, table deletion or original-database mutation is authorized by this cleanup. Prefer the existing Drizzle adapter and shared transaction primitives. New repository interfaces must hide actual complexity rather than mirror every query. No speculative PostgreSQL adapter or generic persistence framework.
+
+Use Drizzle for normal selects, inserts, updates and joins. Native SQL needs a concrete SQLite or exact-int64 requirement, recorded with focused proof. Default driver reads cannot safely decode amounts above Number.MAX_SAFE_INTEGER. Test the exact decoding strategy before using it; do not convert exact input through Number or globally turn unrelated integers into BigInt.
+
+The monetary policy comes from closed issue #522 and accepted `docs/adr/0001-exact-money-contract.md`, with the full contract and field map pinned at documentation commit `af576cef78f668f226caf8b0fa6202a0e2205291`. The owner directed reusing those decisions rather than choosing new arithmetic or rounding rules. Naming update: feature storage and contracts use currency-neutral names. Finalized values use semantic `*_minor` integer fields, entered rates use meaningful `*_units` fields paired with period/scale, and currencies remain explicit in owned or inherited metadata. Do not call a rate `*_minor`. V1 remains DZD-only and displays دج. The neutral model does not add currency selection, FX or multicurrency behavior. Decimal strings remain the public money representation; four-place entered rates stay distinct from finalized minor units. Current shared Money code is DZD-only, not an already implemented multicurrency engine.
+
+Reference salary remains period-tagged and optional, distinct from approved earnings. DAILY allows four-place rates; MONTHLY and WEEKLY references use two-place amounts. NULL, omitted and zero retain their separate meanings. Ordered segment identities permit repeated projects. Allocations plus explicit unallocated earnings equal the approved total. A row edit changes no other row or total. Historical cash never implies an earning or new labor cost.
+
+The existing root, configured database, connection FIFO, finance owner, authenticated router and page dispatch remain the composition authority. The old narrowed application router and restricted exact workspace are not reusable replacements: they explicitly disabled existing invoices, expenses, inventory money and full project costs. No new competing startup or financial root.
+
+## UI and skills
+
+Keep original employee list/create/edit/detail, salary and project page compositions. Add a cleaner approval workflow using existing form, table, confirmation, error and loading primitives. Keep Arabic RTL, current typography/tokens, keyboard access, clear amounts and mobile layout. Do not copy the prior exact-only UI or redesign unrelated pages.
+
+Installed skills loaded for this work: feature-implement, tdd with tests/mocking references, domain-modeling, codebase-design, improve-codebase-architecture, impeccable, frontend-design, vercel-react-best-practices and tanstack-query-best-practices. The owner's wording about the Vercel React skill is interpreted as the installed vercel-react-best-practices. No skill installation or package download is necessary. Use accessibility, adaptation, polish and relevant Query/React rule references at their actual change points, not as reasons to widen scope.
+
+Impeccable context ran for `apps/web/src/features/employees`; no PRODUCT.md exists, so current code and DESIGN.md govern this scoped change. Its required product-register reference is missing from the installed skill; use the existing project design and available interaction guidance without inventing that reference.
+
+React server state belongs in TanStack Query, with dependency-complete keys, account/workspace isolation and targeted invalidation. Form drafts stay local. Avoid effect-synchronized derived state, duplicated profile fields and broad cache resets. Durable duplicate-submit recovery must preserve request identity across uncertain responses.
+
+## Architecture and proof
+
+Apply improve-codebase-architecture after clean local review to changed modules and direct callers. Evaluate domain-rule duplication, transaction ownership, interface depth and the deletion test. Record its exact-SHA outcome locally. Do not start a whole-tree audit or refactor unrelated adapters.
+
+Commit complete reviewable source with this note before independent debate, test-audit and code-review. Keep source frozen for readers. Bounded fixes get fresh combined-delta review with unchanged conclusions carried forward. Run affected tests and relevant lint/types, then record exact-SHA commands, exit codes, counts, durations and logs in ignored evidence. Heavy runs require a justified shared queue slot. No implementation, test pass, native acceptance or issue completion is claimed by this design note.
