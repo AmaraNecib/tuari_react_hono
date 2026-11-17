@@ -64,7 +64,7 @@ describe("employee earning draft interface", () => {
     expect(result.payload).toBeNull()
     expect(result.issues).toEqual(expect.arrayContaining([
       { path: ["rows", "row-a1", "daysText"], message: "workforce.validation.earning.daysPositive" },
-      { path: ["rows", "row-a1", "amountText"], message: expect.any(String) },
+      { path: ["rows", "row-a1", "amountText"], message: "workforce.validation.earning.amountPrecision" },
       { path: ["totalAmountText"], message: "workforce.validation.earning.conservation" },
     ]))
   })
@@ -82,6 +82,25 @@ describe("employee earning draft interface", () => {
     expect(loadPendingEmployeeEarning({ ...identity, workspaceId: "workspace-2" }, storage)).toEqual({ ok: true, pending: null })
     removePendingEmployeeEarning(identity, storage)
     expect(loadPendingEmployeeEarning(identity, storage)).toEqual({ ok: true, pending: null })
+  })
+
+  it("rejects a draft for another employee before storing or returning a payload", () => {
+    const storage = memoryStorage()
+    const result = markEmployeeEarningPending(draft, { ...identity, employeeId: "employee-2" }, storage, () => "d0f2fd98-5ca5-49ae-9074-b139df26614d")
+    expect(result).toMatchObject({ ok: false, issue: "employee-mismatch" })
+    expect(storage.getItem("employee-earning-pending:v1:user-1:workspace-1:employee-2")).toBeNull()
+  })
+
+  it("maps contract segment issue indices back to stable draft row IDs", () => {
+    const duplicateRows = [
+      { ...draft.rows[0]!, id: "duplicate" },
+      { ...draft.rows[1]!, id: "duplicate" },
+    ]
+    const result = finalizeEmployeeEarningDraft({ ...draft, unallocatedAmountText: "15,000", rows: duplicateRows }, () => "d0f2fd98-5ca5-49ae-9074-b139df26614d")
+    expect(result.issues).toContainEqual({
+      path: ["rows", "duplicate", "id"],
+      message: "workforce.validation.earning.duplicateSegment",
+    })
   })
 
   it("refuses malformed or version-mismatched pending data", () => {

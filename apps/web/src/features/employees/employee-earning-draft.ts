@@ -40,9 +40,10 @@ export function finalizeEmployeeEarningDraft(draft: EmployeeEarningDraft, newReq
     let amount: string | null = null
     try {
       amount = wireMoney(row.amountText)
-      allocatedMinor += BigInt(parseLocalizedMoneyInput(row.amountText).toMinorUnits())
-      if (BigInt(parseLocalizedMoneyInput(row.amountText).toMinorUnits()) < 0n) throw new Error()
-    } catch { issues.push({ path: ["rows", row.id, "amountText"], message: "workforce.validation.earning.amountPositive" }) }
+      const minor = BigInt(parseLocalizedMoneyInput(row.amountText).toMinorUnits())
+      if (minor < 0n) issues.push({ path: ["rows", row.id, "amountText"], message: "workforce.validation.earning.positiveTotal" })
+      else allocatedMinor += minor
+    } catch { issues.push({ path: ["rows", row.id, "amountText"], message: "workforce.validation.earning.amountPrecision" }) }
     if (amount !== null && Number.isSafeInteger(days) && days > 0) segments.push({ id: row.id, projectId: row.projectId, days, amount })
   }
   if (totalAmount !== null && unallocatedAmount !== null) {
@@ -71,7 +72,15 @@ export function finalizeEmployeeEarningDraft(draft: EmployeeEarningDraft, newReq
     ...(referenceSalary !== undefined ? { referenceSalary } : {}),
     segments,
   })
-  if (!parsed.success) return { payload: null, issues: parsed.error.issues.map(issue => ({ path: issue.path as (string | number)[], message: issue.message })) }
+  if (!parsed.success) return { payload: null, issues: parsed.error.issues.map(issue => {
+    const [field, index, ...rest] = issue.path as (string | number)[]
+    if (field === "segments" && typeof index === "number") {
+      const row = draft.rows[index]
+      return { path: ["rows", row?.id ?? String(index), ...rest], message: issue.message }
+    }
+    const draftField: Record<string, string> = { totalAmount: "totalAmountText", unallocatedAmount: "unallocatedAmountText", periodStart: "periodStart", periodEnd: "periodEnd" }
+    return { path: [draftField[String(field)] ?? String(field), ...rest], message: issue.message }
+  }) }
   return { payload: parsed.data, issues: [] }
 }
 
@@ -79,7 +88,7 @@ export type EarningDraftIdentity = { userId: string; workspaceId: string; employ
 export type EarningDraftStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">
 export type PendingEmployeeEarning = { version: 1; identity: EarningDraftIdentity; payload: FinalizedEmployeeEarningApproval }
 export type PendingLoadResult = { ok: true; pending: PendingEmployeeEarning | null } | { ok: false; issue: "malformed-pending-approval" }
-export type MarkPendingResult = { ok: true; payload: FinalizedEmployeeEarningApproval } | { ok: false; issues: EarningDraftIssue[]; issue?: "malformed-pending-approval" }
+export type MarkPendingResult = { ok: true; payload: FinalizedEmployeeEarningApproval } | { ok: false; issues: EarningDraftIssue[]; issue?: "malformed-pending-approval" | "employee-mismatch" }
 
 const storageKey = ({ userId, workspaceId, employeeId }: EarningDraftIdentity) =>
   `employee-earning-pending:v1:${encodeURIComponent(userId)}:${encodeURIComponent(workspaceId)}:${encodeURIComponent(employeeId)}`
@@ -103,6 +112,7 @@ export function loadPendingEmployeeEarning(identity: EarningDraftIdentity, stora
 }
 
 export function markEmployeeEarningPending(draft: EmployeeEarningDraft, identity: EarningDraftIdentity, storage: EarningDraftStorage, newRequestId: () => string): MarkPendingResult {
+  if (draft.employeeId !== identity.employeeId) return { ok: false, issues: [], issue: "employee-mismatch" }
   const existing = loadPendingEmployeeEarning(identity, storage)
   if (!existing.ok) return { ok: false, issues: [], issue: existing.issue }
   if (existing.pending) return { ok: true, payload: existing.pending.payload }
