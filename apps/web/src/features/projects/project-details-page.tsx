@@ -5,6 +5,8 @@ import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { InventoryLocationContentsSection } from "@/features/inventory/inventory-location-contents-section"
 import { LocationTransferHistory } from "@/features/inventory/location-transfer-history"
 import { ProjectCostSection } from "./project-cost-section"
+import { ExactProjectSalaryCost } from "./exact-project-salary-cost"
+import type { ExactWorkforceEarningsClient } from "@tuari/contracts"
 import { workspaceRoutes } from "@/router/navigation"
 import {
   RecordHistoryTable,
@@ -36,6 +38,9 @@ export function ProjectDetailsPage({
   onTabChange,
   project,
   workerRows,
+  capabilityMode = false,
+  workforceClient,
+  workforceScope,
 }: {
   activeTab: string
   managementHistoryRows: Array<{
@@ -56,9 +61,13 @@ export function ProjectDetailsPage({
     periodLabel: ReactNode
     statusLabel: string
   }>
+  capabilityMode?: boolean
+  workforceClient?: ExactWorkforceEarningsClient
+  workforceScope?: { workspaceId: string; userId: string }
 }) {
   const { t } = useTranslation()
-  const resolvedTab = ["overview", "history", "workers", "items", "transfers", "cost"].includes(activeTab) ? activeTab : "overview"
+  const supportedTabs = ["overview", "history", "workers", "items", "transfers", "cost"]
+  const resolvedTab = supportedTabs.includes(activeTab) ? activeTab : "overview"
   const hasExpandedNotes = (project.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `project-record-${project.id}`
 
@@ -121,17 +130,9 @@ export function ProjectDetailsPage({
         />
       </RecordTabPanel>
 
-      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items">
-        <InventoryLocationContentsSection projectId={project.id} />
-      </RecordTabPanel>
-
-      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers">
-        <LocationTransferHistory locationId={project.id} locationType="PROJECT" />
-      </RecordTabPanel>
-
-      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="cost">
-        <ProjectCostSection projectId={project.id} onOpenItems={() => onTabChange("items")} />
-      </RecordTabPanel>
+      {resolvedTab === "items" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items"><InventoryLocationContentsSection projectId={project.id} /></RecordTabPanel> : null}
+      {resolvedTab === "transfers" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers"><LocationTransferHistory locationId={project.id} locationType="PROJECT" /></RecordTabPanel> : null}
+      {resolvedTab === "cost" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="cost">{capabilityMode ? (workforceClient && workforceScope ? <ExactProjectSalaryCost projectId={project.id} client={workforceClient} scope={workforceScope} /> : <p>{t("application.unavailable")}</p>) : <ProjectCostSection projectId={project.id} onOpenItems={() => onTabChange("items")} /> }</RecordTabPanel> : null}
     </RecordPageFrame>
   )
 }

@@ -27,10 +27,14 @@ export function WarehouseEditPage({
   managerOptions,
   warehouse,
   warehouseManagerRoleId,
+  allowInlineManagerCreate = true,
+  onSaved,
 }: {
   managerOptions: Array<{ id: string; label: string }>
   warehouse: WarehousePageRecord
   warehouseManagerRoleId: string
+  allowInlineManagerCreate?: boolean
+  onSaved?: () => Promise<void> | void
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -40,6 +44,7 @@ export function WarehouseEditPage({
   const { createConfig: managerCreate, selectedDisplayValue: managerDisplayValue } = useWarehouseManagerInlineCreateSelection({
     warehouseManagerRoleId,
     selectedManagerId: state.managerId,
+    enabled: allowInlineManagerCreate,
   })
   const previousWarehouseIdRef = useRef(warehouse.id)
   const statusOptions = useMemo(
@@ -85,6 +90,7 @@ export function WarehouseEditPage({
       status: state.status as "ACTIVE" | "INACTIVE" | "ARCHIVED",
       notes: state.notes.trim() || null,
     })
+    await onSaved?.()
 
     void navigateToWorkspaceRoute(navigate, workspaceRoutes.warehouseDetails(warehouse.id))
   }

@@ -1,4 +1,6 @@
 import type { ReactNode } from "react"
+import { useQuery } from "@tanstack/react-query"
+import type { ApplicationClient } from "@tuari/contracts"
 import { useState, useMemo, useEffect } from "react"
 import Fuse from "fuse.js"
 import { LogOut, MoonStar, PanelRightClose, PanelRightOpen, Settings, SunMedium, Menu, Search, HelpCircle } from "lucide-react"
@@ -23,6 +25,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { RecordDeleteConfirmation } from "@/features/shared/record-delete-confirmation"
 
 import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewBreadcrumbItem } from "./home-view-breadcrumbs"
@@ -48,6 +51,7 @@ export function HomeViewSignedInShell({
   session,
   sidebarCollapsed,
   signOutPending,
+  signOutBlocked = false,
   signOutOpen,
   theme,
   showRestartModal,
@@ -59,6 +63,8 @@ export function HomeViewSignedInShell({
   onSetSidebarCollapsed,
   onSignOutOpenChange,
   onThemeToggle,
+  exactMode = false,
+  exactSearch,
 }: {
   breadcrumbItems: HomeViewBreadcrumbItem[]
   children: ReactNode
@@ -69,6 +75,7 @@ export function HomeViewSignedInShell({
   session: NonNullable<DemoSession>
   sidebarCollapsed: boolean
   signOutPending: boolean
+  signOutBlocked?: boolean
   signOutOpen: boolean
   theme: "light" | "dark"
   showRestartModal: boolean
@@ -80,6 +87,8 @@ export function HomeViewSignedInShell({
   onSetSidebarCollapsed: (value: boolean) => void
   onSignOutOpenChange: (value: boolean) => void
   onThemeToggle: () => void
+  exactMode?: boolean
+  exactSearch?: { workspaceId: string; userId: string; client: Pick<ApplicationClient, "employeesList" | "projectsList" | "warehousesList"> }
 }) {
   const { t } = useTranslation()
   const { isMobile, sidebarOpen, toggleSidebar, closeSidebar } = useMobileLayout()
@@ -119,13 +128,20 @@ export function HomeViewSignedInShell({
   })
 
   // Fetch data for global search (only when search is open)
-  const employeesQuery = useEmployeesQuery({ enabled: searchOpen })
-  const projectsQuery = useProjectsQuery({ enabled: searchOpen })
-  const warehousesQuery = useWarehousesQuery({ enabled: searchOpen })
-  const debtAccountsQuery = useDebtAccountsQuery({ enabled: searchOpen })
-  const externalsQuery = useExternalCounterpartiesQuery({ enabled: searchOpen })
-  const inventoryQuery = useInventoryItemDefinitionsQuery({ enabled: searchOpen })
-  const invoicesQuery = useInventoryInvoiceGroupsQuery({ enabled: searchOpen })
+  const employeesQuery = useEmployeesQuery({ enabled: searchOpen && !exactMode })
+  const projectsQuery = useProjectsQuery({ enabled: searchOpen && !exactMode })
+  const warehousesQuery = useWarehousesQuery({ enabled: searchOpen && !exactMode })
+  const debtAccountsQuery = useDebtAccountsQuery({ enabled: searchOpen && !exactMode })
+  const externalsQuery = useExternalCounterpartiesQuery({ enabled: searchOpen && !exactMode })
+  const inventoryQuery = useInventoryItemDefinitionsQuery({ enabled: searchOpen && !exactMode })
+  const invoicesQuery = useInventoryInvoiceGroupsQuery({ enabled: searchOpen && !exactMode })
+
+  const exactEmployees = useQuery({ queryKey: ["application", exactSearch?.workspaceId, exactSearch?.userId, "employees"], queryFn: () => exactSearch!.client.employeesList({}), enabled: searchOpen && exactMode && Boolean(exactSearch) })
+  const exactProjects = useQuery({ queryKey: ["application", exactSearch?.workspaceId, exactSearch?.userId, "projects"], queryFn: () => exactSearch!.client.projectsList({}), enabled: searchOpen && exactMode && Boolean(exactSearch) })
+  const exactWarehouses = useQuery({ queryKey: ["application", exactSearch?.workspaceId, exactSearch?.userId, "warehouses"], queryFn: () => exactSearch!.client.warehousesList({}), enabled: searchOpen && exactMode && Boolean(exactSearch) })
+  const searchEmployees = exactMode ? exactEmployees.data : employeesQuery.data
+  const searchProjects = exactMode ? exactProjects.data : projectsQuery.data
+  const searchWarehouses = exactMode ? exactWarehouses.data : warehousesQuery.data
 
   // Build the unified search corpus + Fuse index lazily — they only exist
   // while the dialog is open and rebuild only when the query DATA changes,
@@ -211,7 +227,7 @@ export function HomeViewSignedInShell({
     ]
 
     // ── Data items from database ──
-    const employees: SearchItem[] = (employeesQuery.data?.items ?? []).map((emp) => ({
+    const employees: SearchItem[] = (searchEmployees?.items ?? []).map((emp) => ({
       id: `emp-${emp.id}`,
       title: `${emp.firstName} ${emp.lastName}`,
       description: emp.phone,
@@ -219,7 +235,7 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = `/employees/${emp.id}` },
     }))
 
-    const projects: SearchItem[] = (projectsQuery.data?.items ?? []).map((p) => ({
+    const projects: SearchItem[] = (searchProjects?.items ?? []).map((p) => ({
       id: `proj-${p.id}`,
       title: p.name,
       description: p.location ?? undefined,
@@ -227,7 +243,7 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = `/projects/${p.id}` },
     }))
 
-    const warehouses: SearchItem[] = (warehousesQuery.data?.items ?? []).map((w) => ({
+    const warehouses: SearchItem[] = (searchWarehouses?.items ?? []).map((w) => ({
       id: `wh-${w.id}`,
       title: w.name,
       description: w.address ?? undefined,
@@ -280,7 +296,7 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = `/invoices/${inv.id}` },
     }))
 
-    const allSearchItems: SearchItem[] = [...pages, ...employees, ...projects, ...warehouses, ...debts, ...externals, ...inventory, ...invoices]
+    const allSearchItems: SearchItem[] = [...pages, ...employees, ...projects, ...warehouses, ...(exactMode ? [] : [...debts, ...externals, ...inventory, ...invoices])]
 
     // Fuse.js instance — fuzzy search with typo tolerance
     // Also index children so typing "مستودع" or "إنشاء" finds sub-actions
@@ -303,7 +319,7 @@ export function HomeViewSignedInShell({
     })
 
     return { allSearchItems, fuse }
-  }, [searchOpen, t, employeesQuery.data, projectsQuery.data, warehousesQuery.data, debtAccountsQuery.data, externalsQuery.data, inventoryQuery.data, invoicesQuery.data])
+  }, [searchOpen, exactMode, t, searchEmployees, searchProjects, searchWarehouses, employeesQuery.data, debtAccountsQuery.data, externalsQuery.data, inventoryQuery.data, invoicesQuery.data])
 
   // Filter search results using fuzzy matching — only the debounced query
   // reaches the expensive fuse.search. Clearing the input restores the
@@ -485,24 +501,7 @@ export function HomeViewSignedInShell({
       )}
 
       {/* Delete confirmation dialog */}
-      <AlertDialog
-        open={Boolean(pendingDelete)}
-        onOpenChange={(open) => (!open && !deletePending ? onPendingDeleteChange(null) : null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{copy.shell.destructiveTitle}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {copy.shell.destructiveDescription}
-              {pendingDelete ? ` ${pendingDelete.label}` : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletePending}>{copy.common.cancel}</AlertDialogCancel>
-            <AlertDialogAction disabled={deletePending} onClick={onConfirmDelete}>{copy.common.confirm}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RecordDeleteConfirmation pendingLabel={pendingDelete?.label ?? null} pending={deletePending} title={copy.shell.destructiveTitle} description={copy.shell.destructiveDescription} cancelLabel={copy.common.cancel} confirmLabel={copy.common.confirm} onDismiss={() => onPendingDeleteChange(null)} onConfirm={onConfirmDelete} />
 
       {/* Search dialog */}
       <SearchDialog
@@ -537,7 +536,7 @@ export function HomeViewSignedInShell({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={signOutPending}>{copy.common.cancel}</AlertDialogCancel>
-            <AlertDialogAction disabled={signOutPending} onClick={onConfirmSignOut}>{copy.common.confirm}</AlertDialogAction>
+            <AlertDialogAction disabled={signOutPending || signOutBlocked} onClick={onConfirmSignOut}>{copy.common.confirm}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

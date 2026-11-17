@@ -71,6 +71,8 @@ type EmployeeTableProps = {
   projects?: SalaryProjectOption[]
   /** Per-employee assignment windows feeding the dialog's derived split. */
   projectAssignmentsByEmployeeId?: Record<string, SalaryProjectAssignmentWindow[]>
+  /** Disable retired numeric salary-payment actions for exact-money callers. */
+  allowLegacySalaryPayments?: boolean
   onAdd?: () => void
   onDelete: (row: EmployeeTableRow) => void
   onEdit: (row: EmployeeTableRow) => void
@@ -82,11 +84,12 @@ type EmployeeTableProps = {
 /**
  * @description Component
  */
-export function EmployeeTable({
+function NumericEmployeeTable({
   copy,
   rows,
   projects,
   projectAssignmentsByEmployeeId,
+  allowLegacySalaryPayments = true,
   onAdd,
   onDelete,
   onEdit,
@@ -105,18 +108,20 @@ export function EmployeeTable({
 
   return (
     <>
-      <AddSalaryPaymentDialog
-        employeeId={paymentTarget?.id ?? null}
-        employeeName={paymentRow?.name ?? paymentTarget?.name}
-        salaryAmountDzd={paymentRow?.salaryAmountDzd ?? null}
-        salaryPeriod={paymentRow?.salaryPeriod ?? null}
-        projectAssignments={
-          paymentTarget ? (projectAssignmentsByEmployeeId?.[paymentTarget.id] ?? []) : []
-        }
-        projects={projects ?? []}
-        open={paymentTarget !== null}
-        onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
-      />
+      {allowLegacySalaryPayments ? (
+        <AddSalaryPaymentDialog
+          employeeId={paymentTarget?.id ?? null}
+          employeeName={paymentRow?.name ?? paymentTarget?.name}
+          salaryAmountDzd={paymentRow?.salaryAmountDzd ?? null}
+          salaryPeriod={paymentRow?.salaryPeriod ?? null}
+          projectAssignments={
+            paymentTarget ? (projectAssignmentsByEmployeeId?.[paymentTarget.id] ?? []) : []
+          }
+          projects={projects ?? []}
+          open={paymentTarget !== null}
+          onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
+        />
+      ) : null}
       <AppShellTableFrame>
         <table className="min-w-full text-sm">
           <AppShellTableHead>
@@ -165,7 +170,7 @@ export function EmployeeTable({
                   </td>
                   <td className="px-4 py-4 text-start">
                     <AppShellActionGroup>
-                      {row.isWorker && row.status === "ACTIVE" ? (
+                      {allowLegacySalaryPayments && row.isWorker && row.status === "ACTIVE" ? (
                         <Button
                           size="xs"
                           onClick={() => setPaymentTarget({ id: row.id, name: row.name })}
@@ -216,4 +221,8 @@ export function EmployeeTable({
       </AppShellTableFrame>
     </>
   )
+}
+
+export function EmployeeTable(props: EmployeeTableProps) {
+  return <NumericEmployeeTable {...props} />
 }

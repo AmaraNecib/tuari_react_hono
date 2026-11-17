@@ -48,9 +48,13 @@ function mapServerErrors(error: AppMutationError): ProjectFormErrors {
 export function ProjectCreatePage({
   managerOptions,
   projectManagerRoleId,
+  allowInlineManagerCreate = true,
+  onSaved,
 }: {
   managerOptions: Array<{ id: string; label: string }>
   projectManagerRoleId: string
+  allowInlineManagerCreate?: boolean
+  onSaved?: () => Promise<void> | void
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -60,6 +64,7 @@ export function ProjectCreatePage({
   const { createConfig: managerCreate, selectedDisplayValue: managerDisplayValue } = useProjectManagerInlineCreateSelection({
     projectManagerRoleId,
     selectedManagerId: state.managerId,
+    enabled: allowInlineManagerCreate,
   })
   const statusOptions = useMemo(
     () => [
@@ -95,6 +100,7 @@ export function ProjectCreatePage({
         notes: state.notes.trim() || null,
       })
 
+      await onSaved?.()
       void navigateToWorkspaceRoute(navigate, workspaceRoutes.projectDetails(result.item.id))
     } catch (error) {
       if (error instanceof AppMutationError) {

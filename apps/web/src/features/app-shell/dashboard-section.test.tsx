@@ -29,12 +29,12 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@/features/debts/debts-queries", () => ({
-  useDebtsSummaryQuery: () => mocks.debtsSummary(),
+  useDebtsSummaryQuery: (options?: { enabled?: boolean }) => mocks.debtsSummary(options),
 }))
 
 vi.mock("@/features/inventory/inventory-hooks", () => ({
-  useInventoryInvoiceGroupsQuery: () => mocks.invoiceGroups(),
-  useInventoryItemDefinitionsQuery: () => mocks.itemDefinitions(),
+  useInventoryInvoiceGroupsQuery: (options?: { enabled?: boolean }) => mocks.invoiceGroups(options),
+  useInventoryItemDefinitionsQuery: (options?: { enabled?: boolean }) => mocks.itemDefinitions(options),
 }))
 
 const LABELS = {
@@ -63,6 +63,21 @@ type DashboardSectionMetrics = {
 }
 
 describe("DashboardSection (issue #23)", () => {
+  it("uses the production dashboard without querying unsupported financial families", () => {
+    mocks.debtsSummary.mockReturnValue({ data: undefined, isPending: true, isError: false })
+    mocks.invoiceGroups.mockReturnValue({ data: undefined, isPending: true, isError: false })
+    mocks.itemDefinitions.mockReturnValue({ data: undefined, isPending: true, isError: false })
+    render(<DashboardSection labels={LABELS} metrics={{ workers: 2, projects: 3, warehouses: 1, roles: 4, counterparties: null }} financialFeaturesAvailable={false} />)
+    expect(mocks.debtsSummary).toHaveBeenLastCalledWith({ enabled: false })
+    expect(mocks.invoiceGroups).toHaveBeenLastCalledWith({ enabled: false })
+    expect(mocks.itemDefinitions).toHaveBeenLastCalledWith({ enabled: false })
+    expect(screen.getByRole("link", { name: /إضافة مشروع/ }).getAttribute("href")).toBe("/projects/create")
+    expect(screen.queryByRole("link", { name: /إضافة فاتورة/ })).toBeNull()
+    expect(screen.getByRole("button", { name: /إضافة فاتورة/ }).hasAttribute("disabled")).toBe(true)
+    expect(screen.getByRole("button", { name: /تحويل جديد/ }).hasAttribute("disabled")).toBe(true)
+    expect(screen.getAllByText("application.unavailable").length).toBeGreaterThanOrEqual(4)
+  })
+
   it("renders the inherited stat cards unchanged", () => {
     mocks.debtsSummary.mockReturnValue({ data: undefined, isPending: false, isError: false })
     mocks.invoiceGroups.mockReturnValue({ data: undefined, isPending: false, isError: false })

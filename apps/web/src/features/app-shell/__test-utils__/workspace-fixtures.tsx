@@ -11,19 +11,30 @@
 
 import { type Mock, vi } from "vitest"
 
+
 // Flaky fix: suppress i18next's promotional console.log at module
 // evaluation time, which races with vitest RPC teardown on loaded CI
 // runners causing EnvironmentTeardownError.
 // The spy is restored after module evaluation via restoreConsoleLog().
-const { restoreConsoleLog } = vi.hoisted(() => {
+const { restoreConsoleLog, applicationClientMock } = vi.hoisted(() => {
   const spy = vi.spyOn(console, "log").mockImplementation(() => {})
-  return { restoreConsoleLog: () => spy.mockRestore() }
+  return {
+    restoreConsoleLog: () => spy.mockRestore(),
+    applicationClientMock: { applicationCapabilities: vi.fn(async () => { throw Object.assign(new Error("Capability method unavailable"), { code: "NOT_FOUND" }) }) } as Record<string, unknown>,
+  }
 })
+
+vi.mock("@/lib/application-client", () => ({ applicationClient: applicationClientMock }))
+
+export function setApplicationClientMock(client: Record<string, unknown> | null) {
+  for (const key of Object.keys(applicationClientMock)) delete applicationClientMock[key]
+  Object.assign(applicationClientMock, client ?? { applicationCapabilities: vi.fn(async () => { throw Object.assign(new Error("Capability method unavailable"), { code: "NOT_FOUND" }) }) })
+}
 
 import "@/i18n"
 
 import { render, type RenderResult } from "@testing-library/react"
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 import { AppPreferencesProvider } from "@/features/preferences/preferences"
@@ -310,6 +321,7 @@ vi.mock("@tanstack/react-router", async () => {
       <a {...props}>{children}</a>
     ),
     useNavigate: () => navigateMock,
+    useBlocker: vi.fn(() => ({ status: "idle", proceed: undefined, reset: undefined })),
   }
 })
 
@@ -422,6 +434,12 @@ vi.mock("../workspace-mutations", () => ({
 }))
 
 vi.mock("../workspace-queries", () => ({
+  isRolesEndpointUnavailable: (error: unknown) => typeof error === "object" && error !== null && "code" in error && ["NOT_FOUND", "METHOD_NOT_SUPPORTED"].includes(String((error as { code?: unknown }).code)),
+  useWorkspaceScopedQuery: (options: { key: (userId: string | null) => readonly unknown[]; enabled?: boolean; queryFn: () => Promise<unknown> }) => useQuery({
+    queryKey: options.key(mockState.sessionUser?.id ?? null),
+    queryFn: options.queryFn,
+    enabled: Boolean(mockState.sessionUser) && (options.enabled ?? true),
+  }),
   // Hooks used by home-view-signed-in-shell (enabled only when search is open)
   useEmployeesQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
     searchState.employees = enabled
