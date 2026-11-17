@@ -17,8 +17,7 @@ function makeWorkers(count: number, period: "MONTHLY" | "DAILY", idOffset = 0): 
       employeeName: `عامل ${String(number).padStart(2, "0")}`,
       employeePhone: `055500${String(number).padStart(4, "0")}`,
       employeeRole: "عامل",
-      salaryAmountDzd: 30000,
-      salaryPeriod: period,
+      salaryReference: { period, amount: period === "DAILY" ? "30000.0000" : "30000.00" },
       lastPaymentDate: null,
       projectAssignments: [] as Array<{ projectId: string; startDate: string; endDate: string | null }>,
     }
@@ -61,8 +60,7 @@ describe("SalariedWorkersTable (#453)", () => {
         ...makeWorkers(1, "MONTHLY")[0]!,
         employeeId: "w-none",
         employeeName: "عامل بلا أجر",
-        salaryAmountDzd: null,
-        salaryPeriod: null,
+        salaryReference: null,
       },
     ])
 
@@ -71,6 +69,8 @@ describe("SalariedWorkersTable (#453)", () => {
     // Each wage carries the worker's own period label, not a global default.
     expect(screen.getByText("/ شهري")).toBeTruthy()
     expect(screen.getByText("/ يومي")).toBeTruthy()
+    expect(within(screen.getByText("عامل يومي").closest("tr")!).getByText("30,000")).toBeTruthy()
+    expect(within(screen.getByText("عامل شهري").closest("tr")!).getByText("30,000")).toBeTruthy()
     // The last payment date renders for the worker who has one, not only a dash.
     const monthlyRow = screen.getByText("عامل شهري").closest("tr")!
     expect(within(monthlyRow).getByText(/2026/)).toBeTruthy()
@@ -101,6 +101,28 @@ describe("SalariedWorkersTable (#453)", () => {
     // A search that matches nothing shows the no-results empty state.
     fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "لا يوجد" } })
     expect(screen.getByText("لا توجد نتائج")).toBeTruthy()
+  })
+
+  it("shows exact daily precision, keeps zero distinct from no reference, and filters by reference period", () => {
+    const workers = [
+      { ...makeWorkers(1, "DAILY")[0]!, employeeId: "daily", employeeName: "عامل يومي دقيق", salaryReference: { period: "DAILY" as const, amount: "4500.1234" } },
+      { ...makeWorkers(1, "MONTHLY")[0]!, employeeId: "zero", employeeName: "عامل بصفر", salaryReference: { period: "MONTHLY" as const, amount: "0" } },
+      { ...makeWorkers(1, "MONTHLY")[0]!, employeeId: "none", employeeName: "عامل بلا مرجع", salaryReference: null },
+    ]
+    renderTable(workers)
+
+    const dailyRow = screen.getByText("عامل يومي دقيق").closest("tr")!
+    expect(within(dailyRow).getByText("4,500.1234")).toBeTruthy()
+    const zeroRow = screen.getByText("عامل بصفر").closest("tr")!
+    expect(within(zeroRow).getByText("0")).toBeTruthy()
+    const noReferenceRow = screen.getByText("عامل بلا مرجع").closest("tr")!
+    expect(within(noReferenceRow).getAllByText("—")).toHaveLength(2)
+    expect(within(noReferenceRow).queryByText("0")).toBeNull()
+
+    fireEvent.change(screen.getByLabelText(/الدورية/), { target: { value: "DAILY" } })
+    expect(screen.getByText("1-1 من 1")).toBeTruthy()
+    expect(screen.getByText("عامل يومي دقيق")).toBeTruthy()
+    expect(screen.queryByText("عامل بصفر")).toBeNull()
   })
 
   it("filters by period and resets to page 1", () => {

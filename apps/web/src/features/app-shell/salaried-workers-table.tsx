@@ -1,5 +1,8 @@
 import { AppDate } from "@/components/app-date"
-import { MoneyValue } from "@/features/shared/money-value"
+import { CurrencyRun } from "@/features/shared/money-value"
+import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
+import { formatExactMoney } from "@/features/shared/exact-money-display"
+import { parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -33,10 +36,23 @@ export type SalariedWorkerRow = {
   employeeName: string
   employeePhone: string
   employeeRole: string
-  salaryAmountDzd: number | null
-  salaryPeriod: SalaryPeriodType | null
+  salaryReference: { period: SalaryPeriodType; amount: string } | null
   lastPaymentDate: string | null
   projectAssignments: SalaryProjectAssignmentWindow[]
+}
+
+function formatSalaryReferenceAmount(
+  reference: NonNullable<SalariedWorkerRow["salaryReference"]>,
+  grouped: boolean,
+): string {
+  if (reference.period !== "DAILY") {
+    return formatExactMoney(reference.amount, { grouped }).text
+  }
+
+  const formatted = parseLocalizedUnitPriceInput(reference.amount).format()
+  if (!grouped) return formatted
+  const [whole = "", fraction] = formatted.split(".")
+  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${fraction ? `.${fraction}` : ""}`
 }
 
 /**
@@ -60,6 +76,7 @@ export function SalariedWorkersTable({
   const [periodFilter, setPeriodFilter] = useState<SalaryPeriodFilterValue>("ALL")
 
   const currencyLabel = t("detailPages.salary.currency")
+  const useGrouping = useMoneyGrouping()
   const sortedWorkers = useMemo(
     () => [...workers].sort((a, b) => a.employeeName.localeCompare(b.employeeName, "ar")),
     [workers],
@@ -74,7 +91,7 @@ export function SalariedWorkersTable({
           const haystack = `${worker.employeeName} ${worker.employeeRole}`.toLowerCase()
           if (!haystack.includes(normalizedQuery)) return false
         }
-        if (periodFilter !== "ALL" && worker.salaryPeriod !== periodFilter) {
+        if (periodFilter !== "ALL" && worker.salaryReference?.period !== periodFilter) {
           return false
         }
         if (
@@ -126,10 +143,14 @@ export function SalariedWorkersTable({
                     <p className="text-[11px] text-ink-3" dir="auto">{worker.employeeRole}</p>
                   </td>
                   <td className="px-4 py-3 text-start">
-                    {worker.salaryAmountDzd !== null ? (
+                    {worker.salaryReference ? (
                       <span className="inline-flex items-baseline gap-1.5">
-                        <MoneyValue value={worker.salaryAmountDzd} currencyLabel={currencyLabel} />
-                        <span className="text-[11px] text-ink-3">/ {t(getSalaryPeriodLabelKey(worker.salaryPeriod))}</span>
+                        <CurrencyRun
+                          amount={formatSalaryReferenceAmount(worker.salaryReference, useGrouping)}
+                          currencyLabel={currencyLabel}
+                          className="font-mono tabular-nums text-ink"
+                        />
+                        <span className="text-[11px] text-ink-3">/ {t(getSalaryPeriodLabelKey(worker.salaryReference.period))}</span>
                       </span>
                     ) : (
                       <span className="text-[12.5px] text-ink-4">—</span>
