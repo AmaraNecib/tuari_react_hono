@@ -121,6 +121,7 @@ export function createMonthlyApprovalExecutor<TResult = z.output<typeof exactSal
   try { record = options.store.load() }
   catch (error) { try { options.onState?.("uncertain") } catch { /* Storage errors stay authoritative. */ }; throw error }
   let inFlight = false
+  let retired = false
   const notify = (state: "idle" | "pending" | "uncertain" | "approved") => {
     try { options.onState?.(state) } catch { /* UI state cannot change a durable command result. */ }
   }
@@ -129,6 +130,7 @@ export function createMonthlyApprovalExecutor<TResult = z.output<typeof exactSal
   return {
     get record() { return record },
     async run(payload: ExactSalaryMonthlyApprovalInput): Promise<TResult> {
+      if (retired) throw new Error("Monthly approval is no longer pending; reload before continuing")
       if (inFlight) throw new Error("Monthly approval is already in flight")
       const normalized = normalizePayload(payload)
       if (record && (record.employeeId !== normalized.employeeId || record.requestId !== normalized.requestId || canonical(record.payload) !== canonical(normalized))) {
@@ -139,6 +141,13 @@ export function createMonthlyApprovalExecutor<TResult = z.output<typeof exactSal
       try {
         return await options.store.runExclusive(async () => {
           const durable = options.store.load()
+          if (!durable && record) {
+            // A second tab resolved this intent. Memory must not recreate its fence.
+            record = null
+            retired = true
+            notify("idle")
+            throw new Error("Monthly approval is no longer pending; reload before continuing")
+          }
           if (durable) {
             record = durable
             if (durable.employeeId !== normalized.employeeId || durable.requestId !== normalized.requestId || canonical(durable.payload) !== canonical(normalized)) {
@@ -162,6 +171,7 @@ export function createMonthlyApprovalExecutor<TResult = z.output<typeof exactSal
             const result = exactSalaryMonthlyApprovalResultSchema.parse(raw) as TResult
             options.store.clear(current)
             record = null
+            retired = true
             notify("approved")
             return result
           } catch (error) {

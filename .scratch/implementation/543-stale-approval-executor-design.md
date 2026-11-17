@@ -1,0 +1,11 @@
+# Retire approval executors after durable resolution
+
+Bounded P1 correction to shared-identity-09899bba-review-01.md: a stale executor can restore and resend an approval after another tab receives a valid receipt and clears its durable record.
+
+Under the existing user-identity Web Lock, absence of the durable record now retires an executor that still remembers a pending intent. It clears only its memory, emits idle rather than a fabricated success result, and refuses dispatch with reload guidance. A permanent in-memory retired flag also refuses subsequent calls on that same executor, so catching the first refusal cannot make a second retry recreate the key. A successful local valid-result/clear retires the executor as well. Definitive first rejection still permits editing/retrying on that executor because it has no successful receipt or external resolution.
+
+No storage key/envelope, receipt/fingerprint, schema, contract, dependency or CI changes. A fresh executor is required after retirement. No tombstone protocol is introduced. A missing durable record does not prove approval succeeded, so the stale tab never reports approved without its own valid receipt. Account save keeps the same shared lock and cannot rename across a pending retained record.
+
+Regression creates two independent executors over shared storage and coordination, loads the same pending intent into both, lets the first confirm and clear, then asserts the stale tab's first and repeated retries cannot dispatch, cannot restore storage and do not report approved. The initial test failed against09899bba by resolving/re-sending instead of rejecting: stale-executor-red-01.log,12pass/1fail. After correction, four affected test files pass28cases: stale-executor-green-01.log,10.10seconds. Full web tsc and affected lint exit0. A final assertion also covers repeated execution on the successful executor itself; refresh the focused recovery proof before commit.
+
+Current mode focused-local / CI-final-pending. Carry forward prior reviewer conclusions that the shared legacy/exact Settings bypass is fixed and cache refresh is sound. Unrelated E2E alignment remains uncommitted. Fresh bounded independent review is required. Owner alone may authorize merge; green checks and5/5 do not override that hold.

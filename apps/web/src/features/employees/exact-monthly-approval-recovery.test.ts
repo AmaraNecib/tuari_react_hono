@@ -66,8 +66,10 @@ describe("monthly approval recovery storage", () => {
     const runner = createMonthlyApprovalExecutor({ store, execute })
     await expect(runner.run(input)).resolves.toEqual(validResult())
     expect(writesBeforeSend).toBe(1)
+    await expect(runner.run(input)).rejects.toThrow(/reload/i)
     expect(execute).toHaveBeenCalledTimes(1)
     expect(runner.record).toBeNull()
+    expect(store.load()).toBeNull()
   })
 
   it("fails closed when storage cannot save, without sending", async () => {
@@ -93,6 +95,24 @@ describe("monthly approval recovery storage", () => {
     await expect(retry.run(changed)).rejects.toThrow(/stored monthly approval intent/i)
     await expect(retry.run(input)).resolves.toEqual(validResult())
     expect(reopenedStore.load()).toBeNull()
+  })
+
+  it("retires a stale recovered executor after another tab confirms and clears the intent", async () => {
+    const storage = new MemoryStorage()
+    const firstStore = createStore(storage)
+    firstStore.save({ version: 1, ...scope, employeeId: input.employeeId, requestId: input.requestId, payload: input, ambiguous: true })
+    const confirmed = createMonthlyApprovalExecutor({ store: firstStore, execute: async () => validResult() })
+    const sendFromStaleTab = vi.fn(async () => validResult())
+    const states: string[] = []
+    const stale = createMonthlyApprovalExecutor({ store: createStore(storage), execute: sendFromStaleTab, onState: state => states.push(state) })
+    await expect(confirmed.run(input)).resolves.toEqual(validResult())
+    expect(firstStore.load()).toBeNull()
+    await expect(stale.run(input)).rejects.toThrow(/no longer pending|reload/i)
+    await expect(stale.run(input)).rejects.toThrow(/reload/i)
+    expect(sendFromStaleTab).not.toHaveBeenCalled()
+    expect(firstStore.load()).toBeNull()
+    expect(stale.record).toBeNull()
+    expect(states).not.toContain("approved")
   })
 
   it("clears a definitive first rejection but keeps a reloaded retry ambiguous", async () => {
