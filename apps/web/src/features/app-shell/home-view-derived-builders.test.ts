@@ -391,7 +391,6 @@ describe("home view derived builders", () => {
         endDate: null,
         notes: null,
         actorUserId: null,
-        actorLabel: null,
         transactionId: null,
         createdAt: "2026-03-10T10:00:00.000Z",
         updatedAt: "2026-03-10T10:00:00.000Z",
@@ -405,7 +404,7 @@ describe("home view derived builders", () => {
     })
 
     expect(historyWorkspace.employees.find((employee) => employee.id === "worker-1")?.salaryReference).toEqual(current)
-    expect(history.workHistoryByEmployeeId["worker-1"]?.[0]).toMatchObject({
+    expect(history.workHistoryByEmployeeId["worker-1"]?.find((entry) => entry.id === "state-worker-state-1")).toMatchObject({
       salaryReference: snapshot,
       detail: "الراتب الحالي 4500.1250 دج / يومي",
     })
