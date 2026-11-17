@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
     inventoryMoney: "unavailable", expenses: "unavailable", monetaryReports: "unavailable", fullProjectCost: "unavailable",
   })),
   employeesList: vi.fn(async () => ({ items: [{ id: "exact-worker", firstName: "Exact", lastName: "Worker", phone: "0555000001", roleId: "worker-role", status: "ACTIVE", salaryReference: null, currency: "DZD", notes: null, occupation: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }] })),
+  employeesGet: vi.fn(async () => ({ success: true, message: "Loaded", item: { id: "exact-worker", firstName: "Exact", lastName: "Worker", phone: "0555000001", roleId: "worker-role", status: "ACTIVE", salaryReference: null, currency: "DZD", notes: null, occupation: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" } })),
+  employeeStateHistoryList: vi.fn(async () => ({ items: [] })),
   rolesList: vi.fn(async () => ({ items: [] })),
   projectsList: vi.fn(async () => ({ items: [{ id: "project-a", name: "Project A", location: null, managerId: null, status: "ACTIVE", notes: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }] })),
   warehousesList: vi.fn(async () => ({ items: [{ id: "warehouse-a", name: "Warehouse A", address: "Algiers", managerId: null, status: "ACTIVE", notes: "north site", createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }] })),
@@ -39,6 +41,8 @@ beforeEach(() => {
   setApplicationClientMock({
   applicationCapabilities: mocks.capabilities,
   employeesList: mocks.employeesList,
+  employeesGet: mocks.employeesGet,
+  employeeStateHistoryList: mocks.employeeStateHistoryList,
   rolesList: mocks.rolesList,
   projectsList: mocks.projectsList,
   warehousesList: mocks.warehousesList,
@@ -84,6 +88,28 @@ describe("normal HomeView normal application selector", () => {
     expect(mocks.warehousesList).toHaveBeenCalled()
     expect(mocks.employeesList).toHaveBeenCalled()
     expect(mocks.projectsList).toHaveBeenCalled()
+  })
+
+  it.each([
+    { tab: "finance", tabLabel: "detailPages.employee.financeTab", nextTab: "history", nextLabel: "detailPages.employee.historyTab" },
+    { tab: "history", tabLabel: "detailPages.employee.historyTab", nextTab: "finance", nextLabel: "detailPages.employee.financeTab" },
+  ])("loads employee $tab from route state, updates navigation and restores it after remount", async ({ tab, tabLabel, nextTab, nextLabel }) => {
+    const navigate = mockAllMutations().navigateMock
+    const options = { sessionUser: demoUser, employeeId: "exact-worker", detailTab: tab }
+    const mounted = renderWorkspace("employee-details", options)
+    const activeTab = await screen.findByRole("tab", { name: i18n.t(tabLabel) })
+    expect(activeTab.getAttribute("aria-selected")).toBe("true")
+
+    fireEvent.click(screen.getByRole("tab", { name: i18n.t(nextLabel) }))
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(expect.objectContaining({
+      to: "/employees/$employeeId",
+      params: { employeeId: "exact-worker" },
+      search: { tab: nextTab },
+    })))
+
+    mounted.unmount()
+    renderWorkspace("employee-details", { ...options, detailTab: nextTab })
+    expect((await screen.findByRole("tab", { name: i18n.t(nextLabel) })).getAttribute("aria-selected")).toBe("true")
   })
 
   it("routes normal project details through the production worker page and supported history clients", async () => {

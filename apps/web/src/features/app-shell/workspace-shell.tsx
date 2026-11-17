@@ -21,7 +21,7 @@ import { getArabicStatusLabel } from "@/features/shared/status-meta"
 
 const idKey = (workspaceId: string, userId: string, resource: string) => ["application", workspaceId, userId, resource] as const
 
-export function WorkspaceShell({ client, capabilities, copy, employeeId, projectId, warehouseId, detailTab, onProjectTab = () => {}, onWarehouseTab = () => {}, page, session, theme, resetWorkspacePending, updateAccountPending, onResetWorkspace, onSaveAccount, onThemeToggle, onUpdateApplied, onPendingCommandChange }: {
+export function WorkspaceShell({ client, capabilities, copy, employeeId, projectId, warehouseId, detailTab, onEmployeeTab = () => {}, onProjectTab = () => {}, onWarehouseTab = () => {}, page, session, theme, resetWorkspacePending, updateAccountPending, onResetWorkspace, onSaveAccount, onThemeToggle, onUpdateApplied, onPendingCommandChange }: {
   client: ApplicationClient
   capabilities: ApplicationCapabilities
   copy: HomeViewCopy
@@ -29,6 +29,7 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, project
   projectId?: string
   warehouseId?: string
   detailTab?: string
+  onEmployeeTab?: (id: string, tab: string) => void
   onProjectTab?: (id: string, tab: string) => void
   onWarehouseTab?: (id: string, tab: string) => void
   page: HomeViewPage
@@ -127,7 +128,7 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, project
   if ((page === "employee-details" || page === "employee-edit") && (projectAssignments.isError || warehouseAssignments.isError || managerAssignments.isError)) return <Surface role="alert" variant="panel" className="p-5"><p>{t("shell.loadWorkspaceError")}</p><Button onClick={() => { void Promise.all([projectAssignments.refetch(), warehouseAssignments.refetch(), managerAssignments.refetch()]) }}>{t("common.retry")}</Button></Surface>
   if (page === "employees-create") return <EmployeeCreateSection context={baseContext} onCancel={() => { window.location.href = "/employees" }} onDone={() => { void queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "employees") }); window.location.href = "/employees" }} />
   if (page === "employees") return <ExactEmployeeTable {...baseContext} assignmentReferences={{ people, projects: projectRows, warehouses: warehouseRows, managerAssignments: employeeListManagerAssignments.data?.items ?? [], projectAssignments: employeeListProjectAssignments.data?.items ?? [], warehouseAssignments: employeeListWarehouseAssignments.data?.items ?? [] }} onDeleted={() => queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "employees") })} onView={id => { window.location.href = `/employees/${encodeURIComponent(id)}` }} onEdit={id => { window.location.href = `/employees/${encodeURIComponent(id)}/edit` }} onAdd={() => { window.location.href = "/employees/create" }} />
-  if (page === "employee-details" && employeeId) return <EmployeeDetailsPage mode="exact" {...scopedContext} employeeId={employeeId} onDone={onDone} onCancel={onDone} />
+  if (page === "employee-details" && employeeId) return <EmployeeDetailsPage mode="exact" {...scopedContext} employeeId={employeeId} detailTab={detailTab} onTabChange={tab => onEmployeeTab(employeeId, tab)} onDone={onDone} onCancel={onDone} />
   if (page === "employee-edit" && employeeId) {
     return <EmployeeEditPage mode="exact" {...scopedContext} employeeId={employeeId} onDone={onDone} onCancel={() => { window.location.href = `/employees/${encodeURIComponent(employeeId)}` }} onBackToEmployees={onDone} />
   }

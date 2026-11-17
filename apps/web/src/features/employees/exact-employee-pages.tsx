@@ -39,7 +39,7 @@ export type ExactEmployeeUiContext = {
   currentManagedWarehouseIds?: string[]
   currentPlacement?: { nextType: "NONE" | "PROJECT" | "WAREHOUSE"; managerId?: string; projectId?: string; warehouseId?: string }
 }
-export type ExactEmployeePageProps = ExactEmployeeUiContext & { employeeId: string; onDone: () => void; onCancel: () => void; onBackToEmployees?: () => void; workHistory?: Array<{ id: string; title: string; detail?: string | null; typeLabel: string; periodLabel: ReactNode; statusLabel: string; sortValue?: string }> }
+export type ExactEmployeePageProps = ExactEmployeeUiContext & { employeeId: string; onDone: () => void; onCancel: () => void; onBackToEmployees?: () => void; detailTab?: string; onTabChange?: (tabId: string) => void; workHistory?: Array<{ id: string; title: string; detail?: string | null; typeLabel: string; periodLabel: ReactNode; statusLabel: string; sortValue?: string }> }
 export type ExactEmployeeBatchProps = ExactEmployeeUiContext & { onDone: () => void; onCancel: () => void }
 
 function serverError(error: unknown): string {
@@ -177,7 +177,8 @@ export function ExactEmployeeDetailsPage(props: ExactEmployeePageProps) {
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [activeTab, setActiveTab] = useState("personal")
+  const [localActiveTab, setLocalActiveTab] = useState("personal")
+  const activeTab = props.detailTab ?? localActiveTab
   const load = useCallback(async () => {
     setLoading(true); setFailure(null)
     try { const [person, records] = await Promise.all([client.employeesGet({ id: employeeId }), client.employeeStateHistoryList({ employeeId })]); setEmployee(requireSuccess(person)); setHistory(records.items) }
@@ -232,7 +233,7 @@ export function ExactEmployeeDetailsPage(props: ExactEmployeePageProps) {
   return <EmployeeDetailsView
     employee={display}
     activeTab={activeTab}
-    onTabChange={setActiveTab}
+    onTabChange={props.onTabChange ?? setLocalActiveTab}
     workHistory={historyRows}
     canAssignWorkplace={worker && employee.status === "ACTIVE"}
     beforeTabs={deleteError ? <p role="alert">{deleteError}</p> : null}
