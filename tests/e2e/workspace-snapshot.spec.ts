@@ -57,6 +57,6 @@ test("the exact workspace loads only supported scoped lists and never the numeri
   expect(snapshotRequests).toEqual([])
   const procedures = individualListRequests.map(url => new URL(url).pathname.split("/").at(-1))
   expect(procedures.sort()).toEqual(["employeesList", "projectsList", "rolesList", "warehousesList"])
-  await expect(page.getByText("هذا القسم المالي غير متاح في هذه النسخة.").first()).toBeVisible()
+  await expect(page.getByText("هذا القسم غير متاح في هذه النسخة.").first()).toBeVisible()
   await expect(page.getByRole("link", { name: /إضافة مشروع/ })).toBeVisible()
 })

@@ -29,7 +29,7 @@ export async function assertCapabilityBoundary(page: Page, input: {
   page.on("request", track)
   await page.goto(input.path)
   const main = page.getByRole("main")
-  await expect(main.getByText("هذا القسم المالي غير متاح في هذه النسخة.", { exact: true })).toBeVisible()
+  await expect(main.getByText("هذا القسم غير متاح في هذه النسخة.", { exact: true })).toBeVisible()
   await expect(main.locator("form")).toHaveCount(0)
   expect(unexpectedRequests).toEqual([])
   page.off("request", track)

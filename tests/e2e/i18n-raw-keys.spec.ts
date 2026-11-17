@@ -21,7 +21,7 @@ test("unavailable transactions and debt routes render translated capability copy
   await bootstrapOrSignIn(page)
   for (const path of ["/transactions", "/debts"]) {
     await page.goto(path)
-    await expect(page.getByRole("main").getByText("هذا القسم المالي غير متاح في هذه النسخة.", { exact: true })).toBeVisible()
+    await expect(page.getByRole("main").getByText("هذا القسم غير متاح في هذه النسخة.", { exact: true })).toBeVisible()
     await expect(page.getByRole("main").locator("form")).toHaveCount(0)
     await expectNoRawKeys(page)
   }
