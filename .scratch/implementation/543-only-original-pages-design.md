@@ -63,3 +63,7 @@ Project and warehouse archive clicks now select a pending record and open the ex
 - `testing/dashboard-stat-bands-never-claim-a-false-zero-for-loading-error-and-format-money-deterministically`: unavailable financial dashboard values remain unavailable, not zero.
 
 Lesson candidates: none identified yet.
+
+## #555 cleanup correction: workforce transport adapter
+
+At base `61c9a5e75771cb0da0fc65cd5728540fc71f8c16`, `exact-workforce-client.ts` only wrapped `createORPCClient(createWorkspaceRpcLink(mount))`. Its only importers were `orpc-client.test.ts` and `exact-salary-earnings-section.test.tsx`; no production module imported it. Production uses the configured `applicationClient` singleton, and `WorkspaceShell` builds its narrow workforce facade from `client.workforceExact`. Remove the redundant wrapper. Keep transport validation, configured origin, authenticated browser/desktop dispatch and custom mount checks on `createWorkspaceRpcLink`; the salary proxy test now uses `applicationClient.workforceExact`. This is a narrow obsolete-module cleanup, not resolution of the full #555 diff.

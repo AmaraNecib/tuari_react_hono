@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "@/i18n"
 import { ar } from "@/i18n/resources/ar"
 import { ExactSalaryEarningsSection } from "./exact-salary-earnings-section"
+import { applicationClient } from "@/lib/application-client"
 import { createMonthlyApprovalStore } from "./exact-monthly-approval-recovery"
 import { createKeyedAsyncTestLock } from "@/test-utils/keyed-async-test-lock"
 
@@ -49,10 +50,8 @@ describe("real workspace salary earnings page", () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () => new Response(JSON.stringify({ json: [] }), { headers: { "content-type": "application/json" } }))
     vi.stubGlobal("fetch", fetch)
     try {
-      const { createExactWorkforceClient } = await import("./exact-workforce-client")
       const query = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
-      const workforceClient = createExactWorkforceClient("rpc/workforceExact")
-      render(<QueryClientProvider client={query}><ExactSalaryEarningsSection projects={[]} employees={employees} workspaceId="11111111-1111-4111-8111-111111111111" userId="actual-workspace-user" workforceClient={workforceClient} onPendingCommandChange={state.pending} /></QueryClientProvider>)
+      render(<QueryClientProvider client={query}><ExactSalaryEarningsSection projects={[]} employees={employees} workspaceId="11111111-1111-4111-8111-111111111111" userId="actual-workspace-user" workforceClient={applicationClient.workforceExact} onPendingCommandChange={state.pending} /></QueryClientProvider>)
       fireEvent.change(screen.getByLabelText(label("employee")), { target: { value: "real-worker" } })
       await waitFor(() => expect(fetch).toHaveBeenCalledOnce())
       const request = fetch.mock.calls[0]![0] as Request
