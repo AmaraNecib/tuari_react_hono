@@ -70,7 +70,7 @@ export function findE2eDatabase(): string {
   if (!declared) throw new Error("Direct-SQLite E2E fixtures require Playwright's declared APP_DB_PATH.")
   const root = resolve(process.cwd())
   const apiData = resolve(root, "apps", "api", "data")
-  const candidate = resolve(isAbsolute(declared) ? declared : join(apiData, declared))
+  const candidate = resolve(isAbsolute(declared) ? declared : join(root, "apps", "api", declared))
   const rel = relative(apiData, candidate)
   if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel) ||
       !/^tuari\.phase1\.integration\..+\.sqlite$/.test(candidate.slice(apiData.length + 1))) {
