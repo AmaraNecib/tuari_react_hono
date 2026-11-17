@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { entityIdSchema, employeeBatchLimit } from "./core";
 import {
-  employeeSchema, employeeStateHistorySchema, employeeSalaryPaymentSchema,
+  employeeSchema, employeeStateHistorySchema,
   employeeCreateInputSchema, employeeUpdateInputSchema, employeeBatchCreateInputSchema, employeeBatchCreateRowInputSchema,
   employeeBatchCreateResultSchema, employeeSaveInputSchema,
 } from "./workforce";
@@ -38,9 +38,6 @@ export const exactEmployeeSchema = employeeSchema.omit({ salaryAmountDzd: true, 
 export const exactEmployeeStateHistorySchema = employeeStateHistorySchema.omit({ salaryAmountDzd: true, salaryPeriod: true }).extend({
   salaryReference: exactSalaryReferenceSchema.nullable(), currency: z.literal("DZD"),
 }).strict();
-export const exactEmployeeSalaryPaymentSchema = employeeSalaryPaymentSchema.extend({
-  expectedAmountDzd: exactSalaryAmountSchema, actualAmountDzd: exactSalaryAmountSchema, currency: z.literal("DZD"),
-}).strict();
 export const exactEmployeeCreateInputSchema = employeeCreateInputSchema.omit({ salaryAmountDzd: true, salaryPeriod: true }).extend({
   salaryReference: exactSalaryReferenceSchema.nullable().optional(),
 }).strict();
@@ -49,7 +46,6 @@ export const exactEmployeeUpdateInputSchema = employeeUpdateInputSchema.omit({ s
 }).strict();
 export type ExactEmployee = z.infer<typeof exactEmployeeSchema>;
 export type ExactEmployeeStateHistory = z.infer<typeof exactEmployeeStateHistorySchema>;
-export type ExactEmployeeSalaryPayment = z.infer<typeof exactEmployeeSalaryPaymentSchema>;
 export const exactEmployeeBatchCreateRowInputSchema = employeeBatchCreateRowInputSchema.omit({ salaryAmountDzd: true, salaryPeriod: true }).extend({
   salaryReference: exactSalaryReferenceSchema.nullable().optional(),
 }).strict();

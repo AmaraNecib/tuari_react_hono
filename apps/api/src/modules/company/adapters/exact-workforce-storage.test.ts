@@ -5,33 +5,23 @@ import { describe, expect, it } from "vitest";
 import { createDatabaseConnection } from "../../../infrastructure/database/factory";
 import { createFifoLock } from "../../../infrastructure/database/fifo-lock";
 import { exactWorkforceSchemaStatements } from "./exact-workforce-schema";
-import { bindExactSalaryReference, readExactSalaryReference, readExactSalaryPayment, readExactEmployee, readExactEmployeeHistory } from "./exact-workforce-storage";
+import { bindExactSalaryReference, readExactSalaryReference, readExactEmployee, readExactEmployeeHistory } from "./exact-workforce-storage";
 
 describe.each([["plain", ""], ["keyed", "527-synthetic-key"]])("exact workforce reference storage %s", (_name, key) => {
-  it("reads existing cash meaning and repeated project days without inferring approved earnings", async () => {
-    const db = createDatabaseConnection(join(mkdtempSync(join(tmpdir(), "tuari-527-cash-")), "fixture.sqlite"), key);
+  it("refuses a reference read while the shared connection FIFO is held", async () => {
+    const db = createDatabaseConnection(join(mkdtempSync(join(tmpdir(), "tuari-543-fifo-")), "fixture.sqlite"), key);
     const lock = createFifoLock();
     try {
-      db.exec("CREATE TABLE role(id TEXT PRIMARY KEY); CREATE TABLE user(id TEXT PRIMARY KEY); CREATE TABLE project(id TEXT PRIMARY KEY); INSERT INTO role VALUES ('worker'); INSERT INTO project VALUES ('A')");
+      db.exec("CREATE TABLE role(id TEXT PRIMARY KEY); CREATE TABLE user(id TEXT PRIMARY KEY); INSERT INTO role VALUES ('worker')");
       for (const sql of exactWorkforceSchemaStatements) db.exec(sql);
-      const time = "2026-11-10T00:00:00.000Z";
-      db.prepare("INSERT INTO employee(id,first_name,last_name,phone,role_id,status,created_at,updated_at) VALUES ('worker','Test','Worker','0550000000','worker','ACTIVE',?,?)").run(time, time);
-      db.prepare("INSERT INTO employee_salary_payment(id,employee_id,period_type,days,expected_amount_minor,actual_amount_minor,payment_date,created_at,updated_at) VALUES ('cash','worker','MONTHLY',30,?,?, ?,?,?)").run(3000000n, 9007199254740993n, time, time, time);
-      const split = db.prepare("INSERT INTO employee_salary_payment_split(id,payment_id,project_id,days,created_at) VALUES (?,'cash','A',?,?)");
-      split.run("first", 5, time);
-      split.run("second", 7, time);
-      const payment = readExactSalaryPayment(db, "cash", lock);
-      expect(payment).toMatchObject({ employeeId: "worker", expectedAmountDzd: "30000.00", actualAmountDzd: "90071992547409.93", days: 30, currency: "DZD", projectSplits: [{ projectId: "A", days: 5 }, { projectId: "A", days: 7 }] });
-      expect(payment).not.toHaveProperty("approvedAmount");
-      expect(readExactSalaryPayment(db, "missing", lock)).toBeUndefined();
-      expect(db.prepare("SELECT days FROM employee_salary_payment WHERE id='cash'").get()).toEqual({ days: 30 });
+      db.prepare("INSERT INTO employee(id,first_name,last_name,phone,role_id,status,salary_reference_units,salary_period,created_at,updated_at) VALUES ('worker','Test','Worker','0550000000','worker','ACTIVE',10000,'MONTHLY','now','now')").run();
       let entered!: () => void;
       let release!: () => void;
       const started = new Promise<void>(resolve => { entered = resolve; });
       const waiting = new Promise<void>(resolve => { release = resolve; });
       const held = lock.run(async () => { entered(); await waiting; });
       await started;
-      try { expect(() => readExactSalaryPayment(db, "cash", lock)).toThrow(/connection busy/); }
+      try { expect(() => readExactSalaryReference(db, "employee", "worker", lock)).toThrow(/connection busy/); }
       finally { release(); await held; }
     } finally { db.close(); }
   });

@@ -12,7 +12,11 @@ The extraction excludes payroll cash records, opening reviews, advances, repayme
 
 ## Review risk and proof
 
-Target examples include A/B/A amounts 25,000 / 37,500 / 15,000? The approved acceptance values are A=10,000 + 15,000, B=37,500, total=62,500; A cost=25,000 and B cost=37,500. Also cover explicit zero/unallocated values, partial periods, independent edits, invalid references and amounts, duplicate request IDs, transaction rollback, and native plain/keyed persistence. Run focused contract/API tests, normal-root integration, typecheck and lint; CI-final remains pending. Architecture seam: the normal application router and contracts expose only employee operations plus approved earnings, monthly allocation and labor-cost reads.
+The approved A/B/A amounts are 10,000, 37,500 and 15,000. Total earnings are 62,500; project A costs 25,000 and project B costs 37,500. Also cover explicit zero/unallocated values, partial periods, independent edits, invalid references and amounts, duplicate request IDs, transaction rollback, and native plain/keyed persistence. Run focused contract/API tests, normal-root integration, typecheck and lint; CI-final remains pending. Architecture seam: the normal application router and contracts expose only employee operations plus approved earnings, monthly allocation and labor-cost reads.
+
+## Correction record
+
+My initial eight-file proof omitted `exact-workforce-storage.test.ts`. Its cash fixture referenced `employee_salary_payment` tables that the narrowed schema no longer creates. This correction removes that new cash reader and public shape, replaces the cash fixture with shared-FIFO refusal coverage, and reruns the storage test. The baseline `PAYROLL_OPENING` and `PAYROLL_ADVANCE` producer values are restored unchanged; only the shared-startup comment differs from develop.
 
 ## Lessons
 

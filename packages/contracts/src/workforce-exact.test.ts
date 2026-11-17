@@ -6,7 +6,6 @@ import {
   suggestExactSalaryAllocations,
   exactEmployeeCreateInputSchema,
   exactEmployeeUpdateInputSchema,
-  exactEmployeeSalaryPaymentSchema,
 } from "./workforce-exact";
 
 const segment = (id: string, projectId: string, amount: string, days?: number) => ({ id, projectId, amount, ...(days === undefined ? {} : { days }) });
@@ -24,8 +23,6 @@ describe("opt-in exact workforce input and suggestions", () => {
     expect(exactEmployeeUpdateInputSchema.safeParse({ id: "worker", salaryAmountDzd: 100 }).success).toBe(false);
     expect(exactEmployeeUpdateInputSchema.safeParse({ id: "worker", salaryPeriod: "DAILY" }).success).toBe(false);
     expect(exactEmployeeCreateInputSchema.parse({ firstName: "Test", lastName: "Worker", phone: "0550000000", roleId: "worker" }).salaryReference).toBeUndefined();
-    expect(exactEmployeeSalaryPaymentSchema.shape.actualAmountDzd.parse("90071992547409.93")).toBe("90071992547409.93");
-    expect(exactEmployeeSalaryPaymentSchema.shape.expectedAmountDzd.safeParse(100).success).toBe(false);
   });
   it("keeps a DAILY reference at four places until final money calculation", () => {
     const reference = exactSalaryReferenceSchema.parse({ period: "DAILY", amount: "1500.125" });

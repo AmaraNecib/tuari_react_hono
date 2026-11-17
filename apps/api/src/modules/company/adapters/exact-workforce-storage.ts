@@ -1,7 +1,7 @@
 import {
-  Money, UnitPrice, SalaryReference, exactEmployeeSalaryPaymentSchema,
+  Money, UnitPrice, SalaryReference,
   exactEmployeeSchema, exactEmployeeStateHistorySchema,
-  type ExactEmployeeSalaryPayment, type ExactEmployee, type ExactEmployeeStateHistory,
+  type ExactEmployee, type ExactEmployeeStateHistory,
 } from "@tuari/contracts";
 import { bindMoney, bindUnitPrice, prepareMoneyRead, prepareUnitPriceRead } from "../../../infrastructure/database/exact-money-storage";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
@@ -53,19 +53,6 @@ function readEmployeeHistory(db: BetterSqliteDatabase, employeeId: string): Exac
   return rows.map(row => exactEmployeeStateHistorySchema.parse({ ...row, salaryReference: readSalaryReference(db, "employee_state_history", row.id) }));
 }
 
-/** Historical cash remains cash. This reader never reconstructs earned wages. */
-function readSalaryPayment(db: BetterSqliteDatabase, id: string): ExactEmployeeSalaryPayment | undefined {
-  const row = db.prepare(`SELECT id,employee_id AS employeeId,period_type AS periodType,days,currency,
-    payment_date AS paymentDate,note,actor_user_id AS actorUserId,transaction_id AS transactionId,
-    created_at AS createdAt,updated_at AS updatedAt FROM employee_salary_payment WHERE id=?`).get(id) as Record<string, unknown> | undefined;
-  if (!row) return undefined;
-  const expected = prepareMoneyRead(db, "SELECT expected_amount_minor AS minor_units FROM employee_salary_payment WHERE id=?").get(id);
-  const actual = prepareMoneyRead(db, "SELECT actual_amount_minor AS minor_units FROM employee_salary_payment WHERE id=?").get(id);
-  if (!expected || !actual) throw new TypeError("Recorded cash amounts are required");
-  const projectSplits = db.prepare("SELECT project_id AS projectId,days FROM employee_salary_payment_split WHERE payment_id=? ORDER BY created_at,id").all(id);
-  return exactEmployeeSalaryPaymentSchema.parse({ ...row, expectedAmountDzd: expected.toWire(), actualAmountDzd: actual.toWire(), projectSplits });
-}
-
 function snapshot<T>(db: BetterSqliteDatabase, lock: FifoLock, work: () => T): T {
   return lock.runSync(() => db.transaction(work).immediate());
 }
@@ -79,7 +66,4 @@ export function readExactEmployee(db: BetterSqliteDatabase, id: string, lock: Fi
 }
 export function readExactEmployeeHistory(db: BetterSqliteDatabase, employeeId: string, lock: FifoLock): ExactEmployeeStateHistory[] {
   return snapshot(db, lock, () => readEmployeeHistory(db, employeeId));
-}
-export function readExactSalaryPayment(db: BetterSqliteDatabase, id: string, lock: FifoLock): ExactEmployeeSalaryPayment | undefined {
-  return snapshot(db, lock, () => readSalaryPayment(db, id));
 }
