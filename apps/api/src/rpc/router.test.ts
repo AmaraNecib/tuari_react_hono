@@ -1371,6 +1371,7 @@ describe("RPC router", () => {
           employeeId: "emp-1",
           employeeName: "كريم ب.",
           ordinal: 0,
+          days: 25,
           amount: "36000.00",
           periodStart: "2026-05-01T00:00:00.000Z",
           periodEnd: "2026-05-31T00:00:00.000Z",

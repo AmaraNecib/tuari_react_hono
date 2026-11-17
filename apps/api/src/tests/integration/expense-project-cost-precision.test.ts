@@ -86,5 +86,24 @@ describe("normal expense amounts consumed by project cost", { timeout: 60_000 },
         parts: { expensesAmount: "12.34" },
       },
     });
+
+    for (const amount of [1_000_000_000_000_000, Number.MAX_SAFE_INTEGER]) {
+      await client.expensesCreate({
+        amount,
+        expenseDate: "2026-10-04T10:00:00.000Z",
+        whatFor: "Whole final amount",
+        projectId,
+      });
+    }
+    await expect(client.projectCostGet({ projectId })).resolves.toMatchObject({
+      success: true,
+      item: {
+        expenses: expect.arrayContaining([
+          expect.objectContaining({ amount: "1000000000000000.00" }),
+          expect.objectContaining({ amount: "9007199254740991.00" }),
+        ]),
+        parts: { expensesAmount: "10007199254741003.34" },
+      },
+    });
   });
 });

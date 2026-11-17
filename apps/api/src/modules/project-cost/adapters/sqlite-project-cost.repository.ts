@@ -33,7 +33,8 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
       e.id AS id,
       e.expense_date AS expense_date,
       e.what_for AS what_for,
-      CAST(e.amount_dzd AS TEXT) AS amount,
+      -- Keep this legacy REAL on SQLite's native numeric decoder; CAST AS TEXT can emit a form Money rejects.
+      e.amount_dzd AS amount,
       e.responsible_worker_id AS responsible_worker_id,
       TRIM(COALESCE(emp.first_name, '') || ' ' || COALESCE(emp.last_name, '')) AS responsible_worker_name,
       e.seller_id AS seller_id,
