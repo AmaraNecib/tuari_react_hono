@@ -58,7 +58,7 @@ beforeEach(() => {
   },
   })
 })
-afterEach(() => { cleanup(); window.localStorage.clear(); setApplicationClientMock(null) })
+afterEach(() => { cleanup(); window.localStorage.clear(); setApplicationClientMock(null); vi.unstubAllGlobals() })
 
 describe("normal HomeView normal application selector", () => {
   it("selects exact signed-in pages after authenticated capabilities without loading numeric workspace data", async () => {
@@ -108,6 +108,7 @@ describe("normal HomeView normal application selector", () => {
   })
 
   it("synchronously fences the real root sign-out action while approval is unresolved", async () => {
+    vi.stubGlobal("navigator", { locks: { request: async (_name: string, _options: unknown, operation: () => Promise<unknown>) => operation() } })
     const mutations = mockAllMutations()
     let finish: ((value: never) => void) | undefined
     mocks.approveMonthlyEarnings.mockImplementation(() => new Promise(resolve => { finish = resolve }))

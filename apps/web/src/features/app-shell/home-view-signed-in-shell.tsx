@@ -23,6 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { RecordDeleteConfirmation } from "@/features/shared/record-delete-confirmation"
 
 import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewBreadcrumbItem } from "./home-view-breadcrumbs"
@@ -489,24 +490,7 @@ export function HomeViewSignedInShell({
       )}
 
       {/* Delete confirmation dialog */}
-      <AlertDialog
-        open={Boolean(pendingDelete)}
-        onOpenChange={(open) => (!open && !deletePending ? onPendingDeleteChange(null) : null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{copy.shell.destructiveTitle}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {copy.shell.destructiveDescription}
-              {pendingDelete ? ` ${pendingDelete.label}` : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletePending}>{copy.common.cancel}</AlertDialogCancel>
-            <AlertDialogAction disabled={deletePending} onClick={onConfirmDelete}>{copy.common.confirm}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RecordDeleteConfirmation pendingLabel={pendingDelete?.label ?? null} pending={deletePending} title={copy.shell.destructiveTitle} description={copy.shell.destructiveDescription} cancelLabel={copy.common.cancel} confirmLabel={copy.common.confirm} onDismiss={() => onPendingDeleteChange(null)} onConfirm={onConfirmDelete} />
 
       {/* Search dialog */}
       <SearchDialog

@@ -26,6 +26,20 @@ const ctx = (overrides: Record<string, unknown> = {}) => ({
 afterEach(cleanup)
 
 describe("exact employee page seams", () => {
+  it("requires the original confirmation dialog before deleting an exact employee", async () => {
+    const props = ctx()
+    render(<ExactEmployeeTable {...props} onView={vi.fn()} onEdit={vi.fn()} />)
+    await screen.findByText("Amina Kaci")
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("common.delete") }))
+    expect(props.client.employeesDelete).not.toHaveBeenCalled()
+    const dialog = await screen.findByRole("alertdialog")
+    expect(within(dialog).getByText("Amina Kaci", { exact: false })).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole("button", { name: i18n.t("common.cancel") }))
+    expect(props.client.employeesDelete).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("common.delete") }))
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: i18n.t("common.confirm") }))
+    await waitFor(() => expect(props.client.employeesDelete).toHaveBeenCalledExactlyOnceWith({ id: employee.id }))
+  })
   it("uses the original edit form sections and controls for the exact adapter", async () => {
     const props = ctx()
     render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
@@ -207,6 +221,7 @@ describe("exact employee page seams", () => {
     render(<EmployeeDetailsPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
     await screen.findAllByText("0.0001")
     fireEvent.click(screen.getByRole("button", { name: i18n.t("common.delete") }))
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: i18n.t("common.confirm") }))
     expect((await screen.findByRole("alert")).textContent).toContain("Employee has linked work history")
     expect(await screen.findByRole("heading", { name: "Amina Kaci" })).toBeTruthy()
     expect(props.client.employeeStateHistoryList).toHaveBeenCalledWith({ employeeId: "employee-a" })
