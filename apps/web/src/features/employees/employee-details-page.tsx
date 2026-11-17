@@ -168,7 +168,7 @@ export function EmployeeDetailsPage({
               onOpenChange={setPaymentDialogOpen}
             />
             <Button size="lg" onClick={() => setPaymentDialogOpen(true)}>
-              {t("salaries.addPayment")}
+              {t("earnings.approve")}
             </Button>
           </>
         ) : undefined
@@ -257,7 +257,7 @@ export function EmployeeDetailsPage({
               </div>
               {isWorker && employee.status === "ACTIVE" ? (
                 <Button size="lg" onClick={() => setPaymentDialogOpen(true)}>
-                  {t("salaries.addPayment")}
+                  {t("earnings.approve")}
                 </Button>
               ) : null}
             </div>

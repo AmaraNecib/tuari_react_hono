@@ -103,7 +103,7 @@ describe("EmployeeDetailsPage earnings entry", () => {
     renderDetails(worker({ salaryReference: { period: "DAILY", amount: "4500.1234" } }))
 
     expect(screen.getByText("4,500.1234")).toBeTruthy()
-    fireEvent.click(screen.getAllByRole("button", { name: "إضافة دفعة" })[0]!)
+    fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
 
     const dialog = await screen.findByRole("dialog")
     expect(dialog).toBeTruthy()
@@ -154,7 +154,7 @@ describe("EmployeeDetailsPage earnings entry", () => {
 
   it("opens approval without a salary reference and accepts an explicit earned amount", async () => {
     renderDetails(worker({ salaryReference: null }))
-    fireEvent.click(screen.getAllByRole("button", { name: "إضافة دفعة" })[0]!)
+    fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
 
     await screen.findByRole("dialog")
     fireEvent.change(screen.getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري"), { target: { value: "1250" } })
