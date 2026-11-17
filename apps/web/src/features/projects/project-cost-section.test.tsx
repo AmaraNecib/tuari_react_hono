@@ -153,7 +153,7 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText("260,000", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
     const amounts = [...document.querySelectorAll('span[dir="ltr"] > span[dir="rtl"] + bdi[dir="ltr"]')]
     expect(amounts.map(el => el.textContent)).toEqual([
-      "260,000", "10,000", "36,000", "180,000", "34,000", "10,000", "36,000", "180,000", "+34,000", "180,000", "180,000",
+      "260,000", "10,000", "36,000", "180,000", "34,000", "10,000", "36,000", "180,000", "850", "+34,000", "180,000", "180,000",
     ])
     expect(amounts.every(el => el.previousElementSibling?.textContent === "دج" && el.previousElementSibling.getAttribute("dir") === "rtl")).toBe(true)
     expect(document.body.textContent).not.toContain("[object Object]")
@@ -172,14 +172,34 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText(/إضافة إلى المشروع/)).toBeTruthy()
   })
 
-  it("shows the backend's four exact source totals without deriving share percentages", () => {
+  it("preserves the source markers, exact-derived bars and percentage labels", () => {
     prime(cost())
     render(<ProjectCostSection projectId="p-1" />)
 
     for (const amount of ["10,000", "36,000", "180,000", "34,000"]) {
       expect(screen.getAllByText(amount, { selector: 'bdi[dir="ltr"]' }).length).toBeGreaterThan(0)
     }
-    expect(screen.queryByText(/^\d+%$/)).toBeNull()
+    for (const share of ["4%", "14%", "69%", "13%"]) {
+      expect(screen.getByText(share)).toBeTruthy()
+    }
+    for (const [color, width] of [["bg-chart-1", "4%"], ["bg-chart-2", "14%"], ["bg-chart-3", "69%"], ["bg-chart-4", "13%"]]) {
+      expect(document.querySelectorAll(`.${color}`)).toHaveLength(2)
+      expect(document.querySelector(`.${color}[style*="width"]`)?.getAttribute("style")).toContain(`width: ${width}`)
+    }
+  })
+
+  it("renders a four-place material unit price with the DZD currency", () => {
+    const data = cost()
+    const movement = data.materialMovements[0]!
+    movement.unitPrice = "850.1250"
+    movement.quantity = "1234.500000"
+    prime(data)
+    render(<ProjectCostSection projectId="p-1" />)
+
+    const price = screen.getByText("850.125", { selector: 'bdi[dir="ltr"]' })
+    expect(price.previousElementSibling?.textContent).toBe("دج")
+    expect(price.previousElementSibling?.getAttribute("dir")).toBe("rtl")
+    expect(screen.getByText(/1,234\.5 كيس/)).toBeTruthy()
   })
 
   it("marks a material movement out of the project as a reversal", () => {
@@ -237,13 +257,20 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText(/المواد الخارجة من هذا المشروع أكثر من الداخلة إليه/)).toBeTruthy()
   })
 
-  it("renders the backend's negative net amount and its warning without calculating a share", () => {
+  it("keeps source shares clamped for a negative material net", () => {
     prime(negativeNetCost())
     render(<ProjectCostSection projectId="p-1" />)
 
     expect(screen.getByText("8,500", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
     expect(screen.getByText("-1,500", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
-    expect(screen.queryByText(/^\d+%$/)).toBeNull()
+    expect(screen.queryByText("118%")).toBeNull()
+    expect(screen.getByText("100%")).toBeTruthy()
+    const shares = screen.getAllByText(/^\d+%$/)
+    expect(shares.length).toBeGreaterThan(0)
+    for (const share of shares) {
+      expect(Number.parseInt(share.textContent ?? "", 10)).toBeLessThanOrEqual(100)
+    }
+    expect(screen.getAllByText("0%")).toHaveLength(3)
   })
 
   it("shows the parked asset inventory value separately from the cost total", () => {

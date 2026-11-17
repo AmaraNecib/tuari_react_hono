@@ -1,9 +1,9 @@
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "@tanstack/react-router"
 
-import type { ProjectCost } from "@tuari/contracts"
+import { UnitPrice, type ProjectCost } from "@tuari/contracts"
 
-import { MoneyValue } from "@/features/shared/money-value"
+import { CurrencyRun, MoneyValue } from "@/features/shared/money-value"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
@@ -14,6 +14,23 @@ import { useProjectCostQuery } from "./project-cost-queries"
 
 function formatDay(iso: string) {
   return <AppDate value={iso} />
+}
+
+function formatQuantity(value: string) {
+  const [whole = "", fraction] = value.split(".")
+  const groupedWhole = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+  const trimmedFraction = fraction?.replace(/0+$/, "")
+  return trimmedFraction ? `${groupedWhole}.${trimmedFraction}` : groupedWhole
+}
+
+function percentOf(value: string, total: string) {
+  const amountMinor = BigInt(value.replace(".", ""))
+  const totalMinor = BigInt(total.replace(".", ""))
+  if (totalMinor <= 0n || amountMinor <= 0n) return 0
+  if (amountMinor >= totalMinor) return 100
+
+  // Round only the bounded display ratio; monetary inputs stay in integer cents.
+  return Number((amountMinor * 100n + totalMinor / 2n) / totalMinor)
 }
 
 /**
@@ -62,10 +79,10 @@ export function ProjectCostSection({
   const data: ProjectCost = query.data
   const total = data.totalAmount
   const sources = [
-    { key: "expenses", label: t("detailPages.project.cost.sources.expenses"), value: data.parts.expensesAmount },
-    { key: "salaries", label: t("detailPages.project.cost.sources.salaries"), value: data.parts.salariesAmount },
-    { key: "stock", label: t("detailPages.project.cost.sources.stock"), value: data.parts.stockAmount },
-    { key: "materials", label: t("detailPages.project.cost.sources.chargedMaterials"), value: data.parts.chargedMaterialsAmount },
+    { key: "expenses", label: t("detailPages.project.cost.sources.expenses"), value: data.parts.expensesAmount, bar: "bg-chart-1" },
+    { key: "salaries", label: t("detailPages.project.cost.sources.salaries"), value: data.parts.salariesAmount, bar: "bg-chart-2" },
+    { key: "stock", label: t("detailPages.project.cost.sources.stock"), value: data.parts.stockAmount, bar: "bg-chart-3" },
+    { key: "materials", label: t("detailPages.project.cost.sources.chargedMaterials"), value: data.parts.chargedMaterialsAmount, bar: "bg-chart-4" },
   ]
 
   const hasCost = total !== "0.00" || sources.some((source) => source.value !== "0.00")
@@ -81,12 +98,24 @@ export function ProjectCostSection({
         </p>
 
         <ul className="mt-5 space-y-3">
-          {sources.map((source) => (
-            <li key={source.key} className="flex min-w-0 items-center justify-between gap-3 text-sm">
-              <span className="min-w-0 text-ink-2">{source.label}</span>
-              <span className="shrink-0 font-mono text-ink" dir="ltr">{money(source.value, true)}</span>
-            </li>
-          ))}
+          {sources.map((source) => {
+            const percent = percentOf(source.value, total)
+            return (
+              <li key={source.key} className="grid min-w-0 grid-cols-[0.625rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-sm sm:flex sm:gap-3">
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${source.bar}`} aria-hidden="true" />
+                <span className="min-w-0 text-ink-2 sm:w-40 sm:shrink-0">{source.label}</span>
+                <span className="col-span-2 row-start-2 h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2">
+                  <span className={`block h-full rounded-full ${source.bar}`} style={{ width: `${percent}%` }} />
+                </span>
+                <span className="col-start-3 row-start-2 shrink-0 text-left text-xs text-ink-3 sm:w-10">
+                  {t("detailPages.project.cost.share", { percent })}
+                </span>
+                <span className="col-start-3 row-start-1 shrink-0 text-left font-mono text-ink sm:w-28" dir="ltr">
+                  {money(source.value, true)}
+                </span>
+              </li>
+            )
+          })}
           {materialNetIsNegative ? (
             <li className="flex items-start gap-2 rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn">
               <span aria-hidden="true">⚠</span>
@@ -203,9 +232,9 @@ export function ProjectCostSection({
                           ? t("detailPages.project.cost.materials.in")
                           : t("detailPages.project.cost.materials.out")}
                         {" · "}
-                        {movement.quantity}
+                        {formatQuantity(movement.quantity)}
                         {movement.unit ? ` ${movement.unit}` : ""}
-                        {movement.unitPrice != null ? <> · {movement.unitPrice}</> : ""}
+                        {movement.unitPrice != null ? <> · <CurrencyRun amount={UnitPrice.parse(movement.unitPrice).format()} currencyLabel={t("detailPages.project.cost.currency")} /></> : ""}
                       </span>
                     </span>
                     <span className="shrink-0 font-mono text-ink" dir="ltr">

@@ -10,7 +10,7 @@
 
 `ProjectCostSection` consumes the existing `useProjectCostQuery` result as `ProjectCost`. It displays `totalAmount`, `parts.*Amount`, row `amount`/`valueAmount`, `purchaseAmount`, approved salary `segmentId`, `days`, `amount`, and `approvedAt`. Monetary strings stay strings and render through shared `MoneyValue`/`formatExactMoney`; the UI does not sum rows or derive day rates. Material movement sign follows its `direction`, and quantity/unit-price data is displayed as received.
 
-A/B/A salary rows remain separate under `segmentId`, with backend-approved amounts. The existing panel, cards, Arabic copy, RTL layout, parked-inventory distinction, empty actions, loading and retry states remain. Derived share percentages were removed because no share contract is supplied and computing ratios here would add client monetary logic. No query adapter or interface seam moved.
+A/B/A salary rows remain separate under `segmentId`, with backend-approved amounts. The existing panel, cards, Arabic copy, RTL layout, parked-inventory distinction, empty actions, loading and retry states remain. Source markers, bars and share labels remain part of the existing UI. Their display ratios are computed from canonical strings using integer cents and BigInt; only the bounded 0–100 result becomes a number for CSS. Material quantities are grouped as strings, without numeric coercion. Unit prices render through `UnitPrice.parse(...).format()` plus the shared currency run, preserving four-place rate semantics. This adds the direct `UnitPrice` import from `@tuari/contracts`; coordinate the import allowlist with its owner rather than weakening it. No query adapter or interface seam moved.
 
 ## Proof and lessons
 
