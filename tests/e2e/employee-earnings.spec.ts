@@ -122,6 +122,9 @@ test("employee earnings approval keeps exact references, retries one committed r
   const dayInCurrentMonth = (day: number) => `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
   const periodStart = dayInCurrentMonth(1)
   const periodEnd = dayInCurrentMonth(25)
+  // Independent Algeria-calendar boundaries: UTC+1, with the end inclusive.
+  const expectedPeriodStart = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1) - 60 * 60 * 1000).toISOString()
+  const expectedPeriodEnd = new Date(Date.UTC(today.getFullYear(), today.getMonth(), 25, 23, 59, 59, 999) - 60 * 60 * 1000).toISOString()
   await dialog.getByLabel("بداية فترة العمل").click()
   await page.locator(`[data-day="${periodStart}"] button`).click()
   await dialog.getByLabel("نهاية فترة العمل").click()
@@ -186,8 +189,9 @@ test("employee earnings approval keeps exact references, retries one committed r
   await expect(dialog).toBeHidden({ timeout: 15_000 })
   expect(firstCommittedStatus).toBe(200)
   expect(requests).toHaveLength(2)
-  expect(requests[0]).toContain(periodStart)
-  expect(requests[0]).toContain(periodEnd)
+  const approvalRequest = JSON.parse(requests[0]) as { json: { periodStart: string; periodEnd: string } }
+  expect(approvalRequest.json.periodStart).toBe(expectedPeriodStart)
+  expect(approvalRequest.json.periodEnd).toBe(expectedPeriodEnd)
   expect(requests[1]).toBe(requests[0])
   await page.unroute("**/rpc/employeeEarningsApprove")
 
