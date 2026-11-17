@@ -22,8 +22,19 @@ import {
   parseArgs,
   readFileHeader,
   requiredRuntimeFiles,
+  requireWorkspaceMarker,
   waitForHealth,
 } from "../apps/desktop/scripts/sqlcipher-encryption-proof.mjs";
+
+test("the actual backup must contain the same unique workspace row, not an empty or different schema", () => {
+  const identity = "10000000-0000-4000-8000-000000000001";
+  assert.equal(requireWorkspaceMarker([{ marker: identity }], "live"), identity);
+  assert.equal(requireWorkspaceMarker([{ marker: identity }], "backup", identity), identity);
+  for (const rows of [[], [{ marker: "" }], [{ marker: "not-a-workspace" }], [{ marker: identity }, { marker: identity }]]) {
+    assert.throws(() => requireWorkspaceMarker(rows, "backup", identity), /one exact workspace identity row/);
+  }
+  assert.throws(() => requireWorkspaceMarker([{ marker: "10000000-0000-4000-8000-000000000002" }], "backup", identity), /different workspace identity/);
+});
 
 const withTempDir = (run) => {
   const dir = mkdtempSync(path.join(os.tmpdir(), "tuari-proof-test-"));

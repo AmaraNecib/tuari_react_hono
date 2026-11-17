@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path"
 import { defineConfig, devices } from "@playwright/test"
 
 import { BOOTSTRAP_SETUP_KEY } from "./tests/e2e/helpers/session"
+import { prepareManagedFixture } from "./tests/e2e/helpers/managed-fixture"
 import {
   apiBaseUrl,
   apiPort,
@@ -51,7 +52,11 @@ const e2eDbPath =
 // checkout would otherwise race to find "the newest" matching file and reset
 // each other's fixtures (Greptile finding on this slice). Only a managed local
 // API consumes this, so an external run never advertises a local file.
-if (startOwnWeb) process.env.APP_DB_PATH = e2eDbPath
+if (startOwnWeb) {
+  const absoluteFixturePath = resolve(process.cwd(), "apps/api", e2eDbPath)
+  process.env.E2E_FIXTURE_TOKEN = prepareManagedFixture(absoluteFixturePath, process.cwd(), process.env.E2E_FIXTURE_TOKEN)
+  process.env.APP_DB_PATH = e2eDbPath
+}
 
 // #436: the backup-folder setting writes the user-editable config.json. Point
 // the E2E API at a throwaway file so the durability assertion has a real

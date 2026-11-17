@@ -40,9 +40,7 @@ test.beforeAll(() => {
   seeded.projectWorkerName = `عامل الموقع ${suffix}`
   seeded.warehouseWorkerName = `عامل المخزن ${suffix}`
 
-  // Employee creation via the UI is still role-constrained, so workers and the
-  // project manager are seeded directly (established pattern, db-seed). Seeding
-  // in beforeAll so the sign-in snapshot already contains them.
+  // Seed placements independently of the creation flow exercised in employees.spec.ts.
   seeded.pmId = seedEmployeeByRole({
     firstName: "مدير",
     lastName: `المشروع ${suffix}`,
@@ -93,11 +91,10 @@ test.describe("workforce assignment (issue #20)", () => {
     await page.getByLabel("المشروع الحالي").selectOption(seeded.projectId)
     await page.getByRole("button", { name: "حفظ كل التغييرات" }).click()
 
-    // Save navigates back to the worker's details page; work-history shows the
-    // project assignment.
-    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({ timeout: 10_000 })
-    await page.getByRole("tab", { name: "سجل العمل" }).click()
-    await expect(page.getByText(seeded.projectName)).toBeVisible({ timeout: 10_000 })
+    await expect(page).toHaveURL(/\/employees$/)
+    await page.goto(`/employees/${seeded.projectWorkerId}/edit`)
+    await expect(page.getByLabel("المدير المباشر")).toHaveValue(seeded.pmId)
+    await expect(page.getByLabel("المشروع الحالي")).toHaveValue(seeded.projectId)
 
     // The project "العمال المرتبطون" tab lists the worker.
     await page.goto(`/projects/${seeded.projectId}`)
@@ -114,9 +111,10 @@ test.describe("workforce assignment (issue #20)", () => {
     await page.getByRole("button", { name: "حفظ كل التغييرات" }).click()
     await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({ timeout: 10_000 })
 
-    // The warehouse worker's work-history also shows the warehouse assignment.
-    await page.getByRole("tab", { name: "سجل العمل" }).click()
-    await expect(page.getByText(seeded.warehouseName)).toBeVisible({ timeout: 10_000 })
+    await expect(page).toHaveURL(/\/employees$/)
+    await page.goto(`/employees/${seeded.warehouseWorkerId}/edit`)
+    await expect(page.getByLabel("مكان العمل")).toHaveValue("WAREHOUSE")
+    await expect(page.getByLabel("المستودع")).toHaveValue(seeded.warehouseId)
 
     // The warehouse Team tab lists the worker.
     await page.goto(`/warehouses/${seeded.warehouseId}`)

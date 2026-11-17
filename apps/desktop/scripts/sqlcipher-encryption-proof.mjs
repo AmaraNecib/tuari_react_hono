@@ -160,6 +160,15 @@ export function findSnapshotDatabase(backupsRoot, { readdir = readdirSync } = {}
   return null;
 }
 
+export function requireWorkspaceMarker(rows, label, expected) {
+  const marker = Array.isArray(rows) && rows.length === 1 ? rows[0]?.marker : undefined;
+  if (typeof marker !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(marker)) {
+    throw new Error(`${label} did not return one exact workspace identity row`);
+  }
+  if (expected !== undefined && marker !== expected) throw new Error(`${label} returned a different workspace identity`);
+  return marker;
+}
+
 export function parseArgs(argv) {
   const options = {
     runtimeDir: DEFAULT_RUNTIME_DIR,
@@ -613,13 +622,8 @@ export async function runProof(options, { log = console.log } = {}) {
     results.push("plain SQLite reader reached SQL data and was rejected");
 
     log("[4/4] The shipped runtime boots with a key and its daily backup is encrypted too");
-    // Seed a known row before startup schedules its real snapshot, so the actual
-    // backup must carry this exact row rather than merely matching the schema.
-    runBundledNode(nodeExe, runtimeDir, WRITE_ROW_PROBE_SOURCE, {
-      TUARI_PROOF_DB: liveDb,
-      TUARI_PROOF_KEY: key,
-      TUARI_PROOF_MARKER: marker,
-    });
+    // Normal startup requires a fresh workspace. Its unique identity is created
+    // before health/backup scheduling and must survive in the actual snapshot.
     const port = await freePort();
     child = spawn(nodeExe, [SIDECAR_ENTRY], {
       cwd: runtimeDir,
@@ -659,12 +663,11 @@ export async function runProof(options, { log = console.log } = {}) {
     const liveMarker = JSON.parse(runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
       TUARI_PROOF_DB: liveDb,
       TUARI_PROOF_KEY: key,
-      TUARI_PROOF_SQL: `SELECT marker FROM proof WHERE marker = '${marker}'`,
+      TUARI_PROOF_SQL: "SELECT workspace_id AS marker FROM exact_workspace_identity WHERE singleton=1",
     }) || "[]");
-    if (liveTables.length === 0 || liveMarker.length !== 1 || liveMarker[0].marker !== marker) {
-      throw new Error("the keyed sidecar database did not return the exact proof row");
-    }
-    results.push(`sidecar wrote ${liveSize} encrypted bytes and returned the exact proof row (${liveTables.length} tables)`);
+    if (liveTables.length === 0) throw new Error("the keyed sidecar database has no tables");
+    const workspaceMarker = requireWorkspaceMarker(liveMarker, "the keyed sidecar database");
+    results.push(`sidecar wrote ${liveSize} encrypted bytes and returned its exact workspace identity (${liveTables.length} tables)`);
 
     const snapshot = await waitForSnapshot(backupsRoot, {
       timeoutMs: options.backupTimeoutMs,
@@ -676,11 +679,10 @@ export async function runProof(options, { log = console.log } = {}) {
     const snapshotMarker = JSON.parse(runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
       TUARI_PROOF_DB: snapshot,
       TUARI_PROOF_KEY: key,
-      TUARI_PROOF_SQL: `SELECT marker FROM proof WHERE marker = '${marker}'`,
+      TUARI_PROOF_SQL: "SELECT workspace_id AS marker FROM exact_workspace_identity WHERE singleton=1",
     }) || "[]");
-    if (snapshotTables.length === 0 || snapshotMarker.length !== 1 || snapshotMarker[0].marker !== marker) {
-      throw new Error("the keyed daily backup did not return the exact proof row");
-    }
+    if (snapshotTables.length === 0) throw new Error("the keyed daily backup has no tables");
+    requireWorkspaceMarker(snapshotMarker, "the keyed daily backup", workspaceMarker);
     // The backup is a `VACUUM INTO` copy of the live database, so every table
     // the live database had at backup time must be present in the backup. A
     // table that is missing means the copy is not faithful.
@@ -702,7 +704,7 @@ export async function runProof(options, { log = console.log } = {}) {
       );
     }
     results.push(`daily backup ${path.relative(backupsRoot, snapshot)} is ${snapshotSize} encrypted bytes (key-readable)`);
-    const backupSql = `SELECT marker FROM proof WHERE marker = '${marker}'`;
+    const backupSql = `SELECT workspace_id FROM exact_workspace_identity WHERE workspace_id = '${workspaceMarker}'`;
     for (const [mode, probeKey, label] of [
       ["wrong-key", `wrong-${randomBytes(16).toString("hex")}`, "wrong key"],
       ["no-key", "", "no key"],

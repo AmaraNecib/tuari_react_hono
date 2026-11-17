@@ -20,12 +20,7 @@ test.describe("employees — critical path", () => {
     await page.getByRole("link", { name: "العاملون" }).first().click()
     await expect(page.getByRole("heading", { name: "العاملون" })).toBeVisible()
 
-    // The header action is a navigation link (deep-linkable to /employees/create).
-    // The table's empty-state "add worker" BUTTON only renders when the list is
-    // empty, so relying on it makes this spec order-dependent: in the full suite
-    // (e.g. after employees-search seeds rows) it never appears. The header link
-    // is always present regardless of list state.
-    await page.getByRole("link", { name: "إضافة عامل" }).first().click()
+    await page.getByRole("button", { name: "إضافة عامل", exact: true }).first().click()
     await expect(page.getByRole("heading", { name: /صفحة إضافة العاملين/ })).toBeVisible()
 
     const suffix = uniqueSuffix()
@@ -40,17 +35,14 @@ test.describe("employees — critical path", () => {
     await page.getByLabel("الاسم الأول").first().fill(firstName)
     await page.getByLabel("اللقب").first().fill(lastName)
     await page.getByLabel("رقم الهاتف").first().fill(phone)
-    // Select a seeded selectable role explicitly (do not rely on the form
-    // default). Only the workforce labels are assignable now — manager/viewer
-    // were removed — and worker additionally requires a workplace placement,
-    // so use the project_manager label (مدير مشروع).
+    // This unreferenced manager can change roles and be deleted without losing placement evidence.
     await page.getByLabel("صلاحية التطبيق").selectOption({ label: "مدير مشروع" })
     // Salary period + amount are conditionally required as a pair — fill both
     // so the form's validation accepts the submission.
     await page.getByLabel("دورية الأجر").selectOption({ label: "شهري" })
     await page.getByLabel(/قيمة الأجر/).fill("10000")
 
-    await page.getByRole("button", { name: "حفظ العامل" }).click()
+    await page.getByRole("button", { name: "إنشاء", exact: true }).click()
 
     // The save returns to the list where the new employee's full name renders.
     await expect(page.getByText(`${firstName} ${lastName}`)).toBeVisible({ timeout: 10_000 })
@@ -62,11 +54,7 @@ test.describe("employees — critical path", () => {
     await page.getByRole("link", { name: "العاملون" }).first().click()
     await expect(page.getByRole("heading", { name: "العاملون" })).toBeVisible()
 
-    // Open the employee created in the previous test (serial mode).
-    await page.getByRole("button", { name: /^عرض$/ }).first().click()
-    await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible()
-
-    await page.getByRole("link", { name: /^تعديل$/ }).first().click()
+    await page.getByRole("row", { name: /بن صالح/ }).getByRole("button", { name: "تعديل", exact: true }).click()
     await expect(page.getByRole("heading", { name: /تعديل عامل/ })).toBeVisible()
 
     // Switch the role between two selectable workforce labels (manager/viewer
@@ -77,9 +65,13 @@ test.describe("employees — critical path", () => {
     // The save navigates back to the details page where the new role renders.
     await expect(page.getByRole("heading", { level: 1 }).first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText("مدير مخزن")).toBeVisible()
+    await page.getByRole("link", { name: "العاملون" }).first().click()
+    await page.getByRole("row", { name: /بن صالح/ }).getByRole("button", { name: "تعديل", exact: true }).click()
+    await expect(page.getByLabel("دورية الأجر")).toHaveValue("MONTHLY")
+    await expect(page.getByLabel(/قيمة الأجر/)).toHaveValue("10000.00")
   })
 
-  test("admin soft-deletes an employee and the list no longer shows them", async ({ page }) => {
+  test("admin deletes an unreferenced employee only after confirmation", async ({ page }) => {
     await bootstrapOrSignIn(page)
 
     await page.getByRole("link", { name: "العاملون" }).first().click()
@@ -87,15 +79,27 @@ test.describe("employees — critical path", () => {
 
     const row = page.getByRole("row", { name: /بن صالح/ }).first()
     await expect(row).toBeVisible()
+    const employeeName = await row.getByRole("cell").first().innerText()
+    await page.keyboard.press("Control+k")
+    await page.getByRole("dialog").getByPlaceholder("بحث...").fill(employeeName)
+    await expect(page.getByRole("dialog").getByText(employeeName, { exact: true })).toBeVisible()
+    await page.keyboard.press("Escape")
     await row.getByRole("button", { name: "حذف" }).click()
 
     await expect(page.getByRole("alertdialog")).toBeVisible()
-    await page.getByRole("button", { name: "تأكيد" }).click()
+    await page.getByRole("alertdialog").getByRole("button", { name: "إلغاء", exact: true }).click()
+    await expect(row).toBeVisible()
+    await row.getByRole("button", { name: "حذف" }).click()
+    await page.getByRole("alertdialog").getByRole("button", { name: "تأكيد", exact: true }).click()
 
     // The row disappears from the list (queryAllByRole — an empty result
     // legitimately reaches zero matches and getAllByRole would throw).
     await expect
       .poll(async () => page.getByRole("row", { name: /بن صالح/ }).count())
       .toBe(0)
+    await page.keyboard.press("Control+k")
+    await page.getByRole("dialog").getByPlaceholder("بحث...").fill(employeeName)
+    await expect(page.getByRole("dialog").getByText("لا توجد نتائج", { exact: true })).toBeVisible()
+    await expect(page.getByRole("dialog").getByText(employeeName, { exact: true })).toHaveCount(0)
   })
 })
