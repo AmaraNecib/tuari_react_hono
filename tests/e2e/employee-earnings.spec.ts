@@ -103,6 +103,7 @@ test("employee earnings approval keeps exact references, retries one committed r
   await expect(page.getByRole("heading", { name: employeeName, level: 1 })).toBeVisible({ timeout: 15_000 })
 
   await page.getByRole("tab", { name: "المالية" }).click()
+  await expect(page.getByText("12,345.67")).toBeVisible()
   await page.getByRole("button", { name: "اعتماد الأجر" }).click()
   const dialog = page.getByRole("dialog")
   await expect(dialog).toBeVisible()
@@ -188,7 +189,7 @@ test("employee earnings approval keeps exact references, retries one committed r
     const costRows = costPanel.getByRole("listitem").filter({ hasText: employeeName })
     await expect(costRows).toHaveCount(expectedAmounts.length)
     for (const amount of expectedAmounts) await expect(costPanel).toContainText(amount)
-    await costPanel.screenshot({ path: join(evidenceDir, `cost-${expectedAmounts[0]}-${suffix}.png`) })
+    await costPanel.getByRole("heading", { name: "أجور هذا المشروع" }).locator("xpath=../../..").screenshot({ path: join(evidenceDir, `cost-${expectedAmounts[0]}-${suffix}.png`) })
     await page.reload()
     await expect(page.getByRole("tabpanel").filter({ hasText: "أجور هذا المشروع" })).toContainText(employeeName)
   }
