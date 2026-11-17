@@ -23,8 +23,8 @@ type FormState = {
   phone: string
   roleId: string
   status: EmployeeTableRow["status"]
-  salaryAmountDzd: string
-  salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | ""
+  salaryReferenceAmount: string
+  salaryReferencePeriod: "DAILY" | "WEEKLY" | "MONTHLY" | ""
   occupation: string
   notes: string
 }
@@ -44,11 +44,9 @@ type EmployeeProfile = Pick<
   | "phone"
   | "roleId"
   | "status"
-  | "salaryAmountDzd"
-  | "salaryPeriod"
   | "occupation"
   | "notes"
->
+> & { salaryReference?: SalaryReference | null }
 
 type ManagedOption = {
   id: string
@@ -63,22 +61,22 @@ function createFormState(employee: EmployeeProfile): FormState {
     phone: employee.phone,
     roleId: employee.roleId,
     status: employee.status,
-    salaryAmountDzd: employee.salaryAmountDzd == null ? "" : String(employee.salaryAmountDzd),
-    salaryPeriod: employee.salaryPeriod ?? "",
+    salaryReferenceAmount: employeeSalaryReference(employee)?.amount ?? "",
+    salaryReferencePeriod: employeeSalaryReference(employee)?.period ?? "",
     occupation: employee.occupation ?? "",
     notes: employee.notes ?? "",
   }
 }
 
-function parseSalaryAmount(value: string) {
-  const trimmed = value.trim()
+type SalaryReference = { period: "DAILY" | "WEEKLY" | "MONTHLY"; amount: string }
+function employeeSalaryReference(employee: EmployeeProfile): SalaryReference | null {
+  return employee.salaryReference ?? null
+}
 
-  if (trimmed.length === 0) {
-    return null
-  }
-
-  const numeric = Number(trimmed)
-  return Number.isFinite(numeric) && numeric >= 0 ? numeric : Number.NaN
+function isSalaryReferenceAmountValid(value: string, period: FormState["salaryReferencePeriod"]) {
+  if (!period || value.length > 96 || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) return false
+  const decimals = value.split(".")[1]?.length ?? 0
+  return decimals <= (period === "DAILY" ? 4 : 2)
 }
 
 /** Employee edit page with form fields. */
@@ -108,6 +106,7 @@ export function EmployeeEditPage({
   const navigate = useNavigate()
   const saveEmployeeMutation = useSaveEmployeeMutation()
   const [state, setState] = useState<FormState>(() => createFormState(employee))
+  const [salaryReferenceDirty, setSalaryReferenceDirty] = useState(false)
   const [errors, setErrors] = useState<FormErrors>({})
   const [saveError, setSaveError] = useState<SaveErrorKind | null>(null)
   const [workerManagerId, setWorkerManagerId] = useState(employee.currentManagerId ?? "")
@@ -136,6 +135,7 @@ export function EmployeeEditPage({
 
     previousEmployeeIdRef.current = employee.id
     setState(createFormState(employee))
+    setSalaryReferenceDirty(false)
     setErrors({})
     setWorkerManagerId(employee.currentManagerId ?? "")
     setWorkerProjectId(employee.currentProjectId ?? "")
@@ -167,7 +167,7 @@ export function EmployeeEditPage({
     { value: "DAILY", label: t("detailPages.salary.daily") },
     { value: "MONTHLY", label: t("detailPages.salary.monthly") },
   ]
-  if (employee.salaryPeriod === "WEEKLY") {
+  if (employeeSalaryReference(employee)?.period === "WEEKLY") {
     salaryPeriodOptions.push({ value: "WEEKLY", label: t("detailPages.salary.weekly") })
   }
   const isSaving = saveEmployeeMutation.isPending
@@ -194,7 +194,8 @@ export function EmployeeEditPage({
     const workerNeedsPlacement = !employee.currentManagerId && !employee.currentProjectId && !employee.currentWarehouseId
 
     const nextErrors: FormErrors = {}
-    const salaryAmount = parseSalaryAmount(state.salaryAmountDzd)
+    const salaryReferenceAmount = state.salaryReferenceAmount.trim()
+    const hasSalaryReference = salaryReferenceAmount.length > 0 || state.salaryReferencePeriod.length > 0
 
     if (state.firstName.trim().length === 0) {
       nextErrors.firstName = t("detailPages.employee.editPage.validation.firstNameRequired")
@@ -216,16 +217,14 @@ export function EmployeeEditPage({
       nextErrors.occupation = t("detailPages.employee.editPage.validation.occupationTooLong")
     }
 
-    if (Number.isNaN(salaryAmount)) {
-      nextErrors.salaryAmountDzd = t("detailPages.employee.editPage.validation.salaryAmountInvalid")
+    if (hasSalaryReference && !state.salaryReferencePeriod) {
+      nextErrors.salaryReferencePeriod = t("detailPages.employee.editPage.validation.salaryPeriodRequired")
     }
-
-    if (salaryAmount !== null && !state.salaryPeriod) {
-      nextErrors.salaryPeriod = t("detailPages.employee.editPage.validation.salaryPeriodRequired")
+    if (hasSalaryReference && !isSalaryReferenceAmountValid(salaryReferenceAmount, state.salaryReferencePeriod)) {
+      nextErrors.salaryReferenceAmount = t("workforce.validation.salaryReference.precision")
     }
-
-    if (salaryAmount === null && state.salaryPeriod) {
-      nextErrors.salaryAmountDzd = t("detailPages.employee.editPage.validation.salaryAmountRequired")
+    if (hasSalaryReference && salaryReferenceAmount.length === 0) {
+      nextErrors.salaryReferenceAmount = t("detailPages.employee.editPage.validation.salaryAmountRequired")
     }
 
     if (isWorker && state.status === "ACTIVE" && (placementDirty || workerNeedsPlacement)) {
@@ -298,8 +297,11 @@ export function EmployeeEditPage({
         phone: state.phone.trim(),
         roleId: state.roleId,
         status: state.status,
-        salaryAmountDzd: salaryAmount,
-        salaryPeriod: state.salaryPeriod || null,
+        ...(salaryReferenceDirty ? {
+          salaryReference: hasSalaryReference
+            ? { period: state.salaryReferencePeriod as SalaryReference["period"], amount: salaryReferenceAmount }
+            : null,
+        } : {}),
         occupation: state.occupation.trim() || null,
         notes: state.notes.trim() || null,
         ...(savePlan.workplace ? { placement: savePlan.workplace } : {}),
@@ -538,23 +540,27 @@ export function EmployeeEditPage({
           title={t("detailPages.employee.editPage.salaryTitle")}
         >
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <Field label={t("detailPages.employee.editPage.salaryAmount")} error={errors.salaryAmountDzd}>
+            <Field label={t("detailPages.employee.editPage.salaryAmount")} error={errors.salaryReferenceAmount}>
               <CurrencyInput
                 currencyLabel="دج"
                 placeholder="10000"
-                value={state.salaryAmountDzd}
-                onChange={(event) => setState({ ...state, salaryAmountDzd: event.target.value })}
+                value={state.salaryReferenceAmount}
+                onChange={(event) => {
+                  setSalaryReferenceDirty(true)
+                  setState({ ...state, salaryReferenceAmount: event.target.value })
+                }}
               />
             </Field>
-            <Field label={t("detailPages.employee.editPage.salaryPeriod")} error={errors.salaryPeriod}>
+            <Field label={t("detailPages.employee.editPage.salaryPeriod")} error={errors.salaryReferencePeriod}>
               <NativeSelect
-                value={state.salaryPeriod}
-                onChange={(event) =>
+                value={state.salaryReferencePeriod}
+                onChange={(event) => {
+                  setSalaryReferenceDirty(true)
                   setState({
                     ...state,
-                    salaryPeriod: event.target.value as FormState["salaryPeriod"],
+                    salaryReferencePeriod: event.target.value as FormState["salaryReferencePeriod"],
                   })
-                }
+                }}
               >
                 <option value="">{t("detailPages.employee.editPage.selectSalaryPeriod")}</option>
                 {salaryPeriodOptions.map((option) => (

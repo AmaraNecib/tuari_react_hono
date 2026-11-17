@@ -49,8 +49,6 @@ const workerEmployee = {
   roleKey: "worker",
   role: "عامل",
   status: "ACTIVE",
-  salaryAmountDzd: 12000,
-  salaryPeriod: "MONTHLY",
   notes: null,
   occupation: null,
   currentManagerId: "mgr-1",
@@ -70,8 +68,6 @@ const projectManagerEmployee = {
   roleKey: "project_manager",
   role: "مدير مشروع",
   status: "ACTIVE",
-  salaryAmountDzd: 20000,
-  salaryPeriod: "MONTHLY",
   notes: null,
   occupation: null,
   currentManagerId: null,
@@ -91,8 +87,6 @@ const warehouseManagerEmployee = {
   roleKey: "warehouse_manager",
   role: "مدير مستودع",
   status: "ACTIVE",
-  salaryAmountDzd: 18000,
-  salaryPeriod: "MONTHLY",
   notes: null,
   occupation: null,
   currentManagerId: null,
@@ -214,6 +208,7 @@ describe("employee edit atomic save (issue #49)", () => {
     const payload = mockSaveEmployee.mock.calls[0]![0] as Record<string, unknown>
     expect(payload.id).toBe("emp-worker")
     expect(payload.firstName).toBe("اسم معدل")
+    expect(payload).not.toHaveProperty("salaryReference")
     expect(payload).not.toHaveProperty("placement")
     expect(payload).not.toHaveProperty("managedProjectIds")
     expect(payload).not.toHaveProperty("managedWarehouseIds")
@@ -331,11 +326,63 @@ describe("employee edit atomic save (issue #49)", () => {
     expect(mockSaveEmployee).toHaveBeenCalledTimes(1)
   })
 
+  it("saves salary references as exact decimal strings without changing them when period changes", async () => {
+    mockSaveEmployee.mockResolvedValue({ success: true, message: "تم الحفظ" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "DAILY", amount: "900719925474.0993" },
+    })
+
+    fireEvent.change(screen.getByLabelText("دورية الأجر"), { target: { value: "DAILY" } })
+    fireEvent.change(screen.getByLabelText(/قيمة الأجر/), { target: { value: "900719925474.0993" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(mockNavigateToWorkspaceRoute).toHaveBeenCalled())
+    const payload = mockSaveEmployee.mock.calls[0]![0] as Record<string, unknown>
+    expect(payload.salaryReference).toEqual({ period: "DAILY", amount: "900719925474.0993" })
+    expect(payload).not.toHaveProperty("salaryAmountDzd")
+    expect(payload).not.toHaveProperty("salaryPeriod")
+  })
+
+  it("rejects four fractional places for a monthly salary reference", async () => {
+    mockSaveEmployee.mockResolvedValue({ success: true, message: "تم الحفظ" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "DAILY", amount: "12.3456" },
+    })
+
+    fireEvent.change(screen.getByLabelText("دورية الأجر"), { target: { value: "MONTHLY" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(screen.getByText("مرجع الأجر يجب أن يكون قيمة دقيقة مناسبة للدورية.")).toBeTruthy())
+    expect((screen.getByLabelText(/قيمة الأجر/) as HTMLInputElement).value).toBe("12.3456")
+    expect(mockSaveEmployee).not.toHaveBeenCalled()
+  })
+
+  it("distinguishes an explicitly cleared salary reference from an untouched reference", async () => {
+    mockSaveEmployee.mockResolvedValue({ success: true, message: "تم الحفظ" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "MONTHLY", amount: "0" },
+    })
+
+    fireEvent.change(screen.getByLabelText(/قيمة الأجر/), { target: { value: "" } })
+    fireEvent.change(screen.getByLabelText("دورية الأجر"), { target: { value: "" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(mockNavigateToWorkspaceRoute).toHaveBeenCalled())
+    const payload = mockSaveEmployee.mock.calls[0]![0] as Record<string, unknown>
+    expect(payload.salaryReference).toBeNull()
+  })
+
   it("keeps WEEKLY selectable for a legacy weekly employee after switching the draft period", () => {
     // A legacy WEEKLY row must be able to go back to WEEKLY. Basing the option
     // list on the DRAFT period removed the option the moment the user switched
     // the draft to DAILY, locking them out of their own stored value.
-    renderWorker({ ...workerEmployee, salaryPeriod: "WEEKLY" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "WEEKLY", amount: "1234.56" },
+    })
 
     const periodSelect = screen.getByLabelText("دورية الأجر") as HTMLSelectElement
     const weeklyOptionCount = () =>
