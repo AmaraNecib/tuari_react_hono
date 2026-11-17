@@ -137,9 +137,6 @@ export class ExactEmployeeService {
       if (nextRole.key !== currentRole.key || nextStatus !== "ACTIVE") {
         assertEmployeeTransitionAllowed(currentRole.key, nextRole.key, nextStatus, this.repository.getEmployeeTransitionLinks(input.id));
       }
-      if (currentRole.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker && nextRole.key === LEGACY_WORKFORCE_ROLE_KEYS.worker && nextStatus === "ACTIVE") {
-        throw new CompanyError("BUSINESS_RULE", "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط.", [{ field: "roleId", message: "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط." }]);
-      }
       if (input.phone && input.phone !== current.phone) {
         const duplicate = this.repository.getEmployeeByPhone(input.phone);
         if (duplicate && duplicate.id !== current.id) throw new CompanyError("CONFLICT", "رقم هاتف العامل مستخدم بالفعل.", [{ field: "phone", message: "رقم هاتف العامل مستخدم بالفعل." }]);

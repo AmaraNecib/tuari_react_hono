@@ -430,24 +430,6 @@ export class WorkforceService {
         nextStatus,
       );
 
-      if (
-        currentRole.key !== LEGACY_WORKFORCE_ROLE_KEYS.worker &&
-        nextRole.key === LEGACY_WORKFORCE_ROLE_KEYS.worker &&
-        nextStatus === "ACTIVE"
-      ) {
-        throw new CompanyError(
-          "BUSINESS_RULE",
-          "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط.",
-          [
-            {
-              field: "roleId",
-              message:
-                "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط.",
-            },
-          ],
-        );
-      }
-
       if (input.phone && input.phone !== current.phone) {
         const existing = this.repository.getEmployeeByPhone(input.phone.trim());
         if (existing && existing.id !== input.id) {

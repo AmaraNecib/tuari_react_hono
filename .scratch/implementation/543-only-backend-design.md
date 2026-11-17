@@ -38,6 +38,10 @@ The first rename-replay fix covered direct `approveEarnings` receipts but missed
 
 Applied: employee-create UI acceptance must be checked against server role requirements and native required fields; new transaction writes must acquire the established immediate reservation; policy validation precedes expensive allocation. Excluded: UI implementation and Playwright fixture lessons, because this lane owns API/contracts only. Parent should reassess applicability against the finished source.
 
+## C1 employee conversion-rule consolidation
+
+At the parent-selected #555 cleanup scope, the shared `assertEmployeeTransitionAllowed` now owns the existing refusal to convert a non-worker into an ACTIVE worker. It runs after the worker, project-manager and warehouse-manager link checks, preserving status/link error precedence. Exact and baseline workforce updates still call the same transition policy; conditional exact link loading and all downstream validation, audit and persistence ordering remain unchanged. Service-seam tests cover the full `BUSINESS_RULE` message and `roleId`, unchanged profile/history on refusal, linked-manager precedence, INACTIVE conversion and profile-only ACTIVE-worker updates. No interface moved. Verification mode remains focused-local / CI-final-pending.
+
 ## Bounded shared-table validator correction
 
 At `61c9a5e75771cb0da0fc65cd5728540fc71f8c16`, fresh normal workspaces create `role_permission` from authoritative `schemaStatements`, but reopen validation checked only its columns. Regression mutations removing `(role_id, permission)` uniqueness, its foreign key, or `ON DELETE CASCADE` all passed startup validation. The focused test records the catalog, workspace identity and exact markers, then requires refusal without changes. Validation now adds the existing authoritative `role_permission` DDL to the structural-table map; no DDL, migration, data or startup behavior for valid workspaces changes. Scope remains this shared table only. This fixes validator coverage at the existing schema seam; no new interface or domain term was needed. Applied wisdom: none matched this failure mode.

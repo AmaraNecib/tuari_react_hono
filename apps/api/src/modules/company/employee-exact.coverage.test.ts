@@ -186,19 +186,43 @@ describe("exact employee batch validation", () => {
     } finally { f.db.close(); }
   });
 
-  it("rejects direct active worker-role conversion and duplicate phone updates without changing either profile", () => {
+  it("rejects direct active worker-role conversion after link checks and preserves profile and history", () => {
     const f = fixture();
+    const refusal = {
+      appError: {
+        code: "BUSINESS_RULE",
+        message: "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط.",
+        fieldErrors: [{ field: "roleId", message: "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط." }],
+      },
+    };
     try {
       const manager = f.service.createEmployee({ firstName: "Project", lastName: "Manager", phone: "0550000005", roleId: "pm-role" }, audit).item;
-      const other = f.service.createEmployee({ firstName: "Other", lastName: "Manager", phone: "0550000006", roleId: "pm-role" }, audit).item;
-      expect(() => f.service.updateEmployee({ id: manager.id, roleId: "worker-role" }, audit)).toThrow(expect.objectContaining({ appError: expect.objectContaining({ code: "BUSINESS_RULE" }) }));
+      const historyBefore = f.db.prepare("SELECT count(*) AS count FROM employee_state_history WHERE employee_id=?").get(manager.id);
+      expect(() => f.service.updateEmployee({ id: manager.id, roleId: "worker-role" }, audit)).toThrow(expect.objectContaining(refusal));
+      expect(f.service.getEmployee(manager.id).item.roleId).toBe("pm-role");
+      expect(f.db.prepare("SELECT count(*) AS count FROM employee_state_history WHERE employee_id=?").get(manager.id)).toEqual(historyBefore);
+
+      f.db.prepare("INSERT INTO project(id,manager_id,status) VALUES ('managed-active-project',?,'ACTIVE')").run(manager.id);
+      expect(() => f.service.updateEmployee({ id: manager.id, roleId: "worker-role" }, audit)).toThrow(expect.objectContaining({ appError: expect.objectContaining({
+        code: "BUSINESS_RULE",
+        message: "لا يمكن تغيير حالة مدير المشروع أو دوره ما دام يدير مشاريع أو عمالًا نشطين أو يرتبط بموقع عمل نشط.",
+        fieldErrors: [{ field: "status", message: "لا يمكن تغيير حالة مدير المشروع أو دوره ما دام يدير مشاريع أو عمالًا نشطين أو يرتبط بموقع عمل نشط." }],
+      }) }));
+      expect(f.service.getEmployee(manager.id).item.roleId).toBe("pm-role");
+
+      f.db.prepare("UPDATE project SET status='INACTIVE' WHERE id='managed-active-project'").run();
+      const inactive = f.service.updateEmployee({ id: manager.id, roleId: "worker-role", status: "INACTIVE" }, audit).item;
+      expect(inactive).toMatchObject({ roleId: "worker-role", status: "INACTIVE" });
+      expect(f.db.prepare("SELECT count(*) AS count FROM employee_manager_assignment WHERE worker_id=?").get(manager.id)).toEqual({ count: 0 });
+      expect(f.db.prepare("SELECT count(*) AS count FROM employee_project_assignment WHERE employee_id=?").get(manager.id)).toEqual({ count: 0 });
+
+      const other = f.service.createEmployee({ firstName: "Other", lastName: "Manager", phone: "0550000006", roleId: "worker-role" }, audit).item;
+      expect(f.service.updateEmployee({ id: other.id, firstName: "Profile only" }, audit).item.firstName).toBe("Profile only");
       expect(f.service.updateEmployee({ id: manager.id, phone: manager.phone, occupation: null }, audit).item.phone).toBe(manager.phone);
       expect(() => f.service.updateEmployee({ id: other.id, phone: manager.phone }, audit)).toThrow(expect.objectContaining({ appError: expect.objectContaining({ code: "CONFLICT" }) }));
       expect(f.service.updateEmployee({ id: other.id, phone: "0550000007" }, audit).item.phone).toBe("0550000007");
       expect(() => f.service.createEmployee({ firstName: "Duplicate", lastName: "Phone", phone: manager.phone, roleId: "pm-role" }, audit)).toThrow(expect.objectContaining({ appError: expect.objectContaining({ code: "CONFLICT" }) }));
-      expect(f.service.getEmployee(manager.id).item.roleId).toBe("pm-role");
       expect(f.service.getEmployee(other.id).item.phone).toBe("0550000007");
-      expect(f.service.getEmployee(manager.id).item.occupation).toBeNull();
     } finally { f.db.close(); }
   });
 });

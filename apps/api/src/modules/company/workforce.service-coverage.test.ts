@@ -618,8 +618,8 @@ describe("WorkforceService coverage branches", () => {
   });
 
   describe("updateEmployee guards", () => {
-    it("rejects changing a non-worker role to an active worker role", () => {
-      const { service, roleIds } = createHarness();
+    it("preserves conversion refusal details and manager-link precedence", () => {
+      const { service, database, roleIds } = createHarness();
       const manager = service.createEmployee({
         firstName: "مدير",
         lastName: "لتحويل",
@@ -627,9 +627,29 @@ describe("WorkforceService coverage branches", () => {
         roleId: roleIds.projectManager,
         status: "ACTIVE",
       }).item;
-      expect(() =>
-        service.updateEmployee({ id: manager.id, roleId: roleIds.worker, status: "ACTIVE" }, audit()),
-      ).toThrowError(CompanyError);
+      const historyBefore = database.prepare("SELECT count(*) AS count FROM employee_state_history WHERE employee_id = ?").get(manager.id);
+      const refusalMessage = "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط.";
+      expect(() => service.updateEmployee({ id: manager.id, roleId: roleIds.worker, status: "ACTIVE" }, audit()))
+        .toThrow(expect.objectContaining({ appError: { code: "BUSINESS_RULE", message: refusalMessage, fieldErrors: [{ field: "roleId", message: refusalMessage }] } }));
+      expect(service.getEmployee(manager.id).item.roleId).toBe(roleIds.projectManager);
+      expect(database.prepare("SELECT count(*) AS count FROM employee_state_history WHERE employee_id = ?").get(manager.id)).toEqual(historyBefore);
+
+      const project = service.createProject({ name: "مشروع المدير", managerId: manager.id, status: "ACTIVE" }).item;
+      const linkMessage = "لا يمكن تغيير حالة مدير المشروع أو دوره ما دام يدير مشاريع أو عمالًا نشطين أو يرتبط بموقع عمل نشط.";
+      expect(() => service.updateEmployee({ id: manager.id, roleId: roleIds.worker, status: "ACTIVE" }, audit()))
+        .toThrow(expect.objectContaining({ appError: expect.objectContaining({
+          code: "BUSINESS_RULE", message: linkMessage,
+          fieldErrors: [{ field: "status", message: linkMessage }],
+        }) }));
+      expect(service.getEmployee(manager.id).item.roleId).toBe(roleIds.projectManager);
+
+      service.updateProject({ id: project.id, managerId: null }, audit());
+      expect(service.updateEmployee({ id: manager.id, roleId: roleIds.worker, status: "INACTIVE" }, audit()).item)
+        .toMatchObject({ roleId: roleIds.worker, status: "INACTIVE" });
+      const activeWorker = service.createEmployee({
+        firstName: "عامل", lastName: "نشط", phone: "0554000013", roleId: roleIds.worker, status: "ACTIVE",
+      }).item;
+      expect(service.updateEmployee({ id: activeWorker.id, firstName: "عامل معدل" }, audit()).item.firstName).toBe("عامل معدل");
     });
 
     it("rejects changing to a phone already used by another employee", () => {

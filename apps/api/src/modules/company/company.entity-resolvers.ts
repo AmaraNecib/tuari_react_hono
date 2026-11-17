@@ -288,6 +288,15 @@ export function assertEmployeeTransitionAllowed(currentRoleKey: string, nextRole
       );
     }
   }
+
+  if (
+    currentRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.worker &&
+    nextRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.worker &&
+    nextStatus === "ACTIVE"
+  ) {
+    const message = "يجب أولًا حفظ المشروع والمدير المباشر للعامل قبل تحويل دوره إلى عامل نشط.";
+    throw new CompanyError("BUSINESS_RULE", message, [{ field: "roleId", message }]);
+  }
 }
 
 export function ensureProjectTransitionAllowed(
