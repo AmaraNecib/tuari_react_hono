@@ -616,12 +616,10 @@ export const ar = {
       remove: "حذف هذا الصف",
       backToEmployees: "العودة إلى العاملين",
       rowTitle: "العامل {{count}}",
-      exactEmpty: "لا يوجد عاملون لعرضهم.",
       exactProfileInvalid: "تحقق من الاسم والهاتف والدور والبيانات المدخلة.",
       exactManagerRequired: "اختر مدير مشروع نشطًا ومشروعًا لهذا العامل.",
       exactWarehouseRequired: "اختر مستودعًا لهذا العامل.",
       exactPeriodRequired: "أدخل قيمة الأجر ودوريته معًا.",
-      exactBatchRowError: "تعذر حفظ العامل في هذا الصف. راجع البيانات والصلاحيات والارتباطات.",
       exactCompletionFailed: "تم الحفظ بنجاح، لكن تعذّر متابعة الصفحة: {{error}}",
       validation: {
         firstName: "الاسم الأول مطلوب.",

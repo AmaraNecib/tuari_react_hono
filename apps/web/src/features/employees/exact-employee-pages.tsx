@@ -9,8 +9,6 @@ import { EmployeeEditForm } from "./employee-edit-form"
 import type { EmployeeEditFormProps } from "./employee-edit-form"
 import type { FormState } from "./employee-edit-form"
 import { AppDate } from "@/components/app-date"
-import { Input } from "@/components/ui/input"
-import { NativeSelect } from "@/components/ui/form-controls"
 import { ExactSalaryReferenceValue } from "./exact-salary-reference-value"
 import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 import { RecordDeleteConfirmation } from "@/features/shared/record-delete-confirmation"
@@ -57,22 +55,22 @@ export function salaryReference(period: string, amount: string): ExactSalaryRefe
   const value = period === "DAILY" ? parseLocalizedUnitPriceInput(amount).toWire() : parseLocalizedMoneyInput(amount).toWire()
   return SalaryReference.parse(period as "DAILY" | "WEEKLY" | "MONTHLY", value).toWire()
 }
-function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, projects, warehouses, managedProjects, managedWarehouses, editing = false, currentManagedProjectIds, currentManagedWarehouseIds, currentPlacement, onCancel, onBackToEmployees }: {
+function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, projects, warehouses, managedProjects, managedWarehouses, currentManagedProjectIds, currentManagedWarehouseIds, currentPlacement, onCancel, onBackToEmployees }: {
   onCancel?: () => void; onBackToEmployees?: () => void
-  roles: Role[]; initial?: ExactEmployee; onSubmit: (value: Record<string, unknown>) => Promise<void>; busy?: boolean; serverFailure: string | null
-  managers: ExactEmployeeUiContext["managerOptions"]; projects: Choice[]; warehouses: Choice[]; managedProjects: Choice[]; managedWarehouses: Choice[]; editing?: boolean
+  roles: Role[]; initial: ExactEmployee; onSubmit: (value: Record<string, unknown>) => Promise<void>; busy?: boolean; serverFailure: string | null
+  managers: ExactEmployeeUiContext["managerOptions"]; projects: Choice[]; warehouses: Choice[]; managedProjects: Choice[]; managedWarehouses: Choice[]
   currentManagedProjectIds?: string[]; currentManagedWarehouseIds?: string[]; currentPlacement?: ExactEmployeeUiContext["currentPlacement"]
 }) {
   const { t } = useTranslation()
-  const [firstName, setFirstName] = useState(initial?.firstName ?? "")
-  const [lastName, setLastName] = useState(initial?.lastName ?? "")
-  const [phone, setPhone] = useState(initial?.phone ?? "")
-  const [roleId, setRoleId] = useState(initial?.roleId ?? roles.find(role => role.key === "worker")?.id ?? "")
-  const [status, setStatus] = useState<ExactEmployee["status"]>(initial?.status ?? "ACTIVE")
-  const [period, setPeriod] = useState(initial?.salaryReference?.period ?? "")
-  const [amount, setAmount] = useState(initial?.salaryReference?.amount ?? "")
-  const [occupation, setOccupation] = useState(initial?.occupation ?? "")
-  const [notes, setNotes] = useState(initial?.notes ?? "")
+  const [firstName, setFirstName] = useState(initial.firstName)
+  const [lastName, setLastName] = useState(initial.lastName)
+  const [phone, setPhone] = useState(initial.phone)
+  const [roleId, setRoleId] = useState(initial.roleId)
+  const [status, setStatus] = useState<ExactEmployee["status"]>(initial.status)
+  const [period, setPeriod] = useState(initial.salaryReference?.period ?? "")
+  const [amount, setAmount] = useState(initial.salaryReference?.amount ?? "")
+  const [occupation, setOccupation] = useState(initial.occupation ?? "")
+  const [notes, setNotes] = useState(initial.notes ?? "")
   const [managerId, setManagerId] = useState(currentPlacement?.managerId ?? "")
   const [projectId, setProjectId] = useState(currentPlacement?.projectId ?? "")
   const [warehouseId, setWarehouseId] = useState(currentPlacement?.warehouseId ?? "")
@@ -96,12 +94,7 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
       if (!firstName.trim() || !lastName.trim() || !/^0[5-7]\d{8}$/.test(phone.trim()) || !roleId || occupation.trim().length > 120) throw new Error(i18n.t("employeeForm.exactProfileInvalid"))
       if (worker && status === "ACTIVE" && workplaceType === "PROJECT" && (!managerId || !projectId)) throw new Error(i18n.t("employeeForm.exactManagerRequired"))
       if (worker && status === "ACTIVE" && workplaceType === "WAREHOUSE" && !warehouseId) throw new Error(i18n.t("employeeForm.exactWarehouseRequired"))
-      if (!editing && worker && status === "ACTIVE" && (!managerId || !projectId)) throw new Error(i18n.t("employeeForm.exactManagerRequired"))
       const profile = { firstName: firstName.trim(), lastName: lastName.trim(), phone: phone.trim(), roleId, status, occupation: occupation.trim() || null, notes: notes.trim() || null, salaryReference: reference }
-      if (!editing) {
-        await onSubmit({ ...profile, ...(worker && status === "ACTIVE" ? { managerId: managerId || null, projectId: projectId || null } : {}) })
-        return
-      }
       await onSubmit({ ...profile,
         ...(worker && status === "ACTIVE" && (workplaceType !== (currentPlacement?.nextType ?? "NONE") || workplaceType === "PROJECT" && (managerId !== (currentPlacement?.managerId ?? "") || projectId !== (currentPlacement?.projectId ?? "")) || workplaceType === "WAREHOUSE" && warehouseId !== (currentPlacement?.warehouseId ?? "")) ? { placement: workplaceType === "NONE" ? { nextType: "NONE" } : workplaceType === "PROJECT" ? { nextType: "PROJECT", managerId: managerId || null, projectId: projectId || null } : { nextType: "WAREHOUSE", warehouseId: warehouseId || null } } : {}),
         ...(managerRole && status === "ACTIVE" && managedProjectIds.join("|") !== (currentManagedProjectIds ?? []).join("|") ? { managedProjectIds } : {}),
@@ -110,8 +103,7 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
     } catch (error) { setFailure(serverError(error)) }
     finally { submitting.current = false }
   }
-  if (editing && initial) {
-    const state: FormState = { firstName, lastName, phone, roleId, status, salaryPeriod: period as FormState["salaryPeriod"], salaryAmountDzd: amount, occupation, notes }
+  const state: FormState = { firstName, lastName, phone, roleId, status, salaryPeriod: period as FormState["salaryPeriod"], salaryAmountDzd: amount, occupation, notes }
     const update: EmployeeEditFormProps["setState"] = action => {
       const next = typeof action === "function" ? action(state) : action
       setFirstName(next.firstName); setLastName(next.lastName); setPhone(next.phone)
@@ -140,30 +132,6 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
       selectedManagedWarehouseIds={managedWarehouseIds} setSelectedManagedWarehouseIds={setManagedWarehouseIds}
       setManagedProjectsDirty={() => {}} setManagedWarehousesDirty={() => {}}
     />
-  }
-  return <form className="space-y-4" onSubmit={submit} aria-busy={busy}>
-    <div className="grid gap-3 sm:grid-cols-2">
-      <label className="grid gap-1">{t("employeeForm.firstNameLabel")}<Input required value={firstName} onChange={event => setFirstName(event.target.value)} /></label>
-      <label className="grid gap-1">{t("employeeForm.lastNameLabel")}<Input required value={lastName} onChange={event => setLastName(event.target.value)} /></label>
-      <label className="grid gap-1">{t("auth.phoneLabel")}<Input required inputMode="tel" autoComplete="tel" value={phone} onChange={event => setPhone(event.target.value)} /></label>
-      <label className="grid gap-1">{t("employeeForm.roleLabel")}<NativeSelect value={roleId} onChange={event => setRoleId(event.target.value)}>{roles.filter(role => role.isSystem && ["admin", "worker", "project_manager", "warehouse_manager"].includes(role.key)).map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</NativeSelect></label>
-      <label className="grid gap-1">{t("status.active")}<NativeSelect value={status} onChange={event => setStatus(event.target.value as ExactEmployee["status"])}><option value="ACTIVE">{t("status.active")}</option><option value="INACTIVE">{t("status.inactive")}</option><option value="LEFT">{t("status.left")}</option></NativeSelect></label>
-      <label className="grid gap-1">{t("employeeForm.salaryPeriodLabel")}<NativeSelect value={period} onChange={event => setPeriod(event.target.value)}><option value="">{t("common.none")}</option><option value="DAILY">{t("detailPages.salary.daily")}</option><option value="WEEKLY">{t("detailPages.salary.weekly")}</option><option value="MONTHLY">{t("detailPages.salary.monthly")}</option></NativeSelect></label>
-      <label className="grid gap-1">{t("employeeForm.salaryAmountLabel")}<Input inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} placeholder={period === "DAILY" ? "0.0000" : "0.00"} /></label>
-      <label className="grid gap-1">{t("employeeForm.occupationLabel")}<Input maxLength={120} value={occupation} onChange={event => setOccupation(event.target.value)} /></label>
-      <label className="grid gap-1 sm:col-span-2">{t("employeeForm.notesLabel")}<Input value={notes} onChange={event => setNotes(event.target.value)} /></label>
-    </div>
-    {worker && status === "ACTIVE" ? <fieldset className="space-y-3 rounded-md border p-3"><legend>{t("detailPages.employee.editPage.workTitle")}</legend>
-      <label className="grid gap-1">{t("employeeForm.managerLabel")}<NativeSelect value={managerId} onChange={event => { setManagerId(event.target.value); setProjectId("") }}><option value="">{t("employeeForm.managerPlaceholder")}</option>{managers.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</NativeSelect></label>
-      <label className="grid gap-1">{t("employeeForm.projectLabel")}<NativeSelect value={projectId} onChange={event => setProjectId(event.target.value)}><option value="">{t("employeeForm.projectPlaceholder")}</option>{(selectedManager?.projectOptions ?? projects).map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</NativeSelect></label>
-      {editing ? <label className="grid gap-1">{t("detailPages.employee.editPage.workplaceType")}<NativeSelect value={workplaceType} onChange={event => setWorkplaceType(event.target.value as typeof workplaceType)}><option value="NONE">{t("common.none")}</option><option value="PROJECT">{t("detailPages.employee.editPage.projectPlacement")}</option><option value="WAREHOUSE">{t("detailPages.employee.editPage.warehouse")}</option></NativeSelect></label> : null}
-      {editing && workplaceType === "WAREHOUSE" ? <label className="grid gap-1">{t("detailPages.employee.editPage.warehouse")}<NativeSelect value={warehouseId} onChange={event => setWarehouseId(event.target.value)}><option value="" />{warehouses.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</NativeSelect></label> : null}
-    </fieldset> : null}
-    {editing && managerRole && status === "ACTIVE" ? <fieldset className="space-y-2 rounded-md border p-3"><legend>{t("detailPages.employee.editPage.managedProjectsTitle")}</legend>{managedProjects.map(row => <label className="flex gap-2" key={row.id}><input type="checkbox" checked={managedProjectIds.includes(row.id)} onChange={event => setManagedProjectIds(ids => event.target.checked ? [...ids, row.id] : ids.filter(id => id !== row.id))} />{row.label}</label>)}</fieldset> : null}
-    {editing && warehouseManagerRole && status === "ACTIVE" ? <fieldset className="space-y-2 rounded-md border p-3"><legend>{t("detailPages.employee.editPage.managedWarehousesTitle")}</legend>{managedWarehouses.map(row => <label className="flex gap-2" key={row.id}><input type="checkbox" checked={managedWarehouseIds.includes(row.id)} onChange={event => setManagedWarehouseIds(ids => event.target.checked ? [...ids, row.id] : ids.filter(id => id !== row.id))} />{row.label}</label>)}</fieldset> : null}
-    {failure || serverFailure ? <p role="alert" className="text-destructive">{failure ?? serverFailure}</p> : null}
-    <Button type="submit" disabled={busy}>{busy ? t("common.loading") : editing ? t("common.save") : t("common.create")}</Button>
-  </form>
 }
 
 export function ExactEmployeeEditPage(props: ExactEmployeePageProps) {
@@ -185,7 +153,7 @@ export function ExactEmployeeEditPage(props: ExactEmployeePageProps) {
   if (loading) return <p role="status">{t("common.loading")}</p>
   if (readFailure) return <section><p role="alert">{readFailure}</p><Button onClick={load}>{t("common.retry")}</Button></section>
   if (!employee) return <p>{t("common.none")}</p>
-  return <FormFields roles={props.roles} managers={props.managerOptions} projects={props.projectOptions} warehouses={props.warehouseOptions} managedProjects={props.managedProjectOptions} managedWarehouses={props.managedWarehouseOptions} currentManagedProjectIds={props.currentManagedProjectIds} currentManagedWarehouseIds={props.currentManagedWarehouseIds} currentPlacement={props.currentPlacement} initial={employee} editing onCancel={props.onCancel} onBackToEmployees={props.onBackToEmployees} busy={saving || saved} serverFailure={completionFailure ?? saveFailure} onSubmit={async data => {
+  return <FormFields roles={props.roles} managers={props.managerOptions} projects={props.projectOptions} warehouses={props.warehouseOptions} managedProjects={props.managedProjectOptions} managedWarehouses={props.managedWarehouseOptions} currentManagedProjectIds={props.currentManagedProjectIds} currentManagedWarehouseIds={props.currentManagedWarehouseIds} currentPlacement={props.currentPlacement} initial={employee} onCancel={props.onCancel} onBackToEmployees={props.onBackToEmployees} busy={saving || saved} serverFailure={completionFailure ?? saveFailure} onSubmit={async data => {
       if (mutationLocked.current || saved) return
       mutationLocked.current = true
       setSaving(true); setSaveFailure(null); setCompletionFailure(null)
