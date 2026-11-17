@@ -25,6 +25,7 @@ import { rpcClient } from "@/lib/orpc-client"
 import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 import { workspaceQueryPrefix } from "./workspace-queries"
+import { invalidateExactWorkspacesForUser } from "./exact-workspace-refresh"
 import {
   getCachedSessionUserId,
   invalidateWorkspaceDomains,
@@ -976,6 +977,7 @@ export function useResetWorkspaceMutation() {
       // dashboard keeps showing stale data after the reset (issue #276).
       await queryClient.invalidateQueries({ queryKey: workspaceDomainQueryPrefix })
       await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      await invalidateExactWorkspacesForUser(queryClient, getCachedSessionUserId(queryClient))
       return { success: true as const }
     },
     onSuccess: () => {
