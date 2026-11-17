@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { i18n } from "@/i18n"
-import type { ExactEmployee, ExactEmployeeBatchCreateInput, ExactEmployeeClient, ExactEmployeeCreateInput, ExactEmployeeSaveInput, ExactEmployeeStateHistory, ExactSalaryReference, Role } from "@tuari/contracts"
+import type { ExactEmployee, ExactEmployeeBatchCreateInput, ExactEmployeeClient, ExactEmployeeSaveInput, ExactEmployeeStateHistory, ExactSalaryReference, Role } from "@tuari/contracts"
 import { SalaryReference } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { EmployeeEditForm } from "./employee-edit-form"
@@ -147,8 +147,8 @@ function FormFields({ roles, initial, onSubmit, busy, serverFailure, managers, p
       {editing ? <label className="grid gap-1">{t("detailPages.employee.editPage.workplaceType")}<NativeSelect value={workplaceType} onChange={event => setWorkplaceType(event.target.value as typeof workplaceType)}><option value="NONE">{t("common.none")}</option><option value="PROJECT">{t("detailPages.employee.editPage.projectPlacement")}</option><option value="WAREHOUSE">{t("detailPages.employee.editPage.warehouse")}</option></NativeSelect></label> : null}
       {editing && workplaceType === "WAREHOUSE" ? <label className="grid gap-1">{t("detailPages.employee.editPage.warehouse")}<NativeSelect value={warehouseId} onChange={event => setWarehouseId(event.target.value)}><option value="" />{warehouses.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</NativeSelect></label> : null}
     </fieldset> : null}
-    {managerRole && status === "ACTIVE" ? <fieldset className="space-y-2 rounded-md border p-3"><legend>{t("detailPages.employee.editPage.managedProjectsTitle")}</legend>{managedProjects.map(row => <label className="flex gap-2" key={row.id}><input type="checkbox" checked={managedProjectIds.includes(row.id)} onChange={event => setManagedProjectIds(ids => event.target.checked ? [...ids, row.id] : ids.filter(id => id !== row.id))} />{row.label}</label>)}</fieldset> : null}
-    {warehouseManagerRole && status === "ACTIVE" ? <fieldset className="space-y-2 rounded-md border p-3"><legend>{t("detailPages.employee.editPage.managedWarehousesTitle")}</legend>{managedWarehouses.map(row => <label className="flex gap-2" key={row.id}><input type="checkbox" checked={managedWarehouseIds.includes(row.id)} onChange={event => setManagedWarehouseIds(ids => event.target.checked ? [...ids, row.id] : ids.filter(id => id !== row.id))} />{row.label}</label>)}</fieldset> : null}
+    {editing && managerRole && status === "ACTIVE" ? <fieldset className="space-y-2 rounded-md border p-3"><legend>{t("detailPages.employee.editPage.managedProjectsTitle")}</legend>{managedProjects.map(row => <label className="flex gap-2" key={row.id}><input type="checkbox" checked={managedProjectIds.includes(row.id)} onChange={event => setManagedProjectIds(ids => event.target.checked ? [...ids, row.id] : ids.filter(id => id !== row.id))} />{row.label}</label>)}</fieldset> : null}
+    {editing && warehouseManagerRole && status === "ACTIVE" ? <fieldset className="space-y-2 rounded-md border p-3"><legend>{t("detailPages.employee.editPage.managedWarehousesTitle")}</legend>{managedWarehouses.map(row => <label className="flex gap-2" key={row.id}><input type="checkbox" checked={managedWarehouseIds.includes(row.id)} onChange={event => setManagedWarehouseIds(ids => event.target.checked ? [...ids, row.id] : ids.filter(id => id !== row.id))} />{row.label}</label>)}</fieldset> : null}
     {failure || serverFailure ? <p role="alert" className="text-destructive">{failure ?? serverFailure}</p> : null}
     <Button type="submit" disabled={busy}>{busy ? t("common.loading") : editing ? t("common.save") : t("common.create")}</Button>
   </form>
@@ -201,7 +201,7 @@ export function ExactEmployeeCreatePage(props: ExactEmployeeBatchProps) {
       if (mutationLocked.current || saved) return
       mutationLocked.current = true
       setSaving(true); setFailure(null); setCompletionFailure(null)
-      try { requireSuccess(await client.employeesCreate(data as ExactEmployeeCreateInput)); setSaved(true) }
+      try { requireSuccess(await client.employeesBatchCreate({ employees: [data] } as ExactEmployeeBatchCreateInput)); setSaved(true) }
       catch (error) { mutationLocked.current = false; setFailure(serverError(error)); setSaving(false); return }
       setSaving(false)
       try { onDone() } catch (error) { setCompletionFailure(t("employeeForm.exactCompletionFailed", { error: serverError(error) })) }

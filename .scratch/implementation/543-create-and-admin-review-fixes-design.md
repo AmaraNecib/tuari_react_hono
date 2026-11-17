@@ -1,0 +1,15 @@
+# Repair employee creation and owner authorization
+
+Base 743fbc09, parent worktree D:/worktrees/tuari_react_hono/541-ci-gates-01. Focused-local / CI-final-pending. Greptile current published head c6daf53 reported P1 single creation with relationships and P1 admin profile saves. This is an implementation correction to those reachable findings, not a new contract or schema.
+
+The single exact worker form supplied managerId/projectId to the strict employeesCreate schema, which rejects them. Submit its single row through the already-existing exact employeesBatchCreate command instead. That command validates and persists the employee plus manager/project assignments in one transaction. The strict contract-parsed regression asserts selected IDs reach this command and duplicate submits remain fenced after terminal success. No new endpoint, field or monetary representation is introduced.
+
+Manager ownership selections are not accepted by that batch contract. Hide those unsupported controls during creation rather than silently drop a user's selections. Existing manager ownership editing remains in the original shared edit form, using its atomic employeesSave command. Immediate manager-creation-plus-ownership is not claimed by this fix; create the manager, then assign scope in its edit page. Do not add a contract extension or sequential multi-write illusion to satisfy that unsupported creation control.
+
+The normal root forgot the ExactEmployeeService authorizer despite already providing a companyRepository owner-checking authorizer to other services. Pass that same object as the existing third constructor argument. A real normal-root regression bootstraps the owner, signs in, creates an admin employee and saves a profile with explicit admin role. It also rejects a non-owner grant without creating a second admin row. Both plain and keyed databases reproduce the original failure and pass with the dependency wired. Existing authorization implementation and policy remain unchanged.
+
+Proof: normal-root owner test is red before the wiring correction and green in both database modes afterward. Exact employee page tests pass 21 cases, including the updated single-row contract assertion. Web typecheck passes. Run affected API/web lint/types and root tests against committed source before reporting readiness.
+
+Other Greptile findings remain open until separately fixed and reviewed: cross-tab durable approval ownership, account-name changes while approval recovery is unresolved, and scoped history/settings synchronization. Existing child restores employee search using the original component; its integrated commit precedes this delta and still needs the parent review gate. No claim that these two fixes alone clear the hosted 1/5 verdict.
+
+Owner instructed no merge or auto-merge even if CI and hosted review become green. E2E alignment is in progress outside this commit, no CI topology split, no blanket skips. Preserve all original worktree dirty changes and existing live database. Parent owns publication and bounded review.

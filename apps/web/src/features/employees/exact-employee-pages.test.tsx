@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { ExactEmployeeClient, Role } from "@tuari/contracts"
+import { exactEmployeeBatchCreateInputSchema, type ExactEmployeeClient, type Role } from "@tuari/contracts"
 import { i18n } from "@/i18n"
 import { EmployeeEditPage } from "./employee-edit-page"
 import { EmployeeDetailsPage } from "./employee-details-page"
@@ -261,13 +261,15 @@ describe("exact employee page seams", () => {
     fireEvent.change(screen.getByLabelText(i18n.t("employeeForm.projectLabel")), { target: { value: "project-a" } })
     const form = screen.getByRole("button", { name: i18n.t("common.create") }).closest("form")!
     fireEvent.submit(form)
-    await waitFor(() => expect(props.client.employeesCreate).toHaveBeenCalledOnce())
+    await waitFor(() => expect(props.client.employeesBatchCreate).toHaveBeenCalledOnce())
+    const input = vi.mocked(props.client.employeesBatchCreate).mock.calls[0]?.[0]
+    expect(exactEmployeeBatchCreateInputSchema.parse(input).employees[0]).toMatchObject({ managerId: "manager-a", projectId: "project-a", firstName: "Amina" })
     expect(onDone).toHaveBeenCalledOnce()
     expect((await screen.findByRole("alert")).textContent).toBe(i18n.t("employeeForm.exactCompletionFailed", { error: "Refresh failed" }))
     fireEvent.submit(form)
-    expect(props.client.employeesCreate).toHaveBeenCalledOnce()
+    expect(props.client.employeesBatchCreate).toHaveBeenCalledOnce()
     expect((screen.getByRole("button", { name: i18n.t("common.loading") }) as HTMLButtonElement).disabled).toBe(true)
-    expect(props.client.employeesBatchCreate).not.toHaveBeenCalled()
+    expect(props.client.employeesCreate).not.toHaveBeenCalled()
   })
 
   it("keeps exact reads as errors instead of falling back to legacy handlers", async () => {

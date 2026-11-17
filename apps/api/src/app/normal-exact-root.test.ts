@@ -72,6 +72,26 @@ describe.each([["plain", ""], ["keyed", "application-normal-root-fixture-key"]])
     }
   });
 
+  it("lets the real owner create and save admin profiles while rejecting a non-owner grant", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "tuari-exact-admin-grant-"));
+    const deps = await createAppDependencies({ databasePath: join(directory, "workspace.sqlite"), databaseKey: key }, config);
+    try {
+      const owner = await deps.authBootstrapService.bootstrapFirstUser({ name: "Owner", phone: "0612345001", password: "normal-root-password" });
+      if (!owner.success) throw new Error("Bootstrap failed");
+      const login = await deps.auth.api.signInPhoneNumber({ body: { phoneNumber: "0612345001", password: "normal-root-password" }, headers: new Headers() });
+      const app = createApp(deps, { allowedOrigins: ["http://localhost"] });
+      const roles = await rpcCall<{ items: { id: string; key: string }[] }>(app, "rolesList", undefined, login.token);
+      const roleId = roles.items.find(role => role.key === "admin")!.id;
+      const created = await rpcCall<{ success: boolean; item: { id: string } }>(app, "employeesCreate", { firstName: "Admin", lastName: "Profile", phone: "0555000991", roleId }, login.token);
+      expect(created.success).toBe(true);
+      const saved = await rpcCall<{ success: boolean; item: { notes: string } }>(app, "employeesSave", { id: created.item.id, roleId, notes: "Owner-authorized profile edit" }, login.token);
+      expect(saved).toMatchObject({ success: true, item: { notes: "Owner-authorized profile edit" } });
+      expect(() => deps.exactEmployeeService.createEmployee({ firstName: "Other", lastName: "Admin", phone: "0555000992", roleId }, { actorUserId: "not-the-owner" })).toThrow();
+      const rows = await rpcCall<{ items: { phone: string }[] }>(app, "employeesList", {}, login.token);
+      expect(rows.items.some(row => row.phone === "0555000992")).toBe(false);
+    } finally { deps.close(); rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("starts the authenticated root, preserves exact identities and earnings through reopen", async () => {
     const directory = mkdtempSync(join(tmpdir(), "tuari-application-normal-root-"));
     const databasePath = join(directory, "workspace.sqlite");

@@ -389,7 +389,7 @@ async function createApplicationDependencies(
     const exactWorkforceService = new ExactWorkforceService(
       new SqliteExactWorkforceRepository(sharedDatabase, connectionLock), financeService, dependencies,
     );
-    const exactEmployeeService = new ExactEmployeeService(exactEmployeeRepository, dependencies);
+    const exactEmployeeService = new ExactEmployeeService(exactEmployeeRepository, dependencies, companyRepository);
     const authBootstrapService = new AuthBootstrapService(
       new SqliteBootstrapPort(db, sharedDatabase, connectionLock), auth, appConfig.bootstrapSetupKey,
     );
