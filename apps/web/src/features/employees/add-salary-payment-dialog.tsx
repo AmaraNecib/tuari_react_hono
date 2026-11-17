@@ -169,7 +169,16 @@ export function AddSalaryPaymentDialog({
     if (root === "periodStart" || root === "periodEnd" || root === "totalAmountText" || root === "unallocatedAmountText") return true
     return root === "rows" && rows.some(row => row.id === rowId) && ["projectId", "daysText", "amountText"].includes(String(field))
   }
-  const clearIssue = (path: (string | number)[]) => setIssues(current => current.filter(issue => issue.path.length !== path.length || !issue.path.every((part, index) => part === path[index])))
+  const clearIssue = (path: (string | number)[]) => {
+    const changesMoneyTotal = path[0] === "totalAmountText" || path[0] === "unallocatedAmountText" ||
+      (path[0] === "rows" && path[2] === "amountText")
+    setIssues(current => current.filter(issue => {
+      const samePath = issue.path.length === path.length && issue.path.every((part, index) => part === path[index])
+      const staleConservation = changesMoneyTotal && issue.path.length === 1 && issue.path[0] === "totalAmountText" &&
+        issue.message === t("workforce.validation.earning.conservation")
+      return !samePath && !staleConservation
+    }))
+  }
   const globalIssues = issues.filter(issue => !controlPath(issue.path))
 
   const submit = async () => {

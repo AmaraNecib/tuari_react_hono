@@ -125,6 +125,42 @@ describe("earned-wage approval composer", () => {
     expect(mutateAsync.mock.calls[1]![0].requestId).not.toBe(mutateAsync.mock.calls[0]![0].requestId)
   })
 
+  it("clears stale conservation after correcting A1 but keeps unrelated row errors", () => {
+    render(<AddSalaryPaymentDialog {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1.234" } })
+
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(screen.getByText("workforce.validation.earning.amountPrecision")).toBeTruthy()
+    expect(mutateAsync).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "500" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    const conservation = screen.getByText("workforce.validation.earning.conservation")
+    expect(screen.getByLabelText("earnings.total").getAttribute("aria-describedby")).toBe(conservation.id)
+    expect(mutateAsync).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(screen.getByText("workforce.validation.earning.daysPositive")).toBeTruthy()
+    expect(screen.getByText("workforce.validation.earning.conservation")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1000" } })
+    expect(screen.queryByText("workforce.validation.earning.conservation")).toBeNull()
+    expect(screen.getByText("workforce.validation.earning.daysPositive")).toBeTruthy()
+    expect(mutateAsync).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "999" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(screen.getByText("workforce.validation.earning.conservation")).toBeTruthy()
+    expect(mutateAsync).not.toHaveBeenCalled()
+  })
+
   it("unlocks a first registered wire-validation rejection for correction", async () => {
     mutateAsync.mockRejectedValueOnce(Object.assign(new Error("Input validation failed"), {
       code: "BAD_REQUEST",
