@@ -1,0 +1,29 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+const { mutateAsync } = vi.hoisted(() => ({ mutateAsync: vi.fn() }))
+vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "rtl" } }) }))
+vi.mock("@/features/app-shell/mock-dashboard", () => ({
+  AppMutationError: class AppMutationError extends Error { fieldErrors = [] },
+  useCreateEmployeesBatchMutation: () => ({ mutateAsync, isPending: false }),
+}))
+vi.mock("@/lib/toast", () => ({ showErrorToast: vi.fn(), showSuccessToast: vi.fn() }))
+
+import { EmployeeBatchCreatePage } from "./employee-batch-create-page"
+
+afterEach(() => { cleanup(); mutateAsync.mockReset() })
+
+describe("employee batch create salary reference", () => {
+  it("submits a localized four-place DAILY reference as its exact string", async () => {
+    mutateAsync.mockResolvedValue({ createdCount: 1 })
+    render(<EmployeeBatchCreatePage roles={[{ id: "worker-role", key: "worker", name: "عامل" } as never]} managerOptions={[]} onCancel={vi.fn()} onDone={vi.fn()} />)
+    fireEvent.change(screen.getByRole("textbox", { name: "employeeForm.firstNameLabel" }), { target: { value: "سمير" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "employeeForm.lastNameLabel" }), { target: { value: "بوقرة" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "auth.phoneLabel" }), { target: { value: "0555123456" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "employeeForm.salaryAmountLabelدج" }), { target: { value: "١٬٢٣٤٫٥٦٧٨" } })
+    fireEvent.change(screen.getByRole("combobox", { name: "employeeForm.salaryPeriodLabel" }), { target: { value: "DAILY" } })
+    fireEvent.click(screen.getByRole("button", { name: "employeeForm.submitSingle" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({ employees: [expect.objectContaining({ salaryReference: { period: "DAILY", amount: "1234.5678" } })] }))
+  })
+})
