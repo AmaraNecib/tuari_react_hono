@@ -6,7 +6,7 @@ import { i18n } from "@/i18n"
 import { EmployeeEditPage } from "./employee-edit-page"
 import { EmployeeDetailsPage } from "./employee-details-page"
 import { EmployeeBatchCreatePage } from "./employee-batch-create-page"
-import { ExactEmployeeTable } from "./exact-employee-pages"
+import { ExactEmployeeTable, mapExactEmployeeTableRow } from "./exact-employee-pages"
 
 const { legacyDebtDetailQuery } = vi.hoisted(() => {
   const query = vi.fn(() => ({ isPending: false, isError: false, data: { accounts: [], entriesByAccountId: {} } }))
@@ -87,6 +87,48 @@ describe("exact employee page seams", () => {
     expect(screen.getByRole("button", { name: i18n.t("common.leave") })).toBeTruthy()
     expect(screen.getByRole("button", { name: i18n.t("common.delete") })).toBeTruthy()
     expect(screen.queryByRole("button", { name: i18n.t("salaries.addPayment") })).toBeNull()
+  })
+
+  it("matches end-work eligibility to active relationship links and server reasons", async () => {
+    const managerRole: Role = { ...role, id: "role-manager", key: "project_manager", name: "Project manager" }
+    const warehouseManagerRole: Role = { ...role, id: "role-warehouse-manager", key: "warehouse_manager", name: "Warehouse manager" }
+    const linkedWorker = { ...employee, id: "worker-linked", firstName: "Linked", status: "ACTIVE" as const }
+    const unlinkedManager = { ...employee, id: "manager-unlinked", firstName: "Unlinked", roleId: managerRole.id, status: "ACTIVE" as const }
+    const linkedManager = { ...employee, id: "manager-linked", firstName: "Project", roleId: managerRole.id, status: "ACTIVE" as const }
+    const linkedWarehouseManager = { ...employee, id: "warehouse-manager-linked", firstName: "Warehouse", roleId: warehouseManagerRole.id, status: "ACTIVE" as const }
+    const references = {
+      people: [linkedWorker, unlinkedManager, linkedManager, linkedWarehouseManager],
+      projects: [{ id: "managed-project", name: "Managed project", managerId: linkedManager.id, status: "ACTIVE" as const }],
+      warehouses: [{ id: "managed-warehouse", name: "Managed warehouse", managerId: linkedWarehouseManager.id, status: "ACTIVE" as const }],
+      managerAssignments: [
+        { id: "worker-manager-link", workerId: linkedWorker.id, managerId: linkedManager.id, status: "ACTIVE" as const, startDate: "2026-11-01", endDate: null, notes: null, actorUserId: null, transactionId: null, createdAt: "2026-11-01", updatedAt: "2026-11-01" },
+        { id: "manager-report-link", workerId: "worker-report", managerId: linkedManager.id, status: "ACTIVE" as const, startDate: "2026-11-01", endDate: null, notes: null, actorUserId: null, transactionId: null, createdAt: "2026-11-01", updatedAt: "2026-11-01" },
+      ],
+      projectAssignments: [{ id: "worker-project-link", employeeId: linkedWorker.id, projectId: "managed-project", status: "ACTIVE" as const, startDate: "2026-11-01", endDate: null, notes: null, actorUserId: null, transactionId: null, createdAt: "2026-11-01", updatedAt: "2026-11-01" }],
+      warehouseAssignments: [],
+    }
+    const copy = {
+      noManager: i18n.t("shell.noManager"),
+      noWorkplace: i18n.t("detailPages.employee.noCurrentWorkplace"),
+      leaveReasonInactive: i18n.t("detailPages.employee.leaveReasonInactive"),
+      leaveReasonWorkerLinked: i18n.t("detailPages.employee.leaveReasonWorkerLinked"),
+      leaveReasonProjectManagerLinked: i18n.t("detailPages.employee.leaveReasonProjectManagerLinked"),
+      leaveReasonWarehouseManagerLinked: i18n.t("detailPages.employee.leaveReasonWarehouseManagerLinked"),
+      leaveReasonFallback: i18n.t("detailPages.employee.leaveReasonFallback"),
+    }
+    const rows = [linkedWorker, unlinkedManager, linkedManager, linkedWarehouseManager].map(person => mapExactEmployeeTableRow(person, [role, managerRole, warehouseManagerRole], references, copy))
+    expect(rows.find(row => row.id === unlinkedManager.id)).toMatchObject({ canLeave: true, leaveDisabledReason: null })
+    expect(rows.find(row => row.id === linkedWorker.id)).toMatchObject({ canLeave: false, leaveDisabledReason: i18n.t("detailPages.employee.leaveReasonWorkerLinked") })
+    expect(rows.find(row => row.id === linkedManager.id)).toMatchObject({ canLeave: false, leaveDisabledReason: i18n.t("detailPages.employee.leaveReasonProjectManagerLinked") })
+    expect(rows.find(row => row.id === linkedWarehouseManager.id)).toMatchObject({ canLeave: false, leaveDisabledReason: i18n.t("detailPages.employee.leaveReasonWarehouseManagerLinked") })
+
+    const props = ctx({ roles: [role, managerRole], assignmentReferences: references })
+    vi.mocked(props.client.employeesListPaged).mockResolvedValue({ items: [linkedWorker, unlinkedManager], total: 2, nextCursor: null, hasMore: false })
+    render(<ExactEmployeeTable {...props} onView={vi.fn()} onEdit={vi.fn()} />)
+    const managerRow = await screen.findByRole("row", { name: /Unlinked Kaci/ })
+    const workerRow = await screen.findByRole("row", { name: /Linked Kaci/ })
+    expect((within(managerRow).getByRole("button", { name: i18n.t("common.leave") }) as HTMLButtonElement).disabled).toBe(false)
+    expect((within(workerRow).getByRole("button", { name: i18n.t("common.leave") }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it("shows the active manager and assigned project from authenticated references", async () => {

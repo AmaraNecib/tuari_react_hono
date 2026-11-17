@@ -21,8 +21,8 @@ import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/featur
 type Choice = { id: string; label: string }
 export type ExactEmployeeAssignmentReferences = {
   people: ExactEmployee[]
-  projects: Array<Pick<Project, "id" | "name" | "managerId">>
-  warehouses: Array<Pick<Warehouse, "id" | "name">>
+  projects: Array<Pick<Project, "id" | "name" | "managerId" | "status">>
+  warehouses: Array<Pick<Warehouse, "id" | "name" | "managerId" | "status">>
   managerAssignments: EmployeeManagerAssignment[]
   projectAssignments: EmployeeProjectAssignment[]
   warehouseAssignments: EmployeeWarehouseAssignment[]
@@ -245,7 +245,15 @@ export function ExactEmployeeDetailsPage(props: ExactEmployeePageProps) {
   />
 }
 
-export function mapExactEmployeeTableRow(employee: ExactEmployee, roles: Role[], references: ExactEmployeeAssignmentReferences, copy: { noManager: string; noWorkplace: string }): EmployeeTableRow {
+export function mapExactEmployeeTableRow(employee: ExactEmployee, roles: Role[], references: ExactEmployeeAssignmentReferences, copy: {
+  noManager: string
+  noWorkplace: string
+  leaveReasonInactive: string
+  leaveReasonWorkerLinked: string
+  leaveReasonProjectManagerLinked: string
+  leaveReasonWarehouseManagerLinked: string
+  leaveReasonFallback: string
+}): EmployeeTableRow {
   const role = roles.find(item => item.id === employee.roleId)
   const latest = <T extends { status: string; startDate: string }>(rows: T[]) => rows.filter(row => row.status === "ACTIVE").sort((left, right) => right.startDate.localeCompare(left.startDate))[0]
   const managerAssignment = latest(references.managerAssignments.filter(item => item.workerId === employee.id))
@@ -255,6 +263,26 @@ export function mapExactEmployeeTableRow(employee: ExactEmployee, roles: Role[],
   const warehouse = warehouseAssignment ? references.warehouses.find(item => item.id === warehouseAssignment.warehouseId) : undefined
   const managerId = managerAssignment?.managerId ?? project?.managerId ?? null
   const manager = managerId ? references.people.find(item => item.id === managerId) : undefined
+  const hasActiveManagerAssignment = references.managerAssignments.some(item => item.workerId === employee.id && item.status === "ACTIVE")
+  const hasActiveProjectAssignment = references.projectAssignments.some(item => item.employeeId === employee.id && item.status === "ACTIVE")
+  const hasActiveWarehouseAssignment = references.warehouseAssignments.some(item => item.employeeId === employee.id && item.status === "ACTIVE")
+  const projectManagerStillLinked = role?.key === "project_manager" && (
+    references.projects.some(item => item.managerId === employee.id && item.status === "ACTIVE") ||
+    references.managerAssignments.some(item => item.managerId === employee.id && item.status === "ACTIVE") ||
+    hasActiveProjectAssignment || hasActiveWarehouseAssignment
+  )
+  const warehouseManagerStillLinked = role?.key === "warehouse_manager" && (
+    references.warehouses.some(item => item.managerId === employee.id && item.status === "ACTIVE") ||
+    hasActiveProjectAssignment || hasActiveWarehouseAssignment
+  )
+  const workerStillLinked = role?.key === "worker" && (hasActiveManagerAssignment || hasActiveProjectAssignment || hasActiveWarehouseAssignment)
+  const canLeave = employee.status === "ACTIVE" && !workerStillLinked && !projectManagerStillLinked && !warehouseManagerStillLinked
+  const leaveDisabledReason = canLeave ? null
+    : employee.status !== "ACTIVE" ? copy.leaveReasonInactive
+      : workerStillLinked ? copy.leaveReasonWorkerLinked
+        : projectManagerStillLinked ? copy.leaveReasonProjectManagerLinked
+          : warehouseManagerStillLinked ? copy.leaveReasonWarehouseManagerLinked
+            : copy.leaveReasonFallback
   return {
     id: employee.id,
     firstName: employee.firstName,
@@ -279,9 +307,9 @@ export function mapExactEmployeeTableRow(employee: ExactEmployee, roles: Role[],
     occupation: employee.occupation,
     isWorker: role?.key === "worker",
     canDelete: true,
-    canLeave: role?.key === "worker" && employee.status === "ACTIVE",
+    canLeave,
     deleteDisabledReason: null,
-    leaveDisabledReason: null,
+    leaveDisabledReason,
     createdAt: employee.createdAt,
     updatedAt: employee.updatedAt,
   }
@@ -311,7 +339,15 @@ export function ExactEmployeeTable({ client, roles, assignmentReferences, onView
     }).catch(error => { if (live) setFailure(serverError(error)) }).finally(() => { if (live) setLoading(false) })
     return () => { live = false }
   }, [client, cursor, refreshKey, search])
-  const rows = useMemo<EmployeeTableRow[]>(() => employees.map(employee => mapExactEmployeeTableRow(employee, roles, assignmentReferences, { noManager: t("shell.noManager"), noWorkplace: t("detailPages.employee.noCurrentWorkplace") })), [assignmentReferences, employees, roles, t])
+  const rows = useMemo<EmployeeTableRow[]>(() => employees.map(employee => mapExactEmployeeTableRow(employee, roles, assignmentReferences, {
+    noManager: t("shell.noManager"),
+    noWorkplace: t("detailPages.employee.noCurrentWorkplace"),
+    leaveReasonInactive: t("detailPages.employee.leaveReasonInactive"),
+    leaveReasonWorkerLinked: t("detailPages.employee.leaveReasonWorkerLinked"),
+    leaveReasonProjectManagerLinked: t("detailPages.employee.leaveReasonProjectManagerLinked"),
+    leaveReasonWarehouseManagerLinked: t("detailPages.employee.leaveReasonWarehouseManagerLinked"),
+    leaveReasonFallback: t("detailPages.employee.leaveReasonFallback"),
+  })), [assignmentReferences, employees, roles, t])
   function changeSearch(query: string) { setSearch(query); setCursor(undefined); setCursorHistory([]) }
   function nextPage() { if (!nextCursor) return; setCursorHistory(history => [...history, cursor]); setCursor(nextCursor) }
   function previousPage() { const history = [...cursorHistory]; const previous = history.pop(); setCursorHistory(history); setCursor(previous) }
