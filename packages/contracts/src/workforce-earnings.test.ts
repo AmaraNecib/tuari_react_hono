@@ -78,10 +78,10 @@ describe("employee earning approval contract", () => {
     expect(employeeSalaryReferenceSchema.safeParse({ period: "MONTHLY", amount: "1250.1250" }).success).toBe(false);
     const invalidDaily = employeeSalaryReferenceSchema.safeParse({ period: "DAILY", amount: "1250.12345" });
     expect(invalidDaily.success).toBe(false);
-    if (!invalidDaily.success) expect(invalidDaily.error.issues[0]?.message).toBe("مرجع الأجر يجب أن يكون قيمة دقيقة مناسبة للدورية.");
+    if (!invalidDaily.success) expect(invalidDaily.error.issues[0]?.message).toBe("workforce.validation.salaryReference.precision");
     const invalidType = employeeSalaryReferenceSchema.safeParse({ period: "DAILY", amount: 1250 });
     expect(invalidType.success).toBe(false);
-    if (!invalidType.success) expect(invalidType.error.issues[0]?.message).toBe("مبلغ مرجع الأجر يجب أن يكون نصًا عشريًا.");
+    if (!invalidType.success) expect(invalidType.error.issues[0]?.message).toBe("workforce.validation.salaryReference.amountType");
     const invalidPeriod = employeeSalaryReferenceSchema.safeParse({ period: "YEARLY", amount: "1250.00" });
     expect(invalidPeriod.success).toBe(false);
     if (!invalidPeriod.success) expect(invalidPeriod.error.issues[0]?.message).toBe("دورية الأجر غير صالحة.");

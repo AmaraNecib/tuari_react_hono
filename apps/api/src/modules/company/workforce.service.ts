@@ -80,8 +80,8 @@ function normalizeSalaryReference(
   try {
     return SalaryReference.parse(value.period, value.amount).toWire();
   } catch {
-    throw new CompanyError("VALIDATION", "مرجع الأجر غير صالح.", [
-      { field: "salaryReference", message: "أدخل قيمة مرجع أجر دقيقة حسب دوريتها." },
+    throw new CompanyError("VALIDATION", "workforce.validation.salaryReference.precision", [
+      { field: "salaryReference.amount", message: "workforce.validation.salaryReference.precision" },
     ]);
   }
 }

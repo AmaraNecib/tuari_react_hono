@@ -31,18 +31,18 @@ const exactMoneyStringSchema = z.string().max(96).superRefine((value, ctx) => {
   try {
     Money.parse(value);
   } catch {
-    ctx.addIssue({ code: "custom", message: "Expected an exact decimal amount with at most two places." });
+    ctx.addIssue({ code: "custom", message: "workforce.validation.earning.amountPrecision" });
   }
 });
 
 export const employeeSalaryReferenceSchema = z.object({
   period: salaryPeriodSchema,
-  amount: z.string({ error: "مبلغ مرجع الأجر يجب أن يكون نصًا عشريًا." }).max(96, { message: "مبلغ مرجع الأجر يتجاوز الحد المسموح." }),
-}, { error: "مرجع الأجر غير صالح." }).superRefine((value, ctx) => {
+  amount: z.string({ error: "workforce.validation.salaryReference.amountType" }).max(96, { message: "workforce.validation.salaryReference.amountLength" }),
+}, { error: "workforce.validation.salaryReference.invalid" }).superRefine((value, ctx) => {
   try {
     SalaryReference.parse(value.period, value.amount);
   } catch {
-    ctx.addIssue({ code: "custom", path: ["amount"], message: "مرجع الأجر يجب أن يكون قيمة دقيقة مناسبة للدورية." });
+    ctx.addIssue({ code: "custom", path: ["amount"], message: "workforce.validation.salaryReference.precision" });
   }
 });
 
@@ -121,7 +121,9 @@ export const employeeStateHistorySchema = z.object({
 export const employeeEarningSegmentSchema = z.object({
   id: entityIdSchema,
   projectId: entityIdSchema,
-  days: z.number().int().positive(),
+  days: z.number({ error: "workforce.validation.earning.daysPositive" })
+    .int({ message: "workforce.validation.earning.daysPositive" })
+    .positive({ message: "workforce.validation.earning.daysPositive" }),
   amount: exactMoneyStringSchema,
 });
 
@@ -153,12 +155,12 @@ export const employeeEarningApprovalInputSchema = z.object({
   segments: z.array(employeeEarningSegmentSchema).max(10_000),
 }).superRefine((value, ctx) => {
   if (Date.parse(value.periodStart) >= Date.parse(value.periodEnd)) {
-    ctx.addIssue({ code: "custom", path: ["periodEnd"], message: "The covered period must end after it starts." });
+    ctx.addIssue({ code: "custom", path: ["periodEnd"], message: "workforce.validation.earning.periodOrder" });
   }
   const ids = new Set<string>();
   for (const [index, segment] of value.segments.entries()) {
     if (ids.has(segment.id)) {
-      ctx.addIssue({ code: "custom", path: ["segments", index, "id"], message: "Segment IDs must be unique within an earning." });
+      ctx.addIssue({ code: "custom", path: ["segments", index, "id"], message: "workforce.validation.earning.duplicateSegment" });
     }
     ids.add(segment.id);
   }
@@ -168,10 +170,10 @@ export const employeeEarningApprovalInputSchema = z.object({
     const amounts = value.segments.map(segment => BigInt(Money.parse(segment.amount).toMinorUnits()));
     const allocated = amounts.reduce((sum, amount) => sum + amount, 0n);
     if (total <= 0n || unallocated < 0n || amounts.some(amount => amount < 0n)) {
-      ctx.addIssue({ code: "custom", path: ["totalAmount"], message: "Earning total must be positive and allocations cannot be negative." });
+      ctx.addIssue({ code: "custom", path: ["totalAmount"], message: "workforce.validation.earning.positiveTotal" });
     }
     if (total !== allocated + unallocated) {
-      ctx.addIssue({ code: "custom", path: ["segments"], message: "Allocated and unallocated amounts must equal the approved total." });
+      ctx.addIssue({ code: "custom", path: ["segments"], message: "workforce.validation.earning.conservation" });
     }
   } catch {
     // Field-level decimal validation above reports malformed or out-of-range values.
