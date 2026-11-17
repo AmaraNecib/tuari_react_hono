@@ -2,8 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   exactSalaryReferenceSchema,
   exactSalaryApprovalInputSchema,
-  suggestExactSalaryAmount,
-  suggestExactSalaryAllocations,
   exactEmployeeCreateInputSchema,
   exactEmployeeUpdateInputSchema,
 } from "./workforce-exact";
@@ -15,7 +13,7 @@ const approval = {
   segments: [segment("a-first", "A", "10000", 5), segment("b", "B", "37500", 15), segment("a-last", "A", "15000", 5)],
 };
 
-describe("opt-in exact workforce input and suggestions", () => {
+describe("opt-in exact workforce input contract", () => {
   it("keeps omitted, cleared and zero references distinct without accepting numeric legacy fields", () => {
     expect(exactEmployeeUpdateInputSchema.parse({ id: "worker" })).not.toHaveProperty("salaryReference");
     expect(exactEmployeeUpdateInputSchema.parse({ id: "worker", salaryReference: null }).salaryReference).toBeNull();
@@ -24,17 +22,9 @@ describe("opt-in exact workforce input and suggestions", () => {
     expect(exactEmployeeUpdateInputSchema.safeParse({ id: "worker", salaryPeriod: "DAILY" }).success).toBe(false);
     expect(exactEmployeeCreateInputSchema.parse({ firstName: "Test", lastName: "Worker", phone: "0550000000", roleId: "worker" }).salaryReference).toBeUndefined();
   });
-  it("keeps a DAILY reference at four places until final money calculation", () => {
+  it("keeps a DAILY reference at four places", () => {
     const reference = exactSalaryReferenceSchema.parse({ period: "DAILY", amount: "1500.125" });
     expect(reference).toEqual({ period: "DAILY", amount: "1500.1250" });
-    expect(suggestExactSalaryAmount(reference, 8)).toBe("12001.00");
-  });
-
-  it("retains the monthly ratio and legacy weekly behavior without posting earnings", () => {
-    expect(suggestExactSalaryAmount({ period: "MONTHLY", amount: "100" }, 1)).toBe("3.33");
-    expect(suggestExactSalaryAmount({ period: "MONTHLY", amount: "100" }, 3)).toBe("10.00");
-    expect(suggestExactSalaryAmount({ period: "WEEKLY", amount: "100" }, 3)).toBe("100.00");
-    expect(suggestExactSalaryAmount(null, 3)).toBeNull();
   });
 
   it("rejects numeric bridges, wrong reference precision and unsafe days", () => {
@@ -42,9 +32,10 @@ describe("opt-in exact workforce input and suggestions", () => {
       expect(exactSalaryReferenceSchema.safeParse(value).success).toBe(false);
     }
     for (const days of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, NaN]) {
-      expect(() => suggestExactSalaryAmount({ period: "DAILY", amount: "1" }, days)).toThrow();
+      expect(exactSalaryApprovalInputSchema.safeParse({
+        ...approval, segments: [segment("day-bound", "A", "62500", days)],
+      }).success).toBe(false);
     }
-    expect(suggestExactSalaryAmount({ period: "DAILY", amount: "1" }, 366)).toBe("366.00");
   });
 
   it("accepts independent repeated A/B/A amounts with optional days and explicit unallocated earnings", () => {
@@ -66,18 +57,10 @@ describe("opt-in exact workforce input and suggestions", () => {
     }
   });
 
-  it("distributes only an explicit suggestion target, preserving stable IDs, recorded tie order and its remainder", () => {
-    const shares = [{ id: "third", projectId: "A", days: 1 }, { id: "first", projectId: "B", days: 1 }, { id: "second", projectId: "A", days: 1 }];
-    expect(suggestExactSalaryAllocations("100", "1", shares)).toEqual({
-      segments: [segment("third", "A", "33.00", 1), segment("first", "B", "33.00", 1), segment("second", "A", "33.00", 1)], unallocatedAmount: "1.00",
-    });
-    expect(suggestExactSalaryAllocations("100", "0", shares).segments.map(row => row.amount)).toEqual(["33.34", "33.33", "33.33"]);
-    expect(shares.map(row => row.id)).toEqual(["third", "first", "second"]);
-  });
-
-  it("preserves full-range exact amounts and rejects an overflowing suggestion rather than clipping", () => {
+  it("preserves full-range exact amounts and rejects approval amounts beyond int64", () => {
     expect(exactSalaryApprovalInputSchema.parse({ ...approval, approvedAmount: "92233720368547758.07", segments: [], unallocatedAmount: "92233720368547758.07" }).approvedAmount).toBe("92233720368547758.07");
-    expect(() => suggestExactSalaryAmount({ period: "DAILY", amount: "922337203685477.5807" }, 101)).toThrow();
-    expect(() => suggestExactSalaryAllocations("1", "2", [])).toThrow();
+    expect(exactSalaryApprovalInputSchema.safeParse({
+      ...approval, approvedAmount: "92233720368547758.08", segments: [], unallocatedAmount: "92233720368547758.08",
+    }).success).toBe(false);
   });
 });

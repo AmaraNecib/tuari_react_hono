@@ -6,8 +6,7 @@ import {
   employeeBatchCreateResultSchema, employeeSaveInputSchema,
 } from "./workforce";
 import {
-  Money, SalaryReference, UnitPrice, Quantity, derivedPrice, priceLine,
-  finalizeLines, allocateMoney, sumMoneyHistory,
+  Money, SalaryReference, sumMoneyHistory,
 } from "./exact-money";
 
 export const exactSalaryReferenceSchema = z.object({
@@ -94,36 +93,3 @@ export const exactSalaryApprovalInputSchema = z.object({
   if (total !== value.approvedAmount) ctx.addIssue({ code: "custom", path: ["segments"], message: "Explicit allocations and unallocated amount must equal approved earnings" });
 });
 export type ExactSalaryApprovalInput = z.input<typeof exactSalaryApprovalInputSchema>;
-
-
-/** Suggestions do not approve earnings or create an obligation. */
-export function suggestExactSalaryAmount(reference: ExactSalaryReference | null, days: number): string | null {
-  const validDays = exactSalaryDaysSchema.parse(days);
-  if (reference === null) return null;
-  const parsed = exactSalaryReferenceSchema.parse(reference);
-  if (parsed.period === "WEEKLY") return Money.parse(parsed.amount).toWire();
-  const quantity = Quantity.parse(String(validDays));
-  const line = parsed.period === "DAILY"
-    ? priceLine(UnitPrice.parse(parsed.amount), quantity)
-    : derivedPrice(Money.parse(parsed.amount), Quantity.parse("30")).line(quantity);
-  return finalizeLines([line]).toWire();
-}
-
-/** Explicitly requested suggestion, never an edit-side effect or payment attribution. */
-export function suggestExactSalaryAllocations(
-  approvedAmount: string,
-  unallocatedAmount: string,
-  shares: readonly { id: string; projectId: string; days: number }[],
-): { segments: ExactSalarySegment[]; unallocatedAmount: string } {
-  const approved = Money.parse(exactSalaryAmountSchema.parse(approvedAmount));
-  const unallocated = Money.parse(exactSalaryAmountSchema.parse(unallocatedAmount));
-  const target = approved.subtract(unallocated);
-  if (target.compare(Money.parse("0")) < 0) throw new RangeError("Unallocated amount exceeds approved earnings");
-  const validated = z.array(z.object({ id: entityIdSchema, projectId: entityIdSchema, days: exactSalaryDaysSchema }).strict()).max(10000).parse(shares);
-  if (!validated.length) {
-    if (target.compare(Money.parse("0")) !== 0) throw new RangeError("Allocated amount requires segments");
-    return { segments: [], unallocatedAmount: unallocated.toWire() };
-  }
-  const allocated = allocateMoney(target, validated.map(share => ({ id: share.id, weight: String(share.days) })));
-  return { segments: validated.map((share, index) => ({ ...share, amount: allocated[index]!.amount.toWire() })), unallocatedAmount: unallocated.toWire() };
-}
