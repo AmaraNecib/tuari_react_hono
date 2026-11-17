@@ -61,7 +61,7 @@ function localizeRowErrors(
     roleId: rowError.roleId ? copy.roleId : undefined,
     occupation: rowError.occupation ? copy.occupation : undefined,
     salaryReferenceAmount: rowError.salaryReferenceAmount
-      ? rowError.salaryReferenceAmount === "invalid"
+      ? rowError.salaryReferenceAmount === "invalid" || rowError.salaryReferenceAmount.endsWith(".precision")
         ? copy.salaryReferenceAmountInvalid
         : copy.salaryReferenceAmount
       : undefined,

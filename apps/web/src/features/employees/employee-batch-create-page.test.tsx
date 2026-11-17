@@ -26,4 +26,16 @@ describe("employee batch create salary reference", () => {
     fireEvent.click(screen.getByRole("button", { name: "employeeForm.submitSingle" }))
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({ employees: [expect.objectContaining({ salaryReference: { period: "DAILY", amount: "1234.5678" } })] }))
   })
+
+  it("shows the translated precision error on the amount field for MONTHLY", () => {
+    render(<EmployeeBatchCreatePage roles={[{ id: "worker-role", key: "worker", name: "عامل" } as never]} managerOptions={[]} onCancel={vi.fn()} onDone={vi.fn()} />)
+    fireEvent.change(screen.getByRole("textbox", { name: "employeeForm.firstNameLabel" }), { target: { value: "سمير" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "employeeForm.lastNameLabel" }), { target: { value: "بوقرة" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "auth.phoneLabel" }), { target: { value: "0555123456" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "employeeForm.salaryAmountLabelدج" }), { target: { value: "1.234" } })
+    fireEvent.change(screen.getByRole("combobox", { name: "employeeForm.salaryPeriodLabel" }), { target: { value: "MONTHLY" } })
+    fireEvent.click(screen.getByRole("button", { name: "employeeForm.submitSingle" }))
+    expect(screen.getByText("workforce.validation.salaryReference.precision")).toBeTruthy()
+    expect(mutateAsync).not.toHaveBeenCalled()
+  })
 })
