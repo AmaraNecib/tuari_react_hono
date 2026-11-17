@@ -1,6 +1,6 @@
 import { schemaStatements } from "../../../infrastructure/database/schema-definitions";
 
-/** Fresh-copy preparation only. Never passed to the production startup initializer. */
+/** Exact debt DDL shared by isolated storage fixtures and fresh normal application startup. It never migrates a legacy database. */
 export const exactDebtSchemaStatements: readonly string[] = (() => {
   const account = schemaStatements.find(sql => sql.startsWith('CREATE TABLE IF NOT EXISTS "debt_account"'))!;
   const entry = schemaStatements.find(sql => sql.startsWith('CREATE TABLE IF NOT EXISTS "debt_entry"'))!;

@@ -195,6 +195,7 @@ export function RecordHistoryTable({
     typeLabel: string
     title: string
     detail?: string | null
+    detailContent?: ReactNode
     periodLabel: ReactNode
     statusLabel: string
   }>
@@ -220,6 +221,7 @@ export function RecordHistoryTable({
                   <td className="px-4 py-3 text-start">
                     <div className="space-y-0.5">
                       <p className="text-[13px] font-medium text-ink">{row.title}</p>
+                      {row.detailContent}
                       {row.detail ? <p className="text-[12px] leading-5 text-ink-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere]"><CurrencyProse text={row.detail} /></p> : null}
                     </div>
                   </td>

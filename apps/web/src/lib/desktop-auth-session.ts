@@ -14,7 +14,11 @@ export function isDesktopRuntime() {
     return false
   }
 
-  return window.location.hostname === "tauri.localhost" || window.location.protocol === "tauri:"
+  return (
+    "__TAURI_INTERNALS__" in window ||
+    window.location.hostname === "tauri.localhost" ||
+    window.location.protocol === "tauri:"
+  )
 }
 
 function clearLegacyDesktopBrowserToken() {

@@ -1,0 +1,9 @@
+# Keep a retired approval form locked until reload
+
+Bounded P2 correction to stale-executor-1db4184d-review-01.md: the stale executor no longer restores or resends the resolved intent, but the form unlocks into a submission path that the retired executor will always reject.
+
+Expose a read-only `retired` executor state, without changing storage or receipt identity. The form catch distinguishes retirement from a definitive first rejection. Retirement clears its attempt reference but leaves editing locked, removes ambiguous retry copy, disables submit, and displays translated guidance plus an explicit page reload button outside the disabled editor. It does not create a new executor implicitly or report approval success. The shell attempt state can return idle because no unresolved durable intent remains; leaving the stale page is safe. Definitive first rejection retains its existing editable retry behavior.
+
+The caller regression mounts two real forms over the same browser store and keyed asynchronous Web Locks model. Both recover the same intent. The first receives a valid result and clears; the second's attempt shows reload guidance, stays locked, disables submit, preserves absent storage and never dispatches, including a repeated form event. It initially failed against1db4184d: stale-form-red-01.log. That focused selection excludes other cases, not added source skips. Four full affected test files pass33tests in13.18seconds: stale-form-green-01.log. Web tsc --noEmit and affected ESLint exit0. Arabic resource keys are added to the existing typed localization test fixture as well.
+
+No protocol, schema, contract, dependency or CI change. Mode focused-local / CI-final-pending. Keep previous resolved findings and independent-review boundaries; fresh bounded review still required. Other coverage/E2E work is incomplete. Owner prohibits merge and auto-merge regardless of score or CI.

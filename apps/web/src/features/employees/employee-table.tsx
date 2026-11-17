@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type ReactElement } from "react"
 import { useTranslation } from "react-i18next"
 
 import { cn } from "@/lib/utils"
@@ -16,6 +16,8 @@ import {
 import { getArabicStatusLabel, getStatusTone } from "@/features/shared/status-meta"
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 import type { SalaryProjectAssignmentWindow, SalaryProjectOption } from "./add-salary-payment-dialog"
+import { ExactEmployeeTable as ExactTable } from "./exact-employee-pages"
+import type { ExactEmployeeUiContext } from "./exact-employee-pages"
 
 export type EmployeeTableRow = {
   id: string
@@ -82,7 +84,7 @@ type EmployeeTableProps = {
 /**
  * @description Component
  */
-export function EmployeeTable({
+function NumericEmployeeTable({
   copy,
   rows,
   projects,
@@ -216,4 +218,14 @@ export function EmployeeTable({
       </AppShellTableFrame>
     </>
   )
+}
+
+type ExactTableProps = ExactEmployeeUiContext & { mode: "exact"; onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void; onDeleted?: () => Promise<void> | void }
+export function EmployeeTable(props: ExactTableProps): ReactElement
+export function EmployeeTable(props: EmployeeTableProps & { mode?: "numeric" }): ReactElement
+export function EmployeeTable(props: ExactTableProps | (EmployeeTableProps & { mode?: "numeric" })) {
+  if (props.mode === "exact") {
+    return <ExactTable {...props} />
+  }
+  return <NumericEmployeeTable {...props} />
 }

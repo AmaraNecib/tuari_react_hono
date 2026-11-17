@@ -22,10 +22,14 @@ export function ProjectEditPage({
   managerOptions,
   project,
   projectManagerRoleId,
+  allowInlineManagerCreate = true,
+  onSaved,
 }: {
   managerOptions: Array<{ id: string; label: string }>
   project: ProjectPageRecord
   projectManagerRoleId: string
+  allowInlineManagerCreate?: boolean
+  onSaved?: () => Promise<void> | void
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -35,6 +39,7 @@ export function ProjectEditPage({
   const { createConfig: managerCreate, selectedDisplayValue: managerDisplayValue } = useProjectManagerInlineCreateSelection({
     projectManagerRoleId,
     selectedManagerId: state.managerId,
+    enabled: allowInlineManagerCreate,
   })
   const previousProjectIdRef = useRef(project.id)
   const statusOptions = useMemo(
@@ -81,6 +86,7 @@ export function ProjectEditPage({
       status: state.status as "ACTIVE" | "STOPPED" | "COMPLETED" | "ARCHIVED",
       notes: state.notes.trim() || null,
     })
+    await onSaved?.()
 
     void navigateToWorkspaceRoute(navigate, workspaceRoutes.projectDetails(project.id))
   }

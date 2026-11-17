@@ -182,10 +182,10 @@ describe("HomeView workspace shell", () => {
     })
   })
 
-  it("shows a retry state when workspace data settles without payload", () => {
+  it("shows a retry state when workspace data settles without payload", async () => {
     renderWorkspace("dashboard", { sessionUser: demoUser, workspaceData: undefined })
 
-    expect(screen.getByText("تعذر تحميل بيانات مساحة العمل الآن.")).toBeTruthy()
+    expect(await screen.findByText("تعذر تحميل بيانات مساحة العمل الآن.")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }))
 
     expect(mocks.workspaceRefetch).toHaveBeenCalledTimes(1)

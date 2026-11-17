@@ -43,6 +43,15 @@ vi.mock("../infrastructure/database/factory", async (importOriginal) => {
   };
 });
 
+vi.mock("./dependencies", async importOriginal => {
+  const actual = await importOriginal<typeof import("./dependencies")>();
+  return {
+    ...actual,
+    createAppDependencies: (config = {}, appConfig?: Parameters<typeof actual.createAppDependencies>[1]) =>
+      actual.createAppDependencies({ ...config, legacyNumericTestMode: true }, appConfig),
+  };
+});
+
 const TEST_AUTH_SECRET = "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM";
 
 /** Minimal auth instance — only stored by dependency constructors, never used. */
@@ -101,6 +110,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       config,
     );
     lastDeps = deps;
+    if (deps.mode !== "legacy") throw new Error("Expected the legacy test composition");
 
     // The in-memory adapter never touches SQLite: an empty store lists roles
     // without querying the migrated :memory: database.
@@ -112,6 +122,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
 
     const deps = await createAppDependencies({ databasePath: inMemoryDb, authInstance: fakeAuth });
     lastDeps = deps;
+    if (deps.mode !== "legacy") throw new Error("Expected the legacy test composition");
 
     // Default config selects the sqlite adapter, which reads the migrated role
     // table (migrations now run inside the composition root) — proving the
@@ -130,6 +141,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       config,
     );
     lastDeps = deps;
+    if (deps.mode !== "legacy") throw new Error("Expected the legacy test composition");
 
     // No explicit injection and no config/env key -> the factory receives null
     // (the factory treats null as a plain, unencrypted database).
@@ -209,6 +221,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       // seeding it.
       const deps = await createAppDependencies({ authInstance: fakeAuth });
       lastDeps = deps;
+      if (deps.mode !== "legacy") throw new Error("Expected the legacy test composition");
 
       expect(existsSync(join(dbDir, "deps.sqlite"))).toBe(true);
       expect(deps.companyService.listRoles().items).toHaveLength(SEEDED_ROLE_KEYS.length);
@@ -230,6 +243,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       config,
     );
     lastDeps = deps;
+    if (deps.mode !== "legacy") throw new Error("Expected the legacy test composition");
 
     // The key reaches the connection factory (the mocked seam strips it so the
     // plain better-sqlite3 connection opens here; the SQLCipher path itself is
@@ -258,6 +272,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
         config,
       );
       lastDeps = deps;
+      if (deps.mode !== "legacy") throw new Error("Expected the legacy test composition");
 
       expect(dbKeyCapture).toHaveBeenCalledWith("config-db-key-123");
       expect(deps.companyService.listRoles().items).toHaveLength(SEEDED_ROLE_KEYS.length);
@@ -282,6 +297,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
         config,
       );
       lastDeps = deps;
+      if (deps.mode !== "legacy") throw new Error("Expected the legacy test composition");
 
       // Explicit injection (desktop host pinning) always wins over the
       // resolved config key — the rekey/rollback design is preserved.
@@ -359,6 +375,7 @@ describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () =
       config,
     );
     lastDeps = deps;
+    if (deps.mode !== "legacy") throw new Error("Expected the legacy test composition");
 
     expect(storageCtorMock).toHaveBeenCalledWith(resolve("./private/invoices"));
   });

@@ -1,0 +1,15 @@
+# Repair the published CI failures
+
+Base bb4aa26e64294278b41b530492e28efe2ef7ce51. Parent-owned clean worktree D:/worktrees/tuari_react_hono/541-ci-gates-01, branch fix/541-ci-gates. Mode focused-local / CI-final-pending. This is a bounded correction to the reviewed PR, not a new feature. Review the combined delta once after committing it.
+
+The published Test API job stopped in contracts tests before API execution. The strict exact-import inventory omitted three committed consumers: sqlite-payroll-cash.repository.ts, payroll-cash.service.ts and exact-employee-pages.tsx. Add those literal entries only. Keep the exact equality check, physical monetary-column inventory and source scan unchanged. Existing imports are being accounted for, not authorized by a broader wildcard or weakened assertion.
+
+Both Build and SQLCipher failed before encryption proof because API declaration generation could not name the inferred BetterSqlite3.Database type in three exported transactionIdentity getters. Annotate each getter with the existing ExactTransactionIdentity interface. That interface intentionally exposes opaque connection/lock objects for identity comparisons. Runtime values, object references, FIFO ownership and transaction behavior are unchanged. No database type is cast to any and no declaration check is disabled.
+
+The clean worktree avoids staging two overlapping inventory lines from the original worktree's nine unrelated dirty changes. Existing node_modules directories are junctioned from the original tree; no dependency or lockfile was changed. Production contracts sources are unchanged, so rebuilding their existing dist is not needed for this test-only contracts delta. Build output is generated only in the clean API worktree, not the owner's running native application tree.
+
+Local proof reproduces both failures: the strict inventory fails 34 versus 31 entries; the actual API tsup build fails TS4041 in all three getters. The same checks must pass after correction. An API-only build is justified by this concrete declaration-emission gap that noEmit does not detect; run it through heavy_run. Four focused native/service test files cover plain/keyed storage, transaction/FIFO identity, rollback/reopen and exact workforce behavior. Run affected API typecheck/lint. Leave full monorepo build, API coverage and built-artifact encryption proof to current-head CI.
+
+Applied wisdom: testing/ts4058-cannot-be-named-when-typing-rawdb-params-in-dts-built-packages.md. Its inferred-return failure matches TS4041 here; explicit local public types fix emission. The stale-contracts-dist lesson was checked: no schema/export changed, only inventory assertions, so its schema-rebuild condition is absent.
+
+Architecture: use the existing opaque transaction identity boundary instead of leaking the native driver's inferred type. No domain model, runtime interface shape, schema, policy, dependency or license behavior changes. The nine dirty changes in the original worktree remain untouched and excluded. The parent owns publication to the existing PR; no merge is authorized.

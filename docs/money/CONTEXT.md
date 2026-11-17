@@ -6,3 +6,6 @@
 - **Exact line**. A price-times-quantity calculation or an agreed-total line, with its authoritative source preserved.
 - **Derived price**. A price expressed by its original total and quantity. A displayed approximation is not an independent agreement.
 - **Recorded allocation**. An identified portion of a finalized amount. Recorded order determines automatic remainder ties, and reversal negates the recorded portion.
+- **Earning month**. The month to which the operator explicitly attributes approved wages, independently of the actual cash payment date.
+- **Monthly amounts draft**. Entered earning months and their amounts. Its total follows those amounts; a suggested total does not silently constrain later edits.
+- **Distribution suggestion**. A calculation the operator requests and reviews before applying it. A suggestion does not approve wages or record a cash payment.

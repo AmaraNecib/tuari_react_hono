@@ -6,7 +6,7 @@ import { act, renderHook, waitFor } from "@testing-library/react"
 import { createElement, type ReactNode } from "react"
 
 import { AppMutationError, useCreateDebtAccountMutation, useCreateEmployeesBatchMutation, useResetWorkspaceMutation } from "./workspace-mutations"
-import { workspaceDomainQueryPrefix, workspaceQueryPrefix } from "./workspace-keys"
+import { sessionQueryKey, workspaceDomainQueryPrefix, workspaceQueryPrefix } from "./workspace-keys"
 
 const rpcMocks = vi.hoisted(() => ({ employeesBatchCreate: vi.fn(), debtAccountsCreate: vi.fn() }))
 
@@ -32,6 +32,11 @@ describe("useResetWorkspaceMutation — snapshot-aware reset (issue #276)", () =
   it("invalidates BOTH the workspace-domain namespace and the snapshot namespace", async () => {
     const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
+    queryClient.setQueryData(sessionQueryKey, { user: { id: "owner", name: "Owner", phone: "0555000001", version: "test" } })
+    const history = ["application", "workspace", "owner", "project-history:project"]
+    const other = ["application", "workspace", "other", "project-history:project"]
+    queryClient.setQueryData(history, { cached: true })
+    queryClient.setQueryData(other, { cached: true })
 
     const { result } = renderHook(() => useResetWorkspaceMutation(), {
       wrapper: wrapper(queryClient),
@@ -49,6 +54,8 @@ describe("useResetWorkspaceMutation — snapshot-aware reset (issue #276)", () =
     // PR #304).
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceDomainQueryPrefix })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryPrefix })
+    expect(queryClient.getQueryState(history)?.isInvalidated).toBe(true)
+    expect(queryClient.getQueryState(other)?.isInvalidated).toBe(false)
   })
 })
 

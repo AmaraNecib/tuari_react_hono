@@ -46,9 +46,13 @@ function mapServerErrors(error: AppMutationError): WarehouseFormErrors {
 export function WarehouseCreatePage({
   managerOptions,
   warehouseManagerRoleId,
+  allowInlineManagerCreate = true,
+  onSaved,
 }: {
   managerOptions: Array<{ id: string; label: string }>
   warehouseManagerRoleId: string
+  allowInlineManagerCreate?: boolean
+  onSaved?: () => Promise<void> | void
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -58,6 +62,7 @@ export function WarehouseCreatePage({
   const { createConfig: managerCreate, selectedDisplayValue: managerDisplayValue } = useWarehouseManagerInlineCreateSelection({
     warehouseManagerRoleId,
     selectedManagerId: state.managerId,
+    enabled: allowInlineManagerCreate,
   })
   const statusOptions = useMemo(
     () => [
@@ -92,6 +97,7 @@ export function WarehouseCreatePage({
         notes: state.notes.trim() || null,
       })
 
+      await onSaved?.()
       void navigateToWorkspaceRoute(navigate, workspaceRoutes.warehouseDetails(result.item.id))
     } catch (error) {
       if (error instanceof AppMutationError) {

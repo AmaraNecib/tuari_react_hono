@@ -17,7 +17,7 @@ test("Ctrl+K search finds a created warehouse after the debounce and opens it", 
   const warehouseName = `مستودع بحث ${uniqueSuffix()}`
   await page.getByLabel(/اسم/).first().fill(warehouseName)
   await page.getByRole("button", { name: "حفظ المستودع" }).click()
-  await expect(page.getByText(warehouseName)).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByRole("heading", { name: warehouseName, exact: true })).toBeVisible({ timeout: 10_000 })
 
   // Open the global search via the Ctrl+K shortcut.
   await page.keyboard.press("Control+k")

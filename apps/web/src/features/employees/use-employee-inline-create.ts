@@ -42,15 +42,17 @@ export function useEmployeeInlineCreate({
   createLabel,
   fields,
   errorMessage,
+  enabled = true,
 }: {
   roleId: string
   createLabel: string
   fields: EmployeeInlineCreateField[]
   errorMessage: string
+  enabled?: boolean
 }): EmployeeInlineCreateConfig | undefined {
   const createEmployeeMutation = useCreateEmployeesBatchMutation()
 
-  if (!roleId) {
+  if (!roleId || !enabled) {
     return undefined
   }
 
@@ -118,17 +120,19 @@ export function useEmployeeInlineCreateSelection({
   fields,
   errorMessage,
   selectedEmployeeId,
+  enabled = true,
 }: {
   roleId: string
   createLabel: string
   fields: EmployeeInlineCreateField[]
   errorMessage: string
   selectedEmployeeId: string
+  enabled?: boolean
 }): {
   createConfig: EmployeeInlineCreateConfig | undefined
   selectedDisplayValue: string | undefined
 } {
-  const createConfig = useEmployeeInlineCreate({ roleId, createLabel, fields, errorMessage })
+  const createConfig = useEmployeeInlineCreate({ roleId, createLabel, fields, errorMessage, enabled })
   const [createdEmployee, setCreatedEmployee] = useState<{ id: string; name: string } | null>(null)
 
   const wrappedConfig: EmployeeInlineCreateConfig | undefined = createConfig

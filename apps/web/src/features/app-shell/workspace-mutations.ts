@@ -25,6 +25,9 @@ import { rpcClient } from "@/lib/orpc-client"
 import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 import { workspaceQueryPrefix } from "./workspace-queries"
+import { invalidateExactWorkspacesForUser } from "./exact-workspace-refresh"
+import { saveAccountWithoutAnyPendingApproval } from "./approval-account-fence"
+import { buildErrorMessage } from "@/lib/rpc-error-handling"
 import {
   getCachedSessionUserId,
   invalidateWorkspaceDomains,
@@ -245,20 +248,20 @@ export function useUpdateAccountSettingsMutation() {
         }
       }
 
-      if (name || phone) {
-        await updateCurrentProfile({ currentPassword, name, phone })
-      }
-/**
- * useCreateEmployeesBatchMutation() component.
- */
-
-      if (currentPassword && newPassword) {
-        await changeCurrentPassword({
-          currentPassword,
-          newPassword,
-          revokeOtherSessions: true,
-        })
-      }
+      const userId = getCachedSessionUserId(queryClient)
+      if (!userId) throw new Error("Account session is unavailable")
+      return saveAccountWithoutAnyPendingApproval(userId, i18n.t("salaryEarnings.recoveryRetryHelp"), async () => {
+        if (name || phone) {
+          await updateCurrentProfile({ currentPassword, name, phone })
+        }
+        if (currentPassword && newPassword) {
+          await changeCurrentPassword({
+            currentPassword,
+            newPassword,
+            revokeOtherSessions: true,
+          })
+        }
+      })
     },
     onSuccess: async () => {
       const userId = getCachedSessionUserId(queryClient)
@@ -456,7 +459,7 @@ export function useCreateProjectMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+      showErrorToast(buildErrorMessage(error, i18n.t("toasts.actionError")))
     },
   })
 }
@@ -976,6 +979,7 @@ export function useResetWorkspaceMutation() {
       // dashboard keeps showing stale data after the reset (issue #276).
       await queryClient.invalidateQueries({ queryKey: workspaceDomainQueryPrefix })
       await queryClient.invalidateQueries({ queryKey: workspaceQueryPrefix })
+      await invalidateExactWorkspacesForUser(queryClient, getCachedSessionUserId(queryClient))
       return { success: true as const }
     },
     onSuccess: () => {

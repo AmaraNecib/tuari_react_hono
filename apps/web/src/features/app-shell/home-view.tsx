@@ -1,6 +1,7 @@
 import "@/i18n"
 
-import { useMemo } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 
 import { useAppPreferences } from "@/features/preferences/preferences"
@@ -26,10 +27,12 @@ import {
   useResetWorkspaceMutation,
   useUpdateAccountSettingsMutation,
 } from "./workspace-mutations"
-import { useCompositeWorkspaceQuery, useSystemLogQuery } from "./workspace-queries"
+import { isRolesEndpointUnavailable, useCompositeWorkspaceQuery, useSystemLogQuery } from "./workspace-queries"
 import type { HomeViewPage } from "./home-view-types"
 import { TableQueryState } from "@/features/shared/table-primitives"
 import { ErrorBoundary } from "@/components/error-boundary"
+import { applicationClient } from "@/lib/application-client"
+import { WorkspaceShell } from "./workspace-shell"
 
 export type { HomeViewPage } from "./home-view-types"
 
@@ -90,6 +93,8 @@ export function HomeView({
   paginationPrevCursors?: string
 }) {
   const { t } = useTranslation()
+  const [pendingExactScope, setPendingExactScope] = useState<string | null>(null)
+  const pendingExactScopeRef = useRef<string | null>(null)
   const navigation = useHomeViewNavigation()
   const { theme, toggleTheme } = useAppPreferences()
 
@@ -122,8 +127,23 @@ export function HomeView({
     theme,
     toggleTheme,
   })
-  const workspaceQuery = useCompositeWorkspaceQuery()
-  const systemLogQuery = useSystemLogQuery({ enabled: page === "transactions", filters: shell.systemLogFilters })
+  const capabilitiesQuery = useQuery({
+    queryKey: ["application", "capabilities", auth.session?.id ?? null],
+    queryFn: () => applicationClient.applicationCapabilities(),
+    enabled: Boolean(auth.session),
+    retry: false,
+    staleTime: 60_000,
+  })
+  const exactScopeKey = capabilitiesQuery.data && auth.session ? `${capabilitiesQuery.data.workspaceId}:${auth.session.id}` : null
+  const handleExactPendingChange = useCallback((pending: boolean) => {
+    if (!exactScopeKey) return
+    if (pending) { pendingExactScopeRef.current = exactScopeKey; setPendingExactScope(exactScopeKey) }
+    else if (pendingExactScopeRef.current === exactScopeKey) { pendingExactScopeRef.current = null; setPendingExactScope(null) }
+  }, [exactScopeKey])
+  const legacyRuntime = capabilitiesQuery.isError && isRolesEndpointUnavailable(capabilitiesQuery.error)
+  const legacyWorkspaceEnabled = Boolean(auth.session) && legacyRuntime
+  const workspaceQuery = useCompositeWorkspaceQuery({ enabled: legacyWorkspaceEnabled })
+  const systemLogQuery = useSystemLogQuery({ enabled: page === "transactions" && legacyWorkspaceEnabled, filters: shell.systemLogFilters })
   const workspace = workspaceQuery.data
   const derived = useMemo(
     () => (workspace ? buildHomeViewDerived({ copy, detailCopy, t, workspace }) : null),
@@ -170,8 +190,47 @@ export function HomeView({
     )
   }
 
+  if (capabilitiesQuery.data && auth.session) {
+    const exactSession = auth.session
+    const contentBoundaryKey = [page, detailTab, employeeId, projectId, warehouseId].filter(Boolean).join(":")
+    return (
+      <HomeViewSignedInShell
+        breadcrumbItems={breadcrumbItems}
+        copy={copy}
+        deletePending={false}
+        page={page}
+        pendingDelete={null}
+        session={auth.session}
+        sidebarCollapsed={shell.sidebarCollapsed}
+        showRestartModal={shell.showRestartModal}
+        signOutPending={signOutMutation.isPending}
+        signOutOpen={shell.signOutOpen}
+        theme={theme}
+        onConfirmDelete={() => undefined}
+        onConfirmSignOut={() => { if (pendingExactScopeRef.current === null) void shell.confirmSignOut() }}
+        signOutBlocked={pendingExactScope !== null}
+        onPendingDeleteChange={() => undefined}
+        onRestartLater={shell.handleRestartLater}
+        onRestartNow={() => { if (pendingExactScopeRef.current === null) shell.handleRestartNow() }}
+        onSetSidebarCollapsed={shell.setSidebarCollapsed}
+        onSignOutOpenChange={shell.setSignOutOpen}
+        onThemeToggle={shell.handleThemeToggle}
+        exactMode
+        exactSearch={{ workspaceId: capabilitiesQuery.data.workspaceId, userId: exactSession.id, client: applicationClient }}
+      >
+        <ErrorBoundary key={contentBoundaryKey}>
+          <WorkspaceShell key={`${capabilitiesQuery.data.workspaceId}:${exactSession.id}`} client={applicationClient} capabilities={capabilitiesQuery.data} copy={copy} employeeId={employeeId} projectId={projectId} warehouseId={warehouseId} detailTab={detailTab} onProjectTab={(id, tab) => void navigation.setProjectTab(id, tab)} onWarehouseTab={(id, tab) => void navigation.setWarehouseTab(id, tab)} page={page} session={exactSession} theme={theme} resetWorkspacePending={resetWorkspaceMutation.isPending} updateAccountPending={updateAccountSettingsMutation.isPending} onResetWorkspace={() => shell.handleResetWorkspace()} onSaveAccount={payload => updateAccountSettingsMutation.mutateAsync(payload)} onThemeToggle={toggleTheme} onUpdateApplied={() => shell.setShowRestartModal(true)} onPendingCommandChange={handleExactPendingChange} />
+        </ErrorBoundary>
+      </HomeViewSignedInShell>
+    )
+  }
+
+  if (capabilitiesQuery.isError && !legacyRuntime) {
+    return <WorkspaceStateMessage actionLabel={t("common.retry")} message={t("shell.loadWorkspaceError")} onAction={() => void capabilitiesQuery.refetch()} />
+  }
+
   if (!derived) {
-    if (workspaceQuery.isPending) {
+    if (capabilitiesQuery.isPending || workspaceQuery.isPending) {
       return <WorkspaceStateMessage message={t("shell.loadingWorkspace")} />
     }
 
