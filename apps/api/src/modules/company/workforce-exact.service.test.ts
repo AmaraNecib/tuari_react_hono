@@ -42,6 +42,16 @@ describe("opt-in exact workforce aggregate", () => {
     expect(detail).not.toHaveBeenCalled();
   });
 
+  it("returns NOT_FOUND instead of an empty earnings list for a stale employee ID", () => {
+    const { service } = setup();
+    let result: unknown;
+    let failure: unknown;
+    try { result = service.listEmployeeEarnings("stale-worker"); }
+    catch (error) { failure = error; }
+    expect(failure).toMatchObject({ code: "NOT_FOUND", message: "Employee not found" });
+    expect(result).toBeUndefined();
+  });
+
   it.each(["employee", "project"] as const)("refuses oversized in-memory %s histories before cloning segments or transaction snapshots", target => {
     const { repository, service } = setup();
     const { requestId: _requestId, ...approved } = approval;
