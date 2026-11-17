@@ -28,56 +28,41 @@ vi.mock("@/router/navigation", () => ({
   },
 }))
 
-function cost(overrides: Partial<ProjectCost> = {}): ProjectCost {
-  return {
+type LegacyProjectCost = {
+  projectId: string
+  totalDzd: number
+  parts: { expensesDzd: number; salariesDzd: number; stockDzd: number; chargedMaterialsDzd: number }
+  expenses: Array<{ id: string; expenseDate: string; whatFor: string | null; amountDzd: number; responsibleWorkerId: string | null; responsibleWorkerName: string | null; sellerId: string | null; sellerName: string | null }>
+  salaries: Array<{ paymentId: string; employeeId: string; employeeName: string | null; days: number; amountDzd: number; paymentDate: string }>
+  stock: Array<{ id: string; assetUnitId: string; assetName: string | null; amountDzd: number; placedAt: string }>
+  materialMovements: Array<{ id: string; itemDefinitionId: string | null; itemName: string | null; unit: string | null; quantity: number; unitPriceDzd: number | null; valueDzd: number; direction: "IN" | "OUT"; occurredAt: string }>
+  parkedInventory: { totalDzd: number; assets: Array<{ assetUnitId: string; assetName: string | null; purchasePriceDzd: number }> }
+}
+
+function cost(overrides: Partial<LegacyProjectCost> = {}): ProjectCost {
+  const legacy = {
     projectId: "p-1",
     totalDzd: 260_000,
     parts: { expensesDzd: 10_000, salariesDzd: 36_000, stockDzd: 180_000, chargedMaterialsDzd: 34_000 },
-    expenses: [
-      {
-        id: "e-1",
-        expenseDate: "2026-05-10T00:00:00.000Z",
-        whatFor: "وقود",
-        amountDzd: 10_000,
-        responsibleWorkerId: "emp-1",
-        responsibleWorkerName: "كريم ب.",
-        sellerId: null,
-        sellerName: null,
-      },
-    ],
-    salaries: [
-      {
-        paymentId: "pay-1",
-        employeeId: "emp-1",
-        employeeName: "كريم ب.",
-        days: 18,
-        dayRateDzd: 2_000,
-        amountDzd: 36_000,
-        paymentDate: "2026-05-31T00:00:00.000Z",
-      },
-    ],
-    stock: [
-      { id: "c-1", assetUnitId: "a-1", assetName: "خلاطة إسمنت", amountDzd: 180_000, placedAt: "2026-05-20T00:00:00.000Z" },
-    ],
-    materialMovements: [
-      {
-        id: "m-1",
-        itemDefinitionId: "def-1",
-        itemName: "إسمنت",
-        unit: "كيس",
-        quantity: 40,
-        unitPriceDzd: 850,
-        valueDzd: 34_000,
-        direction: "IN",
-        occurredAt: "2026-05-20T00:00:00.000Z",
-      },
-    ],
-    parkedInventory: {
-      totalDzd: 180_000,
-      assets: [{ assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 180_000 }],
-    },
+    expenses: [{ id: "e-1", expenseDate: "2026-05-10T00:00:00.000Z", whatFor: "وقود", amountDzd: 10_000, responsibleWorkerId: "emp-1", responsibleWorkerName: "كريم ب.", sellerId: null, sellerName: null }],
+    salaries: [{ paymentId: "pay-1", employeeId: "emp-1", employeeName: "كريم ب.", days: 18, amountDzd: 36_000, paymentDate: "2026-05-31T00:00:00.000Z" }],
+    stock: [{ id: "c-1", assetUnitId: "a-1", assetName: "خلاطة إسمنت", amountDzd: 180_000, placedAt: "2026-05-20T00:00:00.000Z" }],
+    materialMovements: [{ id: "m-1", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 40, unitPriceDzd: 850, valueDzd: 34_000, direction: "IN", occurredAt: "2026-05-20T00:00:00.000Z" }],
+    parkedInventory: { totalDzd: 180_000, assets: [{ assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 180_000 }] },
     ...overrides,
-  }
+  } as LegacyProjectCost
+  const amount = (value: number) => value.toFixed(2)
+  return {
+    projectId: legacy.projectId,
+    currencyCode: "DZD",
+    totalAmount: amount(legacy.totalDzd),
+    parts: { expensesAmount: amount(legacy.parts.expensesDzd), salariesAmount: amount(legacy.parts.salariesDzd), stockAmount: amount(legacy.parts.stockDzd), chargedMaterialsAmount: amount(legacy.parts.chargedMaterialsDzd) },
+    expenses: legacy.expenses.map((row) => ({ ...row, amount: amount(row.amountDzd) })),
+    salaries: legacy.salaries.map((row, ordinal) => ({ earningId: row.paymentId, segmentId: `${row.paymentId}:${ordinal}`, employeeId: row.employeeId, employeeName: row.employeeName, ordinal, days: row.days, amount: amount(row.amountDzd), periodStart: row.paymentDate, periodEnd: row.paymentDate, approvedAt: row.paymentDate })),
+    stock: legacy.stock.map((row) => ({ ...row, amount: amount(row.amountDzd) })),
+    materialMovements: legacy.materialMovements.map((row) => ({ ...row, quantity: String(row.quantity), unitPrice: row.unitPriceDzd == null ? null : `${amount(row.unitPriceDzd)}00`, valueAmount: amount(row.valueDzd) })),
+    parkedInventory: { totalAmount: amount(legacy.parkedInventory.totalDzd), assets: legacy.parkedInventory.assets.map((row) => ({ ...row, purchaseAmount: amount(row.purchasePriceDzd) })) },
+  } as unknown as ProjectCost
 }
 
 function prime(data: ProjectCost | undefined, extras: Record<string, unknown> = {}) {
@@ -134,6 +119,33 @@ afterEach(() => {
 })
 
 describe("ProjectCostSection (#414)", () => {
+  it("renders approved A/B/A segments as separate rows with their exact amounts", () => {
+    const exactCost = {
+      projectId: "p-1",
+      currencyCode: "DZD",
+      totalAmount: "60000.06",
+      parts: { expensesAmount: "0.00", salariesAmount: "60000.06", stockAmount: "0.00", chargedMaterialsAmount: "0.00" },
+      expenses: [],
+      salaries: [
+        { earningId: "earn-1", segmentId: "seg-a1", employeeId: "emp-1", employeeName: "كريم ب.", ordinal: 0, days: 5, amount: "10000.01", periodStart: "2026-05-01T00:00:00.000Z", periodEnd: "2026-05-31T00:00:00.000Z", approvedAt: "2026-06-01T00:00:00.000Z" },
+        { earningId: "earn-1", segmentId: "seg-b", employeeId: "emp-2", employeeName: "سليم", ordinal: 1, days: 15, amount: "20000.02", periodStart: "2026-05-01T00:00:00.000Z", periodEnd: "2026-05-31T00:00:00.000Z", approvedAt: "2026-06-01T00:00:00.000Z" },
+        { earningId: "earn-1", segmentId: "seg-a2", employeeId: "emp-1", employeeName: "كريم ب.", ordinal: 2, days: 5, amount: "30000.03", periodStart: "2026-05-01T00:00:00.000Z", periodEnd: "2026-05-31T00:00:00.000Z", approvedAt: "2026-06-01T00:00:00.000Z" },
+      ],
+      stock: [],
+      materialMovements: [],
+      parkedInventory: { totalAmount: "0.00", assets: [] },
+    } satisfies ProjectCost
+    prime(exactCost)
+    render(<ProjectCostSection projectId="p-1" />)
+
+    expect(screen.getAllByText("كريم ب.")).toHaveLength(2)
+    expect(screen.getByText("سليم")).toBeTruthy()
+    expect(screen.getAllByText(/5 يومًا/)).toHaveLength(3)
+    expect(screen.getByText(/15 يومًا/)).toBeTruthy()
+    expect(screen.getAllByText("10,000.01", { selector: 'bdi[dir="ltr"]' })).toHaveLength(1)
+    expect(screen.getAllByText("20,000.02", { selector: 'bdi[dir="ltr"]' })).toHaveLength(1)
+    expect(screen.getAllByText("30,000.03", { selector: 'bdi[dir="ltr"]' })).toHaveLength(1)
+  })
   it("shows the total, the four labelled sources and each source's rows", () => {
     prime(cost())
     render(<ProjectCostSection projectId="p-1" />)
@@ -141,7 +153,7 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText("260,000", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
     const amounts = [...document.querySelectorAll('span[dir="ltr"] > span[dir="rtl"] + bdi[dir="ltr"]')]
     expect(amounts.map(el => el.textContent)).toEqual([
-      "260,000", "10,000", "36,000", "180,000", "34,000", "10,000", "36,000", "180,000", "850", "+34,000", "180,000", "180,000",
+      "260,000", "10,000", "36,000", "180,000", "34,000", "10,000", "36,000", "180,000", "+34,000", "180,000", "180,000",
     ])
     expect(amounts.every(el => el.previousElementSibling?.textContent === "دج" && el.previousElementSibling.getAttribute("dir") === "rtl")).toBe(true)
     expect(document.body.textContent).not.toContain("[object Object]")
@@ -160,14 +172,14 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText(/إضافة إلى المشروع/)).toBeTruthy()
   })
 
-  it("renders a positive share for each source, never a bare signed number", () => {
+  it("shows the backend's four exact source totals without deriving share percentages", () => {
     prime(cost())
     render(<ProjectCostSection projectId="p-1" />)
 
-    // 10_000/260_000=4%, 36_000=14%, 180_000=69%, 34_000=13%.
-    for (const share of ["4%", "14%", "69%", "13%"]) {
-      expect(screen.getByText(share)).toBeTruthy()
+    for (const amount of ["10,000", "36,000", "180,000", "34,000"]) {
+      expect(screen.getAllByText(amount, { selector: 'bdi[dir="ltr"]' }).length).toBeGreaterThan(0)
     }
+    expect(screen.queryByText(/^\d+%$/)).toBeNull()
   })
 
   it("marks a material movement out of the project as a reversal", () => {
@@ -209,7 +221,7 @@ describe("ProjectCostSection (#414)", () => {
     // Both directions are visible with their sign, so the net is explained.
     expect(screen.getByText(/إضافة إلى المشروع/)).toBeTruthy()
     expect(screen.getByText(/إخراج من المشروع/)).toBeTruthy()
-    expect(screen.getByText((content) => content.includes("−") && content.includes("2,500"))).toBeTruthy()
+    expect([...document.querySelectorAll('span[dir="ltr"]')].some((element) => element.textContent?.includes("−") && element.textContent.includes("2,500"))).toBe(true)
   })
 
   it("shows a negative material net with a warning instead of refusing the screen", () => {
@@ -225,19 +237,13 @@ describe("ProjectCostSection (#414)", () => {
     expect(screen.getByText(/المواد الخارجة من هذا المشروع أكثر من الداخلة إليه/)).toBeTruthy()
   })
 
-  it("caps every source share at 100% when a negative net inflates a positive part", () => {
+  it("renders the backend's negative net amount and its warning without calculating a share", () => {
     prime(negativeNetCost())
     render(<ProjectCostSection projectId="p-1" />)
 
-    // 10,000 / 8,500 is 117.6%. A share over 100% is a wrong number on screen,
-    // so the label is capped even though the total stays the arithmetic sum.
-    expect(screen.queryByText("118%")).toBeNull()
-    expect(screen.getByText("100%")).toBeTruthy()
-    const shares = screen.getAllByText(/^\d+%$/)
-    expect(shares.length).toBeGreaterThan(0)
-    for (const share of shares) {
-      expect(Number.parseInt(share.textContent ?? "", 10)).toBeLessThanOrEqual(100)
-    }
+    expect(screen.getByText("8,500", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
+    expect(screen.getByText("-1,500", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
+    expect(screen.queryByText(/^\d+%$/)).toBeNull()
   })
 
   it("shows the parked asset inventory value separately from the cost total", () => {

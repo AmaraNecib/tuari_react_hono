@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router"
 
 import type { ProjectCost } from "@tuari/contracts"
 
-import { CurrencyRun } from "@/features/shared/money-value"
+import { MoneyValue } from "@/features/shared/money-value"
 import { EmptyState } from "@/components/ui/empty-state"
 import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { Surface, SurfaceHeader } from "@/features/shared/page-primitives"
@@ -11,10 +11,6 @@ import { AppDate } from "@/components/app-date"
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import { useProjectCostQuery } from "./project-cost-queries"
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value)
-}
 
 function formatDay(iso: string) {
   return <AppDate value={iso} />
@@ -41,7 +37,9 @@ export function ProjectCostSection({
   const navigate = useNavigate()
   const query = useProjectCostQuery(projectId)
 
-  const money = (value: number, sign = "") => <CurrencyRun amount={`${sign}${formatNumber(value)}`} currencyLabel={t("detailPages.project.cost.currency")} />
+  const money = (value: string, aggregate = false, signed = false) => (
+    <MoneyValue exact value={value} aggregate={aggregate} signed={signed} currencyLabel={t("detailPages.project.cost.currency")} />
+  )
 
   if (query.isPending) {
     return (
@@ -62,26 +60,16 @@ export function ProjectCostSection({
   }
 
   const data: ProjectCost = query.data
-  const total = data.totalDzd
-  // A share is capped at 100%. The total is the plain arithmetic sum of the
-  // four parts, so a negative material net can make a positive part larger
-  // than the total (10,000 against a total of 8,500 is 117.6%); showing that
-  // as a percentage is a wrong number on screen. The cap is display-only: the
-  // total and the netting are unchanged, and the warning explains the anomaly.
-  const percentOf = (value: number) =>
-    total > 0 ? Math.min(100, Math.max(0, Math.round((value / total) * 100))) : 0
-
+  const total = data.totalAmount
   const sources = [
-    { key: "expenses", label: t("detailPages.project.cost.sources.expenses"), value: data.parts.expensesDzd, bar: "bg-chart-1" },
-    { key: "salaries", label: t("detailPages.project.cost.sources.salaries"), value: data.parts.salariesDzd, bar: "bg-chart-2" },
-    { key: "stock", label: t("detailPages.project.cost.sources.stock"), value: data.parts.stockDzd, bar: "bg-chart-3" },
-    { key: "materials", label: t("detailPages.project.cost.sources.chargedMaterials"), value: data.parts.chargedMaterialsDzd, bar: "bg-chart-4" },
+    { key: "expenses", label: t("detailPages.project.cost.sources.expenses"), value: data.parts.expensesAmount },
+    { key: "salaries", label: t("detailPages.project.cost.sources.salaries"), value: data.parts.salariesAmount },
+    { key: "stock", label: t("detailPages.project.cost.sources.stock"), value: data.parts.stockAmount },
+    { key: "materials", label: t("detailPages.project.cost.sources.chargedMaterials"), value: data.parts.chargedMaterialsAmount },
   ]
 
-  // A total of zero can still hide real activity (a negative material net
-  // cancelling an expense), so show the breakdown whenever any part is nonzero.
-  const hasCost = total !== 0 || sources.some((source) => source.value !== 0)
-  const materialNetIsNegative = data.parts.chargedMaterialsDzd < 0
+  const hasCost = total !== "0.00" || sources.some((source) => source.value !== "0.00")
+  const materialNetIsNegative = data.parts.chargedMaterialsAmount.startsWith("-") && data.parts.chargedMaterialsAmount !== "-0.00"
   const hasParked = data.parkedInventory.assets.length > 0
 
   return (
@@ -89,31 +77,16 @@ export function ProjectCostSection({
       <Surface variant="card" className="p-5">
         <SurfaceHeader title={t("detailPages.project.cost.total")} />
         <p className="mt-2 font-mono text-3xl font-semibold text-ink" dir="ltr">
-          {money(total)}
+          {money(total, true)}
         </p>
 
         <ul className="mt-5 space-y-3">
-          {sources.map((source) => {
-            const percent = percentOf(source.value)
-            return (
-              <li key={source.key} className="grid min-w-0 grid-cols-[0.625rem_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-sm sm:flex sm:gap-3">
-                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${source.bar}`} aria-hidden="true" />
-                <span className="min-w-0 text-ink-2 sm:w-40 sm:shrink-0">{source.label}</span>
-                <span className="col-span-2 row-start-2 h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-surface-2">
-                  <span
-                    className={`block h-full rounded-full ${source.bar}`}
-                    style={{ width: `${percent}%` }}
-                  />
-                </span>
-                <span className="col-start-3 row-start-2 shrink-0 text-left text-xs text-ink-3 sm:w-10">
-                  {t("detailPages.project.cost.share", { percent })}
-                </span>
-                <span className="col-start-3 row-start-1 shrink-0 text-left font-mono text-ink sm:w-28" dir="ltr">
-                  {money(source.value)}
-                </span>
-              </li>
-            )
-          })}
+          {sources.map((source) => (
+            <li key={source.key} className="flex min-w-0 items-center justify-between gap-3 text-sm">
+              <span className="min-w-0 text-ink-2">{source.label}</span>
+              <span className="shrink-0 font-mono text-ink" dir="ltr">{money(source.value, true)}</span>
+            </li>
+          ))}
           {materialNetIsNegative ? (
             <li className="flex items-start gap-2 rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn">
               <span aria-hidden="true">⚠</span>
@@ -168,7 +141,7 @@ export function ProjectCostSection({
                         {expense.sellerName ? ` · ${expense.sellerName}` : ""}
                       </span>
                     </span>
-                    <span className="shrink-0 font-mono text-ink" dir="ltr">{money(expense.amountDzd)}</span>
+                    <span className="shrink-0 font-mono text-ink" dir="ltr">{money(expense.amount)}</span>
                   </li>
                 ))}
               </ul>
@@ -182,14 +155,14 @@ export function ProjectCostSection({
             ) : (
               <ul className="mt-3 divide-y divide-line">
                 {data.salaries.map((salary) => (
-                  <li key={salary.paymentId} className="flex items-center justify-between gap-3 py-2 text-sm">
+                  <li key={salary.segmentId} className="flex items-center justify-between gap-3 py-2 text-sm">
                     <span className="min-w-0">
                       <span className="block truncate text-ink">{salary.employeeName ?? t("common.none")}</span>
                       <span className="text-xs text-ink-3">
-                        {t("detailPages.project.cost.salaries.days", { count: salary.days })} · {formatDay(salary.paymentDate)}
+                        {t("detailPages.project.cost.salaries.days", { count: salary.days })} · {formatDay(salary.approvedAt)}
                       </span>
                     </span>
-                    <span className="shrink-0 font-mono text-ink" dir="ltr">{money(salary.amountDzd)}</span>
+                    <span className="shrink-0 font-mono text-ink" dir="ltr">{money(salary.amount)}</span>
                   </li>
                 ))}
               </ul>
@@ -208,7 +181,7 @@ export function ProjectCostSection({
                       <span className="block truncate text-ink">{charge.assetName ?? t("common.none")}</span>
                       <span className="text-xs text-ink-3">{formatDay(charge.placedAt)}</span>
                     </span>
-                    <span className="shrink-0 font-mono text-ink" dir="ltr">{money(charge.amountDzd)}</span>
+                    <span className="shrink-0 font-mono text-ink" dir="ltr">{money(charge.amount)}</span>
                   </li>
                 ))}
               </ul>
@@ -230,13 +203,13 @@ export function ProjectCostSection({
                           ? t("detailPages.project.cost.materials.in")
                           : t("detailPages.project.cost.materials.out")}
                         {" · "}
-                        {formatNumber(movement.quantity)}
+                        {movement.quantity}
                         {movement.unit ? ` ${movement.unit}` : ""}
-                        {movement.unitPriceDzd != null ? <> · {money(movement.unitPriceDzd)}</> : ""}
+                        {movement.unitPrice != null ? <> · {movement.unitPrice}</> : ""}
                       </span>
                     </span>
                     <span className="shrink-0 font-mono text-ink" dir="ltr">
-                      {money(movement.valueDzd, movement.direction === "IN" ? "+" : "−")}
+                      {movement.direction === "OUT" ? "−" : null}{money(movement.valueAmount, false, movement.direction === "IN")}
                     </span>
                   </li>
                 ))}
@@ -252,7 +225,7 @@ export function ProjectCostSection({
           description={t("detailPages.project.cost.parked.description")}
         />
         <p className="mt-3 font-mono text-lg font-semibold text-ink" dir="ltr">
-          {money(data.parkedInventory.totalDzd)}
+          {money(data.parkedInventory.totalAmount, true)}
         </p>
         {!hasParked ? (
           <p className="mt-2 text-sm text-ink-3">{t("detailPages.project.cost.parked.empty")}</p>
@@ -261,7 +234,7 @@ export function ProjectCostSection({
             {data.parkedInventory.assets.map((asset) => (
               <li key={asset.assetUnitId} className="flex items-center justify-between gap-3 py-2 text-sm">
                 <span className="min-w-0 truncate text-ink">{asset.assetName ?? t("common.none")}</span>
-                <span className="shrink-0 font-mono text-ink" dir="ltr">{money(asset.purchasePriceDzd)}</span>
+                <span className="shrink-0 font-mono text-ink" dir="ltr">{money(asset.purchaseAmount)}</span>
               </li>
             ))}
           </ul>
