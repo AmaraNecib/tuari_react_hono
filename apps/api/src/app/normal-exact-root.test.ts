@@ -76,6 +76,7 @@ describe.each([["plain", ""], ["keyed", "application-normal-root-fixture-key"]])
     const directory = mkdtempSync(join(tmpdir(), "tuari-exact-admin-grant-"));
     const deps = await createAppDependencies({ databasePath: join(directory, "workspace.sqlite"), databaseKey: key }, config);
     try {
+      if (deps.mode !== "application") throw new Error("Normal root required for admin grant proof");
       const owner = await deps.authBootstrapService.bootstrapFirstUser({ name: "Owner", phone: "0612345001", password: "normal-root-password" });
       if (!owner.success) throw new Error("Bootstrap failed");
       const login = await deps.auth.api.signInPhoneNumber({ body: { phoneNumber: "0612345001", password: "normal-root-password" }, headers: new Headers() });
