@@ -71,7 +71,7 @@ export class ExactWorkforceService {
           unallocatedAmount: row.unallocatedAmount, segments: row.segments, ...audit,
         }),
       })),
-    }));
+    }), { ignoreActorLabelOnReplay: true });
   }
 
   approveEarnings(raw: ExactSalaryApprovalInput & ExactDebtAudit): ExactSalaryEarning {

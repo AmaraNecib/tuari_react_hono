@@ -112,6 +112,7 @@ describe.each(["memory", "plain", "keyed"] as const)("whole aggregate transactio
     expect(finance.getAccount(result.accountId).currentBalance).toBe("90071992547409.93");
     expect(() => JSON.stringify(result)).not.toThrow();
     expect(() => finance.runAggregate({ ...input, actorUserId: "different" }, participant, work)).toThrow(/conflict/i);
+    expect(() => finance.runAggregate({ ...input, actorLabel: "Renamed operator" }, participant, work)).toThrow(/conflict/i);
     expect(() => finance.runAggregate({ ...input, intent: { ...input.intent, orderedLines: ["0.20", "0.10"] } }, participant, work)).toThrow(/conflict/i);
   });
 

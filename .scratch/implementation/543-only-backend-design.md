@@ -28,7 +28,11 @@ Employee list and paged-list reads select employee IDs and exact salary referenc
 
 ## Approval replay after actor rename
 
-Only `approveEarnings` enables actor-label-insensitive replay comparison. The stored fingerprint format and bytes remain unchanged: it still records the first actor label. On a fingerprint mismatch, this path compares the parsed existing and requested fingerprints after removing only `actorLabel`; actor user ID, producer, intent, and all other fields must still match. Replay returns the stored result, so earning and ledger audit rows keep the original label. Monthly and other aggregate paths retain strict label matching. Native reopen coverage checks identical retry, one earning and payable, unchanged receipt bytes, preserved audit labels, and conflicts for changed user ID or intent.
+Only the exact workforce `approveEarnings` and `approveMonthlyEarnings` calls enable actor-label-insensitive replay comparison. Both are required: monthly approval checks its outer receipt before invoking child earning receipts. Stored fingerprint format and bytes remain unchanged; they record the first actor label. On a fingerprint mismatch, these calls compare the parsed existing and requested fingerprints after removing only `actorLabel`; actor user ID, producer, intent, and all other fields must still match. Replay returns stored results, so earning and ledger audit rows keep the original label. Other aggregate paths retain strict label matching. Native reopen coverage checks unchanged monthly/child and debt receipt bytes, one earning and payable per positive month, preserved audit labels, and conflicts for changed user ID or intent.
+
+## Monthly approval replay follow-up
+
+The first rename-replay fix covered direct `approveEarnings` receipts but missed `approveMonthlyEarnings`'s outer receipt. The monthly method now opts in at its outer aggregate as well as its child earning aggregates. Its native regression failed at the outer replay check on `8b939f66`, then passed after the correction. It checks the real two-month request, persisted reopen, unchanged monthly/child and debt receipt bytes, original audit labels, one earning/payable per positive month, and conflicts for changed actor or intent. Generic invoice aggregates still reject a changed actor label.
 
 ## Lessons
 

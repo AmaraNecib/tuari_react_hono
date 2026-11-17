@@ -83,6 +83,39 @@ describe.each([["plain", ""], ["keyed", "527-public-synthetic-key"]])("native ex
     expect(reopened.finance.getAccount(result.months[0]!.earning.debtAccountId!).currentBalance).toBe("60000.00");
   });
 
+  it("replays a persisted monthly approval after actor rename with original receipts and audit", () => {
+    const fixture = setup(key);
+    const { service } = fixture.compose();
+    fixture.db.prepare("INSERT INTO user VALUES ('useru')").run();
+    const originalInput = { ...monthlyApproval, actorUserId: "useru", actorLabel: "Oldlabel" };
+    const original = service.approveMonthlyEarnings(originalInput);
+    const aggregateReceipts = fixture.db.prepare("SELECT id,fingerprint,result_json AS resultJson FROM exact_finance_command ORDER BY id").all();
+    const debtReceipts = fixture.db.prepare("SELECT id,fingerprint,result_json AS resultJson FROM debt_command ORDER BY id").all();
+    expect(aggregateReceipts).toHaveLength(3);
+    expect(original.months).toHaveLength(2);
+    expect(original.months.map(row => row.earning.segments.length)).toEqual([1, 0]);
+    expect(fixture.db.prepare("SELECT count(*) AS count FROM employee_salary_earning").get()).toEqual({ count: 2 });
+    expect(fixture.db.prepare("SELECT count(*) AS count FROM debt_entry WHERE entry_type='ADJUSTMENT'").get()).toEqual({ count: 2 });
+    expect(fixture.db.prepare("SELECT DISTINCT actor_user_id AS actorUserId,actor_label AS actorLabel FROM employee_salary_earning").all()).toEqual([{ actorUserId: "useru", actorLabel: "Oldlabel" }]);
+    expect(fixture.db.prepare("SELECT DISTINCT actor_user_id AS actorUserId,actor_label AS actorLabel FROM debt_entry WHERE entry_type='ADJUSTMENT'").all()).toEqual([{ actorUserId: "useru", actorLabel: "Oldlabel" }]);
+
+    const reopened = fixture.reopen();
+    const retried = reopened.service.approveMonthlyEarnings({ ...originalInput, actorLabel: "Newlabel" });
+    expect(retried).toEqual(original);
+    expect(retried.months.map(row => row.earning.actorLabel)).toEqual(["Oldlabel", "Oldlabel"]);
+    expect(fixture.db.prepare("SELECT id,fingerprint,result_json AS resultJson FROM exact_finance_command ORDER BY id").all()).toEqual(aggregateReceipts);
+    expect(fixture.db.prepare("SELECT id,fingerprint,result_json AS resultJson FROM debt_command ORDER BY id").all()).toEqual(debtReceipts);
+    expect(reopened.repository.listEarnings("worker")).toEqual(original.months.map(row => row.earning));
+    expect(fixture.db.prepare("SELECT count(*) AS count FROM employee_salary_earning").get()).toEqual({ count: 2 });
+    expect(fixture.db.prepare("SELECT count(*) AS count FROM debt_entry WHERE entry_type='ADJUSTMENT'").get()).toEqual({ count: 2 });
+
+    expect(() => reopened.service.approveMonthlyEarnings({ ...originalInput, actorUserId: "operator", actorLabel: "Newlabel" })).toThrow(/replay conflict/);
+    expect(() => reopened.service.approveMonthlyEarnings({ ...originalInput, actorLabel: "Newlabel", months: originalInput.months.map((row, index) => index === 0 ? { ...row, amount: "13000", unallocatedAmount: "3000" } : row) })).toThrow(/replay conflict/);
+    expect(fixture.db.prepare("SELECT id,fingerprint,result_json AS resultJson FROM exact_finance_command ORDER BY id").all()).toEqual(aggregateReceipts);
+    expect(fixture.db.prepare("SELECT id,fingerprint,result_json AS resultJson FROM debt_command ORDER BY id").all()).toEqual(debtReceipts);
+    expect(reopened.repository.listEarnings("worker")).toEqual(original.months.map(row => row.earning));
+  });
+
   it("rolls every month and receipt back when a later month references a missing project", () => {
     const fixture = setup(key);
     const { service, repository, finance } = fixture.compose();
