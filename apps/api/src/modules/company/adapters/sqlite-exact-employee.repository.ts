@@ -7,6 +7,7 @@ import type { MutationAuditContext, RoleRecord, EmployeeListFilters } from "../c
 import type { ExactEmployeeRepository } from "../employee-exact.repository";
 import type { EmployeeTransitionLinks } from "../company.entity-resolvers";
 import { decodeCursor, encodeCursor } from "../../shared/cursor";
+import { escapeLikePattern } from "../../shared/sql-search";
 import { bindExactSalaryReference, readExactEmployee, readExactEmployeeHistory } from "./exact-workforce-storage";
 
 /** Trusted native profile storage. Public authorization and relationship rules belong to the employee service. */
@@ -63,8 +64,9 @@ export class SqliteExactEmployeeRepository implements ExactEmployeeRepository {
     if (filters?.status) { conditions.push("status=?"); values.push(filters.status); }
     const search = filters?.search?.trim();
     if (search) {
-      conditions.push("(instr(lower(first_name),lower(?))>0 OR instr(lower(last_name),lower(?))>0 OR instr(phone,?)>0)");
-      values.push(search, search, search);
+      const pattern = `%${escapeLikePattern(search)}%`;
+      conditions.push("(first_name LIKE ? ESCAPE '\\' OR last_name LIKE ? ESCAPE '\\' OR phone LIKE ? ESCAPE '\\' OR (first_name || ' ' || last_name) LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM role WHERE role.id=employee.role_id AND role.name LIKE ? ESCAPE '\\'))");
+      values.push(pattern, pattern, pattern, pattern, pattern);
     }
     return { sql: conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "", values };
   }

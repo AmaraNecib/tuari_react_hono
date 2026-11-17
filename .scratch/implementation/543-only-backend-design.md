@@ -18,6 +18,10 @@ The approved A/B/A amounts are 10,000, 37,500 and 15,000. Total earnings are 62,
 
 My initial eight-file proof omitted `exact-workforce-storage.test.ts`. Its cash fixture referenced `employee_salary_payment` tables that the narrowed schema no longer creates. This correction removes that new cash reader and public shape, replaces the cash fixture with shared-FIFO refusal coverage, and reruns the storage test. The baseline `PAYROLL_OPENING` and `PAYROLL_ADVANCE` producer values are restored unchanged; only the shared-startup comment differs from develop.
 
+## Search correction
+
+The exact employee adapter now matches the established literal, case-insensitive employee search semantics: first name, last name, phone, combined full name, and role display name. Both paged total and page selection use the same predicate, before pagination. Regression coverage checks combined-name and role-name results through list and paged reads.
+
 ## Lessons
 
 Applied: employee-create UI acceptance must be checked against server role requirements and native required fields; new transaction writes must acquire the established immediate reservation; policy validation precedes expensive allocation. Excluded: UI implementation and Playwright fixture lessons, because this lane owns API/contracts only. Parent should reassess applicability against the finished source.

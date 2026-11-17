@@ -16,7 +16,7 @@ function fixture(key: string, real = false) {
   const path = join(mkdtempSync(join(tmpdir(), "tuari-exact-employee-")), "fixture.sqlite");
   const db = createDatabaseConnection(path, key);
   db.pragma("foreign_keys=ON");
-  db.exec("CREATE TABLE role(id TEXT PRIMARY KEY); CREATE TABLE user(id TEXT PRIMARY KEY); CREATE TABLE project(id TEXT PRIMARY KEY); INSERT INTO role VALUES ('worker-role'),('other-role'); INSERT INTO user VALUES ('linked-user')");
+  db.exec("CREATE TABLE role(id TEXT PRIMARY KEY,name TEXT NOT NULL); CREATE TABLE user(id TEXT PRIMARY KEY); CREATE TABLE project(id TEXT PRIMARY KEY); INSERT INTO role VALUES ('worker-role','Worker'),('other-role','Site Manager'); INSERT INTO user VALUES ('linked-user')");
   for (const sql of exactWorkforceSchemaStatements) db.exec(real ? sql.replace("salary_reference_units INTEGER", "salary_reference_units REAL") : sql);
   const lock = createFifoLock();
   let id = 0;
@@ -124,6 +124,21 @@ describe.each([["plain", ""], ["keyed", "527-employee-public-fixture-key"]])("ex
         expect(next.listEmployeeStateHistory("worker")).toHaveLength(1);
       } finally { reopened.close(); }
     } finally { if (f.db.open) f.db.close(); }
+  });
+
+  it("matches full names and role labels before paginating", () => {
+    const f = fixture(key);
+    try {
+      const repo = f.repository();
+      repo.createEmployee({ ...employee("ada"), firstName: "Ada", lastName: "Lovelace", phone: "0550000001" }, audit);
+      repo.createEmployee({ ...employee("manager"), firstName: "Grace", lastName: "Hopper", phone: "0550000002", roleId: "other-role" }, audit);
+      repo.createEmployee({ ...employee("unrelated"), firstName: "Alan", lastName: "Turing", phone: "0550000003" }, audit);
+
+      expect(repo.listEmployees({ search: "Ada Lovelace" }).map(row => row.id)).toEqual(["ada"]);
+      expect(repo.listEmployeesPaged({ filters: { search: "Ada Lovelace" }, limit: 1 })).toMatchObject({ items: [{ id: "ada" }], total: 1 });
+      expect(repo.listEmployees({ search: "Site Manager" }).map(row => row.id)).toEqual(["manager"]);
+      expect(repo.listEmployeesPaged({ filters: { search: "Site Manager" }, limit: 1 })).toMatchObject({ items: [{ id: "manager" }], total: 1 });
+    } finally { f.db.close(); }
   });
 
   it("refuses REAL monetary columns despite a workforce marker and does not accept async transaction work", () => {
