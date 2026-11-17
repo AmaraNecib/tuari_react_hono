@@ -1,6 +1,8 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { createDatabaseConnection } from "./factory";
 import { ensureDatabaseSchema } from "./schema";
@@ -8,6 +10,21 @@ import { BetterSqlite3Executor } from "./sqlite-executor";
 import { requireExactMoneySchema } from "./money-schema-gate";
 
 // Synthetic isolated schemas only. No application database is opened.
+describe("original old-writer compatibility canary", () => {
+  it("rejects a freshly initialized earnings schema with the unchanged baseline guard", async () => {
+    const baseline = execFileSync("git", ["show", "0fdaff8fe76771c12a32bbe7bdd93f6c6935656f:apps/api/src/infrastructure/database/money-schema-gate.ts"], { encoding: "utf8" });
+    const baselineBlob = execFileSync("git", ["rev-parse", "0fdaff8fe76771c12a32bbe7bdd93f6c6935656f:apps/api/src/infrastructure/database/money-schema-gate.ts"], { encoding: "utf8" }).trim();
+    expect(baselineBlob).toBe("fbe93e602a103072c553bec64c43fe279f963b77");
+    const compiled = ts.transpileModule(baseline, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+    const original = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`) as typeof import("./money-schema-gate");
+    const db = createDatabaseConnection(":memory:", "");
+    try {
+      await ensureDatabaseSchema(new BetterSqlite3Executor(db));
+      await expect(original.assertLegacyMoneySchema(new BetterSqlite3Executor(db))).rejects.toThrow(/coordinated.*activation/i);
+    } finally { db.close(); }
+  });
+});
+
 describe.each([["plain", ""], ["keyed", "524-public-fixture-key"]])("money startup isolation: %s", (_driver, key) => {
   it("rejects an exact schema before legacy initialization can mutate it", async () => {
     const path = join(mkdtempSync(join(tmpdir(), "tuari-524-gate-")), "fixture.sqlite");
@@ -21,7 +38,7 @@ describe.each([["plain", ""], ["keyed", "524-public-fixture-key"]])("money start
     } finally { db.close(); }
   });
 
-  it("keeps fresh and reopened legacy schemas numeric without installing an exact marker", async () => {
+  it("keeps fresh and reopened schemas usable with a validated workforce marker", async () => {
     const path = join(mkdtempSync(join(tmpdir(), "tuari-524-legacy-")), "fixture.sqlite");
     let db = createDatabaseConnection(path, key);
     try {
@@ -33,7 +50,25 @@ describe.each([["plain", ""], ["keyed", "524-public-fixture-key"]])("money start
       const expenses = db.pragma("table_info(expense)") as { name: string; type: string }[];
       expect(debt.find(column => column.name === "current_balance")?.type).toBe("REAL");
       expect(expenses.find(column => column.name === "amount_dzd")?.type).toBe("REAL");
-      expect(db.prepare("SELECT name FROM sqlite_master WHERE name='exact_money_schema'").get()).toBeUndefined();
+      expect(db.prepare("SELECT slice, version FROM exact_money_schema").all()).toEqual([{ slice: "workforce", version: 1 }]);
+    } finally { db.close(); }
+  });
+
+  it("fails closed on an unsupported workforce version", async () => {
+    const db = createDatabaseConnection(":memory:", "");
+    try {
+      await ensureDatabaseSchema(new BetterSqlite3Executor(db));
+      db.exec("UPDATE exact_money_schema SET version = 2 WHERE slice = 'workforce'");
+      await expect(ensureDatabaseSchema(new BetterSqlite3Executor(db))).rejects.toThrow(/coordinated.*activation/i);
+    } finally { db.close(); }
+  });
+
+  it("fails closed when a marked workforce schema is missing a required table", async () => {
+    const db = createDatabaseConnection(":memory:", "");
+    try {
+      await ensureDatabaseSchema(new BetterSqlite3Executor(db));
+      db.exec("DROP TABLE employee_earning_segment");
+      await expect(ensureDatabaseSchema(new BetterSqlite3Executor(db))).rejects.toThrow(/coordinated.*activation/i);
     } finally { db.close(); }
   });
 

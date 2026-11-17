@@ -4,12 +4,46 @@ import type { BetterSqliteDatabase } from "../../types/sqlite";
 export type ExactMoneySlice = "debt" | "expenses" | "invoice" | "inventory" | "workforce";
 const ACTIVATION_REQUIRED = "Exact money requires coordinated schema, reader, writer and contract activation; legacy startup is disabled for this database";
 
-/** Reject converted copies before legacy initialization or financial composition. */
+/** Reject unsupported converted copies before initialization or financial composition. */
+const workforceColumns = {
+  employee: { salary_reference_period: "TEXT", salary_reference_amount: "TEXT" },
+  employee_state_history: { salary_reference_period: "TEXT", salary_reference_amount: "TEXT" },
+  employee_earning: {
+    id: "TEXT", employee_id: "TEXT", request_id: "TEXT", request_hash: "TEXT", period_start: "DATETIME", period_end: "DATETIME",
+    currency_code: "TEXT", total_minor: "INTEGER", unallocated_minor: "INTEGER", reference_salary_period: "TEXT",
+    reference_salary_units: "INTEGER", approved_at: "DATETIME", created_at: "DATETIME",
+  },
+  employee_earning_segment: {
+    id: "TEXT", earning_id: "TEXT", project_id: "TEXT", ordinal: "INTEGER", days: "INTEGER", amount_minor: "INTEGER", created_at: "DATETIME",
+  },
+} as const;
+
+async function assertSupportedWorkforceSchema(db: DbExecutor): Promise<void> {
+  const marker = await db.$queryRawUnsafe<{ type: string }[]>(
+    "SELECT type FROM sqlite_master WHERE lower(name) = 'exact_money_schema'",
+  );
+  if (marker.length !== 1 || marker[0]?.type !== "table") throw new Error(ACTIVATION_REQUIRED);
+  const markerColumns = await db.$queryRawUnsafe<{ name: string; type: string; pk: number; notnull: number }[]>("PRAGMA table_info(exact_money_schema)");
+  if (markerColumns.length !== 2
+    || !markerColumns.some(column => column.name === "slice" && column.type.toUpperCase() === "TEXT" && column.pk === 1)
+    || !markerColumns.some(column => column.name === "version" && column.type.toUpperCase() === "INTEGER" && column.notnull === 1 && column.pk === 0)) {
+    throw new Error(ACTIVATION_REQUIRED);
+  }
+  const rows = await db.$queryRawUnsafe<{ slice: string; version: number }[]>("SELECT slice, version FROM exact_money_schema");
+  if (rows.length !== 1 || rows[0]?.slice !== "workforce" || rows[0]?.version !== 1) throw new Error(ACTIVATION_REQUIRED);
+
+  for (const [table, expected] of Object.entries(workforceColumns)) {
+    const columns = await db.$queryRawUnsafe<{ name: string; type: string }[]>(`PRAGMA table_info("${table}")`);
+    const byName = new Map(columns.map(column => [column.name, column.type.toUpperCase()]));
+    if (Object.entries(expected).some(([name, type]) => byName.get(name) !== type)) throw new Error(ACTIVATION_REQUIRED);
+  }
+}
+
 export async function assertLegacyMoneySchema(db: DbExecutor): Promise<void> {
   const markers = await db.$queryRawUnsafe<{ name: string }[]>(
     "SELECT name FROM sqlite_master WHERE lower(name) = 'exact_money_schema'",
   );
-  if (markers.length) throw new Error(ACTIVATION_REQUIRED);
+  if (markers.length) await assertSupportedWorkforceSchema(db);
 
   const payrollSentinels = await db.$queryRawUnsafe<{ name: string }[]>(
     "SELECT name FROM sqlite_master WHERE lower(name) IN ('employee_salary_earning','employee_salary_earning_segment','employee_salary_correction','employee_salary_opening_review','employee_salary_advance','employee_salary_payment_allocation','employee_salary_settlement')",

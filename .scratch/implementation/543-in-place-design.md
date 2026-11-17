@@ -50,6 +50,14 @@ Apply improve-codebase-architecture after clean local review to changed modules 
 
 Commit complete reviewable source with this note before independent debate, test-audit and code-review. Keep source frozen for readers. Bounded fixes get fresh combined-delta review with unchanged conclusions carried forward. Run affected tests and relevant lint/types, then record exact-SHA commands, exit codes, counts, durations and logs in ignored evidence. Heavy runs require a justified shared queue slot. No implementation, test pass, native acceptance or issue completion is claimed by this design note.
 
+## Startup compatibility correction
+
+This bounded correction starts from parent revision `772b1cc61e000185b8503f21f24bf3e61d679868` in an isolated child worktree. Verification mode is `focused-local / CI-final-pending`; tier is high-assurance because an old writer can reopen the same configured database. The owner authorized this #543 storage integration and confirmed there is no old dataset. This work adds no historical migration and does not change the #530 activation or release gate.
+
+The original guard at `0fdaff8fe76771c12a32bbe7bdd93f6c6935656f` rejects any `exact_money_schema` marker. Normal initialization now writes the existing marker format with only `workforce` version 1, after the workforce tables and migrations finish. That gives old binaries a signal they already reject. The current guard accepts only that one marker, validates its table shape and version, and verifies required employee reference columns plus earnings and segment columns with their declared SQLite types. Other slices, unknown versions, malformed markers and incomplete workforce tables still fail before schema writes or financial composition. The exact-money contract and existing financial readers/writers remain unchanged.
+
+The regression test initializes a synthetic normal schema, loads and executes the unchanged original guard from the pinned baseline commit, and expects rejection. Focused proof also covers valid close/reopen, authenticated earnings RPC, encrypted database reopen, unsupported marker version and a missing workforce table. The accepted #522 ADR remains the money-policy authority. This changes the database startup marker, not the exact-money policy or an application root.
+
 ## Bounded backend handoff
 
 The stale `workforce.service-coverage.test.ts` missing-salary case was removed. `createSalaryPayment` refuses every new legacy numeric write before inspecting salary configuration, so that case only passed because of the retired-writer refusal. The surviving legacy-writer test asserts the specific `employeeEarningsApprove` refusal and that no payment row was written. The historical-row fixture in `company.system-log.test.ts` remains valid: it inserts a legacy row to test historical reads and the emitted log event.

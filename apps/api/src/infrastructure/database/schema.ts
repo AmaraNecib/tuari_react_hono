@@ -1762,4 +1762,11 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   // Run AFTER seeding so the new `manager` role is guaranteed to exist
   // before legacy roles are removed.
   await runRbacThreeRoleMigration(db);
+
+  // The workforce marker is the compatibility tripwire understood by the
+  // original startup guard. Write it only after its feature tables exist.
+  await db.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS exact_money_schema(slice TEXT PRIMARY KEY, version INTEGER NOT NULL)");
+    await tx.$executeRawUnsafe("INSERT OR IGNORE INTO exact_money_schema(slice, version) VALUES ('workforce', 1)");
+  });
 }
