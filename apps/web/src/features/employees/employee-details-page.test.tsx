@@ -8,9 +8,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ComponentProps, ReactNode } from "react"
 import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
 
-const { approveEarning, sessionUser } = vi.hoisted(() => ({
+const { approveEarning, sessionUser, earningHistoryItems } = vi.hoisted(() => ({
   approveEarning: vi.fn(),
   sessionUser: { id: "user-1" },
+  earningHistoryItems: [] as unknown[],
 }))
 
 vi.mock("@tanstack/react-router", async () => {
@@ -19,7 +20,7 @@ vi.mock("@tanstack/react-router", async () => {
 })
 vi.mock("@/features/employees/employee-earnings-queries", () => ({
   useApproveEmployeeEarningMutation: () => ({ mutateAsync: approveEarning, isPending: false }),
-  useEmployeeEarningsQuery: () => ({ data: { items: [] }, isPending: false, isError: false, isFetching: false, error: null, refetch: vi.fn() }),
+  useEmployeeEarningsQuery: () => ({ data: { items: earningHistoryItems }, isPending: false, isError: false, isFetching: false, error: null, refetch: vi.fn() }),
 }))
 vi.mock("@/features/session/use-session-query", () => ({
   useSessionQuery: () => ({ data: { user: sessionUser } }),
@@ -92,6 +93,7 @@ function renderDetails(employee: EmployeeTableRow = worker(), salaryPayments: Sa
 describe("EmployeeDetailsPage earnings entry", () => {
   beforeEach(() => {
     approveEarning.mockReset().mockResolvedValue({})
+    earningHistoryItems.length = 0
     localStorage.clear()
   })
 
@@ -124,6 +126,30 @@ describe("EmployeeDetailsPage earnings entry", () => {
     const missingSalaryCard = screen.getByText("الأجر الحالي").closest("article")!
     expect(within(missingSalaryCard).getByText("غير محدد")).toBeTruthy()
     expect(within(missingSalaryCard).queryByText("0")).toBeNull()
+  })
+
+  it("uses the current project name in approved-earnings history", () => {
+    earningHistoryItems.push({
+      id: "earning-1",
+      employeeId: "worker-1",
+      periodStart: "2026-03-01T00:00:00.000Z",
+      periodEnd: "2026-03-31T23:59:59.999Z",
+      currencyCode: "DZD",
+      totalAmount: "100.00",
+      unallocatedAmount: "0.00",
+      referenceSalary: null,
+      segments: [{ id: "segment-1", projectId: PROJECT.id, days: 1, amount: "100.00" }],
+      approvedAt: "2026-04-01T09:00:00.000Z",
+      actorUserId: "user-1",
+      transactionId: "transaction-1",
+      createdAt: "2026-04-01T09:00:00.000Z",
+    })
+
+    renderDetails()
+
+    expect(screen.getByRole("heading", { name: "سجل الأجور المعتمدة" })).toBeTruthy()
+    expect(screen.getByText(PROJECT.name)).toBeTruthy()
+    expect(screen.queryByText(PROJECT.id)).toBeNull()
   })
 
   it("opens approval without a salary reference and accepts an explicit earned amount", async () => {

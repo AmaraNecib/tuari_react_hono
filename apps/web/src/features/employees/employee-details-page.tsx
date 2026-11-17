@@ -126,6 +126,11 @@ export function EmployeeDetailsPage({
   const currencyLabel = t("detailPages.salary.currency")
   const useGrouping = useMoneyGrouping()
   const salaryReference = employee.salaryReference ?? null
+  const employeeNames = useMemo(() => ({ [employee.id]: employee.name }), [employee.id, employee.name])
+  const projectNames = useMemo(
+    () => Object.fromEntries(projects.map((project) => [project.id, project.name])),
+    [projects],
+  )
   const salaryPeriodLabel = (value: NonNullable<EmployeeTableRow["salaryReference"]>["period"] | null) =>
     value ? t(getSalaryPeriodLabelKey(value)) : t("detailPages.salary.notSpecified")
   const formattedSalaryReference = salaryReference
@@ -264,7 +269,7 @@ export function EmployeeDetailsPage({
             <h3 id="employee-earnings-history-title" className="text-lg font-semibold text-foreground">
               {t("earnings.historyTitle")}
             </h3>
-            <EmployeeEarningsHistory employeeId={employee.id} />
+            <EmployeeEarningsHistory employeeId={employee.id} employeeNames={employeeNames} projectNames={projectNames} />
           </section>
 
           <div className="overflow-hidden rounded-xl border border-border/70 bg-sidebar dark:bg-surface" dir="rtl">
