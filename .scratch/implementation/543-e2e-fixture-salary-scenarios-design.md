@@ -1,0 +1,7 @@
+# #543 E2E fixtures and salary scenarios
+
+Base: `c02b185acb4ef78501b7e26cab6e03654b1937db`. Mode: focused-local / CI-final-pending. Tier: high-assurance because salary fixtures and earning approval touch persisted money data.
+
+Scope is limited to `tests/e2e/helpers/db-seed.ts`, `tests/e2e/helpers/db-isolation.ts` and `tests/e2e/salaries.spec.ts`. Seeded salary references use exact decimal strings in `salary_reference_amount` plus `salary_reference_period`; this test API does not retain numeric compatibility. DB resets require Playwright's declared `APP_DB_PATH`, managed API marker, synthetic integration filename and location under this worktree's `apps/api/data`. Reset deletes earning segments before earnings and preserves schema and role markers.
+
+Salary scenarios exercise explicit approval totals, remainders, project allocation and independently edited days/amounts. They do not infer payment from approval. Formatting checks retain decimal/grouping persistence in salary and employee views. Architecture: no seam moved. Applied wisdom: Playwright retries share the API DB, so seeded phone values remain attempt-unique.

@@ -50,6 +50,8 @@ const TRANSACTIONAL_TABLES = [
   // workforce
   "employee_salary_payment_split",
   "employee_salary_payment",
+  "employee_earning_segment",
+  "employee_earning",
   "employee_state_history",
   "employee_warehouse_assignment",
   "employee_project_assignment",
