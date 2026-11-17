@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,12 +7,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureExactNormalWorkspaceSchema, getExactWorkspaceId } from "./exact-normal-workspace-schema";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
 import { resetE2eDatabase } from "../../../../../tests/e2e/helpers/db-isolation";
-import { seedEmployees, type SeedDatabase } from "../../../../../tests/e2e/helpers/db-seed";
+import { seedEmployeeByRole, seedEmployees, type SeedDatabase } from "../../../../../tests/e2e/helpers/db-seed";
 import { resetExactFixture } from "../../../../../tests/e2e/helpers/exact-db-isolation";
+import { fixtureRepositoryRoot, prepareManagedFixture } from "../../../../../tests/e2e/helpers/managed-fixture";
 
 let db: BetterSqliteDatabase;
 beforeEach(() => {
-  const path = join(mkdtempSync(join(tmpdir(), "tuari-e2e-fixture-")), "tuari.phase1.integration.fixture.sqlite");
+  const path = join(fixtureRepositoryRoot(), "apps/api/data", `tuari.phase1.integration.unit-${randomUUID()}.sqlite`);
+  const token = prepareManagedFixture(path, fixtureRepositoryRoot());
+  vi.stubEnv("E2E_FIXTURE_TOKEN", token);
   db = new Database(path) as unknown as BetterSqliteDatabase;
   ensureExactNormalWorkspaceSchema(db);
   vi.stubEnv("APP_DB_PATH", path);
@@ -31,6 +35,34 @@ describe("normal exact E2E fixtures", () => {
     expect(db.prepare("SELECT first_name,salary_reference_units,salary_period,salary_currency FROM employee").all()).toEqual([
       { first_name: "Exact", salary_reference_units: null, salary_period: null, salary_currency: "DZD" },
     ]);
+  });
+
+  it("rejects numeric salary fixture input even at zero on the exact schema", () => {
+    expect(() => seedEmployeeByRole({ firstName: "Unsafe", lastName: "Numeric", phone: "0555000033", roleKey: "worker", salaryAmountDzd: 0, salaryPeriod: "MONTHLY" })).toThrow(/exact|numeric/i);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM employee").get()).toEqual({ count: 0 });
+  });
+
+  it("refuses to adopt an already-existing database even with a fixture basename", () => {
+    expect(() => prepareManagedFixture(process.env.APP_DB_PATH!, fixtureRepositoryRoot())).toThrow(/exist/i);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM role").get()).not.toEqual({ count: 0 });
+  });
+
+  it("refuses missing ownership and missing path instead of adopting an older fixture", () => {
+    seedZeroEarning();
+    vi.stubEnv("E2E_FIXTURE_TOKEN", "");
+    expect(() => resetE2eDatabase()).toThrow(/ownership/i);
+    vi.stubEnv("APP_DB_PATH", "");
+    expect(() => resetE2eDatabase()).toThrow(/required|older database/i);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM employee_salary_earning").get()).toEqual({ count: 1 });
+  });
+
+  it("refuses reset and seeding with an incorrect run token before changing rows", () => {
+    seedZeroEarning();
+    vi.stubEnv("E2E_FIXTURE_TOKEN", "different-run");
+    expect(() => resetE2eDatabase()).toThrow(/ownership/i);
+    expect(() => seedEmployees([{ firstName: "Wrong", lastName: "Run", phone: "0555000055" }])).toThrow(/ownership/i);
+    expect(db.prepare("SELECT COUNT(*) AS count FROM employee_salary_earning").get()).toEqual({ count: 1 });
+    expect(db.prepare("SELECT COUNT(*) AS count FROM employee").get()).toEqual({ count: 1 });
   });
 
   it("empties the managed fixture without losing immutable guards, schema, role seeds or workspace identity", () => {
@@ -72,6 +104,19 @@ describe("normal exact E2E fixtures", () => {
     db.exec("UPDATE exact_money_schema SET version=2 WHERE slice='workforce'");
     expect(() => resetE2eDatabase()).toThrow(/unsupported exact schema markers/i);
     expect(db.prepare("SELECT COUNT(*) AS count FROM employee_salary_earning").get()).toEqual({ count: 1 });
+  });
+
+  it("refuses a matching database filename outside the managed fixture boundary without deleting rows", () => {
+    const outside = join(mkdtempSync(join(tmpdir(), "tuari-owner-boundary-")), "tuari.phase1.integration.owner.sqlite");
+    const owner = new Database(outside);
+    try {
+      ensureExactNormalWorkspaceSchema(owner as unknown as BetterSqliteDatabase);
+      const role = owner.prepare("SELECT id FROM role WHERE key='worker'").get() as { id: string };
+      owner.prepare("INSERT INTO employee(id,first_name,last_name,phone,role_id,status,created_at,updated_at) VALUES ('preserve','Owner','Data','0555000012',?,'INACTIVE','2026-01-01','2026-01-01')").run(role.id);
+      vi.stubEnv("APP_DB_PATH", outside);
+      expect(() => resetE2eDatabase()).toThrow(/managed fixture|ownership/i);
+      expect(owner.prepare("SELECT id FROM employee").all()).toEqual([{ id: "preserve" }]);
+    } finally { owner.close(); }
   });
 
   it("refuses an unexpected table before mutating fixture data", () => {

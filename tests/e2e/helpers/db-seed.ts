@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { existsSync, readdirSync, statSync } from "node:fs"
+import { existsSync, readdirSync } from "node:fs"
 import { createRequire } from "node:module"
 import { isAbsolute, join } from "node:path"
+import { assertManagedFixture } from "./managed-fixture"
 
 /**
  * Direct fixtures for the managed Playwright database. Load the API's pinned
@@ -42,11 +43,9 @@ export function loadDatabaseConstructor() {
 }
 
 /**
- * The newest E2E database file for the current run.
- *
- * `APP_DB_PATH=./data/…` is resolved relative to the API package cwd, so the
- * file lands in `apps/api/data/`; the root `data/` is checked as a fallback
- * (one file per Playwright run — the newest by mtime).
+ * Resolve only the current run's explicitly declared, ownership-checked file.
+ * Relative APP_DB_PATH is resolved against the API package before the root.
+ * No fallback selects an older database from a previous run.
  */
 export function findE2eDatabase(): string {
   // An externally managed API has no local file to reset or seed. Failing here
@@ -70,33 +69,16 @@ export function findE2eDatabase(): string {
       ? [declared]
       : [join(process.cwd(), "apps", "api", declared), join(process.cwd(), declared)]
     for (const candidate of candidates) {
-      if (existsSync(candidate)) return candidate
+      if (existsSync(candidate)) {
+        assertManagedFixture(candidate, process.env.E2E_FIXTURE_TOKEN)
+        return candidate
+      }
     }
     throw new Error(
       `APP_DB_PATH is set to ${declared} but no database exists at: ${candidates.join(", ")} — did the API start?`,
     )
   }
-  const candidates: Array<{ path: string; mtime: number }> = []
-  for (const dataDir of [
-    join(process.cwd(), "apps", "api", "data"),
-    join(process.cwd(), "data"),
-  ]) {
-    if (!existsSync(dataDir)) continue
-    for (const file of readdirSync(dataDir).filter((f) =>
-      /^tuari\.phase1\.integration\..+\.sqlite$/.test(f),
-    )) {
-      const full = join(dataDir, file)
-      candidates.push({ path: full, mtime: statSync(full).mtimeMs })
-    }
-  }
-  candidates.sort((a, b) => b.mtime - a.mtime)
-  const dbPath = candidates[0]?.path
-  if (!dbPath) {
-    throw new Error(
-      "No E2E sqlite database found under apps/api/data or ./data — run the API first",
-    )
-  }
-  return dbPath
+  throw new Error("Managed fixture APP_DB_PATH and ownership token are required; refusing to select an older database")
 }
 
 /**
