@@ -22,6 +22,10 @@ My initial eight-file proof omitted `exact-workforce-storage.test.ts`. Its cash 
 
 The exact employee adapter now matches the established literal, case-insensitive employee search semantics: first name, last name, phone, combined full name, and role display name. Both paged total and page selection use the same predicate, before pagination. Regression coverage checks combined-name and role-name results through list and paged reads.
 
+## Employee list reads
+
+Employee list and paged-list reads select employee IDs and exact salary references in one repository transaction. The batch reader makes one metadata query and at most two safe-integer amount queries, split by DAILY versus MONTHLY/WEEKLY units. A 120-row test checks independently expected exact references and asserts four SQL statements for the full list, five for the page, with no page-size change.
+
 ## Lessons
 
 Applied: employee-create UI acceptance must be checked against server role requirements and native required fields; new transaction writes must acquire the established immediate reservation; policy validation precedes expensive allocation. Excluded: UI implementation and Playwright fixture lessons, because this lane owns API/contracts only. Parent should reassess applicability against the finished source.

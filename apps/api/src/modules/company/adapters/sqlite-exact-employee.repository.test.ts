@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { exactEmployeeSchema } from "@tuari/contracts";
 import { createDatabaseConnection } from "../../../infrastructure/database/factory";
 import { createFifoLock } from "../../../infrastructure/database/fifo-lock";
@@ -138,6 +138,32 @@ describe.each([["plain", ""], ["keyed", "527-employee-public-fixture-key"]])("ex
       expect(repo.listEmployeesPaged({ filters: { search: "Ada Lovelace" }, limit: 1 })).toMatchObject({ items: [{ id: "ada" }], total: 1 });
       expect(repo.listEmployees({ search: "Site Manager" }).map(row => row.id)).toEqual(["manager"]);
       expect(repo.listEmployeesPaged({ filters: { search: "Site Manager" }, limit: 1 })).toMatchObject({ items: [{ id: "manager" }], total: 1 });
+    } finally { f.db.close(); }
+  });
+
+  it("keeps large employee lists exact with a bounded number of SQL reads", () => {
+    const f = fixture(key);
+    try {
+      const repo = f.repository();
+      const expected = Array.from({ length: 120 }, (_, index) => {
+        const id = `worker-${String(index).padStart(3, "0")}`;
+        const salaryReference = index % 2 === 0
+          ? { period: "DAILY" as const, amount: "0.0001" }
+          : { period: "MONTHLY" as const, amount: "9007199254740993.21" };
+        repo.createEmployee({ ...employee(id), firstName: `Employee ${String(index).padStart(3, "0")}`, phone: `055${String(index).padStart(7, "0")}`, salaryReference }, audit);
+        return { id, salaryReference };
+      });
+      const prepare = vi.spyOn(f.db, "prepare");
+
+      const listed = repo.listEmployees();
+      expect(listed.map(row => ({ id: row.id, salaryReference: row.salaryReference }))).toEqual(expected);
+      expect(prepare).toHaveBeenCalledTimes(4);
+
+      prepare.mockClear();
+      const page = repo.listEmployeesPaged({ limit: 120 });
+      expect(page.items.map(row => ({ id: row.id, salaryReference: row.salaryReference }))).toEqual([...expected].reverse());
+      expect(page.total).toBe(120);
+      expect(prepare).toHaveBeenCalledTimes(5);
     } finally { f.db.close(); }
   });
 

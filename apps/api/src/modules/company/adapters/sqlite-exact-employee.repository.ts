@@ -8,7 +8,7 @@ import type { ExactEmployeeRepository } from "../employee-exact.repository";
 import type { EmployeeTransitionLinks } from "../company.entity-resolvers";
 import { decodeCursor, encodeCursor } from "../../shared/cursor";
 import { escapeLikePattern } from "../../shared/sql-search";
-import { bindExactSalaryReference, readExactEmployee, readExactEmployeeHistory } from "./exact-workforce-storage";
+import { bindExactSalaryReference, readExactEmployee, readExactEmployeesInSnapshot, readExactEmployeeHistory } from "./exact-workforce-storage";
 
 /** Trusted native profile storage. Public authorization and relationship rules belong to the employee service. */
 export class SqliteExactEmployeeRepository implements ExactEmployeeRepository {
@@ -83,7 +83,7 @@ export class SqliteExactEmployeeRepository implements ExactEmployeeRepository {
     return this.withTransaction(() => {
       const where = this.employeeWhere(filters);
       const rows = this.db.prepare(`SELECT id FROM employee${where.sql} ORDER BY first_name COLLATE NOCASE,last_name COLLATE NOCASE,created_at,id`).all(...where.values) as { id: string }[];
-      return rows.map(row => this.getEmployeeById(row.id)!);
+      return readExactEmployeesInSnapshot(this.db, rows.map(row => row.id));
     });
   }
 
@@ -206,14 +206,15 @@ export class SqliteExactEmployeeRepository implements ExactEmployeeRepository {
   listEmployeesPaged(query: { filters?: EmployeeListFilters; cursor?: string; limit: number }) {
     return this.withTransaction(() => {
       const where = this.employeeWhere(query.filters);
-      const total = this.countEmployees(query.filters);
+      const countRow = this.db.prepare(`SELECT count(*) AS count FROM employee${where.sql}`).get(...where.values) as { count: number };
+      const total = countRow.count;
       if (query.cursor) {
         const cursor = decodeCursor(query.cursor);
         where.sql += `${where.sql ? " AND " : " WHERE "}(created_at<? OR (created_at=? AND id<?))`;
         where.values.push(cursor.sortKey, cursor.sortKey, cursor.id);
       }
       const rows = this.db.prepare(`SELECT id FROM employee${where.sql} ORDER BY created_at DESC,id DESC LIMIT ?`).all(...where.values, query.limit + 1) as { id: string }[];
-      const items = rows.slice(0, query.limit).map(row => this.getEmployeeById(row.id)!);
+      const items = readExactEmployeesInSnapshot(this.db, rows.slice(0, query.limit).map(row => row.id));
       const last = items.at(-1);
       return { items, total, nextCursor: rows.length > query.limit && last ? encodeCursor({ sortKey: last.createdAt, id: last.id }) : null };
     });
