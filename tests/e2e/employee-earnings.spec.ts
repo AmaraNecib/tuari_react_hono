@@ -177,6 +177,7 @@ test("employee earnings approval keeps exact references, retries one committed r
   await expect(dialog.getByText("يجب أن يكون المبلغ قيمة عشرية دقيقة لا تتجاوز منزلتين.")).toBeVisible()
   expect(requests).toHaveLength(0)
   await invalidAmount.fill("10000")
+  await expect(dialog.getByText("يجب أن يساوي مجموع الموزع وغير الموزع إجمالي الأجر المعتمد.")).toHaveCount(0)
 
   const dialogShot = join(evidenceDir, `approval-${suffix}.png`)
   await dialog.screenshot({ path: dialogShot })
