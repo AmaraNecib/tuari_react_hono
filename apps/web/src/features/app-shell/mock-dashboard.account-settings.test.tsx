@@ -2,9 +2,16 @@
 
 import { act, renderHook } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { createAppQueryClient } from "@/lib/query-client"
+import { createAppQueryClient as createBaseQueryClient } from "@/lib/query-client"
+import { sessionQueryKey } from "./workspace-keys"
+
+function createAppQueryClient() {
+  const client = createBaseQueryClient()
+  client.setQueryData(sessionQueryKey, { user: { id: "account-owner", name: "Owner", phone: "0555000001", version: "test" } })
+  return client
+}
 import { changeCurrentPassword, updateCurrentProfile } from "@/lib/auth-api"
 import { useUpdateAccountSettingsMutation } from "./mock-dashboard"
 
@@ -20,7 +27,10 @@ vi.mock("@/lib/toast", () => ({
 }))
 
 describe("useUpdateAccountSettingsMutation", () => {
+  afterEach(() => vi.unstubAllGlobals())
   beforeEach(() => {
+    localStorage.clear()
+    vi.stubGlobal("navigator", { locks: { request: async (_name: string, _options: unknown, operation: () => Promise<unknown>) => operation() } })
     vi.mocked(changeCurrentPassword).mockReset()
     vi.mocked(updateCurrentProfile).mockReset()
   })
@@ -49,6 +59,25 @@ describe("useUpdateAccountSettingsMutation", () => {
     })
     expect(changeCurrentPassword).toHaveBeenCalledTimes(1)
     expect(updateCurrentProfile).not.toHaveBeenCalled()
+  })
+
+  it("blocks a legacy Settings profile rename when any workspace retains this user's pending intent", async () => {
+    const client = createAppQueryClient()
+    localStorage.setItem("tuari:slice543:monthly-approval:v1:previous-workspace:account-owner", "unreadable intent must also block")
+    const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    const { result } = renderHook(() => useUpdateAccountSettingsMutation(), { wrapper })
+    await expect(result.current.mutateAsync({ name: "Changed actor label" })).rejects.toThrow()
+    expect(updateCurrentProfile).not.toHaveBeenCalled()
+    expect(changeCurrentPassword).not.toHaveBeenCalled()
+  })
+
+  it("allows legacy Settings profile rename when only another user has pending intent", async () => {
+    const client = createAppQueryClient()
+    localStorage.setItem("tuari:slice543:monthly-approval:v1:previous-workspace:another-owner", "unresolved")
+    const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    const { result } = renderHook(() => useUpdateAccountSettingsMutation(), { wrapper })
+    await result.current.mutateAsync({ name: "Updated Owner" })
+    expect(updateCurrentProfile).toHaveBeenCalledWith({ currentPassword: undefined, name: "Updated Owner", phone: undefined })
   })
 
   // #321: a pre-#230 legacy user's current password can be all-invisible — the

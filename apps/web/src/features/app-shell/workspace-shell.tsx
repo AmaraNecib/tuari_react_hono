@@ -17,7 +17,6 @@ import type { HomeViewPage } from "./home-view-types"
 import { SettingsSection } from "./settings-section"
 import { ExactProjectWarehousePages } from "./exact-project-warehouse-pages"
 import { DashboardSection } from "./dashboard-section"
-import { saveAccountWithoutPendingApproval } from "./approval-account-fence"
 
 const idKey = (workspaceId: string, userId: string, resource: string) => ["application", workspaceId, userId, resource] as const
 
@@ -162,7 +161,7 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, project
     settingsUpdateVerifying={copy.shell.settingsUpdateVerifying}
     settingsUpdateSuccess={copy.shell.settingsUpdateSuccess}
     settingsAboutTab={copy.shell.settingsAboutTab}
-    onSaveAccount={payload => saveAccountWithoutPendingApproval({ workspaceId, userId }, t("salaryEarnings.recoveryRetryHelp"), () => onSaveAccount(payload))}
+    onSaveAccount={onSaveAccount}
     onReset={onResetWorkspace}
     onToggleTheme={onThemeToggle}
     onUpdateApplied={onUpdateApplied}

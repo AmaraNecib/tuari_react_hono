@@ -9,8 +9,19 @@ import { ExactMonthlySalaryApprovalForm as ApprovalForm } from "./exact-monthly-
 
 const projects = [{ id: "A", name: "Project A" }, { id: "B", name: "Project B" }]
 const months = [{ id: "oct", month: "2026-10", amount: "12000.00" }, { id: "nov", month: "2026-11", amount: "18000.00" }]
-beforeEach(() => window.localStorage.clear())
-afterEach(() => { cleanup(); window.localStorage.clear() })
+beforeEach(() => {
+  window.localStorage.clear()
+  const tails = new Map<string, Promise<void>>()
+  vi.stubGlobal("navigator", { locks: { request: async (name: string, _options: unknown, operation: () => Promise<unknown>) => {
+    const previous = tails.get(name) ?? Promise.resolve()
+    let release = () => {}
+    const tail = new Promise<void>(resolve => { release = resolve })
+    tails.set(name, tail)
+    await previous
+    try { return await operation() } finally { release(); if (tails.get(name) === tail) tails.delete(name) }
+  } } })
+})
+afterEach(() => { cleanup(); window.localStorage.clear(); vi.unstubAllGlobals() })
 function ExactMonthlySalaryApprovalForm(props: Omit<ComponentProps<typeof ApprovalForm>, "workspaceId" | "userId">) {
   return <ApprovalForm {...props} workspaceId="11111111-1111-4111-8111-111111111111" userId="operator" />
 }

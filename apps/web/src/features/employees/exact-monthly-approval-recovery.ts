@@ -51,6 +51,10 @@ function browserMonthlyApprovalCoordination(): MonthlyApprovalCoordination {
   } }
 }
 
+export function withMonthlyApprovalIdentityLock<T>(userId: string, operation: () => Promise<T>, coordination: MonthlyApprovalCoordination = browserMonthlyApprovalCoordination()): Promise<T> {
+  return coordination.runExclusive(`tuari:slice543:monthly-approval:v1:user:${encodeURIComponent(userId)}:identity`, operation)
+}
+
 function canonical(value: unknown): string {
   const encoded = JSON.stringify(value)
   if (encoded === undefined || JSON.stringify(JSON.parse(encoded)) !== encoded) throw new Error("Monthly approval intent is not stable JSON")
@@ -81,7 +85,7 @@ export function createMonthlyApprovalStore(storage: MonthlyApprovalStorage, work
   }
   return {
     ...scope,
-    runExclusive<T>(operation: () => Promise<T>): Promise<T> { return coordination.runExclusive(`${key}:writer`, operation) },
+    runExclusive<T>(operation: () => Promise<T>): Promise<T> { return withMonthlyApprovalIdentityLock(scope.userId, operation, coordination) },
     load(): MonthlyApprovalRecord | null { return read() },
     save(record: MonthlyApprovalRecord): void {
       const checked = parseRecord(record)
