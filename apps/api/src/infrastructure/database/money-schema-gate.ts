@@ -18,6 +18,14 @@ const workforceColumns = {
   },
 } as const;
 
+export async function assertWorkforcePhysicalSchema(db: DbExecutor): Promise<void> {
+  for (const [table, expected] of Object.entries(workforceColumns)) {
+    const columns = await db.$queryRawUnsafe<{ name: string; type: string }[]>(`PRAGMA table_info("${table}")`);
+    const byName = new Map(columns.map(column => [column.name, column.type.toUpperCase()]));
+    if (Object.entries(expected).some(([name, type]) => byName.get(name) !== type)) throw new Error(ACTIVATION_REQUIRED);
+  }
+}
+
 async function assertSupportedWorkforceSchema(db: DbExecutor): Promise<void> {
   const marker = await db.$queryRawUnsafe<{ type: string }[]>(
     "SELECT type FROM sqlite_master WHERE lower(name) = 'exact_money_schema'",
@@ -32,11 +40,7 @@ async function assertSupportedWorkforceSchema(db: DbExecutor): Promise<void> {
   const rows = await db.$queryRawUnsafe<{ slice: string; version: number }[]>("SELECT slice, version FROM exact_money_schema");
   if (rows.length !== 1 || rows[0]?.slice !== "workforce" || rows[0]?.version !== 1) throw new Error(ACTIVATION_REQUIRED);
 
-  for (const [table, expected] of Object.entries(workforceColumns)) {
-    const columns = await db.$queryRawUnsafe<{ name: string; type: string }[]>(`PRAGMA table_info("${table}")`);
-    const byName = new Map(columns.map(column => [column.name, column.type.toUpperCase()]));
-    if (Object.entries(expected).some(([name, type]) => byName.get(name) !== type)) throw new Error(ACTIVATION_REQUIRED);
-  }
+  await assertWorkforcePhysicalSchema(db);
 }
 
 export async function assertLegacyMoneySchema(db: DbExecutor): Promise<void> {

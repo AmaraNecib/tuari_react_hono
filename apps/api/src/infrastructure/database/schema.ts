@@ -1,4 +1,4 @@
-import { assertLegacyMoneySchema } from "./money-schema-gate";
+import { assertLegacyMoneySchema, assertWorkforcePhysicalSchema } from "./money-schema-gate";
 import {
   actorLabelBackfillMigrationKey,
   additiveStatements,
@@ -1764,9 +1764,12 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   await runRbacThreeRoleMigration(db);
 
   // The workforce marker is the compatibility tripwire understood by the
-  // original startup guard. Write it only after its feature tables exist.
+  // original startup guard. Check physical columns before writing it, then
+  // validate the complete marked state inside the marker transaction.
+  await assertWorkforcePhysicalSchema(db);
   await db.$transaction(async (tx) => {
     await tx.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS exact_money_schema(slice TEXT PRIMARY KEY, version INTEGER NOT NULL)");
     await tx.$executeRawUnsafe("INSERT OR IGNORE INTO exact_money_schema(slice, version) VALUES ('workforce', 1)");
+    await assertLegacyMoneySchema(tx);
   });
 }

@@ -5,6 +5,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createAppConfig } from "../../config";
+import { createDatabaseConnection } from "../../infrastructure/database/factory";
+import { ensureDatabaseSchema } from "../../infrastructure/database/schema";
+import { schemaStatements } from "../../infrastructure/database/schema-definitions";
+import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor";
 import type { BetterAuthInstance } from "../../infrastructure/auth/auth";
 
 const TEST_AUTH_SECRET = "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM";
@@ -21,6 +25,44 @@ afterEach(() => {
 });
 
 describe("approved employee earnings through the normal composition root", { timeout: 60_000 }, () => {
+  it("rejects an unmarked malformed earning table before root composition or marker write", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "tuari-543-malformed-root-"));
+    roots.push(directory);
+    const databasePath = join(directory, "workforce.sqlite");
+    const raw = createDatabaseConnection(databasePath, "");
+    await ensureDatabaseSchema(new BetterSqlite3Executor(raw));
+    const earningDdl = schemaStatements.find(statement => statement.includes('CREATE TABLE IF NOT EXISTS "employee_earning" ('));
+    if (!earningDdl) throw new Error("Current employee_earning DDL is missing");
+    const malformedDdl = earningDdl.replace('"total_minor" INTEGER', '"total_minor" TEXT');
+    if (malformedDdl === earningDdl) throw new Error("Could not alter the current earning money-column declaration");
+    raw.pragma("foreign_keys = OFF");
+    raw.exec("DROP TABLE exact_money_schema; DROP TABLE employee_earning");
+    raw.exec(malformedDdl);
+    raw.pragma("foreign_keys = ON");
+    expect(raw.prepare("SELECT name FROM sqlite_master WHERE name = 'exact_money_schema'").get()).toBeUndefined();
+    expect((raw.pragma("table_info(employee_earning)") as { name: string; type: string }[]).find(column => column.name === "total_minor")?.type).toBe("TEXT");
+    raw.close();
+
+    const config = createAppConfig({ BETTER_AUTH_SECRET: TEST_AUTH_SECRET, DB_ADAPTER: "sqlite" });
+    const { createAppDependencies } = await import("../../app/dependencies");
+    let startupError: unknown;
+    try {
+      const unexpectedlyOpenedRoot = await createAppDependencies({ databasePath, authInstance: fakeAuth }, config);
+      unexpectedlyOpenedRoot.close();
+    } catch (error) {
+      startupError = error;
+    }
+    expect(startupError).toBeInstanceOf(Error);
+    expect((startupError as Error | undefined)?.message).toMatch(/coordinated.*activation/i);
+
+    const after = createDatabaseConnection(databasePath, "");
+    try {
+      expect(after.prepare("SELECT name FROM sqlite_master WHERE name = 'exact_money_schema'").get()).toBeUndefined();
+      const columns = after.pragma("table_info(employee_earning)") as { name: string; type: string }[];
+      expect(columns.find(column => column.name === "total_minor")?.type).toBe("TEXT");
+    } finally { after.close(); }
+  });
+
   it("persists ordered A/B/A amounts and returns one approval after close and reopen", async () => {
     const directory = mkdtempSync(join(tmpdir(), "tuari-543-earnings-"));
     roots.push(directory);

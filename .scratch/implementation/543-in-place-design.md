@@ -58,6 +58,8 @@ The original guard at `0fdaff8fe76771c12a32bbe7bdd93f6c6935656f` rejects any `ex
 
 The regression test initializes a synthetic normal schema, loads and executes the unchanged original guard from the pinned baseline commit, and expects rejection. Focused proof also covers valid close/reopen, authenticated earnings RPC, encrypted database reopen, unsupported marker version and a missing workforce table. The accepted #522 ADR remains the money-policy authority. This changes the database startup marker, not the exact-money policy or an application root.
 
+A follow-up root test takes the current `employee_earning` DDL, changes only `total_minor` from INTEGER to TEXT, removes the marker and opens the actual composition root. The root now validates workforce physical columns before writing the compatibility marker, then validates the marked schema inside the same marker transaction. An error rolls back marker creation and stops composition. The test verifies the altered column remains TEXT and no marker table remains. This is a fail-closed check, not a converter.
+
 ## Bounded backend handoff
 
 The stale `workforce.service-coverage.test.ts` missing-salary case was removed. `createSalaryPayment` refuses every new legacy numeric write before inspecting salary configuration, so that case only passed because of the retired-writer refusal. The surviving legacy-writer test asserts the specific `employeeEarningsApprove` refusal and that no payment row was written. The historical-row fixture in `company.system-log.test.ts` remains valid: it inserts a legacy row to test historical reads and the emitted log event.
