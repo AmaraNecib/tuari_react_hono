@@ -397,6 +397,35 @@ describe("exact employee page seams", () => {
     await waitFor(() => expect(props.client.employeesSave).toHaveBeenCalledTimes(2))
   })
 
+  it("preserves batch drafts when switching to single mode and submits only the explicitly retained employee", async () => {
+    const props = ctx({ managerOptions: [{ id: "manager-a", label: "Manager A", projectOptions: [{ id: "project-a", label: "Project A" }] }] })
+    const onDone = vi.fn()
+    const mounted = render(<EmployeeBatchCreatePage {...props} mode="exact" operation="batch" onDone={onDone} onCancel={vi.fn()} />)
+    const fillEmployee = (index: number, person: { firstName: string; lastName: string; phone: string }) => {
+      fireEvent.change(mounted.container.querySelector(`[name="employee-first-name-${index}"]`)!, { target: { value: person.firstName } })
+      fireEvent.change(mounted.container.querySelector(`[name="employee-last-name-${index}"]`)!, { target: { value: person.lastName } })
+      fireEvent.change(mounted.container.querySelector(`[name="employee-phone-${index}"]`)!, { target: { value: person.phone } })
+      fireEvent.change(mounted.container.querySelector(`[name="employee-manager-${index}"]`)!, { target: { value: "manager-a" } })
+      fireEvent.change(mounted.container.querySelector(`[name="employee-project-${index}"]`)!, { target: { value: "project-a" } })
+    }
+    fillEmployee(0, { firstName: "Amina", lastName: "Kaci", phone: "0551234567" })
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("employeeForm.addAnother") }))
+    fillEmployee(1, { firstName: "Nadia", lastName: "Said", phone: "0661234567" })
+
+    mounted.rerender(<EmployeeBatchCreatePage {...props} mode="exact" operation="create" onDone={onDone} onCancel={vi.fn()} />)
+    expect((mounted.container.querySelector('[name="employee-first-name-0"]') as HTMLInputElement).value).toBe("Amina")
+    expect((mounted.container.querySelector('[name="employee-first-name-1"]') as HTMLInputElement).value).toBe("Nadia")
+    fireEvent.click(within(mounted.container.querySelectorAll("article")[1] as HTMLElement).getByRole("button", { name: i18n.t("employeeForm.remove") }))
+    expect(mounted.container.querySelector('[name="employee-first-name-1"]')).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("common.create") }))
+    await waitFor(() => expect(props.client.employeesBatchCreate).toHaveBeenCalledOnce())
+    const submitted = vi.mocked(props.client.employeesBatchCreate).mock.calls[0]![0]
+    expect(submitted.employees).toHaveLength(1)
+    expect(submitted.employees[0]).toMatchObject({ firstName: "Amina", lastName: "Kaci", phone: "0551234567" })
+    expect(submitted.employees.some(person => person.firstName === "Nadia")).toBe(false)
+  })
+
   it("routes exact single create through the exported page and keeps success terminal if onDone throws", async () => {
     const props = ctx({ managerOptions: [{ id: "manager-a", label: "Manager A", projectOptions: [{ id: "project-a", label: "Project A" }] }] })
     const onDone = vi.fn(() => { throw new Error("Refresh failed") })

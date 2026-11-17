@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, expect, it, vi } from "vitest"
 import type { ApplicationClient } from "@tuari/contracts"
 import { i18n } from "@/i18n"
+import { rpcClient } from "@/lib/orpc-client"
 import { ExactProjectWarehousePages } from "./exact-project-warehouse-pages"
 const { legacyInventoryReads } = vi.hoisted(() => {
   const rejectLegacyCall = (name: string) => vi.fn(() => { throw new Error(`Unexpected legacy RPC call: ${name}`) })
@@ -29,6 +30,9 @@ vi.mock("./home-view-navigation", () => ({ useHomeViewNavigation: () => ({}) }))
 vi.mock("@/router/navigation", async importOriginal => ({ ...await importOriginal<typeof import("@/router/navigation")>(), WorkspaceLink: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }))
 vi.mock("@tanstack/react-router", async importOriginal => ({ ...await importOriginal<typeof import("@tanstack/react-router")>(), Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }))
 afterEach(cleanup)
+it("throws when a legacy RPC method is not in the strict mock", () => {
+  expect(() => Reflect.get(rpcClient, "unexpectedLegacyProcedure")).toThrow("Unexpected rpcClient.unexpectedLegacyProcedure access")
+})
 it("does not display the previous warehouse team when navigating to another warehouse", async () => {
   const query = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 30_000 } } })
   const client = {

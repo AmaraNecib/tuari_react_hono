@@ -150,7 +150,7 @@ export function ExactEmployeeCreateForm({ client, roles, managerOptions, onCance
     onAdd={() => { setRows(current => [...current, createEmptyEmployeeDraft(defaultRoleId)]); setRowErrors(current => [...current, {}]) }}
     onSubmit={submit}
   >
-    {rows.map((row, index) => <EmployeeBatchRowCard key={`exact-employee-draft-${index}`} copy={{ ...copy, title: t("employeeForm.rowTitle", { count: index + 1 }) }} draft={row} errors={rowErrors[index] ?? {}} index={index} managerOptions={managerOptions} roles={roles} workerRoleId={workerRoleId} canRemove={!single && rows.length > 1} onChange={change} onRemove={at => { setRows(current => current.filter((_, rowIndex) => rowIndex !== at)); setRowErrors(current => current.filter((_, rowIndex) => rowIndex !== at)) }} />)}
+    {rows.map((row, index) => <EmployeeBatchRowCard key={`exact-employee-draft-${index}`} copy={{ ...copy, title: t("employeeForm.rowTitle", { count: index + 1 }) }} draft={row} errors={rowErrors[index] ?? {}} index={index} managerOptions={managerOptions} roles={roles} workerRoleId={workerRoleId} canRemove={rows.length > 1} onChange={change} onRemove={at => { setRows(current => current.filter((_, rowIndex) => rowIndex !== at)); setRowErrors(current => current.filter((_, rowIndex) => rowIndex !== at)) }} />)}
     {failure ? <p role="alert">{failure}</p> : null}{completionFailure ? <p role="alert">{completionFailure}</p> : null}
   </EmployeeBatchCreatePageView>
 }
