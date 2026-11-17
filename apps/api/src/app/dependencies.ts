@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createAuth } from "../infrastructure/auth/auth";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
@@ -6,6 +7,7 @@ import { createConfigFileKeyPersister, type DatabaseKeyPersister } from "../infr
 import { createDatabaseKeyManager, type DatabaseKeyManager } from "../infrastructure/database/database-key-manager";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
 import { ensureDatabaseSchema } from "../infrastructure/database/schema";
+import { ensureExactNormalWorkspaceSchema, getExactWorkspaceId } from "../infrastructure/database/exact-normal-workspace-schema";
 import { BetterSqlite3Executor } from "../infrastructure/database/sqlite-executor";
 import { createAppConfig, type AppConfig } from "../config";
 import { createCompanyRepository } from "../config/database";
@@ -15,6 +17,12 @@ import { SqliteBootstrapPort } from "../modules/auth/adapters/sqlite-bootstrap.p
 import { AuthBootstrapService } from "../modules/auth/bootstrap.service";
 import { CompanyService } from "../modules/company/company.service";
 import { WorkforceService } from "../modules/company/workforce.service";
+import { ExactEmployeeService } from "../modules/company/employee-exact.service";
+import { ExactWorkforceService } from "../modules/company/workforce-exact.service";
+import { SqliteExactEmployeeRepository } from "../modules/company/adapters/sqlite-exact-employee.repository";
+import { SqliteExactWorkforceRepository } from "../modules/company/adapters/sqlite-exact-workforce.repository";
+import { ExactFinanceService } from "../modules/company/exact-finance.service";
+import { SqliteExactFinanceRepository } from "../modules/company/adapters/sqlite-exact-finance.repository";
 import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
 import { AuditService } from "../modules/company/audit.service";
@@ -85,6 +93,8 @@ export type CreateAppDependenciesConfig = {
   backupsRootPath?: string;
   /** Injected clock for the backup service (tests pin "due" without waiting). */
   now?: () => Date;
+  /** Isolated legacy composition for legacy migration tests only. Normal startup uses the application composition. */
+  legacyNumericTestMode?: true;
 };
 
 /**
@@ -96,52 +106,87 @@ export type CreateAppDependenciesConfig = {
  * router/system handlers receive the narrow {@link DatabaseKeyManager} port
  * instead.
  */
-export type AppDependencies = {
+type SharedAppDependencies = {
   auth: BetterAuthInstance;
+  mode: "legacy" | "application";
   accountService: AccountService;
   authBootstrapService: AuthBootstrapService;
+  sessionService: SessionService;
+  updateService: UpdateService;
+  backupService: BackupService;
+  backupFolderPersister: BackupFolderPersister;
+  close: () => void;
+};
+
+export type LegacyAppDependencies = SharedAppDependencies & {
+  mode: "legacy";
+  accountService: AccountService;
   companyService: CompanyService;
   workforceService: WorkforceService;
   operationsService: OperationsService;
   financeService: FinanceService;
   inventoryService: InventoryService;
-  sessionService: SessionService;
-  recoveryKeyService: RecoveryKeyService;
-  updateService: UpdateService;
-  updateHistoryService: UpdateHistoryService;
-  backupService: BackupService;
-  /** Persists the chosen backup root into the user-editable config (#436). */
-  backupFolderPersister: BackupFolderPersister;
-  databaseKeyManager: DatabaseKeyManager;
-  /** Persists a rotated DB key so a restart can still open the database (#265). */
-  databaseKeyPersister: DatabaseKeyPersister;
   employeeModule: EmployeeModule;
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
   expensesModule: ExpensesModule;
   projectCostService: ProjectCostService;
   roleModule: RoleModule;
-  /** Close the shared database connection (idempotent; composition-root lifecycle). */
-  close: () => void;
+  recoveryKeyService: RecoveryKeyService;
+  updateHistoryService: UpdateHistoryService;
+  databaseKeyManager: DatabaseKeyManager;
+  databaseKeyPersister: DatabaseKeyPersister;
 };
 
+export type ApplicationDependencies = SharedAppDependencies & {
+  mode: "application";
+  accountService: AccountService;
+  workforceService: WorkforceService;
+  operationsService: OperationsService;
+  exactEmployeeService: ExactEmployeeService;
+  exactWorkforceService: ExactWorkforceService;
+  roleModule: RoleModule;
+  databaseKeyManager: DatabaseKeyManager;
+  databaseKeyPersister: DatabaseKeyPersister;
+  exactFinanceService: ExactFinanceService;
+  recoveryKeyService: RecoveryKeyService;
+  workspaceId: string;
+};
+
+export type AppDependencies = LegacyAppDependencies | ApplicationDependencies;
+
 /**
- * Create all application dependencies — fully self-contained.
+ * Build the normal application dependency graph on the configured database.
  *
- * The function opens the database connection, runs the schema migrations,
- * builds Drizzle + better-auth, and wires every domain service. No raw
- * database handle is accepted as input or exposed on the result; callers
- * (e.g. `index.ts`) call it with no arguments (or config only).
+ * The default path creates or validates a fresh exact workspace before
+ * building auth, the employee module and approved-earnings services. It
+ * refuses to convert an existing database. Legacy schema migrations remain
+ * available only through the explicit isolated-test mode.
  *
- * @param config - Optional injection seams (database path/key, auth instance).
- * @param appConfig - Validated application config. Defaults to `createAppConfig()`
- *                    (env + optional config file). Injectable so tests can pass a
- *                    controlled config (e.g. DB_ADAPTER=inmemory).
+ * @param config - Optional database path/key and auth instance. The legacy
+ *                 numeric composition is reserved for isolated tests.
+ * @param appConfig - Validated application config. Defaults to `createAppConfig()`.
  */
+export function createAppDependencies(
+  config: CreateAppDependenciesConfig & { legacyNumericTestMode: true },
+  appConfig?: AppConfig,
+): Promise<LegacyAppDependencies>;
+export function createAppDependencies(
+  config?: CreateAppDependenciesConfig,
+  appConfig?: AppConfig,
+): Promise<AppDependencies>;
 export async function createAppDependencies(
   config: CreateAppDependenciesConfig = {},
   appConfig: AppConfig = createAppConfig(),
 ): Promise<AppDependencies> {
+  if (config.legacyNumericTestMode) return createLegacyNumericTestDependencies(config, appConfig);
+  return createApplicationDependencies(config, appConfig);
+}
+
+async function createLegacyNumericTestDependencies(
+  config: CreateAppDependenciesConfig,
+  appConfig: AppConfig,
+): Promise<LegacyAppDependencies> {
   const databasePath = config.databasePath?.trim() ? config.databasePath : appConfig.databasePath;
   // Resolve the SQLCipher key: the explicit injection seam wins (desktop host
   // pinning, tests); otherwise the resolved application config key (env
@@ -252,6 +297,7 @@ export async function createAppDependencies(
     const roleModule = new RoleModule({ repository: rbacRoleRepository });
 
     return {
+      mode: "legacy",
       auth,
       accountService: new AccountService(accountRepository, auth),
       authBootstrapService,
@@ -303,6 +349,81 @@ export async function createAppDependencies(
       roleModule,
       close,
     } as const;
+  } catch (error) {
+    close();
+    throw error;
+  }
+}
+
+async function createApplicationDependencies(
+  config: CreateAppDependenciesConfig,
+  appConfig: AppConfig,
+): Promise<ApplicationDependencies> {
+  if (appConfig.dbAdapter !== "sqlite") throw new Error("The normal application requires the configured SQLite workspace");
+  const databasePath = config.databasePath?.trim() ? config.databasePath : appConfig.databasePath;
+  const resolvedDatabaseKey = config.databaseKey ?? appConfig.databaseKey;
+  const sharedDatabase = createDatabaseConnection(databasePath, resolvedDatabaseKey);
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    sharedDatabase.close();
+  };
+
+  try {
+    ensureExactNormalWorkspaceSchema(sharedDatabase);
+    const workspaceId = getExactWorkspaceId(sharedDatabase);
+    const db = createDrizzleFromSqlite(sharedDatabase);
+    const auth = config.authInstance ?? createAuth(db, appConfig);
+    const connectionLock = createFifoLock({ timeoutMs: 30_000 });
+    const recoveryKeyService = new RecoveryKeyService(new SqliteRecoveryKeyPort(db, sharedDatabase, connectionLock));
+    const dependencies = { id: randomUUID, now: () => new Date().toISOString() };
+    const companyRepository = createCompanyRepository(sharedDatabase, appConfig, connectionLock);
+    const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
+    const workforceService = new WorkforceService(companyRepository, companyRepository, mutation);
+    const exactEmployeeRepository = new SqliteExactEmployeeRepository(sharedDatabase, connectionLock, dependencies);
+    const operationsService = new OperationsService(companyRepository, exactEmployeeRepository, mutation);
+    const financeService = new ExactFinanceService(
+      new SqliteExactFinanceRepository(sharedDatabase, connectionLock), dependencies,
+    );
+    const exactWorkforceService = new ExactWorkforceService(
+      new SqliteExactWorkforceRepository(sharedDatabase, connectionLock), financeService, dependencies,
+    );
+    const exactEmployeeService = new ExactEmployeeService(exactEmployeeRepository, dependencies, companyRepository);
+    const authBootstrapService = new AuthBootstrapService(
+      new SqliteBootstrapPort(db, sharedDatabase, connectionLock), auth, appConfig.bootstrapSetupKey,
+    );
+    const permissionResolver = new SqlitePermissionResolver(db, authBootstrapService);
+    const roleModule = new RoleModule({ repository: new SqliteRbacRoleRepository(db) });
+    const backupService = createBackupService({
+      snapshot: createWorkerSnapshotter({ databasePath, databaseKey: resolvedDatabaseKey }),
+      backupsRootPath: config.backupsRootPath ?? appConfig.backupsRootPath,
+      now: config.now,
+    });
+
+    return {
+      mode: "application",
+      auth,
+      accountService: new AccountService(new DrizzleAccountRepository(db, connectionLock), auth),
+      authBootstrapService,
+      sessionService: new SessionService(auth, permissionResolver),
+      updateService: new UpdateService(),
+      backupService,
+      backupFolderPersister: createConfigFileBackupFolderPersister(process.env.TUARI_CONFIG_FILE?.trim() || null),
+      workforceService,
+      operationsService,
+      exactEmployeeService,
+      exactWorkforceService,
+      roleModule,
+      exactFinanceService: financeService,
+      recoveryKeyService,
+      workspaceId,
+      databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
+      databaseKeyPersister: createConfigFileKeyPersister(
+        process.env.APP_DB_KEY ? null : process.env.TUARI_CONFIG_FILE?.trim() || null,
+      ),
+      close,
+    };
   } catch (error) {
     close();
     throw error;

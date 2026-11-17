@@ -17,12 +17,15 @@ import {
   ASSIGNABLE_ROLE_KEYS,
   isAcceptedEmployeeRoleKey,
   LEGACY_WORKFORCE_ROLE_KEYS,
+  type EmployeeRecord,
+  type EmployeeManagerAssignmentRecord,
+  type RoleRecord,
 } from "./company.types";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
 import type { FinanceRepository } from "./finance.repository";
 
-export function requireRole(repository: WorkforceRepository, roleId: string) {
+export function requireRole(repository: Pick<WorkforceRepository, "getRoleById">, roleId: string) {
   const role = repository.getRoleById(roleId);
   if (!role) {
     throw new CompanyError("NOT_FOUND", "تعذر العثور على الدور المطلوب.", [
@@ -79,7 +82,7 @@ export function requireAdminAssignmentGrant(
 }
 
 export function requireAssignableEmployeeRole(
-  repository: WorkforceRepository,
+  repository: Pick<WorkforceRepository, "getRoleById">,
   roleId: string,
   field: string,
   caller?: { authorizer: WorkspaceAdminAuthorizer | undefined; actorUserId: string | null },
@@ -106,13 +109,20 @@ export function requireEmployee(repository: WorkforceRepository, employeeId: str
   return employee;
 }
 
-export function requireEmployeeWithRoleKey(
-  repository: WorkforceRepository,
+export type OperationsWorkforceReader = {
+  getEmployeeById(id: string): Pick<EmployeeRecord, "id" | "roleId" | "status"> | null;
+  getRoleById(id: string): RoleRecord | null;
+  getActiveManagerAssignmentByWorkerId(id: string): EmployeeManagerAssignmentRecord | null;
+};
+
+export function requireEmployeeWithRoleKey<T extends Pick<EmployeeRecord, "id" | "roleId" | "status">>(
+  repository: { getEmployeeById(id: string): T | null; getRoleById(id: string): RoleRecord | null },
   employeeId: string,
   roleKey: string,
   field: string,
-) {
-  const employee = requireEmployee(repository, employeeId);
+): T {
+  const employee = repository.getEmployeeById(employeeId);
+  if (!employee) throw new CompanyError("NOT_FOUND", "تعذر العثور على العامل المطلوب.");
   const role = requireRole(repository, employee.roleId);
 
   if (role.key !== roleKey) {
@@ -180,6 +190,15 @@ export function requireExternalCounterparty(
   return counterparty;
 }
 
+export type EmployeeTransitionLinks = {
+  hasActiveManagerAssignment: boolean;
+  hasActiveProjectAssignment: boolean;
+  hasActiveWarehouseAssignment: boolean;
+  hasActiveManagedProjects: boolean;
+  hasActiveWorkers: boolean;
+  hasActiveManagedWarehouses: boolean;
+};
+
 export function ensureEmployeeTransitionAllowed(
   workforceRepo: WorkforceRepository,
   operationsRepo: OperationsRepository,
@@ -188,15 +207,23 @@ export function ensureEmployeeTransitionAllowed(
   nextRoleKey: string,
   nextStatus: string,
 ) {
-  const hasActiveManagerAssignment = Boolean(
-    workforceRepo.getActiveManagerAssignmentByWorkerId(employee.id),
-  );
-  const hasActiveProjectAssignment = Boolean(
-    operationsRepo.getActiveProjectAssignmentByEmployeeId(employee.id),
-  );
-  const hasActiveWarehouseAssignment = Boolean(
-    operationsRepo.getActiveWarehouseAssignmentByEmployeeId(employee.id),
-  );
+  const leavingProjectManager = currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.projectManager
+    && (nextRoleKey !== currentRoleKey || nextStatus !== "ACTIVE");
+  const leavingWarehouseManager = currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager
+    && (nextRoleKey !== currentRoleKey || nextStatus !== "ACTIVE");
+  return assertEmployeeTransitionAllowed(currentRoleKey, nextRoleKey, nextStatus, {
+    hasActiveManagerAssignment: Boolean(workforceRepo.getActiveManagerAssignmentByWorkerId(employee.id)),
+    hasActiveProjectAssignment: Boolean(operationsRepo.getActiveProjectAssignmentByEmployeeId(employee.id)),
+    hasActiveWarehouseAssignment: Boolean(operationsRepo.getActiveWarehouseAssignmentByEmployeeId(employee.id)),
+    hasActiveManagedProjects: leavingProjectManager && operationsRepo.listProjects({ managerId: employee.id, status: "ACTIVE" }).length > 0,
+    hasActiveWorkers: leavingProjectManager && workforceRepo.listManagerAssignments({ managerId: employee.id, status: "ACTIVE" }).length > 0,
+    hasActiveManagedWarehouses: leavingWarehouseManager && operationsRepo.listWarehouses({ managerId: employee.id, status: "ACTIVE" }).length > 0,
+  });
+}
+
+/** One metadata-only policy for legacy and exact employee storage. */
+export function assertEmployeeTransitionAllowed(currentRoleKey: string, nextRoleKey: string, nextStatus: string, links: EmployeeTransitionLinks) {
+  const { hasActiveManagerAssignment, hasActiveProjectAssignment, hasActiveWarehouseAssignment } = links;
 
   if (
     currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.worker &&
@@ -219,10 +246,7 @@ export function ensureEmployeeTransitionAllowed(
     currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.projectManager &&
     (nextRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.projectManager || nextStatus !== "ACTIVE")
   ) {
-    const hasActiveManagedProjects =
-      operationsRepo.listProjects({ managerId: employee.id, status: "ACTIVE" }).length > 0;
-    const hasActiveWorkers =
-      workforceRepo.listManagerAssignments({ managerId: employee.id, status: "ACTIVE" }).length > 0;
+    const { hasActiveManagedProjects, hasActiveWorkers } = links;
 
     if (
       hasActiveManagedProjects ||
@@ -248,8 +272,7 @@ export function ensureEmployeeTransitionAllowed(
     currentRoleKey === LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager &&
     (nextRoleKey !== LEGACY_WORKFORCE_ROLE_KEYS.warehouseManager || nextStatus !== "ACTIVE")
   ) {
-    const hasActiveWarehouses =
-      operationsRepo.listWarehouses({ managerId: employee.id, status: "ACTIVE" }).length > 0;
+    const hasActiveWarehouses = links.hasActiveManagedWarehouses;
 
     if (hasActiveWarehouses || hasActiveProjectAssignment || hasActiveWarehouseAssignment) {
       throw new CompanyError(
@@ -269,7 +292,7 @@ export function ensureEmployeeTransitionAllowed(
 
 export function ensureProjectTransitionAllowed(
   operationsRepo: OperationsRepository,
-  workforceRepo: WorkforceRepository,
+  workforceRepo: OperationsWorkforceReader,
   projectId: string,
   currentManagerId: string | null,
   nextManagerId: string | null | undefined,
@@ -372,7 +395,7 @@ export function ensureWarehouseTransitionAllowed(
 
 export function listActiveWorkerIdsForProject(
   operationsRepo: OperationsRepository,
-  workforceRepo: WorkforceRepository,
+  workforceRepo: OperationsWorkforceReader,
   projectId: string,
   options?: { requireManagerConsistencyWith?: string | null },
 ) {

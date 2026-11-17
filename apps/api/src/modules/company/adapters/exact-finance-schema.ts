@@ -1,6 +1,6 @@
 import { schemaStatements } from "../../../infrastructure/database/schema-definitions";
 
-/** Fresh-copy preparation only. Never passed to the production startup initializer. */
+/** Exact debt DDL shared by isolated storage fixtures and fresh normal application startup. It never migrates a legacy database. */
 export const exactDebtSchemaStatements: readonly string[] = (() => {
   const account = schemaStatements.find(sql => sql.startsWith('CREATE TABLE IF NOT EXISTS "debt_account"'))!;
   const entry = schemaStatements.find(sql => sql.startsWith('CREATE TABLE IF NOT EXISTS "debt_entry"'))!;
@@ -13,7 +13,7 @@ export const exactDebtSchemaStatements: readonly string[] = (() => {
       .replace('"currency" TEXT NOT NULL DEFAULT \'DZD\'', '"currency" TEXT NOT NULL CHECK(currency=\'DZD\')')
       .replace('"signed_amount" REAL NOT NULL', '"signed_amount_minor" INTEGER NOT NULL CHECK(typeof(signed_amount_minor)=\'integer\' AND signed_amount_minor BETWEEN -9223372036854775807 AND 9223372036854775807)')
       .replace('"balance_after" REAL NOT NULL', '"balance_after_minor" INTEGER NOT NULL CHECK(typeof(balance_after_minor)=\'integer\' AND balance_after_minor BETWEEN -9223372036854775807 AND 9223372036854775807)')
-      .replace('"invoice_id" TEXT,', '"invoice_id" TEXT, "producer_type" TEXT CHECK(producer_type IN (\'INVOICE\',\'INVENTORY_PURCHASE\',\'INVENTORY_OUTBOUND\',\'PAYROLL_EARNINGS\',\'PAYROLL_OPENING\',\'PAYROLL_ADVANCE\')), "producer_id" TEXT CHECK((producer_type IS NULL) = (producer_id IS NULL)), "posting_sequence" INTEGER NOT NULL CHECK(typeof(posting_sequence)=\'integer\' AND posting_sequence BETWEEN 1 AND 100000), "target_entry_id" TEXT REFERENCES debt_entry(id), "correction_of_entry_id" TEXT REFERENCES debt_entry(id),'),
+      .replace('"invoice_id" TEXT,', '"invoice_id" TEXT, "producer_type" TEXT CHECK(producer_type IN (\'INVOICE\',\'INVENTORY_PURCHASE\',\'INVENTORY_OUTBOUND\',\'PAYROLL_EARNINGS\')), "producer_id" TEXT CHECK((producer_type IS NULL) = (producer_id IS NULL)), "posting_sequence" INTEGER NOT NULL CHECK(typeof(posting_sequence)=\'integer\' AND posting_sequence BETWEEN 1 AND 100000), "target_entry_id" TEXT REFERENCES debt_entry(id), "correction_of_entry_id" TEXT REFERENCES debt_entry(id),'),
     "CREATE UNIQUE INDEX debt_entry_posting_order ON debt_entry(debt_account_id,posting_sequence)",
     "CREATE UNIQUE INDEX debt_account_worker_direction_currency ON debt_account(worker_id,direction,currency) WHERE worker_id IS NOT NULL",
     "CREATE UNIQUE INDEX debt_account_external_direction_currency ON debt_account(external_counterparty_id,direction,currency) WHERE external_counterparty_id IS NOT NULL",

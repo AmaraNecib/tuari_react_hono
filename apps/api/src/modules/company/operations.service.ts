@@ -30,7 +30,7 @@ import {
 } from "./company.helpers";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
 import type { OperationsRepository } from "./operations.repository";
-import type { WorkforceRepository } from "./workforce.repository";
+import type { OperationsWorkforceReader } from "./company.entity-resolvers";
 import {
   LEGACY_WORKFORCE_ROLE_KEYS,
   type MutationAuditContext,
@@ -53,7 +53,7 @@ import {
 export class OperationsService {
   constructor(
     private readonly repository: OperationsRepository,
-    private readonly workforceRepo: WorkforceRepository,
+    private readonly workforceRepo: OperationsWorkforceReader,
     private readonly mutation: WorkspaceMutationContext,
   ) {}
 

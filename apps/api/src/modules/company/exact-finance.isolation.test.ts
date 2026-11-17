@@ -16,12 +16,18 @@ describe("exact debt isolation prerequisites", () => {
       expect(db.prepare("SELECT count(*) AS count FROM debt_account").get()).toEqual({ count: 0 });
     } finally { db.close(); }
   });
-  it("keeps opt-in exact composition out of all active production entry points", () => {
-    for (const relative of ["../../app/dependencies.ts", "../../rpc/router.ts", "../../modules/company/company.service.ts"]) {
+  it("isolates legacy finance while the normal entrypoint selects the gated exact application", () => {
+    for (const relative of ["../../rpc/router.ts", "../../modules/company/company.service.ts"]) {
       const path = fileURLToPath(new URL(relative, import.meta.url));
       const source = readFileSync(path, "utf8");
       expect(source).not.toMatch(/exact-finance|debts-exact|ExactFinanceService/);
     }
+    const dependencies = readFileSync(fileURLToPath(new URL("../../app/dependencies.ts", import.meta.url)), "utf8");
+    const legacy = dependencies.split("async function createLegacyNumericTestDependencies(")[1]!.split("async function createApplicationDependencies(")[0]!;
+    expect(legacy).not.toMatch(/new ExactFinanceService|new SqliteExactFinanceRepository/);
+    expect(dependencies).toMatch(/return createApplicationDependencies\(config, appConfig\)/);
+    const entrypoint = readFileSync(fileURLToPath(new URL("../../index.ts", import.meta.url)), "utf8");
+    expect(entrypoint).not.toContain("legacyNumericTestMode");
     const appContract = readFileSync(fileURLToPath(new URL("../../../../../packages/contracts/src/app-contract.ts", import.meta.url)), "utf8");
     expect(appContract).not.toMatch(/exactDebtsContract|debts-exact/);
   });

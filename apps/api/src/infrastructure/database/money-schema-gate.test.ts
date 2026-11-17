@@ -38,6 +38,7 @@ describe.each([["plain", ""], ["keyed", "524-public-fixture-key"]])("money start
   });
 
   it.each([
+    'CREATE TABLE employee_salary_cash(id TEXT PRIMARY KEY)',
     'CREATE TABLE employee_salary_earning(id TEXT PRIMARY KEY)',
     'CREATE TABLE employee_salary_earning_segment(id TEXT PRIMARY KEY)',
     'CREATE TABLE employee_salary_correction(id TEXT PRIMARY KEY)',
