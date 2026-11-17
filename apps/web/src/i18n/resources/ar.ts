@@ -42,6 +42,13 @@ export const ar = {
       identityRequired: "تعذر تحديد المستخدم أو الموظف أو واجهة API الحالية. سجّل الدخول وأعد فتح النموذج.",
       storageUnavailable: "تعذر قراءة الطلب المحفوظ أو حفظه. لا تتابع بطلب جديد؛ تحقق من تخزين المتصفح ثم أعد فتح النموذج.",
       submitError: "تعذر اعتماد الأجر أو تأكيد النتيجة. أعد المحاولة من الطلب المحفوظ.",
+      historyTitle: "سجل الأجور المعتمدة",
+      historyEmployee: "معرّف الموظف",
+      historyResource: "سجل الأجور المعتمدة",
+      historyPeriod: "فترة العمل",
+      historyApprovedAt: "تاريخ الاعتماد:",
+      historyEmpty: "لا توجد أجور معتمدة بعد.",
+      historyNoSegments: "لا توجد بنود مشاريع.",
     },
     exactCommerce: {
       navigation: "أقسام الفواتير والمخزون",

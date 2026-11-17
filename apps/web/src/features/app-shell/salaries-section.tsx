@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import { PageHeader } from "@/features/shared/page-primitives"
 import { RecordTabs } from "@/features/shared/record-page-frame"
 import { AddSalaryPaymentDialog } from "@/features/employees/add-salary-payment-dialog"
+import { EmployeeEarningsHistory } from "@/features/employees/employee-earnings-history"
 
 import { SalaryPaymentsTable, type SalaryPaymentRow } from "./salary-payments-table"
 import { SalariedWorkersTable, type SalariedWorkerRow } from "./salaried-workers-table"
@@ -44,9 +45,7 @@ export function SalariesSection({
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
         employeeName={paymentWorker?.employeeName ?? paymentTarget?.name}
-        salaryAmountDzd={paymentWorker?.salaryAmountDzd ?? null}
-        salaryPeriod={paymentWorker?.salaryPeriod ?? null}
-        projectAssignments={paymentWorker?.projectAssignments ?? []}
+        salaryReference={paymentWorker?.salaryReference ?? null}
         projects={projects}
         open={paymentTarget !== null}
         onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
@@ -59,6 +58,7 @@ export function SalariesSection({
         tabs={[
           { id: "recent", label: t("salaries.recentTitle") },
           { id: "workers", label: t("salaries.workersTitle") },
+          { id: "earnings", label: t("earnings.historyTitle") },
         ]}
         onChange={setActiveTab}
       />
@@ -85,6 +85,8 @@ export function SalariesSection({
           onEditSalary={onEditSalary}
         />
       </div>
+
+      {activeTab === "earnings" ? <EmployeeEarningsHistory /> : null}
     </div>
   )
 }

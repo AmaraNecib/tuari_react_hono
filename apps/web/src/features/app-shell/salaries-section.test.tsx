@@ -2,13 +2,22 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { mutateAsync } = vi.hoisted(() => ({ mutateAsync: vi.fn() }))
+const { mutateAsync, approveAsync, sessionUser } = vi.hoisted(() => ({ mutateAsync: vi.fn(), approveAsync: vi.fn(), sessionUser: { id: "user-1" } }))
 
 vi.mock("@/features/app-shell/workspace-mutations", () => ({
   useCreateSalaryPaymentMutation: () => ({ mutateAsync, isPending: false, isSuccess: false, reset: vi.fn() }),
+}))
+vi.mock("@/features/employees/employee-earnings-queries", () => ({
+  useApproveEmployeeEarningMutation: () => ({ mutateAsync: approveAsync, isPending: false }),
+}))
+vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: sessionUser } }) }))
+vi.mock("@/components/ui/date-picker", () => ({
+  DatePicker: ({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) => (
+    <input aria-label={id} type="date" value={value} onChange={(event) => onChange(event.target.value)} />
+  ),
 }))
 
 import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
@@ -17,18 +26,14 @@ import { SalariesSection } from "./salaries-section"
 
 const PROJECT = { id: "project-1", name: "مشروع ألف" }
 
-function worker(salaryAmountDzd: number) {
+function worker(salaryAmount: string | null = "30000") {
   return {
     employeeId: "worker-1",
     employeeName: "عامل الرواتب",
     employeePhone: "0555000001",
     employeeRole: "عامل",
-    salaryAmountDzd,
-    salaryPeriod: "MONTHLY" as const,
+    salaryReference: salaryAmount === null ? null : { period: "MONTHLY" as const, amount: salaryAmount },
     lastPaymentDate: null,
-    // An open-ended window far wider than any payment month: the derived
-    // default always covers the dialog's period.
-    projectAssignments: [{ projectId: PROJECT.id, startDate: "2000-01-01T00:00:00+01:00", endDate: null }],
   }
 }
 
@@ -50,53 +55,51 @@ const PAYMENT = {
 }
 
 function renderSection() {
-  const view = render(
+  return render(
     <SalariesSection
       onEditSalary={vi.fn()}
       projects={[PROJECT, { id: "project-2", name: "مشروع باء" }]}
       recentPayments={[PAYMENT]}
-      workers={[worker(30000)]}
+      workers={[worker()]}
     />,
   )
-
-  return {
-    view,
-    // Simulate a workspace refresh that changes the worker's wage while the
-    // payment dialog stays open.
-    refreshWage: (salaryAmountDzd: number) =>
-      view.rerender(
-        <SalariesSection
-          onEditSalary={vi.fn()}
-          projects={[PROJECT, { id: "project-2", name: "مشروع باء" }]}
-          recentPayments={[PAYMENT]}
-          workers={[worker(salaryAmountDzd)]}
-        />,
-      ),
-  }
 }
 
 describe("SalariesSection (#412)", () => {
   beforeEach(() => {
     mutateAsync.mockReset()
+    approveAsync.mockReset()
+    localStorage.clear()
   })
 
   afterEach(() => {
     cleanup()
   })
 
-  it("re-derives the open dialog's proposal from live query data after a wage refresh", () => {
-    const { refreshWage } = renderSection()
+  it("opens the approval composer with the exact reference salary, without pre-filling an earning", async () => {
+    render(
+      <SalariesSection onEditSalary={vi.fn()} projects={[PROJECT]} recentPayments={[]} workers={[worker("30000.25")]} />,
+    )
 
-    fireEvent.click(screen.getAllByRole("button", { name: "إضافة دفعة" })[0]!)
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة" }))
 
-    // The dialog proposed salary / 30 x 30 days.
-    expect(screen.getAllByDisplayValue("30000").length).toBeGreaterThan(0)
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).value).toBe("")
+    fireEvent.change(screen.getByLabelText("earnings.periodStart"), { target: { value: "2026-03-01" } })
+    fireEvent.change(screen.getByLabelText("earnings.periodEnd"), { target: { value: "2026-03-31" } })
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "1000" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
 
-    // A workspace refresh changes the wage underneath the open dialog: the
-    // proposal must follow rather than staying on the snapshotted value.
-    refreshWage(60000)
-    expect(screen.getAllByDisplayValue("60000").length).toBeGreaterThan(0)
-    expect(screen.queryByDisplayValue("30000")).toBeNull()
+    await waitFor(() => expect(approveAsync).toHaveBeenCalledTimes(1))
+    expect(approveAsync.mock.calls[0]![0]).toMatchObject({
+      employeeId: "worker-1",
+      currencyCode: "DZD",
+      totalAmount: "1000.00",
+      unallocatedAmount: "1000.00",
+      referenceSalary: { period: "MONTHLY", amount: "30000.25" },
+    })
   })
 
   it("shows each project's days and prorated amount in the payment history row", () => {
@@ -134,7 +137,7 @@ describe("SalariesSection (#412)", () => {
           { id: "project-3", name: "مشروع جيم" },
         ]}
         recentPayments={[payment]}
-        workers={[worker(30000)]}
+        workers={[worker("30000")]}
       />,
     )
 
@@ -161,7 +164,7 @@ describe("SalariesSection (#412)", () => {
         onEditSalary={vi.fn()}
         projects={[PROJECT, { id: "project-2", name: "مشروع باء" }]}
         recentPayments={[payment]}
-        workers={[worker(30000)]}
+        workers={[worker("30000")]}
       />,
     )
 
@@ -180,24 +183,21 @@ describe("SalariesSection (#412)", () => {
         recentPayments={[PAYMENT]}
         workers={[
           {
-            ...worker(30000),
+            ...worker("30000"),
             employeeId: "w-monthly",
             employeeName: "عامل شهري",
-            salaryPeriod: "MONTHLY" as const,
             lastPaymentDate: "2026-03-31T00:00:00.000Z",
           },
           {
-            ...worker(1500),
+            ...worker("1500"),
             employeeId: "w-daily",
             employeeName: "عامل يومي",
-            salaryPeriod: "DAILY" as const,
+            salaryReference: { period: "DAILY" as const, amount: "1500" },
           },
           {
-            ...worker(0),
+            ...worker(null),
             employeeId: "w-none",
             employeeName: "عامل بلا أجر",
-            salaryAmountDzd: null,
-            salaryPeriod: null,
           },
         ]}
       />,
@@ -259,10 +259,8 @@ function makeWorkers(count: number, period: "MONTHLY" | "DAILY", idOffset = 0) {
       employeeName: `عامل ${String(number).padStart(2, "0")}`,
       employeePhone: `055500${String(number).padStart(4, "0")}`,
       employeeRole: "عامل",
-      salaryAmountDzd: 30000,
-      salaryPeriod: period,
+      salaryReference: { period, amount: "30000" },
       lastPaymentDate: null,
-      projectAssignments: [],
     }
   })
 }
@@ -664,7 +662,7 @@ describe("stored business day timezone (#473)", () => {
         onEditSalary={vi.fn()}
         projects={[PROJECT]}
         recentPayments={[{ ...PAYMENT, paymentDate: MIDNIGHT_CROSSING }]}
-        workers={[worker(30000)]}
+        workers={[worker("30000")]}
       />,
     )
 
@@ -678,7 +676,7 @@ describe("stored business day timezone (#473)", () => {
         onEditSalary={vi.fn()}
         projects={[PROJECT]}
         recentPayments={[]}
-        workers={[{ ...worker(30000), lastPaymentDate: MIDNIGHT_CROSSING }]}
+        workers={[{ ...worker("30000"), lastPaymentDate: MIDNIGHT_CROSSING }]}
       />,
     )
     fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
