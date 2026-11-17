@@ -130,7 +130,7 @@ describe("EmployeeTable salary approval entry point", () => {
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
     expect(mutateAsync.mock.calls[0]![0]).toMatchObject({ employeeId: "worker-1", currencyCode: "DZD" })
-    expect(mutateAsync.mock.calls[0]![0]).not.toHaveProperty("referenceSalary")
+    expect(mutateAsync.mock.calls[0]![0].referenceSalary).toBeNull()
   })
 
   it("uses the refreshed reference while preserving employee identity", async () => {
@@ -144,7 +144,7 @@ describe("EmployeeTable salary approval entry point", () => {
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
     expect(mutateAsync.mock.calls[0]![0]).toMatchObject({
       employeeId: "worker-1",
-      referenceSalary: { period: "DAILY", amount: "1500.00" },
+      referenceSalary: { period: "DAILY", amount: "1500.0000" },
     })
     expect(screen.getByText("عامل محدّث")).toBeTruthy()
   })
