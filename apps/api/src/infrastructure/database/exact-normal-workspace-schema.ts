@@ -78,6 +78,7 @@ export function getExactWorkspaceId(db: BetterSqliteDatabase): string {
 const exactEarningTableNames = new Set(["employee_salary_earning", "employee_salary_earning_segment"]);
 const exactDebtTableNames = new Set(["debt_account", "debt_entry"]);
 const exactStructuralTables = new Map<string, string>([
+  ["role_permission", tableStatement("role_permission")],
   ...exactEmployeeProfileSchemaStatements
     .filter(sql => /^CREATE TABLE employee(?:_state_history)? \(/.test(sql))
     .map(sql => [sql.match(/^CREATE TABLE (\w+)/)![1]!, sql] as const),

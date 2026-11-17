@@ -128,6 +128,29 @@ describe("normal exact workspace schema", () => {
   });
 
   it.each([
+    ["lost role permission uniqueness", (sql: string) => sql.replace('    UNIQUE ("role_id", "permission"),\n', ""), (db: BetterSqliteDatabase) => {
+      const uniqueIndexes = (db.pragma('index_list("role_permission")') as { name: string; unique: number }[]).filter(index => index.unique);
+      return uniqueIndexes.every(index => (db.pragma(`index_info("${index.name}")`) as { name: string }[]).map(column => column.name).join(",") !== "role_id,permission");
+    }],
+    ["lost role permission foreign key", (sql: string) => sql.replace(/,\s*CONSTRAINT "role_permission_role_id_fkey"[\s\S]*?ON UPDATE CASCADE/, ""), (db: BetterSqliteDatabase) => (db.pragma('foreign_key_list("role_permission")') as { table: string }[]).length === 0],
+    ["lost role permission cascade behavior", (sql: string) => sql.replace(" ON DELETE CASCADE ON UPDATE CASCADE", " ON DELETE RESTRICT ON UPDATE CASCADE"), (db: BetterSqliteDatabase) => (db.pragma('foreign_key_list("role_permission")') as { on_delete: string }[])[0]?.on_delete === "RESTRICT"],
+  ])("refuses %s without repairing schema or marker", (_name, editSql, confirmsMutation) => {
+    const db = fresh();
+    try {
+      ensureExactNormalWorkspaceSchema(db);
+      replaceTableDefinition(db, "role_permission", editSql);
+      expect(confirmsMutation(db)).toBe(true);
+      const schemaBefore = db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all();
+      const identityBefore = db.prepare("SELECT singleton,workspace_id FROM exact_workspace_identity").all();
+      const markerBefore = db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all();
+      expect(() => ensureExactNormalWorkspaceSchema(db)).toThrow(/physical schema.*role_permission/i);
+      expect(db.prepare("SELECT type,name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all()).toEqual(schemaBefore);
+      expect(db.prepare("SELECT singleton,workspace_id FROM exact_workspace_identity").all()).toEqual(identityBefore);
+      expect(db.prepare("SELECT slice,version FROM exact_money_schema ORDER BY slice").all()).toEqual(markerBefore);
+    } finally { db.close(); }
+  });
+
+  it.each([
     ["lost earning segment ordinal uniqueness", (sql: string) => sql.replace(", UNIQUE(earning_id,ordinal)", "")],
     ["changed earning segment project foreign key", (sql: string) => sql.replace("REFERENCES project(id) ON DELETE RESTRICT", "REFERENCES role(id) ON DELETE RESTRICT")],
     ["lost earning segment integer and nonnegative check", (sql: string) => sql.replace("CHECK(typeof(amount_minor)='integer' AND amount_minor>=0)", "")],

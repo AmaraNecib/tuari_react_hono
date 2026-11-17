@@ -38,6 +38,10 @@ The first rename-replay fix covered direct `approveEarnings` receipts but missed
 
 Applied: employee-create UI acceptance must be checked against server role requirements and native required fields; new transaction writes must acquire the established immediate reservation; policy validation precedes expensive allocation. Excluded: UI implementation and Playwright fixture lessons, because this lane owns API/contracts only. Parent should reassess applicability against the finished source.
 
+## Bounded shared-table validator correction
+
+At `61c9a5e75771cb0da0fc65cd5728540fc71f8c16`, fresh normal workspaces create `role_permission` from authoritative `schemaStatements`, but reopen validation checked only its columns. Regression mutations removing `(role_id, permission)` uniqueness, its foreign key, or `ON DELETE CASCADE` all passed startup validation. The focused test records the catalog, workspace identity and exact markers, then requires refusal without changes. Validation now adds the existing authoritative `role_permission` DDL to the structural-table map; no DDL, migration, data or startup behavior for valid workspaces changes. Scope remains this shared table only. This fixes validator coverage at the existing schema seam; no new interface or domain term was needed. Applied wisdom: none matched this failure mode.
+
 ## Owner-authorized API coverage policy correction
 
 The owner approved removing mandatory coverage percentages. API coverage remains collected and reported as a diagnostic; real reachable scenarios and named test failures govern acceptance. The previous API 100% thresholds blocked CI despite the hosted suite passing 2,271 tests with two pre-existing skips, due to one uncovered reachable unknown-employee read refusal. This lane adds that public-interface regression separately. Only `apps/api/vitest.config.ts` coverage thresholds change. The CI coverage command and reports remain; no test, lint, typecheck, other CI or review/merge gate is weakened. `apps/web/vitest.config.ts` already collects reports without thresholds and remains unchanged.
