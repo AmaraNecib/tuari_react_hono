@@ -38,6 +38,19 @@ export interface MonthlyApprovalStorage {
   removeItem(key: string): void
 }
 
+export interface MonthlyApprovalCoordination {
+  runExclusive<T>(name: string, operation: () => Promise<T>): Promise<T>
+}
+
+function browserMonthlyApprovalCoordination(): MonthlyApprovalCoordination {
+  return { runExclusive<T>(name: string, operation: () => Promise<T>): Promise<T> {
+    const locks = typeof navigator === "undefined" ? undefined : navigator.locks
+    if (!locks) throw new Error("Reliable monthly approval coordination is unavailable")
+    // Web Locks await callback promises, but this DOM declaration types only synchronous callback values.
+    return locks.request(name, { mode: "exclusive" }, operation) as unknown as Promise<T>
+  } }
+}
+
 function canonical(value: unknown): string {
   const encoded = JSON.stringify(value)
   if (encoded === undefined || JSON.stringify(JSON.parse(encoded)) !== encoded) throw new Error("Monthly approval intent is not stable JSON")
@@ -54,30 +67,39 @@ function parseRecord(raw: unknown): MonthlyApprovalRecord {
   return { ...parsed, payload: normalizePayload(parsed.payload) }
 }
 
-export function createMonthlyApprovalStore(storage: MonthlyApprovalStorage, workspaceId: string, userId: string) {
+export function createMonthlyApprovalStore(storage: MonthlyApprovalStorage, workspaceId: string, userId: string, coordination: MonthlyApprovalCoordination = browserMonthlyApprovalCoordination()) {
   const scope = z.object({ workspaceId: z.uuid(), userId: id }).strict().parse({ workspaceId, userId })
   const key = storageKey(scope.workspaceId, scope.userId)
+  const identity = (record: MonthlyApprovalRecord) => canonical({ employeeId: record.employeeId, requestId: record.requestId, payload: record.payload })
+  const read = (): MonthlyApprovalRecord | null => {
+    const raw = storage.getItem(key)
+    if (raw === null) return null
+    const record = parseRecord(JSON.parse(raw))
+    if (record.workspaceId !== scope.workspaceId || record.userId !== scope.userId) throw new Error("Monthly approval recovery scope mismatch")
+    if (record.employeeId !== record.payload.employeeId || record.requestId !== record.payload.requestId) throw new Error("Monthly approval recovery envelope mismatch")
+    return { ...record, ambiguous: true }
+  }
   return {
     ...scope,
-    load(): MonthlyApprovalRecord | null {
-      const raw = storage.getItem(key)
-      if (raw === null) return null
-      const record = parseRecord(JSON.parse(raw))
-      if (record.workspaceId !== scope.workspaceId || record.userId !== scope.userId) throw new Error("Monthly approval recovery scope mismatch")
-      const payload = normalizePayload(record.payload)
-      if (record.employeeId !== payload.employeeId || record.requestId !== payload.requestId) throw new Error("Monthly approval recovery envelope mismatch")
-      const recovered = { ...record, payload, ambiguous: true }
-      if (record.ambiguous !== true) storage.setItem(key, canonical(recovered))
-      return recovered
-    },
+    runExclusive<T>(operation: () => Promise<T>): Promise<T> { return coordination.runExclusive(`${key}:writer`, operation) },
+    load(): MonthlyApprovalRecord | null { return read() },
     save(record: MonthlyApprovalRecord): void {
       const checked = parseRecord(record)
-      const payload = checked.payload
       if (checked.workspaceId !== scope.workspaceId || checked.userId !== scope.userId) throw new Error("Monthly approval recovery scope mismatch")
-      if (checked.employeeId !== payload.employeeId || checked.requestId !== payload.requestId) throw new Error("Monthly approval recovery envelope mismatch")
-      storage.setItem(key, canonical({ ...checked, payload }))
+      if (checked.employeeId !== checked.payload.employeeId || checked.requestId !== checked.payload.requestId) throw new Error("Monthly approval recovery envelope mismatch")
+      const existing = read()
+      if (existing && identity(existing) !== identity(checked)) throw new Error("Resolve the stored monthly approval intent before changing it")
+      storage.setItem(key, canonical({ ...checked, payload: checked.payload }))
     },
-    clear(): void { storage.removeItem(key) },
+    clear(expected: MonthlyApprovalRecord): void {
+      const checked = parseRecord(expected)
+      if (checked.workspaceId !== scope.workspaceId || checked.userId !== scope.userId) throw new Error("Monthly approval recovery scope mismatch")
+      if (checked.employeeId !== checked.payload.employeeId || checked.requestId !== checked.payload.requestId) throw new Error("Monthly approval recovery envelope mismatch")
+      const existing = read()
+      if (!existing) return
+      if (identity(existing) !== identity(checked)) throw new Error("Refusing to clear a different monthly approval intent")
+      storage.removeItem(key)
+    },
   }
 }
 
@@ -108,39 +130,52 @@ export function createMonthlyApprovalExecutor<TResult = z.output<typeof exactSal
       if (record && (record.employeeId !== normalized.employeeId || record.requestId !== normalized.requestId || canonical(record.payload) !== canonical(normalized))) {
         throw new Error("Resolve the stored monthly approval intent before changing it")
       }
-      const current: MonthlyApprovalRecord = record ?? {
-        version: 1,
-        workspaceId: options.store.workspaceId,
-        userId: options.store.userId,
-        employeeId: normalized.employeeId,
-        requestId: normalized.requestId,
-        payload: normalized,
-        ambiguous: false,
-      }
       inFlight = true
       notify("pending")
       try {
-        if (!record) {
-          options.store.save(current)
+        return await options.store.runExclusive(async () => {
+          const durable = options.store.load()
+          if (durable) {
+            record = durable
+            if (durable.employeeId !== normalized.employeeId || durable.requestId !== normalized.requestId || canonical(durable.payload) !== canonical(normalized)) {
+              notify("uncertain")
+              throw new Error("Resolve the stored monthly approval intent before changing it")
+            }
+          }
+          const current: MonthlyApprovalRecord = durable ?? record ?? {
+            version: 1,
+            workspaceId: options.store.workspaceId,
+            userId: options.store.userId,
+            employeeId: normalized.employeeId,
+            requestId: normalized.requestId,
+            payload: normalized,
+            ambiguous: false,
+          }
+          if (!durable) options.store.save(current)
           record = current
-        }
-        const raw = await options.execute(structuredClone(current.payload))
-        const result = exactSalaryMonthlyApprovalResultSchema.parse(raw) as TResult
-        options.store.clear()
-        record = null
-        notify("approved")
-        return result
+          try {
+            const raw = await options.execute(structuredClone(current.payload))
+            const result = exactSalaryMonthlyApprovalResultSchema.parse(raw) as TResult
+            options.store.clear(current)
+            record = null
+            notify("approved")
+            return result
+          } catch (error) {
+            const definitiveFirstRejection = !current.ambiguous && error instanceof ORPCError && ["BAD_REQUEST", "NOT_FOUND", "UNAUTHORIZED", "FORBIDDEN", "CONFLICT"].includes(error.code)
+            if (definitiveFirstRejection) {
+              try { options.store.clear(current); record = null; notify("idle") }
+              catch { record = { ...current, ambiguous: true }; notify("uncertain") }
+            } else {
+              const sticky = { ...current, ambiguous: true }
+              try { options.store.save(sticky) } catch { /* The existing durable intent still fences retry. */ }
+              record = sticky
+              notify("uncertain")
+            }
+            throw error
+          }
+        })
       } catch (error) {
-        const definitiveFirstRejection = !current.ambiguous && error instanceof ORPCError && ["BAD_REQUEST", "NOT_FOUND", "UNAUTHORIZED", "FORBIDDEN", "CONFLICT"].includes(error.code)
-        if (definitiveFirstRejection) {
-          try { options.store.clear(); record = null; notify("idle") }
-          catch { record = current; notify("uncertain") }
-        } else {
-          const sticky = { ...current, ambiguous: true }
-          try { options.store.save(sticky) } catch { /* The original durable record still fences retry. */ }
-          record = sticky
-          notify("uncertain")
-        }
+        if (record) notify("uncertain")
         throw error
       } finally { inFlight = false }
     },
