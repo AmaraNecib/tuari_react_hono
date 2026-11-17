@@ -157,6 +157,18 @@ describe("rpc-error-handling", () => {
       expect(result[0]?.message).not.toBe("workforce.validation.salaryReference.precision")
     })
 
+    it("translates expense precision issues and retains the amount field path", () => {
+      const result = translateRpcValidationIssues(new WireGateError("Input validation failed", [
+        { message: "expenses.validation.amountPrecision", path: ["amount"] },
+      ]));
+      expect(result).toEqual([{
+        path: ["amount"],
+        field: "amount",
+        message: i18n.t("expenses.validation.amountPrecision"),
+      }]);
+      expect(result[0]?.message).not.toBe("expenses.validation.amountPrecision");
+    });
+
     it("keeps unknown server text literal instead of treating it as a translation key", () => {
       expect(translateRpcValidationIssues({ data: { issues: [{ message: "private server detail", path: ["amount"] }] } }))
         .toEqual([{ path: ["amount"], field: "amount", message: "private server detail" }])

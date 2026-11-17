@@ -13,19 +13,31 @@ import { paymentAmountSchema } from "./payment";
  * Expenses domain (issue #411) — money that leaves the business for something
  * that is not stock (a phone, fuel, a repair).
  *
- * Money rule: `amount` reuses `paymentAmountSchema` (positive, bounded by
- * `Number.MAX_SAFE_INTEGER`) so the two money rules cannot drift. Every field
- * except `amount` and `expenseDate` is optional — any combination is valid.
+ * Money rule: `amount` is a positive, bounded finalized amount with at most
+ * two decimal places. Every field except `amount` and `expenseDate` is
+ * optional — any combination is valid.
  *
  * The `sellerId` references an existing `external_counterparty` (the debts
  * module's external-party concept) rather than a new party type.
  */
 
+function hasAtMostTwoDecimalPlaces(value: number): boolean {
+  const [coefficient, exponentText] = value.toString().toLowerCase().split("e");
+  const exponent = exponentText === undefined ? 0 : Number(exponentText);
+  const fractionalPlaces = coefficient!.split(".")[1]?.length ?? 0;
+  return fractionalPlaces - exponent <= 2;
+}
+
+/** Final expense amounts are agreed amounts, not values to round on write. */
+export const expenseAmountSchema = paymentAmountSchema.refine(hasAtMostTwoDecimalPlaces, {
+  message: "expenses.validation.amountPrecision",
+});
+
 export const expenseStatusSchema = z.enum(["LIVE", "VOIDED"]);
 
 export const expenseSchema = z.object({
   id: entityIdSchema,
-  amount: paymentAmountSchema,
+  amount: expenseAmountSchema,
   expenseDate: timestampSchema,
   whatFor: nullableTextSchema,
   /**
@@ -77,8 +89,8 @@ export const expenseRevisionFieldSchema = z.enum([
 export const expenseRevisionSchema = z.object({
   id: entityIdSchema,
   expenseId: entityIdSchema,
-  previousAmount: paymentAmountSchema.nullable(),
-  newAmount: paymentAmountSchema,
+  previousAmount: expenseAmountSchema.nullable(),
+  newAmount: expenseAmountSchema,
   changedFields: z.array(expenseRevisionFieldSchema),
   reason: nullableTextSchema,
   actorUserId: auditActorUserIdSchema,
@@ -95,7 +107,7 @@ const expenseTextInput = z.string().trim().min(1).max(500);
 
 export const createExpenseInputSchema = z.object({
   id: z.string().uuid().optional(),
-  amount: paymentAmountSchema,
+  amount: expenseAmountSchema,
   expenseDate: timestampSchema,
   whatFor: expenseTextInput.nullable().optional(),
   responsibleWorkerId: entityIdSchema.nullable().optional(),
@@ -111,7 +123,7 @@ export const createExpenseInputSchema = z.object({
  */
 export const updateExpenseInputSchema = z.object({
   id: entityIdSchema,
-  amount: paymentAmountSchema.optional(),
+  amount: expenseAmountSchema.optional(),
   expenseDate: timestampSchema.optional(),
   whatFor: expenseTextInput.nullable().optional(),
   responsibleWorkerId: entityIdSchema.nullable().optional(),

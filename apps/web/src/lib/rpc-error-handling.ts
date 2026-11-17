@@ -7,6 +7,7 @@ export type TranslatedRpcValidationIssue = {
 }
 
 const RPC_VALIDATION_KEYS = new Set([
+  "expenses.validation.amountPrecision",
   "workforce.validation.salaryReference.invalid",
   "workforce.validation.salaryReference.amountType",
   "workforce.validation.salaryReference.amountLength",
