@@ -342,6 +342,7 @@ export function ExactEmployeeTable({ client, roles, assignmentReferences, pagina
     leaveReasonFallback: t("detailPages.employee.leaveReasonFallback"),
   })), [assignmentReferences, employees, roles, t])
   function changeSearch(query: string) {
+    if (query.trim() === search.trim()) return
     setSearch(query)
     if (paginationCursor || paginationPrevCursors !== undefined) onPaginationChange?.({ cursor: undefined, limit: paginationLimit, prevCursors: undefined })
   }

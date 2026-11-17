@@ -76,6 +76,10 @@ At base `61c9a5e75771cb0da0fc65cd5728540fc71f8c16`, `exact-workforce-client.ts` 
 - Runtime delta: 46 lines of duplicate JSX prop mappings were removed from each caller (92 removed). The initial shared composition added 9 net lines; the project facade dropped 2. A final readability reduction removes 38 net lines from `settings-section.tsx` by alias-destructuring copy directly, so the combined production runtime delta is 123 fewer lines. The Settings caller interface drops from about 45 labels/values to 9 purpose-shaped inputs. Two unused closure definitions disappeared. No feature/page or test was removed.
 - Preserved proof: legacy semantic account forms/password-byte and account-fence coverage; exact Settings caller session/copy; exact project salary cached 25,000→37,500 and other-user isolation; original project tabs; dynamic-proxy regression. Logs and exact-SHA verification are recorded under `.scratch/reviews/543-only-integration/`.
 
+## #555 employee cursor correction
+
+At base `5ddd341607439ef9436a3ab354dfac42885135ce`, `AdvancedSearchBar` emits its initial empty query after its 300 ms debounce. `ExactEmployeeTable.changeSearch` must compare the emitted query with its current search before clearing cursor and previous-page history. Compare trimmed values because the existing request uses `search.trim() || undefined`; this treats whitespace-only input as the same query while keeping request normalization unchanged. A real changed query still resets cursor/history and preserves the route limit. The regression mounts the real search component and exact table with restored route props, advances fake timers, then types a new query.
+
 ## #555 evidence-proven E2E cleanup
 
 - Worktree: `D:/worktrees/tuari_react_hono/t3-9f3476b8-76577619c9213797`

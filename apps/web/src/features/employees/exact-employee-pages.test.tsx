@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ReactNode } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { exactEmployeeBatchCreateInputSchema, type ExactEmployeeClient, type Role } from "@tuari/contracts"
@@ -32,7 +32,7 @@ const ctx = (overrides: Record<string, unknown> = {}) => ({
   assignmentReferences: { people: [employee], projects: [], warehouses: [], managerAssignments: [], projectAssignments: [], warehouseAssignments: [] },
   ...overrides,
 })
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.useRealTimers() })
 
 describe("exact employee page seams", () => {
   it("requires the original confirmation dialog before deleting an exact employee", async () => {
@@ -153,6 +153,29 @@ describe("exact employee page seams", () => {
     expect(within(row).getByText("North site")).toBeTruthy()
     expect(within(row).queryByText(i18n.t("shell.noManager"))).toBeNull()
     expect(within(row).queryByText(i18n.t("detailPages.employee.noCurrentWorkplace"))).toBeNull()
+  })
+
+  it("preserves a restored employee cursor until the search actually changes", async () => {
+    vi.useFakeTimers()
+    const props = ctx()
+    const onPaginationChange = vi.fn()
+    const route = { paginationCursor: "page-2", paginationLimit: 20, paginationPrevCursors: "page-1" }
+    const mounted = render(<ExactEmployeeTable {...props} {...route} onPaginationChange={onPaginationChange} onView={vi.fn()} onEdit={vi.fn()} />)
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(301) })
+    expect(onPaginationChange).not.toHaveBeenCalled()
+    expect(props.client.employeesListPaged).toHaveBeenCalledWith({ limit: 20, search: undefined, cursor: "page-2" })
+
+    mounted.unmount()
+    render(<ExactEmployeeTable {...props} {...route} onPaginationChange={onPaginationChange} onView={vi.fn()} onEdit={vi.fn()} />)
+    await act(async () => { await vi.advanceTimersByTimeAsync(301) })
+    expect(onPaginationChange).not.toHaveBeenCalled()
+    expect(props.client.employeesListPaged).toHaveBeenLastCalledWith({ limit: 20, search: undefined, cursor: "page-2" })
+
+    fireEvent.change(screen.getByPlaceholderText(i18n.t("search.placeholder")), { target: { value: " Amina " } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(301) })
+    expect(onPaginationChange).toHaveBeenCalledExactlyOnceWith({ cursor: undefined, limit: 20, prevCursors: undefined })
+    expect(props.client.employeesListPaged).toHaveBeenLastCalledWith({ limit: 20, search: "Amina", cursor: "page-2" })
   })
 
   it("uses server-side search and cursor paging on the exact employee list", async () => {
