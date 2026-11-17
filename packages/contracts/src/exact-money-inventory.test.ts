@@ -103,6 +103,7 @@ describe("inert foundation inventory", () => {
       "apps/web/src/features/inventory/inventory-exact-page.tsx",
       "apps/web/src/features/inventory/inventory-exact-purchase-form.tsx",
       "apps/web/src/features/invoices/invoices-exact-page.tsx",
+      "apps/web/src/features/projects/project-cost-section.tsx",
       "apps/web/src/features/shared/exact-money-display.ts",
       "apps/web/src/features/shared/exact-money-input.ts",
       "packages/contracts/src/debts-exact.ts",
