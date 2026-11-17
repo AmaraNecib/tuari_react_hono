@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applicationCapabilitiesSchema, applicationContract } from "./application-contract";
 import { exactEmployeeContract } from "./employee-exact-contract";
-import { exactWorkforceEarningsContract } from "./workforce-exact-earnings-contract";
+import { exactWorkforceEarningsContract } from "./workforce-exact-contract";
 
 describe("normal application application contract", () => {
   it("replaces the twelve employee methods at their existing top-level names", () => {

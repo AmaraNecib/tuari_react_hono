@@ -36,7 +36,7 @@ Project and warehouse archive clicks now select a pending record and open the ex
 - Employee salary references and approval amounts remain canonical exact strings through form parsing, adapters, query results and display.
 - The original numeric employee table remains available for its separate legacy caller, but exact routes set `allowLegacySalaryPayments={false}` and do not mount its payment dialog.
 - Employee details do not mount the numeric quick-payment mutation.
-- Approval and project-cost routes use `ExactWorkforceEarningsClient`, not the broader cash-capable workforce type.
+- Approval and project-cost routes use `ExactWorkforceEarningsClient`, the explicit three-method normal-app earnings allowlist.
 - Cash payments, advances, opening balances, repayments and corrections are excluded. No APIs, contracts, schemas, routes or UI controls for those operations are added.
 - Monthly approval retains the existing Web Locks identity fence, version-1 storage key and record protocol, reload-only handling for foreign intents, no stale resurrection, scoped project-cost invalidation, and global search without cached legacy salary-payment entities.
 - Generated `packages/contracts/dist` can retain removed exports after a cherry-pick. Rebuilt the local ignored output with `pnpm --filter @tuari/contracts build` through `heavy_run` after each backend integration; frontend references the narrowed source-generated exports only.

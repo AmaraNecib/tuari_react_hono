@@ -40,3 +40,12 @@ export const exactWorkforceContract = {
   getProjectSalaryCost: oc.input(z.object({ projectId: entityIdSchema }).strict()).output(exactProjectSalaryCostSchema),
 } as const;
 export type ExactWorkforceClient = ContractRouterClient<typeof exactWorkforceContract>;
+
+/** Normal application earnings allowlist. Keep these procedures selected explicitly. */
+export const exactWorkforceEarningsContract = {
+  approveMonthlyEarnings: exactWorkforceContract.approveMonthlyEarnings,
+  listEmployeeEarnings: exactWorkforceContract.listEmployeeEarnings,
+  getProjectSalaryCost: exactWorkforceContract.getProjectSalaryCost,
+} as const;
+
+export type ExactWorkforceEarningsClient = ContractRouterClient<typeof exactWorkforceEarningsContract>;

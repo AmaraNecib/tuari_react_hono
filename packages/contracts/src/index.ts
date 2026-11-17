@@ -9,7 +9,6 @@ export * from "./workforce";
 export * from "./workforce-exact";
 export * from "./workforce-exact-contract";
 export * from "./employee-exact-contract";
-export * from "./workforce-exact-earnings-contract";
 export * from "./application-contract";
 export * from "./workforce-monthly-exact";
 export * from "./salary-days";

@@ -7,7 +7,7 @@ import { exactEmployeeContract } from "./employee-exact-contract";
 import { operationsContract } from "./operations-contract";
 import { backupContract } from "./backup-contract";
 import { rbacContract } from "./rbac-contract";
-import { exactWorkforceEarningsContract } from "./workforce-exact-earnings-contract";
+import { exactWorkforceEarningsContract } from "./workforce-exact-contract";
 import { systemContract } from "./system-contract";
 import type { ContractRouterClient } from "@orpc/contract";
 
