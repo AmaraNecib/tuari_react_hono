@@ -617,6 +617,7 @@ export const ar = {
       backToEmployees: "العودة إلى العاملين",
       rowTitle: "العامل {{count}}",
       exactProfileInvalid: "تحقق من الاسم والهاتف والدور والبيانات المدخلة.",
+      singleCreateRequiresOneRow: "احذف الصفوف الإضافية قبل حفظ عامل واحد.",
       exactManagerRequired: "اختر مدير مشروع نشطًا ومشروعًا لهذا العامل.",
       exactWarehouseRequired: "اختر مستودعًا لهذا العامل.",
       exactPeriodRequired: "أدخل قيمة الأجر ودوريته معًا.",

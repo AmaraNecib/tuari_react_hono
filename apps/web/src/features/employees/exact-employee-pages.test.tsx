@@ -415,6 +415,12 @@ describe("exact employee page seams", () => {
     mounted.rerender(<EmployeeBatchCreatePage {...props} mode="exact" operation="create" onDone={onDone} onCancel={vi.fn()} />)
     expect((mounted.container.querySelector('[name="employee-first-name-0"]') as HTMLInputElement).value).toBe("Amina")
     expect((mounted.container.querySelector('[name="employee-first-name-1"]') as HTMLInputElement).value).toBe("Nadia")
+    const form = mounted.container.querySelector("form")!
+    fireEvent.submit(form)
+    expect(props.client.employeesBatchCreate).not.toHaveBeenCalled()
+    expect(screen.getByRole("alert").textContent).toBe(i18n.t("employeeForm.singleCreateRequiresOneRow"))
+    expect((mounted.container.querySelector('[name="employee-first-name-0"]') as HTMLInputElement).value).toBe("Amina")
+    expect((mounted.container.querySelector('[name="employee-first-name-1"]') as HTMLInputElement).value).toBe("Nadia")
     fireEvent.click(within(mounted.container.querySelectorAll("article")[1] as HTMLElement).getByRole("button", { name: i18n.t("employeeForm.remove") }))
     expect(mounted.container.querySelector('[name="employee-first-name-1"]')).toBeNull()
 

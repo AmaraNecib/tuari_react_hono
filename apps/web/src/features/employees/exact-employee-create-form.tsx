@@ -60,6 +60,10 @@ export function ExactEmployeeCreateForm({ client, roles, managerOptions, onCance
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (lock.current || saved) return
+    if (single && rows.length !== 1) {
+      setFailure(t("employeeForm.singleCreateRequiresOneRow"))
+      return
+    }
     const errors = rows.map(row => validateRow(row, roles, workerRoleId))
     const firstByPhone = new Map<string, number>()
     rows.forEach((row, index) => {
