@@ -10,13 +10,17 @@ vi.mock("@/hooks/use-debounced-value", () => ({ useDebouncedValue: (value: strin
 const mocks = vi.hoisted(() => ({ legacy: vi.fn(), inventory: vi.fn() }))
 vi.mock("./workspace-queries", () => {
   const query = (options: { enabled?: boolean }) => { mocks.legacy(options); return { data: { items: [] } } }
-  return { useEmployeesQuery: query, useProjectsQuery: query, useWarehousesQuery: query, useExternalCounterpartiesQuery: query,
+  return { useEmployeesQuery: query, useProjectsQuery: query, useWarehousesQuery: query,
+    useExternalCounterpartiesQuery: (options: { enabled?: boolean }) => {
+      mocks.legacy(options)
+      return { data: { items: [{ id: "old-external", fullName: "Forbidden old external", phoneNumber: "0555000009" }] } }
+    },
     useDebtAccountsQuery: (options: { enabled?: boolean }) => {
       mocks.legacy(options)
       return { data: { items: [{ accountId: "old-debt", partyType: "EXTERNAL", externalPartyId: "old-party", externalPartyName: "Forbidden old balance", direction: "RECEIVABLE", currentBalance: 92500, status: "OPEN" }] } }
     } }
 })
-vi.mock("@/features/inventory/inventory-hooks", () => ({ useInventoryItemDefinitionsQuery: (options: unknown) => { mocks.inventory(options); return { data: { items: [{ id: "old-item", name: "Forbidden old item" }] } } }, useInventoryInvoiceGroupsQuery: (options: unknown) => { mocks.inventory(options); return { data: { items: [] } } } }))
+vi.mock("@/features/inventory/inventory-hooks", () => ({ useInventoryItemDefinitionsQuery: (options: unknown) => { mocks.inventory(options); return { data: { items: [{ id: "old-item", name: "Forbidden old item" }] } } }, useInventoryInvoiceGroupsQuery: (options: unknown) => { mocks.inventory(options); return { data: { items: [{ id: "old-invoice", invoiceNumber: "Forbidden old invoice", supplierName: "Old supplier" }] } } } }))
 vi.mock("@/router/navigation", async () => ({ ...await vi.importActual<typeof import("@/router/navigation")>("@/router/navigation"), WorkspaceLink: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }))
 vi.mock("@/components/ui/search-dialog", () => ({ SearchDialog: ({ isOpen, onQueryChange, results }: { isOpen: boolean; onQueryChange: (query: string) => void; results: Array<{ id: string; title: string }> }) => isOpen ? <div role="dialog">{["Current exact warehouse", "Forbidden old", "Other workspace warehouse"].map(value => <button key={value} onClick={() => onQueryChange(value)}>{`Search ${value}`}</button>)}{results.map(item => <p key={item.id}>{item.title}</p>)}</div> : null }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
@@ -38,6 +42,8 @@ it("never includes cached legacy financial or inventory data in the exact corpus
   await waitFor(() => expect(within(screen.getByRole("dialog")).queryByText("Current exact warehouse")).toBeNull())
   expect(within(screen.getByRole("dialog")).queryByText("Forbidden old balance")).toBeNull()
   expect(within(screen.getByRole("dialog")).queryByText("Forbidden old item")).toBeNull()
+  expect(within(screen.getByRole("dialog")).queryByText("Forbidden old external")).toBeNull()
+  expect(within(screen.getByRole("dialog")).queryByText("Forbidden old invoice")).toBeNull()
   expect(mocks.legacy.mock.calls.every(([options]) => options.enabled === false)).toBe(true)
   expect(mocks.inventory.mock.calls.every(([options]) => options.enabled === false)).toBe(true)
   fireEvent.click(screen.getByRole("button", { name: "Search Current exact warehouse" }))
