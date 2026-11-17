@@ -1,5 +1,6 @@
 import { expect, test, type Response } from "@playwright/test"
 
+import { getApplicationUnavailableCopy } from "./helpers/application-unavailable-copy"
 import { bootstrapOrSignIn } from "./helpers/session"
 
 test.describe.configure({ mode: "serial" })
@@ -57,6 +58,6 @@ test("the exact workspace loads only supported scoped lists and never the numeri
   expect(snapshotRequests).toEqual([])
   const procedures = individualListRequests.map(url => new URL(url).pathname.split("/").at(-1))
   expect(procedures.sort()).toEqual(["employeesList", "projectsList", "rolesList", "warehousesList"])
-  await expect(page.getByText("هذا القسم غير متاح في هذه النسخة.").first()).toBeVisible()
+  await expect(page.getByText(getApplicationUnavailableCopy(), { exact: true }).first()).toBeVisible()
   await expect(page.getByRole("link", { name: /إضافة مشروع/ })).toBeVisible()
 })

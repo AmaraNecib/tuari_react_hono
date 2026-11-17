@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
+import { i18n, resources } from "../../apps/web/src/i18n"
+import { getApplicationUnavailableCopy, getSupportedApplicationLocales } from "./helpers/application-unavailable-copy"
 import { bootstrapOrSignIn } from "./helpers/session"
 
 test.describe.configure({ mode: "serial" })
@@ -17,11 +19,20 @@ async function expectNoRawKeys(page: Page) {
   expect(bodyText).not.toMatch(RAW_KEY_PATTERN)
 }
 
+test("unavailable translation lookup follows every configured locale", () => {
+  for (const locale of getSupportedApplicationLocales()) {
+    const copy = getApplicationUnavailableCopy(locale)
+    expect(copy).toBe(resources[locale].translation.application.unavailable)
+    expect(copy.trim()).not.toBe("")
+    expect(copy).not.toBe("application.unavailable")
+  }
+})
+
 test("unavailable transactions and debt routes render translated capability copy, not raw keys", async ({ page }) => {
   await bootstrapOrSignIn(page)
   for (const path of ["/transactions", "/debts"]) {
     await page.goto(path)
-    await expect(page.getByRole("main").getByText("هذا القسم غير متاح في هذه النسخة.", { exact: true })).toBeVisible()
+    await expect(page.getByRole("main").getByText(getApplicationUnavailableCopy(), { exact: true })).toBeVisible()
     await expect(page.getByRole("main").locator("form")).toHaveCount(0)
     await expectNoRawKeys(page)
   }
@@ -31,7 +42,7 @@ test("the current earning approval page renders Arabic without raw salary keys",
   await bootstrapOrSignIn(page)
   await page.goto("/salaries")
   await expect(page.getByRole("heading", { name: "اعتماد الأجور الشهرية" })).toBeVisible()
-  await expect(page.getByText("اعتمد مستحقات العامل للشهر، وراجع الأجور المحفوظة وتكلفة المشروع دون تسجيل دفعة نقدية.", { exact: true })).toBeVisible()
+  await expect(page.getByText(i18n.t("salaryEarnings.description"), { exact: true })).toBeVisible()
   await expectNoRawKeys(page)
 })
 

@@ -2,8 +2,10 @@ import { expect, type Page } from "@playwright/test"
 import type { appContract } from "../../../packages/contracts/src/app-contract"
 import type { applicationContract } from "../../../packages/contracts/src/application-contract"
 import { apiBaseUrl } from "./urls"
-const API_URL = apiBaseUrl()
+import { getApplicationUnavailableCopy } from "./application-unavailable-copy"
 import { bootstrapOrSignIn } from "./session"
+
+const API_URL = apiBaseUrl()
 
 // A typo or a supported operation cannot masquerade as a rejected legacy write.
 export type RetiredProcedure = Exclude<keyof typeof appContract, keyof typeof applicationContract>
@@ -29,7 +31,7 @@ export async function assertCapabilityBoundary(page: Page, input: {
   page.on("request", track)
   await page.goto(input.path)
   const main = page.getByRole("main")
-  await expect(main.getByText("هذا القسم غير متاح في هذه النسخة.", { exact: true })).toBeVisible()
+  await expect(main.getByText(getApplicationUnavailableCopy(), { exact: true })).toBeVisible()
   await expect(main.locator("form")).toHaveCount(0)
   expect(unexpectedRequests).toEqual([])
   page.off("request", track)
