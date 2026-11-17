@@ -35,9 +35,18 @@ vi.mock("@/features/app-shell/mock-dashboard", () => ({
   useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockSaveEmployee }),
 }))
 
-vi.mock("@/lib/orpc-client", () => ({
-  rpcClient: { employeesGet: mockEmployeesGet },
-}))
+vi.mock("@/lib/orpc-client", async importOriginal => {
+  const actual = await importOriginal<typeof import("@/lib/orpc-client")>()
+  return {
+    ...actual,
+    rpcClient: new Proxy(actual.rpcClient, {
+      get(target, property, receiver) {
+        if (property === "employeesGet") return mockEmployeesGet
+        return Reflect.get(target, property, receiver)
+      },
+    }),
+  }
+})
 
 const workerEmployee = {
   id: "emp-worker",
