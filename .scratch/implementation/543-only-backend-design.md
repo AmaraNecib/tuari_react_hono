@@ -26,6 +26,10 @@ The exact employee adapter now matches the established literal, case-insensitive
 
 Employee list and paged-list reads select employee IDs and exact salary references in one repository transaction. The batch reader makes one metadata query and at most two safe-integer amount queries, split by DAILY versus MONTHLY/WEEKLY units. A 120-row test checks independently expected exact references and asserts four SQL statements for the full list, five for the page, with no page-size change.
 
+## Approval replay after actor rename
+
+Only `approveEarnings` enables actor-label-insensitive replay comparison. The stored fingerprint format and bytes remain unchanged: it still records the first actor label. On a fingerprint mismatch, this path compares the parsed existing and requested fingerprints after removing only `actorLabel`; actor user ID, producer, intent, and all other fields must still match. Replay returns the stored result, so earning and ledger audit rows keep the original label. Monthly and other aggregate paths retain strict label matching. Native reopen coverage checks identical retry, one earning and payable, unchanged receipt bytes, preserved audit labels, and conflicts for changed user ID or intent.
+
 ## Lessons
 
 Applied: employee-create UI acceptance must be checked against server role requirements and native required fields; new transaction writes must acquire the established immediate reservation; policy validation precedes expensive allocation. Excluded: UI implementation and Playwright fixture lessons, because this lane owns API/contracts only. Parent should reassess applicability against the finished source.

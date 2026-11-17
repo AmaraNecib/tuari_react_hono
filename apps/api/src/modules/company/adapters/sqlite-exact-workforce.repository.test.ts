@@ -139,6 +139,33 @@ describe.each([["plain", ""], ["keyed", "527-public-synthetic-key"]])("native ex
     expect(reopened.repository.listEarnings("absent")).toEqual([]);
   });
 
+  it("replays a persisted approval after actor rename by stable user ID and keeps the original audit label", () => {
+    const fixture = setup(key);
+    const { service } = fixture.compose();
+    fixture.db.prepare("INSERT INTO user VALUES ('useru')").run();
+    const originalInput = { ...approval, actorUserId: "useru", actorLabel: "Oldlabel" };
+    const original = service.approveEarnings(originalInput);
+    const receipt = fixture.db.prepare("SELECT fingerprint,result_json AS resultJson FROM exact_finance_command WHERE id LIKE '%approve-october%'").get() as { fingerprint: string; resultJson: string };
+    expect(JSON.parse(receipt.fingerprint)).toMatchObject({ actorUserId: "useru", actorLabel: "Oldlabel" });
+    expect(JSON.parse(receipt.resultJson)).toMatchObject({ actorUserId: "useru", actorLabel: "Oldlabel" });
+    expect(fixture.db.prepare("SELECT actor_user_id AS actorUserId,actor_label AS actorLabel FROM employee_salary_earning").get()).toEqual({ actorUserId: "useru", actorLabel: "Oldlabel" });
+    expect(fixture.db.prepare("SELECT actor_user_id AS actorUserId,actor_label AS actorLabel FROM debt_entry WHERE entry_type='ADJUSTMENT'").get()).toEqual({ actorUserId: "useru", actorLabel: "Oldlabel" });
+
+    const reopened = fixture.reopen();
+    const retried = reopened.service.approveEarnings({ ...originalInput, actorLabel: "Newlabel" });
+    expect(retried).toEqual(original);
+    expect(retried.actorLabel).toBe("Oldlabel");
+    expect(fixture.db.prepare("SELECT fingerprint,result_json AS resultJson FROM exact_finance_command WHERE id LIKE '%approve-october%'").get()).toEqual(receipt);
+    expect(reopened.repository.listEarnings("worker")).toEqual([original]);
+    expect(fixture.db.prepare("SELECT count(*) AS count FROM employee_salary_earning").get()).toEqual({ count: 1 });
+    expect(fixture.db.prepare("SELECT count(*) AS count FROM debt_entry WHERE entry_type='ADJUSTMENT'").get()).toEqual({ count: 1 });
+    expect(reopened.finance.detail(original.debtAccountId!).entries).toHaveLength(1);
+    expect(() => reopened.service.approveEarnings({ ...originalInput, actorUserId: "operator", actorLabel: "Newlabel" })).toThrow(/replay conflict/);
+    expect(() => reopened.service.approveEarnings({ ...originalInput, actorLabel: "Newlabel", approvedAmount: "90071992547409.94", unallocatedAmount: "0.04" })).toThrow(/replay conflict/);
+    expect(reopened.repository.listEarnings("worker")).toEqual([original]);
+    expect(reopened.finance.detail(original.debtAccountId!).entries).toHaveLength(1);
+  });
+
   it("shares one native account detail across earning remainders after payments, correction and reopen", () => {
     const fixture = setup(key);
     const { service, finance, ledger } = fixture.compose();

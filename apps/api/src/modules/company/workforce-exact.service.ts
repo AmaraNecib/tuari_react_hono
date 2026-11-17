@@ -100,6 +100,6 @@ export class ExactWorkforceService {
       const earning: ExactSalaryEarning = { ...approved, id, debtAccountId, debtEntryId, ...audit, createdAt: now };
       this.repository.saveEarning(earning);
       return earning;
-    });
+    }, { ignoreActorLabelOnReplay: true });
   }
 }

@@ -31,7 +31,7 @@ export class ExactFinanceService {
 
   get transactionIdentity() { return this.repository.transactionIdentity; }
 
-  runAggregate<T>(input: ExactDebtAudit & { requestId: string; producer: ExactFinanceAggregateOwner; intent: unknown }, participant: ExactTransactionParticipant, work: () => T): T {
+  runAggregate<T>(input: ExactDebtAudit & { requestId: string; producer: ExactFinanceAggregateOwner; intent: unknown }, participant: ExactTransactionParticipant, work: () => T, options: { ignoreActorLabelOnReplay?: boolean } = {}): T {
     if (work.constructor.name === "AsyncFunction") throw new ExactDebtError("Aggregate work must be synchronous JSON work");
     const producer = exactFinanceAggregateOwnerSchema.parse(input.producer);
     if (!/^[A-Za-z0-9:_-]{1,128}$/.test(input.requestId)) throw new ExactDebtError("Invalid aggregate request id");
@@ -42,7 +42,18 @@ export class ExactFinanceService {
     return participant.withTransaction(() => this.repository.withTransaction(() => {
       const previous = this.repository.getAggregateCommand(id);
       if (previous) {
-        if (previous.fingerprint !== fingerprint) throw new ExactDebtError("Aggregate command replay conflict", "CONFLICT");
+        if (previous.fingerprint !== fingerprint) {
+          const sameStableIntent = options.ignoreActorLabelOnReplay && (() => {
+            try {
+              const prior = JSON.parse(previous.fingerprint) as Record<string, unknown>;
+              const current = JSON.parse(fingerprint) as Record<string, unknown>;
+              delete prior.actorLabel;
+              delete current.actorLabel;
+              return aggregateJson(prior) === aggregateJson(current);
+            } catch { return false; }
+          })();
+          if (!sameStableIntent) throw new ExactDebtError("Aggregate command replay conflict", "CONFLICT");
+        }
         return JSON.parse(previous.resultJson) as T;
       }
       const result = work();
