@@ -56,6 +56,9 @@ Run focused regression and affected integration tests for changed behavior and
 direct callers. Add relevant lint, typecheck and generated-file checks. Preserve
 negative proof for money, inventory, auth, crypto and recovery contracts.
 Every test needs a reachable failure and an independent expected result.
+Coverage reports are diagnostic. Use them to find meaningful reachable
+scenarios, not as a percentage gate. CI keeps collecting and reporting API
+coverage. Named test, typecheck and lint failures remain failures.
 
 Full local suites, full browser runs, production builds and dependency audits
 are not routine. Record a concrete uncertainty or CI coverage gap before

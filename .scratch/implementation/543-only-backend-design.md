@@ -21,3 +21,7 @@ My initial eight-file proof omitted `exact-workforce-storage.test.ts`. Its cash 
 ## Lessons
 
 Applied: employee-create UI acceptance must be checked against server role requirements and native required fields; new transaction writes must acquire the established immediate reservation; policy validation precedes expensive allocation. Excluded: UI implementation and Playwright fixture lessons, because this lane owns API/contracts only. Parent should reassess applicability against the finished source.
+
+## Owner-authorized API coverage policy correction
+
+The owner approved removing mandatory coverage percentages. API coverage remains collected and reported as a diagnostic; real reachable scenarios and named test failures govern acceptance. The previous API 100% thresholds blocked CI despite the hosted suite passing 2,271 tests with two pre-existing skips, due to one uncovered reachable unknown-employee read refusal. This lane adds that public-interface regression separately. Only `apps/api/vitest.config.ts` coverage thresholds change. The CI coverage command and reports remain; no test, lint, typecheck, other CI or review/merge gate is weakened. `apps/web/vitest.config.ts` already collects reports without thresholds and remains unchanged.

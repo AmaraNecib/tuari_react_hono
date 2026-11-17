@@ -30,7 +30,9 @@ proof and clippy; full crates need an explicit coverage reason.
 Verify the committed SHA, not an uncommitted draft.
 
 - Focused behavioral proof covers changed code and direct callers. Add
-  applicable lint/typecheck and selected browser proof.
+  applicable lint/typecheck and selected browser proof. Use coverage reports to
+  find reachable scenarios, not to enforce a percentage; actual test and
+  verification failures remain blocking.
 - Initial debate, test-audit and code-review evidence names exact base/head,
   actual reviewer IDs/models and any same-family exception.
 - A bounded correction has affected proof and one fresh combined-delta review,
