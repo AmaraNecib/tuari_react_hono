@@ -14,7 +14,7 @@ import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 import { RecordDeleteConfirmation } from "@/features/shared/record-delete-confirmation"
 import { RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shared/record-page-frame"
 import { EmployeeDetailsView } from "./employee-details-view"
-import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
+import { WorkspaceLink, workspaceRoutes, type EmployeeListRouteSearch } from "@/router/navigation"
 import { EmployeeTable, type EmployeeTableRow } from "./employee-table"
 import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
 
@@ -316,7 +316,7 @@ export function mapExactEmployeeTableRow(employee: ExactEmployee, roles: Role[],
   }
 }
 
-export function ExactEmployeeTable({ client, roles, assignmentReferences, onView, onEdit, onAdd, onDeleted }: ExactEmployeeUiContext & { assignmentReferences: ExactEmployeeAssignmentReferences; onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void; onDeleted?: () => Promise<void> | void }) {
+export function ExactEmployeeTable({ client, roles, assignmentReferences, paginationCursor, paginationLimit, paginationPrevCursors, onPaginationChange, onView, onEdit, onAdd, onDeleted }: ExactEmployeeUiContext & { assignmentReferences: ExactEmployeeAssignmentReferences; paginationCursor?: string; paginationLimit?: number; paginationPrevCursors?: string; onPaginationChange?: (search: EmployeeListRouteSearch) => void; onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void; onDeleted?: () => Promise<void> | void }) {
   const { t } = useTranslation()
   const [employees, setEmployees] = useState<ExactEmployee[]>([])
   const [loading, setLoading] = useState(true)
@@ -327,19 +327,18 @@ export function ExactEmployeeTable({ client, roles, assignmentReferences, onView
   const [pendingLeave, setPendingLeave] = useState<ExactEmployee | null>(null)
   const [leavePending, setLeavePending] = useState(false)
   const [search, setSearch] = useState("")
-  const [cursor, setCursor] = useState<string | undefined>()
   const [nextCursor, setNextCursor] = useState<string | null>(null)
-  const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>([])
+  const cursorHistory = paginationPrevCursors === undefined ? [] : paginationPrevCursors.split(",")
   const [refreshKey, setRefreshKey] = useState(0)
   useEffect(() => {
     let live = true
     setLoading(true)
-    void client.employeesListPaged({ limit: 50, search: search.trim() || undefined, cursor }).then(result => {
+    void client.employeesListPaged({ limit: paginationLimit ?? 50, search: search.trim() || undefined, cursor: paginationCursor }).then(result => {
       if (!live) return
       setEmployees(result.items); setNextCursor(result.nextCursor); setFailure(null)
     }).catch(error => { if (live) setFailure(serverError(error)) }).finally(() => { if (live) setLoading(false) })
     return () => { live = false }
-  }, [client, cursor, refreshKey, search])
+  }, [client, paginationCursor, paginationLimit, refreshKey, search])
   const rows = useMemo<EmployeeTableRow[]>(() => employees.map(employee => mapExactEmployeeTableRow(employee, roles, assignmentReferences, {
     noManager: t("shell.noManager"),
     noWorkplace: t("detailPages.employee.noCurrentWorkplace"),
@@ -349,9 +348,21 @@ export function ExactEmployeeTable({ client, roles, assignmentReferences, onView
     leaveReasonWarehouseManagerLinked: t("detailPages.employee.leaveReasonWarehouseManagerLinked"),
     leaveReasonFallback: t("detailPages.employee.leaveReasonFallback"),
   })), [assignmentReferences, employees, roles, t])
-  function changeSearch(query: string) { setSearch(query); setCursor(undefined); setCursorHistory([]) }
-  function nextPage() { if (!nextCursor) return; setCursorHistory(history => [...history, cursor]); setCursor(nextCursor) }
-  function previousPage() { const history = [...cursorHistory]; const previous = history.pop(); setCursorHistory(history); setCursor(previous) }
+  function changeSearch(query: string) {
+    setSearch(query)
+    if (paginationCursor || paginationPrevCursors !== undefined) onPaginationChange?.({ cursor: undefined, limit: paginationLimit, prevCursors: undefined })
+  }
+  function nextPage() {
+    if (!nextCursor || !onPaginationChange) return
+    const history = paginationPrevCursors === undefined ? [] : paginationPrevCursors.split(",")
+    onPaginationChange({ cursor: nextCursor, limit: paginationLimit, prevCursors: [...history, paginationCursor ?? ""].join(",") })
+  }
+  function previousPage() {
+    const history = paginationPrevCursors === undefined ? [] : paginationPrevCursors.split(",")
+    const previous = history.pop()
+    if (previous === undefined || !onPaginationChange) return
+    onPaginationChange({ cursor: previous || undefined, limit: paginationLimit, prevCursors: history.length ? history.join(",") : undefined })
+  }
   async function remove(id: string) { setDeletingId(id); setDeleteFailure(null); try { const result = await client.employeesDelete({ id }); if (!result.success) throw new Error(result.error.message); setRefreshKey(value => value + 1); await onDeleted?.() } catch (error) { setDeleteFailure(serverError(error)) } finally { setDeletingId(null) } }
   async function confirmLeave() {
     if (!pendingLeave || leavePending) return
@@ -375,6 +386,6 @@ export function ExactEmployeeTable({ client, roles, assignmentReferences, onView
     <AdvancedSearchBar onSearch={query => changeSearch(query)} storageKey="employees-search-filters" />
     {deleteFailure ? <p role="alert">{deleteFailure}</p> : null}
     {loading ? <p role="status">{t("common.loading")}</p> : failure ? <section><p role="alert">{failure}</p><Button onClick={() => setRefreshKey(value => value + 1)}>{t("common.retry")}</Button></section> : <EmployeeTable allowLegacySalaryPayments={false} copy={{ name: t("columns.name"), role: t("columns.role"), manager: t("columns.manager"), project: t("columns.project"), phone: t("columns.phone"), status: t("columns.status"), actions: t("common.actions"), empty: t("shell.empty"), addWorker: t("shell.addWorker"), view: t("common.view"), edit: t("common.edit"), leave: t("common.leave"), delete: t("common.delete") }} rows={rows} onAdd={onAdd} onDelete={row => setPendingDelete(employees.find(item => item.id === row.id) ?? null)} onEdit={row => onEdit(row.id)} onLeave={row => setPendingLeave(employees.find(item => item.id === row.id) ?? null)} onView={row => onView(row.id)} />}
-    <nav aria-label={t("sections.employees.label")} className="flex justify-between gap-2 pt-4"><Button variant="outline" disabled={!cursorHistory.length || loading} onClick={previousPage}>{t("common.previous")}</Button><Button variant="outline" disabled={!nextCursor || loading} onClick={nextPage}>{t("common.next")}</Button></nav>
+    <nav aria-label={t("sections.employees.label")} className="flex justify-between gap-2 pt-4"><Button variant="outline" disabled={!cursorHistory.length || loading || !onPaginationChange} onClick={previousPage}>{t("common.previous")}</Button><Button variant="outline" disabled={!nextCursor || loading || !onPaginationChange} onClick={nextPage}>{t("common.next")}</Button></nav>
   </RecordPageFrame>
 }

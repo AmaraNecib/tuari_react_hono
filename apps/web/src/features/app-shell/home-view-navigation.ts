@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router"
 
-import { createWorkspaceNavigator, workspaceRoutes } from "@/router/navigation"
+import { createWorkspaceNavigator, workspaceRoutes, type EmployeeListRouteSearch } from "@/router/navigation"
 
 /** Navigation helpers for workspace pages. */
 export function useHomeViewNavigation() {
@@ -9,6 +9,7 @@ export function useHomeViewNavigation() {
   return {
     goToRoute,
     goToEmployees: () => goToRoute(workspaceRoutes.employees()),
+    setEmployeePagination: (search: EmployeeListRouteSearch) => goToRoute(workspaceRoutes.employees(search)),
     goToEmployeeCreate: () => goToRoute(workspaceRoutes.employeeCreate()),
     goToEmployeeDetails: (employeeId: string) => goToRoute(workspaceRoutes.employeeDetails(employeeId)),
     goToEmployeeEdit: (employeeId: string) => goToRoute(workspaceRoutes.employeeEdit(employeeId)),

@@ -3,10 +3,20 @@ import type { ComponentProps } from "react"
 import { Link } from "@tanstack/react-router"
 
 type WorkspaceTabSearch = { tab: string }
+export type EmployeeListRouteSearch = { cursor?: string; limit?: number; prevCursors?: string }
+
+export function parseEmployeeListRouteSearch(search: Record<string, unknown>): EmployeeListRouteSearch {
+  const cursor = typeof search.cursor === "string" && search.cursor.length > 0 ? search.cursor : undefined
+  const rawLimit = typeof search.limit === "string" ? Number(search.limit) : search.limit
+  const limit = typeof rawLimit === "number" && Number.isSafeInteger(rawLimit) && rawLimit > 0 ? rawLimit : undefined
+  // An empty previous cursor represents page one and must survive parsing.
+  const prevCursors = typeof search.prevCursors === "string" ? search.prevCursors : undefined
+  return { cursor, limit, prevCursors }
+}
 
 export type WorkspaceRouteTarget =
   | { to: "/" }
-  | { to: "/employees" }
+  | { to: "/employees"; search?: EmployeeListRouteSearch }
   | { to: "/employees/create" }
   | { to: "/employees/$employeeId"; params: { employeeId: string }; search?: WorkspaceTabSearch }
   | { to: "/employees/$employeeId/edit"; params: { employeeId: string } }
@@ -50,7 +60,7 @@ type WorkspaceLinkProps = Omit<ComponentProps<typeof Link>, "to" | "params" | "s
 /** Route path builders for workspace pages. */
 export const workspaceRoutes = {
   dashboard: (): WorkspaceRouteTarget => ({ to: "/" }),
-  employees: (): WorkspaceRouteTarget => ({ to: "/employees" }),
+  employees: (search?: EmployeeListRouteSearch): WorkspaceRouteTarget => search ? { to: "/employees", search } : { to: "/employees" },
   employeeCreate: (): WorkspaceRouteTarget => ({ to: "/employees/create" }),
   employeeDetails: (employeeId: string): WorkspaceRouteTarget => ({
     to: "/employees/$employeeId",

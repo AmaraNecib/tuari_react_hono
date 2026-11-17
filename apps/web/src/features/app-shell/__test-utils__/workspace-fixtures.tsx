@@ -889,6 +889,12 @@ export function renderWorkspace(
     workspaceData?: WorkspaceSnapshot | undefined
     /** Detail tab within a detail page (e.g. "finance"). */
     detailTab?: string
+    /** Employee list cursor parsed from the current route. */
+    paginationCursor?: string
+    /** Employee list page size parsed from the current route. */
+    paginationLimit?: number
+    /** Employee list cursor history parsed from the current route. */
+    paginationPrevCursors?: string
     /** Currently viewed employee id. */
     employeeId?: string
     /** Currently viewed invoice id. */
@@ -928,6 +934,9 @@ export function renderWorkspace(
           employeeId={options?.employeeId}
           invoiceId={options?.invoiceId}
           page={page}
+          paginationCursor={options?.paginationCursor}
+          paginationLimit={options?.paginationLimit}
+          paginationPrevCursors={options?.paginationPrevCursors}
           projectId={options?.projectId}
           warehouseId={options?.warehouseId}
         />

@@ -64,6 +64,7 @@ describe("normal normal application application integration", () => {
     const row = await screen.findByRole("row", { name: /Exact Worker/ })
     expect(within(row).getByText("Samir Belaid")).toBeTruthy()
     expect(within(row).getByText("North site")).toBeTruthy()
+    expect(vi.mocked(client.employeesList).mock.calls).toEqual([[{ roleId: managerRole.id, status: "ACTIVE" }]])
     expect(client.managerAssignmentsList).toHaveBeenCalledWith({ status: "ACTIVE" })
     expect(client.projectAssignmentsList).toHaveBeenCalledWith({ status: "ACTIVE" })
     expect(client.warehouseAssignmentsList).toHaveBeenCalledWith({ status: "ACTIVE" })

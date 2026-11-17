@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { createWorkspaceNavigator, getWorkspaceLinkProps, workspaceRoutes } from "./navigation"
+import { createWorkspaceNavigator, getWorkspaceLinkProps, parseEmployeeListRouteSearch, workspaceRoutes } from "./navigation"
 
 describe("workspace navigation helpers", () => {
   it("forwards typed workspace targets through the shared navigator", () => {
@@ -13,6 +13,22 @@ describe("workspace navigation helpers", () => {
       to: "/employees/$employeeId",
       params: { employeeId: "employee-1" },
       search: { tab: "finance" },
+    })
+  })
+
+  it("parses direct employee list URLs and keeps the page-one cursor sentinel", () => {
+    expect(parseEmployeeListRouteSearch({ cursor: "page-2", limit: "20", prevCursors: "" })).toEqual({
+      cursor: "page-2",
+      limit: 20,
+      prevCursors: "",
+    })
+    expect(parseEmployeeListRouteSearch({ cursor: "", limit: "1.5", prevCursors: 4 })).toEqual({ cursor: undefined, limit: undefined, prevCursors: undefined })
+  })
+
+  it("preserves employee cursor, limit, and previous-page state in route links", () => {
+    expect(getWorkspaceLinkProps(workspaceRoutes.employees({ cursor: "page-2", limit: 20, prevCursors: "" }))).toEqual({
+      to: "/employees",
+      search: { cursor: "page-2", limit: 20, prevCursors: "" },
     })
   })
 

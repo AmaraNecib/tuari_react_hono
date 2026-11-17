@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     inventoryMoney: "unavailable", expenses: "unavailable", monetaryReports: "unavailable", fullProjectCost: "unavailable",
   })),
   employeesList: vi.fn(async () => ({ items: [{ id: "exact-worker", firstName: "Exact", lastName: "Worker", phone: "0555000001", roleId: "worker-role", status: "ACTIVE", salaryReference: null, currency: "DZD", notes: null, occupation: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }] })),
+  employeesListPaged: vi.fn(async () => ({ items: [{ id: "exact-worker", firstName: "Exact", lastName: "Worker", phone: "0555000001", roleId: "worker-role", status: "ACTIVE", salaryReference: null, currency: "DZD", notes: null, occupation: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }], nextCursor: null })),
   employeesGet: vi.fn(async () => ({ success: true, message: "Loaded", item: { id: "exact-worker", firstName: "Exact", lastName: "Worker", phone: "0555000001", roleId: "worker-role", status: "ACTIVE", salaryReference: null, currency: "DZD", notes: null, occupation: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" } })),
   employeeStateHistoryList: vi.fn(async () => ({ items: [] })),
   rolesList: vi.fn(async () => ({ items: [] })),
@@ -37,10 +38,16 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: "demo-session-user" } } }) }))
 
 beforeEach(() => {
+  const worker = { id: "exact-worker", firstName: "Exact", lastName: "Worker", phone: "0555000001", roleId: "worker-role", status: "ACTIVE", salaryReference: null, currency: "DZD", notes: null, occupation: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }
+  mocks.employeesList.mockReset().mockResolvedValue({ items: [worker] } as never)
+  mocks.employeesListPaged.mockReset().mockResolvedValue({ items: [worker], nextCursor: null } as never)
+  mocks.rolesList.mockReset().mockResolvedValue({ items: [] } as never)
+  mocks.managerAssignmentsList.mockReset().mockResolvedValue({ items: [] } as never)
   window.localStorage.setItem("journey-home-tour-status", "skipped")
   setApplicationClientMock({
   applicationCapabilities: mocks.capabilities,
   employeesList: mocks.employeesList,
+  employeesListPaged: mocks.employeesListPaged,
   employeesGet: mocks.employeesGet,
   employeeStateHistoryList: mocks.employeeStateHistoryList,
   rolesList: mocks.rolesList,
@@ -110,6 +117,39 @@ describe("normal HomeView normal application selector", () => {
     mounted.unmount()
     renderWorkspace("employee-details", { ...options, detailTab: nextTab })
     expect((await screen.findByRole("tab", { name: i18n.t(nextLabel) })).getAttribute("aria-selected")).toBe("true")
+  })
+
+  it("loads paged employee rows with only active manager references and routes cursor changes", async () => {
+    const navigate = mockAllMutations().navigateMock
+    navigate.mockClear()
+    mocks.employeesList.mockClear()
+    mocks.employeesListPaged.mockClear()
+    mocks.managerAssignmentsList.mockClear()
+    mocks.rolesList.mockResolvedValue({ items: [
+      { id: "worker-role", key: "worker", name: "Worker" },
+      { id: "manager-role", key: "project_manager", name: "Project Manager" },
+    ] } as never)
+    mocks.employeesList.mockResolvedValue({ items: [{ id: "active-manager", firstName: "Mina", lastName: "Manager", phone: "0555000002", roleId: "manager-role", status: "ACTIVE", salaryReference: null, currency: "DZD", notes: null, occupation: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }] } as never)
+    mocks.employeesListPaged.mockResolvedValue({ items: [{ id: "exact-worker", firstName: "Exact", lastName: "Worker", phone: "0555000001", roleId: "worker-role", status: "ACTIVE", salaryReference: null, currency: "DZD", notes: null, occupation: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }], nextCursor: "next-cursor" } as never)
+    mocks.managerAssignmentsList.mockResolvedValue({ items: [{ id: "manager-link", workerId: "exact-worker", managerId: "active-manager", status: "ACTIVE", startDate: "2026-11-01T00:00:00.000Z", endDate: null, notes: null, actorUserId: "user-1", transactionId: "transaction-manager", createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z" }] } as never)
+
+    renderWorkspace("employees", { sessionUser: demoUser, paginationCursor: "page-cursor", paginationLimit: 20, paginationPrevCursors: "" })
+    await screen.findByText("Mina Manager")
+    await waitFor(() => expect(mocks.employeesListPaged).toHaveBeenCalledWith({ cursor: "page-cursor", limit: 20, search: undefined }))
+    expect(mocks.employeesList.mock.calls).toEqual([[{ roleId: "manager-role", status: "ACTIVE" }]])
+
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("common.next") }))
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(expect.objectContaining({
+      to: "/employees",
+      search: { cursor: "next-cursor", limit: 20, prevCursors: ",page-cursor" },
+    })))
+
+    const search = screen.getByPlaceholderText(i18n.t("search.placeholder"))
+    fireEvent.change(search, { target: { value: "Mina" } })
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith(expect.objectContaining({
+      to: "/employees",
+      search: { cursor: undefined, limit: 20, prevCursors: undefined },
+    })))
   })
 
   it("routes normal project details through the production worker page and supported history clients", async () => {

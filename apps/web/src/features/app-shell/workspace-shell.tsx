@@ -10,7 +10,7 @@ import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
 import { EmployeeEditPage } from "@/features/employees/employee-edit-page"
 import type { ExactEmployeeBatchProps } from "@/features/employees/exact-employee-pages"
 import { ExactSalaryEarningsSection } from "@/features/employees/exact-salary-earnings-section"
-import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
+import { WorkspaceLink, workspaceRoutes, type EmployeeListRouteSearch } from "@/router/navigation"
 import type { DemoSession } from "./workspace-mutations"
 import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewPage } from "./home-view-types"
@@ -21,7 +21,7 @@ import { getArabicStatusLabel } from "@/features/shared/status-meta"
 
 const idKey = (workspaceId: string, userId: string, resource: string) => ["application", workspaceId, userId, resource] as const
 
-export function WorkspaceShell({ client, capabilities, copy, employeeId, projectId, warehouseId, detailTab, onEmployeeTab = () => {}, onProjectTab = () => {}, onWarehouseTab = () => {}, page, session, theme, resetWorkspacePending, updateAccountPending, onResetWorkspace, onSaveAccount, onThemeToggle, onUpdateApplied, onPendingCommandChange }: {
+export function WorkspaceShell({ client, capabilities, copy, employeeId, projectId, warehouseId, detailTab, paginationCursor, paginationLimit, paginationPrevCursors, onEmployeePaginationChange, onEmployeeTab = () => {}, onProjectTab = () => {}, onWarehouseTab = () => {}, page, session, theme, resetWorkspacePending, updateAccountPending, onResetWorkspace, onSaveAccount, onThemeToggle, onUpdateApplied, onPendingCommandChange }: {
   client: ApplicationClient
   capabilities: ApplicationCapabilities
   copy: HomeViewCopy
@@ -29,6 +29,10 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, project
   projectId?: string
   warehouseId?: string
   detailTab?: string
+  paginationCursor?: string
+  paginationLimit?: number
+  paginationPrevCursors?: string
+  onEmployeePaginationChange?: (search: EmployeeListRouteSearch) => void
   onEmployeeTab?: (id: string, tab: string) => void
   onProjectTab?: (id: string, tab: string) => void
   onWarehouseTab?: (id: string, tab: string) => void
@@ -53,12 +57,21 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, project
     getProjectSalaryCost: input => client.workforceExact.getProjectSalaryCost(input),
   }), [client])
   const needsWorkspaceReferences = page === "dashboard" || page === "employees" || page === "employees-create" || page === "employee-details" || page === "employee-edit" || page === "salaries"
-  const employees = useQuery({ queryKey: idKey(workspaceId, userId, "employees"), queryFn: () => client.employeesList(), enabled: needsWorkspaceReferences })
+  const needsAllEmployeeRows = needsWorkspaceReferences && page !== "employees"
+  const employees = useQuery({ queryKey: idKey(workspaceId, userId, "employees"), queryFn: () => client.employeesList(), enabled: needsAllEmployeeRows })
   const roles = useQuery({ queryKey: idKey(workspaceId, userId, "roles"), queryFn: () => client.rolesList(), enabled: needsWorkspaceReferences })
   const projects = useQuery({ queryKey: idKey(workspaceId, userId, "projects"), queryFn: () => client.projectsList(), enabled: needsWorkspaceReferences })
   const warehouses = useQuery({ queryKey: idKey(workspaceId, userId, "warehouses"), queryFn: () => client.warehousesList(), enabled: needsWorkspaceReferences })
   const people = employees.data?.items ?? []
   const roleRows = roles.data?.items ?? []
+  const projectManagerRoleId = roleRows.find(role => role.key === "project_manager")?.id
+  const employeeTableManagers = useQuery({
+    queryKey: [...idKey(workspaceId, userId, "employees"), "active-project-managers", projectManagerRoleId ?? "unavailable"],
+    queryFn: () => client.employeesList({ roleId: projectManagerRoleId, status: "ACTIVE" }),
+    enabled: page === "employees" && Boolean(projectManagerRoleId),
+  })
+  const employeeTablePeople = employeeTableManagers.data?.items ?? []
+  const workspaceReferenceQueries = [roles, projects, warehouses, ...(needsAllEmployeeRows ? [employees] : [])]
   const projectRows = projects.data?.items ?? []
   const warehouseRows = warehouses.data?.items ?? []
   const managerRows = people.filter(person => person.status === "ACTIVE" && roleRows.find(role => role.id === person.roleId)?.key === "project_manager")
@@ -117,17 +130,18 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, project
     window.location.href = "/employees"
   }
   if (page.startsWith("project") || page.startsWith("warehouse")) return <ExactProjectWarehousePages client={client} workspaceId={workspaceId} userId={userId} page={page} projectId={projectId} warehouseId={warehouseId} detailTab={detailTab} onProjectTab={onProjectTab} onWarehouseTab={onWarehouseTab} />
-  if (needsWorkspaceReferences && [employees, roles, projects, warehouses].some(query => query.isPending)) return <p role="status">{t("common.loading")}</p>
+  if (needsWorkspaceReferences && workspaceReferenceQueries.some(query => query.isPending)) return <p role="status">{t("common.loading")}</p>
   const employeeAssignmentQueries = [employeeListManagerAssignments, employeeListProjectAssignments, employeeListWarehouseAssignments]
-  if (page === "employees" && employeeAssignmentQueries.some(query => query.isPending)) return <p role="status">{t("common.loading")}</p>
-  if (page === "employees" && employeeAssignmentQueries.some(query => query.isError)) return <Surface role="alert" variant="panel" className="p-5"><p>{t("shell.loadWorkspaceError")}</p><Button onClick={() => { void Promise.all(employeeAssignmentQueries.map(query => query.refetch())) }}>{t("common.retry")}</Button></Surface>
-  const failed = needsWorkspaceReferences ? [employees, roles, projects, warehouses].find(query => query.isError) : undefined
-  if (failed) return <Surface role="alert" variant="panel" className="p-5"><p>{t("shell.loadWorkspaceError")}</p><Button onClick={() => { void Promise.all([employees.refetch(), roles.refetch(), projects.refetch(), warehouses.refetch()]) }}>{t("common.retry")}</Button></Surface>
+  const employeeTableReferenceQueries = projectManagerRoleId ? [employeeTableManagers] : []
+  if (page === "employees" && [...employeeAssignmentQueries, ...employeeTableReferenceQueries].some(query => query.isPending)) return <p role="status">{t("common.loading")}</p>
+  if (page === "employees" && [...employeeAssignmentQueries, ...employeeTableReferenceQueries].some(query => query.isError)) return <Surface role="alert" variant="panel" className="p-5"><p>{t("shell.loadWorkspaceError")}</p><Button onClick={() => { void Promise.all([...employeeAssignmentQueries, ...employeeTableReferenceQueries].map(query => query.refetch())) }}>{t("common.retry")}</Button></Surface>
+  const failed = needsWorkspaceReferences ? workspaceReferenceQueries.find(query => query.isError) : undefined
+  if (failed) return <Surface role="alert" variant="panel" className="p-5"><p>{t("shell.loadWorkspaceError")}</p><Button onClick={() => { void Promise.all(workspaceReferenceQueries.map(query => query.refetch())) }}>{t("common.retry")}</Button></Surface>
 
   if ((page === "employee-details" || page === "employee-edit") && (projectAssignments.isPending || warehouseAssignments.isPending || managerAssignments.isPending)) return <p role="status">{t("common.loading")}</p>
   if ((page === "employee-details" || page === "employee-edit") && (projectAssignments.isError || warehouseAssignments.isError || managerAssignments.isError)) return <Surface role="alert" variant="panel" className="p-5"><p>{t("shell.loadWorkspaceError")}</p><Button onClick={() => { void Promise.all([projectAssignments.refetch(), warehouseAssignments.refetch(), managerAssignments.refetch()]) }}>{t("common.retry")}</Button></Surface>
   if (page === "employees-create") return <EmployeeCreateSection context={baseContext} onCancel={() => { window.location.href = "/employees" }} onDone={() => { void queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "employees") }); window.location.href = "/employees" }} />
-  if (page === "employees") return <ExactEmployeeTable {...baseContext} assignmentReferences={{ people, projects: projectRows, warehouses: warehouseRows, managerAssignments: employeeListManagerAssignments.data?.items ?? [], projectAssignments: employeeListProjectAssignments.data?.items ?? [], warehouseAssignments: employeeListWarehouseAssignments.data?.items ?? [] }} onDeleted={() => queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "employees") })} onView={id => { window.location.href = `/employees/${encodeURIComponent(id)}` }} onEdit={id => { window.location.href = `/employees/${encodeURIComponent(id)}/edit` }} onAdd={() => { window.location.href = "/employees/create" }} />
+  if (page === "employees") return <ExactEmployeeTable {...baseContext} paginationCursor={paginationCursor} paginationLimit={paginationLimit} paginationPrevCursors={paginationPrevCursors} onPaginationChange={onEmployeePaginationChange} assignmentReferences={{ people: employeeTablePeople, projects: projectRows, warehouses: warehouseRows, managerAssignments: employeeListManagerAssignments.data?.items ?? [], projectAssignments: employeeListProjectAssignments.data?.items ?? [], warehouseAssignments: employeeListWarehouseAssignments.data?.items ?? [] }} onDeleted={() => queryClient.invalidateQueries({ queryKey: idKey(workspaceId, userId, "employees") })} onView={id => { window.location.href = `/employees/${encodeURIComponent(id)}` }} onEdit={id => { window.location.href = `/employees/${encodeURIComponent(id)}/edit` }} onAdd={() => { window.location.href = "/employees/create" }} />
   if (page === "employee-details" && employeeId) return <EmployeeDetailsPage mode="exact" {...scopedContext} employeeId={employeeId} detailTab={detailTab} onTabChange={tab => onEmployeeTab(employeeId, tab)} onDone={onDone} onCancel={onDone} />
   if (page === "employee-edit" && employeeId) {
     return <EmployeeEditPage mode="exact" {...scopedContext} employeeId={employeeId} onDone={onDone} onCancel={() => { window.location.href = `/employees/${encodeURIComponent(employeeId)}` }} onBackToEmployees={onDone} />
