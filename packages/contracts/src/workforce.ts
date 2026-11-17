@@ -27,6 +27,25 @@ export const roleSchema = z.object({
   updatedAt: timestampSchema,
 });
 
+const exactMoneyStringSchema = z.string().max(96).superRefine((value, ctx) => {
+  try {
+    Money.parse(value);
+  } catch {
+    ctx.addIssue({ code: "custom", message: "Expected an exact decimal amount with at most two places." });
+  }
+});
+
+export const employeeSalaryReferenceSchema = z.object({
+  period: salaryPeriodSchema,
+  amount: z.string({ error: "مبلغ مرجع الأجر يجب أن يكون نصًا عشريًا." }).max(96, { message: "مبلغ مرجع الأجر يتجاوز الحد المسموح." }),
+}, { error: "مرجع الأجر غير صالح." }).superRefine((value, ctx) => {
+  try {
+    SalaryReference.parse(value.period, value.amount);
+  } catch {
+    ctx.addIssue({ code: "custom", path: ["amount"], message: "مرجع الأجر يجب أن يكون قيمة دقيقة مناسبة للدورية." });
+  }
+});
+
 export const employeeSchema = z.object({
   id: entityIdSchema,
   firstName: z.string().trim().min(1).max(120),
@@ -34,8 +53,7 @@ export const employeeSchema = z.object({
   phone: algerianPhoneSchema,
   roleId: entityIdSchema,
   status: employeeStatusSchema,
-  salaryAmountDzd: z.number().nonnegative().nullable(),
-  salaryPeriod: salaryPeriodSchema.nullable(),
+  salaryReference: employeeSalaryReferenceSchema.nullable(),
   notes: nullableTextSchema,
   occupation: nullableTextSchema,
   createdAt: timestampSchema,
@@ -89,8 +107,7 @@ export const employeeStateHistorySchema = z.object({
   employeeId: entityIdSchema,
   roleId: entityIdSchema,
   status: z.string(),
-  salaryAmountDzd: z.number().nullable(),
-  salaryPeriod: salaryPeriodSchema.nullable(),
+  salaryReference: employeeSalaryReferenceSchema.nullable(),
   eventType: z.string(),
   startDate: timestampSchema,
   endDate: timestampSchema.nullable(),
@@ -101,29 +118,11 @@ export const employeeStateHistorySchema = z.object({
   updatedAt: timestampSchema,
 });
 
-const exactMoneyStringSchema = z.string().max(96).superRefine((value, ctx) => {
-  try {
-    Money.parse(value);
-  } catch {
-    ctx.addIssue({ code: "custom", message: "Expected an exact decimal amount with at most two places." });
-  }
-});
-
 export const employeeEarningSegmentSchema = z.object({
   id: entityIdSchema,
   projectId: entityIdSchema,
+  days: z.number().int().positive(),
   amount: exactMoneyStringSchema,
-});
-
-export const employeeSalaryReferenceSchema = z.object({
-  period: salaryPeriodSchema,
-  amount: z.string().max(96),
-}).superRefine((value, ctx) => {
-  try {
-    SalaryReference.parse(value.period, value.amount);
-  } catch {
-    ctx.addIssue({ code: "custom", path: ["amount"], message: "Reference salary must be an exact amount for its period." });
-  }
 });
 
 export const employeeEarningSchema = z.object({
@@ -229,11 +228,10 @@ export const employeeCreateInputSchema = z.object({
   phone: algerianPhoneSchema,
   roleId: entityIdSchema,
   status: employeeStatusSchema.default("ACTIVE"),
-  salaryAmountDzd: z.number().nonnegative().nullable().optional(),
-  salaryPeriod: salaryPeriodSchema.nullable().optional(),
+  salaryReference: employeeSalaryReferenceSchema.nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
   occupation: z.string().trim().max(120).nullable().optional(),
-});
+}).strict();
 
 export const employeeBatchCreateRowInputSchema = employeeCreateInputSchema.extend({
   managerId: entityIdSchema.nullable().optional(),
@@ -247,11 +245,10 @@ export const employeeUpdateInputSchema = z.object({
   phone: algerianPhoneSchema.optional(),
   roleId: entityIdSchema.optional(),
   status: employeeStatusSchema.optional(),
-  salaryAmountDzd: z.number().nonnegative().nullable().optional(),
-  salaryPeriod: salaryPeriodSchema.nullable().optional(),
+  salaryReference: employeeSalaryReferenceSchema.nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
   occupation: z.string().trim().max(120).nullable().optional(),
-});
+}).strict();
 
 export const employeeListInputSchema = z
   .object({

@@ -19,6 +19,7 @@ export type ProjectCostSalarySplitRecord = {
   employeeId: string;
   employeeName: string | null;
   ordinal: number;
+  days: number;
   amount: string;
   periodStart: string;
   periodEnd: string;

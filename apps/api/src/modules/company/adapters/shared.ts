@@ -64,8 +64,9 @@ export function toEmployee(r: typeof schema.employee.$inferSelect): EmployeeReco
   return {
     id: r.id, firstName: r.firstName, lastName: r.lastName, phone: r.phone,
     roleId: r.roleId, status: r.status as EmployeeRecord["status"],
-    salaryAmountDzd: r.salaryAmountDzd ?? null,
-    salaryPeriod: r.salaryPeriod as EmployeeRecord["salaryPeriod"],
+    salaryReference: r.salaryReferencePeriod === null || r.salaryReferenceAmount === null
+      ? null
+      : { period: r.salaryReferencePeriod as NonNullable<EmployeeRecord["salaryReference"]>["period"], amount: r.salaryReferenceAmount },
     notes: r.notes ?? null, occupation: r.occupation ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt,
   };
 }
@@ -128,8 +129,9 @@ export function toStateHistory(
   return {
     id: r.id, employeeId: r.employeeId, roleId: r.roleId,
     status: r.status as EmployeeStateHistoryRecord["status"],
-    salaryAmountDzd: r.salaryAmountDzd ?? null,
-    salaryPeriod: r.salaryPeriod as EmployeeStateHistoryRecord["salaryPeriod"],
+    salaryReference: r.salaryReferencePeriod === null || r.salaryReferenceAmount === null
+      ? null
+      : { period: r.salaryReferencePeriod as NonNullable<EmployeeStateHistoryRecord["salaryReference"]>["period"], amount: r.salaryReferenceAmount },
     eventType: r.eventType as EmployeeStateHistoryRecord["eventType"],
     startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null,
     actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null,

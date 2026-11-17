@@ -369,8 +369,8 @@ async function runStatusConstraintMigrations(db: DbExecutor) {
           "user_id" TEXT,
           "role_id" TEXT NOT NULL,
           "status" TEXT NOT NULL CHECK ("status" IN ('ACTIVE', 'INACTIVE', 'LEFT')),
-          "salary_amount_dzd" REAL,
-          "salary_period" TEXT,
+          "salary_reference_period" TEXT,
+          "salary_reference_amount" TEXT,
           "notes" TEXT,
           "occupation" TEXT,
           "created_at" DATETIME NOT NULL,
@@ -472,7 +472,7 @@ async function runStatusConstraintMigrations(db: DbExecutor) {
       );
 
       await tx.$executeRawUnsafe(
-        `INSERT INTO "employee_checked" ("id", "first_name", "last_name", "phone", "user_id", "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "occupation", "created_at", "updated_at") SELECT "id", "first_name", "last_name", "phone", ${hasEmployeeUserIdColumn ? '"user_id"' : "NULL"}, "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "occupation", "created_at", "updated_at" FROM "employee"`,
+        `INSERT INTO "employee_checked" ("id", "first_name", "last_name", "phone", "user_id", "role_id", "status", "salary_reference_period", "salary_reference_amount", "notes", "occupation", "created_at", "updated_at") SELECT "id", "first_name", "last_name", "phone", ${hasEmployeeUserIdColumn ? '"user_id"' : "NULL"}, "role_id", "status", "salary_reference_period", "salary_reference_amount", "notes", "occupation", "created_at", "updated_at" FROM "employee"`,
       );
       await tx.$executeRawUnsafe(
         'INSERT INTO "project_checked" ("id", "name", "location", "manager_id", "status", "notes", "created_at", "updated_at") SELECT "id", "name", "location", "manager_id", "status", "notes", "created_at", "updated_at" FROM "project"',

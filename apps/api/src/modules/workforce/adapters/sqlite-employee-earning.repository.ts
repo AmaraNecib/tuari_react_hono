@@ -16,6 +16,7 @@ type SegmentRow = {
   earningId: string;
   projectId: string;
   ordinal: number;
+  days: number;
   amountMinor: string;
   createdAt: string;
 };
@@ -57,6 +58,7 @@ function mapEarning(row: EarningRow, segments: SegmentRow[]): EmployeeEarning {
     segments: segments.map((segment) => ({
       id: segment.id,
       projectId: segment.projectId,
+      days: segment.days,
       amount: Money.fromMinorUnits(segment.amountMinor).toWire(),
     })),
     approvedAt: row.approvedAt,
@@ -123,6 +125,7 @@ export class SqliteEmployeeEarningRepository implements EmployeeEarningRepositor
       earningId: schema.employeeEarningSegment.earningId,
       projectId: schema.employeeEarningSegment.projectId,
       ordinal: schema.employeeEarningSegment.ordinal,
+      days: schema.employeeEarningSegment.days,
       amountMinor: sql<string>`CAST(${schema.employeeEarningSegment.amountMinor} AS TEXT)`,
       createdAt: schema.employeeEarningSegment.createdAt,
     }).from(schema.employeeEarningSegment)
@@ -173,10 +176,10 @@ export class SqliteEmployeeEarningRepository implements EmployeeEarningRepositor
         createdAt,
       );
       const insertSegment = this.raw.prepare(`INSERT INTO employee_earning_segment (
-        id, earning_id, project_id, ordinal, amount_minor, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?)`);
+        id, earning_id, project_id, ordinal, days, amount_minor, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`);
       for (const [ordinal, segment] of input.segments.entries()) {
-        insertSegment.run(segment.id, earningId, segment.projectId, ordinal, Money.parse(segment.amount).toMinorUnits(), createdAt);
+        insertSegment.run(segment.id, earningId, segment.projectId, ordinal, segment.days, Money.parse(segment.amount).toMinorUnits(), createdAt);
       }
     });
     const result = this.findByRequestId(input.requestId);
@@ -190,6 +193,7 @@ export class SqliteEmployeeEarningRepository implements EmployeeEarningRepositor
       earningId: schema.employeeEarningSegment.earningId,
       projectId: schema.employeeEarningSegment.projectId,
       ordinal: schema.employeeEarningSegment.ordinal,
+      days: schema.employeeEarningSegment.days,
       amountMinor: sql<string>`CAST(${schema.employeeEarningSegment.amountMinor} AS TEXT)`,
       createdAt: schema.employeeEarningSegment.createdAt,
     }).from(schema.employeeEarningSegment)

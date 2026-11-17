@@ -24,8 +24,8 @@ export const employee = sqliteTable("employee", {
     .notNull()
     .references(() => role.id, { onDelete: "restrict", onUpdate: "cascade" }),
   status: text("status").notNull(),
-  salaryAmountDzd: real("salary_amount_dzd"),
-  salaryPeriod: text("salary_period"),
+  salaryReferencePeriod: text("salary_reference_period"),
+  salaryReferenceAmount: text("salary_reference_amount"),
   notes: text("notes"),
   occupation: text("occupation"),
   createdAt: text("created_at").notNull(),
@@ -143,8 +143,8 @@ export const employeeStateHistory = sqliteTable(
       .notNull()
       .references(() => role.id, { onDelete: "restrict", onUpdate: "cascade" }),
     status: text("status").notNull(),
-    salaryAmountDzd: real("salary_amount_dzd"),
-    salaryPeriod: text("salary_period"),
+    salaryReferencePeriod: text("salary_reference_period"),
+    salaryReferenceAmount: text("salary_reference_amount"),
     eventType: text("event_type").notNull(),
     startDate: text("start_date").notNull(),
     endDate: text("end_date"),
@@ -262,6 +262,7 @@ export const employeeEarningSegment = sqliteTable("employee_earning_segment", {
   earningId: text("earning_id").notNull().references(() => employeeEarning.id, { onDelete: "cascade", onUpdate: "cascade" }),
   projectId: text("project_id").notNull().references(() => project.id, { onDelete: "restrict", onUpdate: "cascade" }),
   ordinal: integer("ordinal").notNull(),
+  days: integer("days").notNull(),
   amountMinor: integer("amount_minor").notNull(),
   createdAt: text("created_at").notNull(),
 }, (table) => [uniqueIndex("employee_earning_segment_order_key").on(table.earningId, table.ordinal)]);

@@ -56,8 +56,7 @@ describe("CompanyService facade delegations", () => {
       phone: "0555000002",
       roleId: roleIds.worker,
       status: "ACTIVE",
-      salaryAmountDzd: 40000,
-      salaryPeriod: "MONTHLY",
+      salaryReference: { period: "MONTHLY", amount: "40000.00" },
     }).item;
     const updated = service.updateEmployee({ id: worker.id, notes: "ملاحظة" }, audit()).item;
     expect(updated.notes).toBe("ملاحظة");
@@ -77,10 +76,9 @@ describe("CompanyService facade delegations", () => {
       phone: "0555000012",
       roleId: roleIds.worker,
       status: "ACTIVE",
-      salaryAmountDzd: 40000,
-      salaryPeriod: "MONTHLY",
+      salaryReference: { period: "MONTHLY", amount: "40000.00" },
     }).item;
-    service.createSalaryPayment({ employeeId: paymentTarget.id, actualAmountDzd: 40000, days: 30, projectSplits: [] }, audit());
+    expect(() => service.createSalaryPayment({ employeeId: paymentTarget.id, actualAmountDzd: 40000, days: 30, projectSplits: [] }, audit())).toThrow(/employeeEarningsApprove/);
     expect(service.deleteEmployee(worker.id, audit()).success).toBe(true);
   });
 

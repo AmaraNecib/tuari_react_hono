@@ -126,8 +126,7 @@ export type EmployeeCreateData = {
   phone: string;
   roleId: string;
   status: EmployeeStatus;
-  salaryAmountDzd?: number | null;
-  salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null;
+  salaryReference?: Employee["salaryReference"];
   notes?: string | null;
   occupation?: string | null;
 };
@@ -150,8 +149,7 @@ export type EmployeeUpdateData = {
   phone?: string;
   roleId?: string;
   status?: EmployeeStatus;
-  salaryAmountDzd?: number | null;
-  salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null;
+  salaryReference?: Employee["salaryReference"];
   notes?: string | null;
   occupation?: string | null;
 };

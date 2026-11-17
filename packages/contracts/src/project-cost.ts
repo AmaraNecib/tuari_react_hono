@@ -30,6 +30,7 @@ export const projectCostSalaryRowSchema = z.object({
   employeeId: entityIdSchema,
   employeeName: nullableTextSchema,
   ordinal: z.number().int().nonnegative(),
+  days: z.number().int().positive(),
   amount: exactAmountSchema,
   periodStart: timestampSchema,
   periodEnd: timestampSchema,

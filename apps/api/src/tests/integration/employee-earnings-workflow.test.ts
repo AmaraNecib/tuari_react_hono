@@ -44,8 +44,7 @@ describe("approved employee earnings through the normal composition root", { tim
       phone: "0555123987",
       roleId,
       status: "ACTIVE",
-      salaryAmountDzd: null,
-      salaryPeriod: null,
+      salaryReference: null,
     }, audit).item.id;
     const projectA = first.companyService.createProject({ name: "Project A", status: "ACTIVE" }, audit).item.id;
     const projectB = first.companyService.createProject({ name: "Project B", status: "ACTIVE" }, audit).item.id;
@@ -59,29 +58,29 @@ describe("approved employee earnings through the normal composition root", { tim
       unallocatedAmount: "0.00",
       referenceSalary: { period: "DAILY" as const, amount: "1250.1250" },
       segments: [
-        { id: "segment-a1", projectId: projectA, amount: "10000.00" },
-        { id: "segment-b", projectId: projectB, amount: "37500.00" },
-        { id: "segment-a2", projectId: projectA, amount: "15000.00" },
+        { id: "segment-a1", projectId: projectA, days: 5, amount: "10000.00" },
+        { id: "segment-b", projectId: projectB, days: 15, amount: "37500.00" },
+        { id: "segment-a2", projectId: projectA, days: 5, amount: "15000.00" },
       ],
     };
 
     const saved = first.workforceService.approveEmployeeEarning(approval, audit);
     expect(saved.success).toBe(true);
-    expect(saved.item.segments.map((segment) => [segment.id, segment.amount])).toEqual([
-      ["segment-a1", "10000.00"],
-      ["segment-b", "37500.00"],
-      ["segment-a2", "15000.00"],
+    expect(saved.item.segments.map((segment) => [segment.id, segment.days, segment.amount])).toEqual([
+      ["segment-a1", 5, "10000.00"],
+      ["segment-b", 15, "37500.00"],
+      ["segment-a2", 5, "15000.00"],
     ]);
     const savedId = saved.item.id;
     expect(saved.item.referenceSalary).toEqual({ period: "DAILY", amount: "1250.1250" });
     const costA = first.projectCostService.getProjectCost({ projectId: projectA }).item;
     const costB = first.projectCostService.getProjectCost({ projectId: projectB }).item;
     expect(costA.parts.salariesAmount).toBe("25000.00");
-    expect(costA.salaries.map(segment => [segment.segmentId, segment.amount])).toEqual([
-      ["segment-a1", "10000.00"], ["segment-a2", "15000.00"],
+    expect(costA.salaries.map(segment => [segment.segmentId, segment.days, segment.amount])).toEqual([
+      ["segment-a1", 5, "10000.00"], ["segment-a2", 5, "15000.00"],
     ]);
     expect(costB.parts.salariesAmount).toBe("37500.00");
-    expect(costB.salaries.map(segment => [segment.segmentId, segment.amount])).toEqual([["segment-b", "37500.00"]]);
+    expect(costB.salaries.map(segment => [segment.segmentId, segment.days, segment.amount])).toEqual([["segment-b", 15, "37500.00"]]);
     first.close();
     openRoots.splice(openRoots.indexOf(first), 1);
 
@@ -97,9 +96,9 @@ describe("approved employee earnings through the normal composition root", { tim
       ...approval,
       totalAmount: "63000.00",
       segments: [
-        { id: "segment-a1", projectId: projectA, amount: "10000.00" },
-        { id: "segment-b", projectId: projectB, amount: "37500.00" },
-        { id: "segment-a2", projectId: projectA, amount: "15500.00" },
+        { id: "segment-a1", projectId: projectA, days: 5, amount: "10000.00" },
+        { id: "segment-b", projectId: projectB, days: 15, amount: "37500.00" },
+        { id: "segment-a2", projectId: projectA, days: 5, amount: "15500.00" },
       ],
     };
     expect(() => reopened.workforceService.approveEmployeeEarning(conflict, audit)).toThrow();
@@ -118,7 +117,7 @@ describe("approved employee earnings through the normal composition root", { tim
     const invalidReference = {
       ...approval,
       requestId: "c250c8a7-6289-46c0-a878-fb52f70ec74a",
-      segments: [{ id: "new-segment", projectId: "missing-project", amount: "62500.00" }],
+      segments: [{ id: "new-segment", projectId: "missing-project", days: 25, amount: "62500.00" }],
     };
     expect(() => reopened.workforceService.approveEmployeeEarning(invalidReference, audit)).toThrow();
     expect(reopened.workforceService.listEmployeeEarnings(employee).items).toHaveLength(2);

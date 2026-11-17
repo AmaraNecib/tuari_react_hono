@@ -530,7 +530,7 @@ describe("CompanyService", () => {
     expect(managed).toEqual(expect.arrayContaining([projectA.id, projectB.id]));
   });
 
-  it("stores actor metadata on salary payments", () => {
+  it("refuses legacy numeric salary payment writes", () => {
     const { service, roleIds } = createHarness();
     const audit = createAuditContext()
     const worker = service.createEmployee(
@@ -540,13 +540,12 @@ describe("CompanyService", () => {
         phone: "0612345640",
         roleId: roleIds.worker,
         status: "ACTIVE",
-        salaryAmountDzd: 6500,
-        salaryPeriod: "DAILY",
+        salaryReference: { period: "DAILY", amount: "6500.0000" },
       },
       audit,
     ).item;
 
-    const payment = service.createSalaryPayment(
+    expect(() => service.createSalaryPayment(
       {
         employeeId: worker.id,
         actualAmountDzd: 6200,
@@ -554,10 +553,7 @@ describe("CompanyService", () => {
         projectSplits: [],
       },
       audit,
-    ).item;
-
-    expect(payment.actorUserId).toBe(audit.actorUserId)
-    expect(payment.transactionId).toBe(audit.transactionId)
+    )).toThrow(/employeeEarningsApprove/)
   })
 
   it("rejects zero and negative salary payment amounts", () => {
@@ -568,8 +564,7 @@ describe("CompanyService", () => {
       phone: "0612345641",
       roleId: roleIds.worker,
       status: "ACTIVE",
-      salaryAmountDzd: 5000,
-      salaryPeriod: "DAILY",
+      salaryReference: { period: "DAILY", amount: "5000.0000" },
     }).item
 
     for (const amount of [0, -1]) {

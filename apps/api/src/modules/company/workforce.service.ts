@@ -32,8 +32,6 @@ import {
   type ManagerAssignmentEndInput,
   type RoleCreateInput,
   type RoleUpdateInput,
-  computeProposedSalaryAmount,
-  roundMoneyToCents,
 } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
@@ -41,7 +39,6 @@ import { assertActiveEmployeeSeatAvailable } from "./employee-seat-limit";
 import {
   buildBatchField,
   deleteResult,
-  normalizeSalaryAmount,
   normalizeText,
   successResult,
 } from "./company.helpers";
@@ -75,6 +72,19 @@ import {
   requireRole,
   requireWarehouse,
 } from "./company.entity-resolvers";
+
+function normalizeSalaryReference(
+  value: EmployeeCreateInput["salaryReference"],
+): NonNullable<EmployeeCreateInput["salaryReference"]> | null {
+  if (value == null) return null;
+  try {
+    return SalaryReference.parse(value.period, value.amount).toWire();
+  } catch {
+    throw new CompanyError("VALIDATION", "مرجع الأجر غير صالح.", [
+      { field: "salaryReference", message: "أدخل قيمة مرجع أجر دقيقة حسب دوريتها." },
+    ]);
+  }
+}
 
 export class WorkforceService {
   constructor(
@@ -160,18 +170,6 @@ export class WorkforceService {
         actorUserId: audit.actorUserId,
       });
 
-      if ((input.salaryAmountDzd ?? null) !== null && !input.salaryPeriod) {
-        throw new CompanyError("VALIDATION", "يجب اختيار دورية الأجر مع قيمة الأجر.", [
-          { field: "salaryPeriod", message: "يجب اختيار دورية الأجر مع قيمة الأجر." },
-        ]);
-      }
-
-      if ((input.salaryAmountDzd ?? null) === null && input.salaryPeriod) {
-        throw new CompanyError("VALIDATION", "يجب إدخال قيمة الأجر مع دورية الأجر.", [
-          { field: "salaryAmountDzd", message: "يجب إدخال قيمة الأجر مع دورية الأجر." },
-        ]);
-      }
-
       if (this.repository.getEmployeeByPhone(input.phone.trim())) {
         throw new CompanyError("CONFLICT", "رقم هاتف العامل مستخدم بالفعل.", [
           { field: "phone", message: "رقم هاتف العامل مستخدم بالفعل." },
@@ -189,8 +187,7 @@ export class WorkforceService {
           phone: input.phone.trim(),
           roleId: input.roleId,
           status: input.status,
-          salaryAmountDzd: normalizeSalaryAmount(input.salaryAmountDzd),
-          salaryPeriod: input.salaryPeriod ?? null,
+          salaryReference: normalizeSalaryReference(input.salaryReference),
           notes: normalizeText(input.notes),
           occupation: normalizeText(input.occupation),
         },
@@ -221,8 +218,7 @@ export class WorkforceService {
         phone: string;
         roleId: string;
         status: EmployeeBatchCreateInput["employees"][number]["status"];
-        salaryAmountDzd: number | null;
-        salaryPeriod: EmployeeBatchCreateInput["employees"][number]["salaryPeriod"];
+        salaryReference: EmployeeBatchCreateInput["employees"][number]["salaryReference"];
         notes: string | null;
         occupation: string | null;
         managerId: string | null;
@@ -233,8 +229,7 @@ export class WorkforceService {
         phone: employee.phone.trim(),
         roleId: employee.roleId,
         status: employee.status,
-        salaryAmountDzd: normalizeSalaryAmount(employee.salaryAmountDzd),
-        salaryPeriod: employee.salaryPeriod ?? null,
+        salaryReference: normalizeSalaryReference(employee.salaryReference),
         notes: normalizeText(employee.notes),
         occupation: normalizeText(employee.occupation),
         managerId: employee.managerId ?? null,
@@ -274,20 +269,6 @@ export class WorkforceService {
           fieldErrors.push({
             field: buildBatchField(index, "phone"),
             message: "رقم هاتف العامل مستخدم بالفعل.",
-          });
-        }
-
-        if ((employee.salaryAmountDzd ?? null) !== null && !employee.salaryPeriod) {
-          fieldErrors.push({
-            field: buildBatchField(index, "salaryPeriod"),
-            message: "يجب اختيار دورية الأجر مع قيمة الأجر.",
-          });
-        }
-
-        if ((employee.salaryAmountDzd ?? null) === null && employee.salaryPeriod) {
-          fieldErrors.push({
-            field: buildBatchField(index, "salaryAmountDzd"),
-            message: "يجب إدخال قيمة الأجر مع دورية الأجر.",
           });
         }
 
@@ -465,24 +446,6 @@ export class WorkforceService {
         }
       }
 
-      const nextSalaryAmount =
-        input.salaryAmountDzd !== undefined
-          ? normalizeSalaryAmount(input.salaryAmountDzd)
-          : current.salaryAmountDzd;
-      const nextSalaryPeriod = input.salaryPeriod !== undefined ? input.salaryPeriod : current.salaryPeriod;
-
-      if ((nextSalaryAmount ?? null) !== null && !nextSalaryPeriod) {
-        throw new CompanyError("VALIDATION", "يجب اختيار دورية الأجر مع قيمة الأجر.", [
-          { field: "salaryPeriod", message: "يجب اختيار دورية الأجر مع قيمة الأجر." },
-        ]);
-      }
-
-      if ((nextSalaryAmount ?? null) === null && nextSalaryPeriod) {
-        throw new CompanyError("VALIDATION", "يجب إدخال قيمة الأجر مع دورية الأجر.", [
-          { field: "salaryAmountDzd", message: "يجب إدخال قيمة الأجر مع دورية الأجر." },
-        ]);
-      }
-
       if (current.status !== "ACTIVE" && nextStatus === "ACTIVE") {
         assertActiveEmployeeSeatAvailable(this.repository);
       }
@@ -495,11 +458,7 @@ export class WorkforceService {
           phone: input.phone?.trim(),
           roleId: input.roleId,
           status: input.status,
-          salaryAmountDzd:
-            input.salaryAmountDzd !== undefined
-              ? normalizeSalaryAmount(input.salaryAmountDzd)
-              : undefined,
-          salaryPeriod: input.salaryPeriod !== undefined ? input.salaryPeriod : undefined,
+          salaryReference: input.salaryReference !== undefined ? normalizeSalaryReference(input.salaryReference) : undefined,
           notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
           occupation: input.occupation !== undefined ? normalizeText(input.occupation) : undefined,
         },
@@ -675,107 +634,12 @@ export class WorkforceService {
     input: EmployeeSalaryPaymentCreateInput,
     auditContext?: MutationAuditContext,
   ) {
-    return this.mutation.withTransaction(() => {
-      const audit = this.mutation.createMutationAuditContext(auditContext);
-
-      const employee = requireEmployee(this.repository, input.employeeId);
-      const salaryAmount = employee.salaryAmountDzd ?? null;
-      const periodType = employee.salaryPeriod ?? null;
-
-      if (salaryAmount === null || periodType === null) {
-        throw new CompanyError(
-          "BUSINESS_RULE",
-          "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب.",
-          [
-            {
-              field: "employeeId",
-              message: "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب.",
-            },
-          ],
-        );
-      }
-
-      const { days, projectSplits } = input;
-
-      if (!Number.isSafeInteger(days) || days <= 0) {
-        throw new CompanyError("VALIDATION", "يجب إدخال عدد أيام صحيح أكبر من صفر.", [
-          { field: "days", message: "يجب إدخال عدد أيام صحيح أكبر من صفر." },
-        ]);
-      }
-
-      // The proposed amount is prorated (monthly ÷ 30, daily × days); the
-      // caller may override it, and the override is what gets stored.
-      const proposedAmount = computeProposedSalaryAmount({
-        periodType,
-        salaryAmountDzd: salaryAmount,
-        days,
-      });
-      // The override is stored at the currency's precision: a value with more
-      // than two decimals would make the stored amount disagree with the
-      // whole-cent shares the split display attributes.
-      const actualAmount = roundMoneyToCents(input.actualAmountDzd ?? proposedAmount);
-
-      if (!Number.isFinite(actualAmount) || actualAmount <= 0) {
-        throw new CompanyError("VALIDATION", "يجب إدخال مبلغ راتب أكبر من صفر.", [
-          { field: "actualAmountDzd", message: "يجب إدخال مبلغ راتب أكبر من صفر." },
-        ]);
-      }
-
-      const splitProjectIds = new Set<string>();
-      let allocatedDays = 0;
-
-      for (const split of projectSplits) {
-        if (!Number.isSafeInteger(split.days) || split.days <= 0) {
-          throw new CompanyError("VALIDATION", "يجب إدخال عدد أيام صحيح أكبر من صفر لكل مشروع.", [
-            { field: "projectSplits", message: "يجب إدخال عدد أيام صحيح أكبر من صفر لكل مشروع." },
-          ]);
-        }
-
-        if (splitProjectIds.has(split.projectId)) {
-          throw new CompanyError("VALIDATION", "لا يمكن تكرار المشروع في توزيع الأجر.", [
-            { field: "projectSplits", message: "لا يمكن تكرار المشروع في توزيع الأجر." },
-          ]);
-        }
-
-        if (!this.operationsRepo.getProjectById(split.projectId)) {
-          throw new CompanyError("NOT_FOUND", "تعذر العثور على المشروع المطلوب.", [
-            { field: "projectSplits", message: "تعذر العثور على المشروع المطلوب." },
-          ]);
-        }
-
-        splitProjectIds.add(split.projectId);
-        allocatedDays += split.days;
-      }
-
-      if (allocatedDays > days) {
-        throw new CompanyError(
-          "BUSINESS_RULE",
-          "مجموع أيام توزيع المشاريع يتجاوز عدد أيام الدفعة. الأيام غير الموزعة تبقى غير مخصصة.",
-          [
-            {
-              field: "projectSplits",
-              message: "مجموع أيام توزيع المشاريع يتجاوز عدد أيام الدفعة.",
-            },
-          ],
-        );
-      }
-
-      const payment = this.repository.createSalaryPayment(
-        {
-          employeeId: input.employeeId,
-          periodType,
-          days,
-          expectedAmountDzd: proposedAmount,
-          actualAmountDzd: actualAmount,
-          projectSplits,
-          paymentDate: normalizeAlgeriaTimestamp(input.paymentDate),
-          note: normalizeText(input.note),
-        },
-        audit,
-      );
-
-      return successResult("تم تسجيل دفعة الراتب بنجاح.", payment);
-    });
+    void input;
+    void auditContext;
+    throw new CompanyError(
+      "BUSINESS_RULE",
+      "اعتماد الأجر يتم عبر employeeEarningsApprove. دفعات الراتب القديمة لا تقبل إدخالات جديدة.",
+    );
   }
 
   // ---------------------------------------------------------------------------

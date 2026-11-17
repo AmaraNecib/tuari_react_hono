@@ -30,9 +30,9 @@ describe("ProjectCostService exact read model", () => {
         responsibleWorkerId: null, responsibleWorkerName: null, sellerId: null, sellerName: null,
       }],
       listProjectSalarySplits: () => [
-        { earningId: "earn-1", segmentId: "seg-a1", employeeId: "employee-1", employeeName: "Worker", ordinal: 0, amount: "10000.00", periodStart: NOW, periodEnd: NOW, approvedAt: NOW },
-        { earningId: "earn-1", segmentId: "seg-b", employeeId: "employee-1", employeeName: "Worker", ordinal: 1, amount: "37500.00", periodStart: NOW, periodEnd: NOW, approvedAt: NOW },
-        { earningId: "earn-1", segmentId: "seg-a2", employeeId: "employee-1", employeeName: "Worker", ordinal: 2, amount: "15000.00", periodStart: NOW, periodEnd: NOW, approvedAt: NOW },
+        { earningId: "earn-1", segmentId: "seg-a1", employeeId: "employee-1", employeeName: "Worker", ordinal: 0, days: 5, amount: "10000.00", periodStart: NOW, periodEnd: NOW, approvedAt: NOW },
+        { earningId: "earn-1", segmentId: "seg-b", employeeId: "employee-1", employeeName: "Worker", ordinal: 1, days: 15, amount: "37500.00", periodStart: NOW, periodEnd: NOW, approvedAt: NOW },
+        { earningId: "earn-1", segmentId: "seg-a2", employeeId: "employee-1", employeeName: "Worker", ordinal: 2, days: 5, amount: "15000.00", periodStart: NOW, periodEnd: NOW, approvedAt: NOW },
       ],
       listProjectStockCharges: () => [{ id: "stock-1", assetUnitId: "asset-1", assetName: "Tool", amount: "500.00", placedAt: NOW }],
       listProjectMaterialMovements: () => [{
@@ -85,9 +85,9 @@ describe("ProjectCostService exact read model", () => {
         { id: "expense-a", expenseDate: "2026-05-10T00:00:00.000Z", whatFor: null, amount: "1.00", responsibleWorkerId: null, responsibleWorkerName: null, sellerId: null, sellerName: null },
       ],
       listProjectSalarySplits: () => [
-        { earningId: "earning-old", segmentId: "old", employeeId: "employee", employeeName: null, ordinal: 0, amount: "1.00", periodStart: NOW, periodEnd: NOW, approvedAt: "2026-05-01T00:00:00.000Z" },
-        { earningId: "earning-new", segmentId: "new-2", employeeId: "employee", employeeName: null, ordinal: 1, amount: "2.00", periodStart: NOW, periodEnd: NOW, approvedAt: "2026-05-02T00:00:00.000Z" },
-        { earningId: "earning-new", segmentId: "new-1", employeeId: "employee", employeeName: null, ordinal: 0, amount: "3.00", periodStart: NOW, periodEnd: NOW, approvedAt: "2026-05-02T00:00:00.000Z" },
+        { earningId: "earning-old", segmentId: "old", employeeId: "employee", employeeName: null, ordinal: 0, days: 1, amount: "1.00", periodStart: NOW, periodEnd: NOW, approvedAt: "2026-05-01T00:00:00.000Z" },
+        { earningId: "earning-new", segmentId: "new-2", employeeId: "employee", employeeName: null, ordinal: 1, days: 2, amount: "2.00", periodStart: NOW, periodEnd: NOW, approvedAt: "2026-05-02T00:00:00.000Z" },
+        { earningId: "earning-new", segmentId: "new-1", employeeId: "employee", employeeName: null, ordinal: 0, days: 3, amount: "3.00", periodStart: NOW, periodEnd: NOW, approvedAt: "2026-05-02T00:00:00.000Z" },
       ],
       listProjectStockCharges: () => [
         { id: "stock-old", assetUnitId: "asset-old", assetName: null, amount: "1.00", placedAt: "2026-05-01T00:00:00.000Z" },

@@ -35,7 +35,7 @@ function createTestEnv() {
   insertExpense.run("e-void", 99_999, "2026-05-11T00:00:00.000Z", "ملغى", null, null, "p-1", "VOIDED", NOW, NOW);
   insertExpense.run("e-other", 5_000, "2026-05-12T00:00:00.000Z", "مشروع آخر", null, null, "p-2", "LIVE", NOW, NOW);
 
-  // Salary payment + split: 18 of 30 days on p-1.
+  // Legacy salary payment splits no longer own approved labor cost.
   db.prepare(
     `INSERT INTO "employee_salary_payment" ("id","employee_id","period_type","days","expected_amount_dzd","actual_amount_dzd","payment_date","created_at","updated_at")
      VALUES ('pay-1','emp-1','MONTHLY',30,60000,60000,'2026-05-31T00:00:00.000Z',?,?)`,
@@ -52,10 +52,10 @@ function createTestEnv() {
     currency_code, total_minor, unallocated_minor, approved_at, created_at
   ) VALUES ('earning-1','emp-1','d0f2fd98-5ca5-49ae-9074-b139df26614d','hash','2026-05-01T00:00:00.000Z','2026-05-26T00:00:00.000Z','DZD',6250000,0,?,?)`).run(NOW, NOW);
   const insertEarningSegment = db.prepare(`INSERT INTO "employee_earning_segment"
-    ("id","earning_id","project_id","ordinal","amount_minor","created_at") VALUES (?,?,?,?,?,?)`);
-  insertEarningSegment.run("earning-a1", "earning-1", "p-1", 0, "1000000", NOW);
-  insertEarningSegment.run("earning-b", "earning-1", "p-2", 1, "3750000", NOW);
-  insertEarningSegment.run("earning-a2", "earning-1", "p-1", 2, "1500000", NOW);
+    ("id","earning_id","project_id","ordinal","days","amount_minor","created_at") VALUES (?,?,?,?,?,?,?)`);
+  insertEarningSegment.run("earning-a1", "earning-1", "p-1", 0, 5, "1000000", NOW);
+  insertEarningSegment.run("earning-b", "earning-1", "p-2", 1, 15, "3750000", NOW);
+  insertEarningSegment.run("earning-a2", "earning-1", "p-1", 2, 5, "1500000", NOW);
 
   // Inventory: consumable entry + asset unit + charge.
   db.prepare(`INSERT INTO "inventory_item_definition" ("id","name","item_type","unit","is_active","created_at","updated_at") VALUES ('def-c','إسمنت','CONSUMABLE','كيس',1,?,?)`).run(NOW, NOW);
@@ -139,12 +139,12 @@ describe("SqliteProjectCostRepository (#414)", () => {
 
   it("reads ordered approved earnings as project labor cost, not historical cash splits", () => {
     const rows = env.repository.listProjectSalarySplits("p-1");
-    expect(rows.map((row) => [row.segmentId, row.amount])).toEqual([
-      ["earning-a1", "10000.00"],
-      ["earning-a2", "15000.00"],
+    expect(rows.map((row) => [row.segmentId, row.days, row.amount])).toEqual([
+      ["earning-a1", 5, "10000.00"],
+      ["earning-a2", 5, "15000.00"],
     ]);
     expect(rows.every((row) => row.employeeName === "كريم ب.")).toBe(true);
-    expect(env.repository.listProjectSalarySplits("p-2").map((row) => row.amount)).toEqual(["37500.00"]);
+    expect(env.repository.listProjectSalarySplits("p-2").map((row) => [row.days, row.amount])).toEqual([[15, "37500.00"]]);
   });
 
   it("reads only LIVE charges and resolves the asset name", () => {
