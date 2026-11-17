@@ -17,6 +17,7 @@ const ctx = (overrides: Record<string, unknown> = {}) => ({
     employeesBatchCreate: vi.fn().mockResolvedValue({ success: true, item: { employees: [employee], managerAssignments: [], projectAssignments: [] } }),
     employeesDelete: vi.fn().mockResolvedValue({ success: true, message: "Deleted" }),
     employeesList: vi.fn().mockResolvedValue({ items: [employee] }),
+    employeesListPaged: vi.fn().mockResolvedValue({ items: [employee], total: 1, nextCursor: null, hasMore: false }),
     employeeStateHistoryList: vi.fn().mockResolvedValue({ items: [{ ...employee, id: "state-a", employeeId: employee.id, eventType: "UPDATED", startDate: "2026-01-01T00:00:00.000Z", endDate: null, actorUserId: null, transactionId: null }] }),
   } as unknown as ExactEmployeeClient,
   roles: [role], managerOptions: [], projectOptions: [], warehouseOptions: [], managedProjectOptions: [], managedWarehouseOptions: [],
@@ -39,9 +40,30 @@ describe("exact employee page seams", () => {
   })
 
 
+  it("uses server-side search and cursor paging on the exact employee list", async () => {
+    const props = ctx()
+    vi.mocked(props.client.employeesListPaged)
+      .mockResolvedValueOnce({ items: [employee], total: 51, nextCursor: "page-2", hasMore: true })
+      .mockResolvedValueOnce({ items: [{ ...employee, id: "employee-b", firstName: "Beyond" }], total: 1, nextCursor: null, hasMore: false })
+    render(<ExactEmployeeTable {...props} onView={vi.fn()} onEdit={vi.fn()} />)
+    await screen.findByText("Amina Kaci")
+    await waitFor(() => expect(props.client.employeesListPaged).toHaveBeenCalledWith({ limit: 50, search: undefined, cursor: undefined }))
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("common.next") }))
+    await screen.findByText("Beyond Kaci")
+    expect(props.client.employeesListPaged).toHaveBeenLastCalledWith({ limit: 50, search: undefined, cursor: "page-2" })
+  })
+
+  it("passes typed search to the exact paged client", async () => {
+    const props = ctx()
+    render(<ExactEmployeeTable {...props} onView={vi.fn()} onEdit={vi.fn()} />)
+    const input = await screen.findByPlaceholderText(i18n.t("search.placeholder"))
+    fireEvent.change(input, { target: { value: "0551234567" } })
+    await waitFor(() => expect(props.client.employeesListPaged).toHaveBeenLastCalledWith({ limit: 50, search: "0551234567", cursor: undefined }), { timeout: 1500 })
+  })
+
   it("retains one production heading when the workspace has no employees", async () => {
     const props = ctx()
-    vi.mocked(props.client.employeesList).mockResolvedValue({ items: [] })
+    vi.mocked(props.client.employeesListPaged).mockResolvedValue({ items: [], total: 0, nextCursor: null, hasMore: false })
     render(<ExactEmployeeTable {...props} onView={vi.fn()} onEdit={vi.fn()} onAdd={vi.fn()} />)
     await screen.findByText(i18n.t("employeeForm.exactEmpty"))
     expect(screen.getAllByRole("heading", { level: 1, name: i18n.t("sections.employees.label") })).toHaveLength(1)

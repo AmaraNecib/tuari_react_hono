@@ -11,6 +11,7 @@ import { AppDate } from "@/components/app-date"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { ExactSalaryReferenceValue } from "./exact-salary-reference-value"
+import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 import { RecordHistoryTable, RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shared/record-page-frame"
 import { AppShellTableFrame, AppShellTableHead, AppShellTableHeaderCell, AppShellTableRow } from "@/features/shared/table-primitives"
 import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
@@ -316,24 +317,41 @@ export function ExactEmployeeDetailsPage(props: ExactEmployeePageProps) {
 }
 
 export function ExactEmployeeTable({ client, roles, onView, onEdit, onAdd }: ExactEmployeeUiContext & { onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void }) {
+  const { t } = useTranslation()
   const [employees, setEmployees] = useState<ExactEmployee[]>([])
   const [loading, setLoading] = useState(true)
   const [failure, setFailure] = useState<string | null>(null)
   const [deleteFailure, setDeleteFailure] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [search, setSearch] = useState("")
+  const [cursor, setCursor] = useState<string | undefined>()
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [cursorHistory, setCursorHistory] = useState<Array<string | undefined>>([])
   const [refreshKey, setRefreshKey] = useState(0)
-  useEffect(() => { let live = true; setLoading(true); client.employeesList().then(result => { if (live) { setEmployees(result.items); setFailure(null) } }).catch(error => { if (live) setFailure(serverError(error)) }).finally(() => { if (live) setLoading(false) }); return () => { live = false } }, [client, refreshKey])
+  useEffect(() => {
+    let live = true
+    setLoading(true)
+    void client.employeesListPaged({ limit: 50, search: search.trim() || undefined, cursor }).then(result => {
+      if (!live) return
+      setEmployees(result.items); setNextCursor(result.nextCursor); setFailure(null)
+    }).catch(error => { if (live) setFailure(serverError(error)) }).finally(() => { if (live) setLoading(false) })
+    return () => { live = false }
+  }, [client, cursor, refreshKey, search])
+  function changeSearch(query: string) { setSearch(query); setCursor(undefined); setCursorHistory([]) }
+  function nextPage() { if (!nextCursor) return; setCursorHistory(history => [...history, cursor]); setCursor(nextCursor) }
+  function previousPage() { const history = [...cursorHistory]; const previous = history.pop(); setCursorHistory(history); setCursor(previous) }
   async function remove(id: string) { setDeletingId(id); setDeleteFailure(null); try { const result = await client.employeesDelete({ id }); if (!result.success) throw new Error(result.error.message); setRefreshKey(value => value + 1) } catch (error) { setDeleteFailure(serverError(error)) } finally { setDeletingId(null) } }
-  const { t } = useTranslation()
-  if (loading) return <p role="status">{t("common.loading")}</p>
-  if (failure) return <section><p role="alert">{failure}</p><Button onClick={() => setRefreshKey(value => value + 1)}>{t("common.retry")}</Button></section>
-  if (!employees.length) return <RecordPageFrame title={t("sections.employees.label")} action={onAdd ? <Button onClick={onAdd}>{t("shell.addWorker")}</Button> : undefined}><p>{t("employeeForm.exactEmpty")}</p></RecordPageFrame>
   return <RecordPageFrame title={t("sections.employees.label")} action={onAdd ? <Button onClick={onAdd}>{t("shell.addWorker")}</Button> : undefined}>
+    <AdvancedSearchBar onSearch={query => changeSearch(query)} storageKey="employees-search-filters" />
     {deleteFailure ? <p role="alert">{deleteFailure}</p> : null}
-    <AppShellTableFrame><table className="min-w-full text-sm"><AppShellTableHead><tr>
+    {loading ? <p role="status">{t("common.loading")}</p> : failure ? <section><p role="alert">{failure}</p><Button onClick={() => setRefreshKey(value => value + 1)}>{t("common.retry")}</Button></section> : !employees.length ? <p>{t("employeeForm.exactEmpty")}</p> : <AppShellTableFrame><table className="min-w-full text-sm"><AppShellTableHead><tr>
       <AppShellTableHeaderCell>{t("employeeForm.firstNameLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("employeeForm.roleLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("auth.phoneLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("status.active")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("employeeForm.salaryAmountLabel")}</AppShellTableHeaderCell><AppShellTableHeaderCell>{t("common.actions")}</AppShellTableHeaderCell>
     </tr></AppShellTableHead><tbody>{employees.map(employee => <AppShellTableRow key={employee.id}>
       <td className="px-4 py-3 font-medium">{employee.firstName} {employee.lastName}</td><td className="px-4 py-3">{roles.find(role => role.id === employee.roleId)?.name ?? employee.roleId}</td><td className="px-4 py-3"><bdi dir="ltr">{employee.phone}</bdi></td><td className="px-4 py-3">{employee.status === "ACTIVE" ? t("status.active") : employee.status === "LEFT" ? t("status.left") : t("status.inactive")}</td><td className="px-4 py-3"><ExactSalaryReferenceValue reference={employee.salaryReference} /></td><td className="px-4 py-3"><div className="flex flex-wrap gap-2"><Button size="xs" onClick={() => onView(employee.id)}>{t("common.view")}</Button><Button size="xs" variant="outline" onClick={() => onEdit(employee.id)}>{t("detailPages.employee.edit")}</Button><Button size="xs" variant="destructive" disabled={deletingId === employee.id} onClick={() => void remove(employee.id)}>{t("common.delete")}</Button></div></td>
-    </AppShellTableRow>)}</tbody></table></AppShellTableFrame>
+    </AppShellTableRow>)}</tbody></table></AppShellTableFrame>}
+    <nav aria-label={t("sections.employees.label")} className="flex justify-between gap-2 pt-4">
+      <Button variant="outline" disabled={!cursorHistory.length || loading} onClick={previousPage}>{t("common.previous")}</Button>
+      <Button variant="outline" disabled={!nextCursor || loading} onClick={nextPage}>{t("common.next")}</Button>
+    </nav>
   </RecordPageFrame>
 }
