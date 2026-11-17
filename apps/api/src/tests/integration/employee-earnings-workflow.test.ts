@@ -141,7 +141,9 @@ describe("approved employee earnings through the normal composition root", { tim
         days: index === 0 ? 6 : segment.days,
       })),
     };
-    expect(() => reopened.workforceService.approveEmployeeEarning(daysOnlyConflict, audit)).toThrow();
+    expect(() => reopened.workforceService.approveEmployeeEarning(daysOnlyConflict, audit)).toThrowError(
+      expect.objectContaining({ appError: expect.objectContaining({ code: "CONFLICT" }) }),
+    );
     const afterDaysConflict = reopened.workforceService.listEmployeeEarnings(employee).items;
     expect(afterDaysConflict).toHaveLength(1);
     expect(afterDaysConflict[0]!.segments.map(segment => segment.days)).toEqual([5, 15, 5]);
