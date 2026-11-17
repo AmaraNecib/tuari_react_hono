@@ -17,12 +17,12 @@ vi.mock("./workspace-queries", () => {
     },
     useDebtAccountsQuery: (options: { enabled?: boolean }) => {
       mocks.legacy(options)
-      return { data: { items: [{ accountId: "old-debt", partyType: "EXTERNAL", externalPartyId: "old-party", externalPartyName: "Forbidden old balance", direction: "RECEIVABLE", currentBalance: 92500, status: "OPEN" }] } }
+      return { data: { items: [{ id: "old-debt", partyType: "EXTERNAL", externalCounterpartyId: "old-external", direction: "RECEIVABLE", currentBalance: 92500, status: "OPEN" }] } }
     } }
 })
 vi.mock("@/features/inventory/inventory-hooks", () => ({ useInventoryItemDefinitionsQuery: (options: unknown) => { mocks.inventory(options); return { data: { items: [{ id: "old-item", name: "Forbidden old item" }] } } }, useInventoryInvoiceGroupsQuery: (options: unknown) => { mocks.inventory(options); return { data: { items: [{ id: "old-invoice", invoiceNumber: "Forbidden old invoice", supplierName: "Old supplier" }] } } } }))
 vi.mock("@/router/navigation", async () => ({ ...await vi.importActual<typeof import("@/router/navigation")>("@/router/navigation"), WorkspaceLink: ({ children }: { children: React.ReactNode }) => <span>{children}</span> }))
-vi.mock("@/components/ui/search-dialog", () => ({ SearchDialog: ({ isOpen, onQueryChange, results }: { isOpen: boolean; onQueryChange: (query: string) => void; results: Array<{ id: string; title: string }> }) => isOpen ? <div role="dialog">{["Current exact warehouse", "Forbidden old", "Other workspace warehouse"].map(value => <button key={value} onClick={() => onQueryChange(value)}>{`Search ${value}`}</button>)}{results.map(item => <p key={item.id}>{item.title}</p>)}</div> : null }))
+vi.mock("@/components/ui/search-dialog", () => ({ SearchDialog: ({ isOpen, onQueryChange, results }: { isOpen: boolean; onQueryChange: (query: string) => void; results: Array<{ id: string; title: string; description?: string }> }) => isOpen ? <div role="dialog">{["Current exact warehouse", "Forbidden old", "Other workspace warehouse"].map(value => <button key={value} onClick={() => onQueryChange(value)}>{`Search ${value}`}</button>)}{results.map(item => <p key={item.id} data-testid={item.id}>{item.title}{item.description ? <span>{item.description}</span> : null}</p>)}</div> : null }))
 afterEach(() => { cleanup(); vi.clearAllMocks() })
 
 function warehouse(id: string, name: string) { return { id, name, address: null, managerId: null, status: "ACTIVE" as const, notes: null, createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z" } }
@@ -40,7 +40,7 @@ it("never includes cached legacy financial or inventory data in the exact corpus
   await within(screen.getByRole("dialog")).findByText("Current exact warehouse")
   fireEvent.click(screen.getByRole("button", { name: "Search Forbidden old" }))
   await waitFor(() => expect(within(screen.getByRole("dialog")).queryByText("Current exact warehouse")).toBeNull())
-  expect(within(screen.getByRole("dialog")).queryByText("Forbidden old balance")).toBeNull()
+  expect(within(screen.getByRole("dialog")).queryByTestId("debt-old-debt")).toBeNull()
   expect(within(screen.getByRole("dialog")).queryByText("Forbidden old item")).toBeNull()
   expect(within(screen.getByRole("dialog")).queryByText("Forbidden old external")).toBeNull()
   expect(within(screen.getByRole("dialog")).queryByText("Forbidden old invoice")).toBeNull()

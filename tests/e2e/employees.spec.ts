@@ -79,6 +79,11 @@ test.describe("employees — critical path", () => {
 
     const row = page.getByRole("row", { name: /بن صالح/ }).first()
     await expect(row).toBeVisible()
+    const employeeName = await row.getByRole("cell").first().innerText()
+    await page.keyboard.press("Control+k")
+    await page.getByRole("dialog").getByPlaceholder("بحث...").fill(employeeName)
+    await expect(page.getByRole("dialog").getByText(employeeName, { exact: true })).toBeVisible()
+    await page.keyboard.press("Escape")
     await row.getByRole("button", { name: "حذف" }).click()
 
     await expect(page.getByRole("alertdialog")).toBeVisible()
@@ -92,5 +97,9 @@ test.describe("employees — critical path", () => {
     await expect
       .poll(async () => page.getByRole("row", { name: /بن صالح/ }).count())
       .toBe(0)
+    await page.keyboard.press("Control+k")
+    await page.getByRole("dialog").getByPlaceholder("بحث...").fill(employeeName)
+    await expect(page.getByRole("dialog").getByText("لا توجد نتائج", { exact: true })).toBeVisible()
+    await expect(page.getByRole("dialog").getByText(employeeName, { exact: true })).toHaveCount(0)
   })
 })

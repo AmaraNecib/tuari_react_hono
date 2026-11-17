@@ -220,7 +220,7 @@ function NumericEmployeeTable({
   )
 }
 
-type ExactTableProps = ExactEmployeeUiContext & { mode: "exact"; onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void }
+type ExactTableProps = ExactEmployeeUiContext & { mode: "exact"; onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void; onDeleted?: () => Promise<void> | void }
 export function EmployeeTable(props: ExactTableProps): ReactElement
 export function EmployeeTable(props: EmployeeTableProps & { mode?: "numeric" }): ReactElement
 export function EmployeeTable(props: ExactTableProps | (EmployeeTableProps & { mode?: "numeric" })) {

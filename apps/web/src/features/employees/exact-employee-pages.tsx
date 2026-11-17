@@ -319,7 +319,7 @@ export function ExactEmployeeDetailsPage(props: ExactEmployeePageProps) {
   </RecordPageFrame>
 }
 
-export function ExactEmployeeTable({ client, roles, onView, onEdit, onAdd }: ExactEmployeeUiContext & { onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void }) {
+export function ExactEmployeeTable({ client, roles, onView, onEdit, onAdd, onDeleted }: ExactEmployeeUiContext & { onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void; onDeleted?: () => Promise<void> | void }) {
   const { t } = useTranslation()
   const [employees, setEmployees] = useState<ExactEmployee[]>([])
   const [loading, setLoading] = useState(true)
@@ -344,7 +344,7 @@ export function ExactEmployeeTable({ client, roles, onView, onEdit, onAdd }: Exa
   function changeSearch(query: string) { setSearch(query); setCursor(undefined); setCursorHistory([]) }
   function nextPage() { if (!nextCursor) return; setCursorHistory(history => [...history, cursor]); setCursor(nextCursor) }
   function previousPage() { const history = [...cursorHistory]; const previous = history.pop(); setCursorHistory(history); setCursor(previous) }
-  async function remove(id: string) { setDeletingId(id); setDeleteFailure(null); try { const result = await client.employeesDelete({ id }); if (!result.success) throw new Error(result.error.message); setRefreshKey(value => value + 1) } catch (error) { setDeleteFailure(serverError(error)) } finally { setDeletingId(null) } }
+  async function remove(id: string) { setDeletingId(id); setDeleteFailure(null); try { const result = await client.employeesDelete({ id }); if (!result.success) throw new Error(result.error.message); setRefreshKey(value => value + 1); await onDeleted?.() } catch (error) { setDeleteFailure(serverError(error)) } finally { setDeletingId(null) } }
   return <RecordPageFrame title={t("sections.employees.label")} action={onAdd ? <Button onClick={onAdd}>{t("shell.addWorker")}</Button> : undefined}>
     <RecordDeleteConfirmation pendingLabel={pendingDelete ? `${pendingDelete.firstName} ${pendingDelete.lastName}` : null} pending={deletingId !== null} title={t("shell.destructiveTitle")} description={t("shell.destructiveDescription")} cancelLabel={t("common.cancel")} confirmLabel={t("common.confirm")} onDismiss={() => setPendingDelete(null)} onConfirm={() => { if (pendingDelete) { const target = pendingDelete.id; setPendingDelete(null); void remove(target) } }} />
     <AdvancedSearchBar onSearch={query => changeSearch(query)} storageKey="employees-search-filters" />

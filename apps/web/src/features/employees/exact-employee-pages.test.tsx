@@ -28,7 +28,8 @@ afterEach(cleanup)
 describe("exact employee page seams", () => {
   it("requires the original confirmation dialog before deleting an exact employee", async () => {
     const props = ctx()
-    render(<ExactEmployeeTable {...props} onView={vi.fn()} onEdit={vi.fn()} />)
+    const onDeleted = vi.fn(async () => undefined)
+    render(<ExactEmployeeTable {...props} onView={vi.fn()} onEdit={vi.fn()} onDeleted={onDeleted} />)
     await screen.findByText("Amina Kaci")
     fireEvent.click(screen.getByRole("button", { name: i18n.t("common.delete") }))
     expect(props.client.employeesDelete).not.toHaveBeenCalled()
@@ -39,7 +40,21 @@ describe("exact employee page seams", () => {
     fireEvent.click(screen.getByRole("button", { name: i18n.t("common.delete") }))
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: i18n.t("common.confirm") }))
     await waitFor(() => expect(props.client.employeesDelete).toHaveBeenCalledExactlyOnceWith({ id: employee.id }))
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledOnce())
   })
+  it("does not announce deletion or drop the employee when the server refuses", async () => {
+    const props = ctx()
+    const onDeleted = vi.fn()
+    vi.mocked(props.client.employeesDelete).mockResolvedValue({ success: false, error: { message: "Preserved earning evidence" } } as never)
+    render(<ExactEmployeeTable {...props} onView={vi.fn()} onEdit={vi.fn()} onDeleted={onDeleted} />)
+    await screen.findByText("Amina Kaci")
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("common.delete") }))
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: i18n.t("common.confirm") }))
+    expect((await screen.findByRole("alert")).textContent).toContain("Preserved earning evidence")
+    expect(screen.getByText("Amina Kaci")).toBeTruthy()
+    expect(onDeleted).not.toHaveBeenCalled()
+  })
+
   it("uses the original edit form sections and controls for the exact adapter", async () => {
     const props = ctx()
     render(<EmployeeEditPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
