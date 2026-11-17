@@ -39,10 +39,10 @@ function buildEmployeeWorkHistory({
         id: `state-${entry.id}`,
         typeLabel: detailCopy.employee.employmentState,
         title: `${getArabicRoleLabel(lookups.roleById.get(entry.roleId) ?? null)} - ${getArabicStatusLabel(entry.status)}`,
-        detail:
-          entry.salaryAmountDzd !== null
-            ? `${detailCopy.salary.activeSalaryPrefix} ${entry.salaryAmountDzd} ${detailCopy.salary.currency}${formatSalaryPeriodLabel(entry.salaryPeriod, detailCopy.salary) ? ` / ${formatSalaryPeriodLabel(entry.salaryPeriod, detailCopy.salary)}` : ""}`
-            : null,
+        salaryReference: entry.salaryReference,
+        detail: entry.salaryReference
+          ? `${detailCopy.salary.activeSalaryPrefix} ${entry.salaryReference.amount} ${detailCopy.salary.currency} / ${formatSalaryPeriodLabel(entry.salaryReference.period, detailCopy.salary)}`
+          : null,
         periodLabel: formatDateRange(entry.startDate, entry.endDate, detailCopy.shared.ongoing),
         statusLabel: getArabicHistoryEventLabel(entry.eventType),
         sortValue: entry.startDate,

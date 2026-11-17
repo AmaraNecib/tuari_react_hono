@@ -72,19 +72,23 @@ export function buildEmployeeSalaryCollections({
     })
   }
 
-  const salariedEmployees = employeeRows
-    .filter((employee) => employee.salaryAmountDzd !== null && employee.salaryPeriod)
-    .map((employee) => ({
+  const salariedEmployees = employeeRows.flatMap((employee) => {
+    const salaryReference = employee.salaryReference
+    if (salaryReference === null) {
+      return []
+    }
+
+    return [{
       employeeId: employee.id,
       employeeName: employee.name,
       employeePhone: employee.phone,
       employeeRole: employee.role,
-      salaryAmountDzd: employee.salaryAmountDzd,
-      salaryPeriod: employee.salaryPeriod,
+      salaryReference,
       lastPaymentDate: salaryPaymentsByEmployeeId[employee.id]?.[0]?.paymentDate ?? null,
       // Assignment windows feed the payment form's derived per-project default.
       projectAssignments: projectAssignmentsByEmployeeId[employee.id] ?? [],
-    }))
+    }]
+  })
 
   const salaryProjects = workspace.projects
     .map((project) => ({ id: project.id, name: project.name }))
