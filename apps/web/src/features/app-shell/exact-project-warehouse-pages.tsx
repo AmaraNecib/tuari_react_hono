@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 import type { ApplicationClient } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { Surface } from "@/features/shared/page-primitives"
+import { RecordDeleteConfirmation } from "@/features/shared/record-delete-confirmation"
 import { ProjectsSection, type ProjectRow } from "./projects-section"
 import { WarehousesSection, type WarehouseRow } from "./warehouses-section"
 import { ProjectCreatePage } from "@/features/projects/project-create-page"
@@ -16,6 +17,7 @@ import { useHomeViewNavigation } from "./home-view-navigation"
 import { invalidateExactWorkspace } from "./exact-workspace-refresh"
 
 const queryKey = (workspaceId: string, userId: string, name: string) => ["application", workspaceId, userId, name] as const
+type ArchiveTarget = { kind: "project" | "warehouse"; id: string; name: string }
 
 export function ExactProjectWarehousePages({ client, workspaceId, userId, page, projectId, warehouseId, detailTab, onProjectTab, onWarehouseTab }: {
   client: ApplicationClient
@@ -57,6 +59,8 @@ export function ExactProjectWarehousePages({ client, workspaceId, userId, page, 
   const projectHistory = useQuery({ queryKey: queryKey(workspaceId, userId, `project-history:${projectId}`), queryFn: () => client.projectManagerOwnershipHistoryList({ projectId }), enabled: page === "project-details" && Boolean(projectId) })
   const warehouseHistory = useQuery({ queryKey: queryKey(workspaceId, userId, `warehouse-history:${warehouseId}`), queryFn: () => client.warehouseManagerOwnershipHistoryList({ warehouseId }), enabled: page === "warehouse-details" && Boolean(warehouseId) })
   const [archiveError, setArchiveError] = useState<string | null>(null)
+  const [pendingArchive, setPendingArchive] = useState<ArchiveTarget | null>(null)
+  const [archivePending, setArchivePending] = useState(false)
 
   const projectPage = page.startsWith("project")
   const needsRoles = page.endsWith("create") || page.endsWith("edit")
@@ -66,6 +70,34 @@ export function ExactProjectWarehousePages({ client, workspaceId, userId, page, 
   if (failed) return <Surface role="alert" variant="panel" className="p-5"><p>{t("shell.loadWorkspaceError")}</p><Button onClick={() => { void Promise.all(activeQueries.map(query => query.refetch())) }}>{t("common.retry")}</Button></Surface>
 
   const refresh = () => invalidateExactWorkspace(queryClient, workspaceId, userId)
+  const confirmArchive = async () => {
+    const target = pendingArchive
+    if (!target || archivePending) return
+    setArchivePending(true)
+    setArchiveError(null)
+    try {
+      const result = target.kind === "project"
+        ? await client.projectsUpdate({ id: target.id, status: "ARCHIVED" })
+        : await client.warehousesUpdate({ id: target.id, status: "ARCHIVED" })
+      if (!result.success) throw new Error(result.error.message)
+      setPendingArchive(null)
+      refresh()
+    } catch (error) {
+      setArchiveError(error instanceof Error ? error.message : t("shell.loadWorkspaceError"))
+    } finally {
+      setArchivePending(false)
+    }
+  }
+  const archiveConfirmation = <RecordDeleteConfirmation
+    pendingLabel={pendingArchive?.name ?? null}
+    pending={archivePending}
+    title={t("shell.destructiveTitle")}
+    description={t("shell.destructiveDescription")}
+    cancelLabel={t("common.cancel")}
+    confirmLabel={t("common.confirm")}
+    onDismiss={() => setPendingArchive(null)}
+    onConfirm={() => { void confirmArchive() }}
+  />
   if (page === "projects") {
     if (allAssignments.isPending) return <p role="status">{t("common.loading")}</p>
     const assignments = allAssignments.data?.items ?? []
@@ -76,7 +108,7 @@ export function ExactProjectWarehousePages({ client, workspaceId, userId, page, 
       canArchive: row.status !== "ARCHIVED",
       archiveDisabledReason: null,
     }))
-    return <><ProjectsSection title={t("sections.projects.label")} rows={rows} columns={{ name: t("columns.name"), manager: t("columns.manager"), location: t("columns.location"), workers: t("columns.workers"), status: t("columns.status"), actions: t("common.actions") }} emptyLabel={t("shell.empty")} noLocationLabel={t("shell.noLocation")} addLabel={t("shell.addProject")} archiveLabel={t("common.archive")} viewLabel={t("common.view")} editLabel={t("common.edit")} onAdd={() => void navigation.goToProjectCreate()} onView={row => void navigation.goToProjectDetails(row.id)} onEdit={row => void navigation.goToProjectEdit(row.id)} onArchive={row => { void client.projectsUpdate({ id: row.id, status: "ARCHIVED" }).then(result => { if (!result.success) throw new Error(result.error.message); return refresh() }).catch(error => setArchiveError(error instanceof Error ? error.message : t("shell.loadWorkspaceError"))) }} />{archiveError && <p role="alert">{archiveError}</p>}</>
+    return <>{archiveConfirmation}<ProjectsSection title={t("sections.projects.label")} rows={rows} columns={{ name: t("columns.name"), manager: t("columns.manager"), location: t("columns.location"), workers: t("columns.workers"), status: t("columns.status"), actions: t("common.actions") }} emptyLabel={t("shell.empty")} noLocationLabel={t("shell.noLocation")} addLabel={t("shell.addProject")} archiveLabel={t("common.archive")} viewLabel={t("common.view")} editLabel={t("common.edit")} onAdd={() => void navigation.goToProjectCreate()} onView={row => void navigation.goToProjectDetails(row.id)} onEdit={row => void navigation.goToProjectEdit(row.id)} onArchive={row => { setArchiveError(null); setPendingArchive({ kind: "project", id: row.id, name: row.name }) }} />{archiveError && <p role="alert">{archiveError}</p>}</>
   }
   if (page === "project-create") return <ProjectCreatePage managerOptions={projectManagers.map(row => ({ id: row.id, label: `${row.firstName} ${row.lastName}` }))} projectManagerRoleId={projectManagerRoleId} allowInlineManagerCreate={false} onSaved={() => refresh()} />
   if (page === "project-edit" && project && allAssignments.isPending) return <p role="status">{t("common.loading")}</p>
@@ -92,7 +124,7 @@ export function ExactProjectWarehousePages({ client, workspaceId, userId, page, 
   }
   if (page === "warehouses") {
     const rows: WarehouseRow[] = (warehousesQuery.data?.items ?? []).map(row => ({ ...row, managerName: managerName(row.managerId), canArchive: row.status !== "ARCHIVED", archiveDisabledReason: null }))
-    return <><WarehousesSection title={t("sections.warehouses.label")} rows={rows} columns={{ name: t("columns.name"), manager: t("columns.manager"), address: t("columns.address"), status: t("columns.status"), actions: t("common.actions") }} emptyLabel={t("shell.empty")} noAddressLabel={t("shell.noAddress")} addLabel={t("shell.addWarehouse")} archiveLabel={t("common.archive")} viewLabel={t("common.view")} editLabel={t("common.edit")} onAdd={() => void navigation.goToWarehouseCreate()} onView={row => void navigation.goToWarehouseDetails(row.id)} onEdit={row => void navigation.goToWarehouseEdit(row.id)} onArchive={row => { void client.warehousesUpdate({ id: row.id, status: "ARCHIVED" }).then(result => { if (!result.success) throw new Error(result.error.message); return refresh() }).catch(error => setArchiveError(error instanceof Error ? error.message : t("shell.loadWorkspaceError"))) }} />{archiveError && <p role="alert">{archiveError}</p>}</>
+    return <>{archiveConfirmation}<WarehousesSection title={t("sections.warehouses.label")} rows={rows} columns={{ name: t("columns.name"), manager: t("columns.manager"), address: t("columns.address"), status: t("columns.status"), actions: t("common.actions") }} emptyLabel={t("shell.empty")} noAddressLabel={t("shell.noAddress")} addLabel={t("shell.addWarehouse")} archiveLabel={t("common.archive")} viewLabel={t("common.view")} editLabel={t("common.edit")} onAdd={() => void navigation.goToWarehouseCreate()} onView={row => void navigation.goToWarehouseDetails(row.id)} onEdit={row => void navigation.goToWarehouseEdit(row.id)} onArchive={row => { setArchiveError(null); setPendingArchive({ kind: "warehouse", id: row.id, name: row.name }) }} />{archiveError && <p role="alert">{archiveError}</p>}</>
   }
   if (page === "warehouse-create") return <WarehouseCreatePage managerOptions={warehouseManagers.map(row => ({ id: row.id, label: `${row.firstName} ${row.lastName}` }))} warehouseManagerRoleId={warehouseManagerRoleId} allowInlineManagerCreate={false} onSaved={() => refresh()} />
   if (page === "warehouse-edit" && warehouse) return <WarehouseEditPage managerOptions={warehouseManagers.map(row => ({ id: row.id, label: `${row.firstName} ${row.lastName}` }))} warehouse={{ ...warehouse, managerName: managerName(warehouse.managerId) }} warehouseManagerRoleId={warehouseManagerRoleId} allowInlineManagerCreate={false} onSaved={() => refresh()} />

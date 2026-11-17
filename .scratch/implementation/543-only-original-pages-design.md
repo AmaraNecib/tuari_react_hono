@@ -27,6 +27,10 @@ Issue #543 is the acceptance source. PR #541 and its source-owning tree remain u
 
 The employee table keeps the original columns and displays active assignment labels from authenticated reference reads. Exact salary references appear in the shared employee record view and finance slot, not as a fabricated numeric column. Detail history combines exact salary-reference state changes with assignment history.
 
+## Archive confirmation
+
+Project and warehouse archive clicks now select a pending record and open the existing `RecordDeleteConfirmation`. Cancel closes the dialog without an update. Confirm sends one status update, reports failures in the page, and refreshes the exact workspace queries. `exact-project-warehouse-pages.test.tsx` covers both record types and makes unexpected RPC access fail loudly.
+
 ## Money and deferred scope
 
 - Employee salary references and approval amounts remain canonical exact strings through form parsing, adapters, query results and display.
