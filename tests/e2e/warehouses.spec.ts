@@ -2,7 +2,6 @@ import { expect, test } from "@playwright/test"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 import { seedEmployeeByRole } from "./helpers/db-seed"
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
-import { assertCapabilityBoundary } from "./helpers/capability-boundary"
 
 test("admin creates a warehouse and it persists after returning to the production list", async ({ page }) => {
   await bootstrapOrSignIn(page)
@@ -13,10 +12,6 @@ test("admin creates a warehouse and it persists after returning to the productio
   await expect(page.getByRole("heading", { name, exact: true })).toBeVisible()
   await page.goto("/warehouses")
   await expect(page.getByRole("row").filter({ hasText: name })).toBeVisible()
-})
-
-test("warehouse transfers remain unavailable without invoking the legacy numeric transfer", async ({ page }) => {
-  await assertCapabilityBoundary(page, { path: "/outbound-transfers/create", capability: "inventoryMoney", procedure: "inventoryOutboundTransfersCreate" })
 })
 
 test("an existing exact warehouse manager stays selected through save and fresh read", async ({ page }) => {

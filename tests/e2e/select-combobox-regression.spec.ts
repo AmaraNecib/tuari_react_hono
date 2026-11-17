@@ -57,6 +57,7 @@ test("manager select reopens below its trigger with the selected option fully in
   await listbox.getByRole("option", { name: managers[0]!.name, exact: true }).click()
   await expect(listbox).toBeHidden()
   await expect(trigger).toContainText(managers[0]!.name)
+  await expect(trigger).not.toContainText(managers[0]!.id)
   await trigger.press("Enter")
   const reopened = await visiblePopup(page)
   const selected = reopened.listbox.getByRole("option", { name: managers[0]!.name, exact: true })
@@ -100,16 +101,6 @@ test("a 900x700 viewport flips the manager popup without clipping its target", a
   const popupBox = await boxOrThrow(popup)
   expect(popupBox.y + popupBox.height).toBeLessThanOrEqual(700)
   expect(popupBox.y).toBeLessThan(triggerBox.y)
-})
-
-test("warehouse manager selection commits a human-readable label", async ({ page }) => {
-  const trigger = await openManager(page)
-  await trigger.press("Enter")
-  const { listbox } = await visiblePopup(page)
-  await listbox.getByRole("option", { name: managers[0]!.name, exact: true }).click()
-  await expect(listbox).toBeHidden()
-  await expect(trigger).toContainText(managers[0]!.name)
-  await expect(trigger).not.toContainText(managers[0]!.id)
 })
 
 test("ArrowDown from the empty option and Enter selects the intended manager label", async ({ page }) => {

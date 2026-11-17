@@ -67,3 +67,12 @@ Lesson candidates: none identified yet.
 ## #555 cleanup correction: workforce transport adapter
 
 At base `61c9a5e75771cb0da0fc65cd5728540fc71f8c16`, `exact-workforce-client.ts` only wrapped `createORPCClient(createWorkspaceRpcLink(mount))`. Its only importers were `orpc-client.test.ts` and `exact-salary-earnings-section.test.tsx`; no production module imported it. Production uses the configured `applicationClient` singleton, and `WorkspaceShell` builds its narrow workforce facade from `client.workforceExact`. Remove the redundant wrapper. Keep transport validation, configured origin, authenticated browser/desktop dispatch and custom mount checks on `createWorkspaceRpcLink`; the salary proxy test now uses `applicationClient.workforceExact`. This is a narrow obsolete-module cleanup, not resolution of the full #555 diff.
+
+## #555 evidence-proven E2E cleanup
+
+- Worktree: `D:/worktrees/tuari_react_hono/t3-9f3476b8-76577619c9213797`
+- Base: `61c9a5e75771cb0da0fc65cd5728540fc71f8c16`
+- Verification mode: `focused-local / CI-final-pending`.
+- Scope: remove only the duplicate outbound-transfer capability-boundary case from `warehouses.spec.ts`; retain the identical `inventory-transfer.spec.ts` refusal test. Move the manager UUID-absence assertion into the selected-option placement case, then remove the duplicate click-only case. Keep supported warehouse creation, popup placement, viewport flip, keyboard and repeated-toggle coverage unchanged.
+- Risk: low. The retained refusal case still asserts the same capability, page fallback, no form, no retired request, direct HTTP 503 and supported navigation. The retained manager case still selects the seeded manager, checks its label and placement, and now also rejects the UUID display.
+- Evidence: the exact comparisons are in `.scratch/reviews/543-only-integration/necessity-61c9a5e7/e2e-capability-fixtures-necessity-v3.md`. Targeted ESLint passed. The committed-head browser result goes in the ignored verification report; `apps/web/tsconfig.json` excludes `tests/e2e`, so no E2E TypeScript project check applies. No full suite or build is in scope.
