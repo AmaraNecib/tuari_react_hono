@@ -10,7 +10,9 @@
 
 ## Behavior under test
 
-`ExactEmployeeService.createEmployeesBatch` validates role assignment and worker placement before creating profiles. Tests will pin the returned validation fields and prove rejected batches create no profiles. `PayrollCashService` validates that employee and wage sources match the ledger before recording cash. Tests pin the missing-employee and wrong-employee source errors, plus unchanged cash and debt state. A real lifecycle path checks opening wage and advance balances, cash allocation, advance repayment, and corrected earnings. The advance and wage ledger-consistency guards reject corrupted persisted provenance; the SQLite adapters prevent those mutations, so tests do not manufacture corrupt rows to reach those guards.
+`ExactEmployeeService` tests cover batch role and placement validation, direct workplace assignment, manager scope, omitted placement preservation, phone conflicts and authorized role transitions. Rejected mutations assert exact error codes or field paths and unchanged profile or relationship state. `PayrollCashService` tests cover missing employees and sources, zero and reviewed opening balances, cash, both repayment source kinds, earning correction, lifecycle remaining amounts and the account-identity check.
+
+Ledger-provenance guards also reject inconsistent reads from their repository and finance ports. Tests inject narrowly scoped mismatches at those read interfaces and assert the public service refuses them before writing. They do not alter SQLite rows or bypass immutability.
 
 The domain terms are employee profile, earning, payroll opening, wage allocation, advance, settlement, and cash receipt. Payroll cash remains separate from an approved earning. The tests cross the existing service interfaces and use the real SQLite adapters. No module, interface, adapter, or seam changes, so `architecture: no seam moved`.
 
@@ -18,7 +20,7 @@ The domain terms are employee profile, earning, payroll opening, wage allocation
 
 Use independent fixed inputs and literal expected values. Invalid employee batches must report exact field paths and leave the employee count unchanged. Payroll rejections must preserve the source balance and avoid creating cash or settlement rows. Lifecycle assertions must compare exact remaining amounts and source relationships, not restate the service's calculations.
 
-No coverage threshold, exclusion, production source, or dependency changes. Focused coverage includes the existing service tests plus these additions. `ExactEmployeeService` reached 86.97% statements, 78.48% branches, 100% functions, and 100% lines. `PayrollCashService` reached 88.83% statements, 84.58% branches, 97.36% functions, and 100% lines. These are direct-service-test totals, not a complete-suite claim. Remaining integrity guard gaps include mismatched advance and wage ledger records. Valid app writes cannot create those states because the ledger records are immutable. Do not test them by bypassing the public service or disabling immutability.
+No coverage threshold, exclusion, production source, or dependency changes. Strict per-file coverage runs include each existing service test file and its new focused test file. `ExactEmployeeService` reached 100% statements, branches, functions and lines with 29 tests. `PayrollCashService` reached 100% for all four measures with 34 tests. This proves the selected service-test scope only; no full API suite ran.
 
 ## Wisdom
 
