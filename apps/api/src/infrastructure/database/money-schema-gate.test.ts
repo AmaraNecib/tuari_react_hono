@@ -72,6 +72,15 @@ describe.each([["plain", ""], ["keyed", "524-public-fixture-key"]])("money start
     } finally { db.close(); }
   });
 
+  it("fails closed when a required workforce money column has the wrong type", async () => {
+    const db = createDatabaseConnection(":memory:", "");
+    try {
+      await ensureDatabaseSchema(new BetterSqlite3Executor(db));
+      db.exec("DROP TABLE employee_earning_segment; CREATE TABLE employee_earning_segment(id TEXT, earning_id TEXT, project_id TEXT, ordinal INTEGER, days INTEGER, amount_minor TEXT, created_at DATETIME)");
+      await expect(ensureDatabaseSchema(new BetterSqlite3Executor(db))).rejects.toThrow(/coordinated.*activation/i);
+    } finally { db.close(); }
+  });
+
   it.each([
     'CREATE TABLE employee_salary_earning(id TEXT PRIMARY KEY)',
     'CREATE TABLE employee_salary_earning_segment(id TEXT PRIMARY KEY)',
