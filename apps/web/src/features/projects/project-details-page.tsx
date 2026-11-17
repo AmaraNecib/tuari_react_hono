@@ -130,8 +130,8 @@ export function ProjectDetailsPage({
         />
       </RecordTabPanel>
 
-      {resolvedTab === "items" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items"><InventoryLocationContentsSection projectId={project.id} /></RecordTabPanel> : null}
-      {resolvedTab === "transfers" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers"><LocationTransferHistory locationId={project.id} locationType="PROJECT" /></RecordTabPanel> : null}
+      {resolvedTab === "items" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items">{capabilityMode ? <p role="status">{t("application.unavailable")}</p> : <InventoryLocationContentsSection projectId={project.id} />}</RecordTabPanel> : null}
+      {resolvedTab === "transfers" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers">{capabilityMode ? <p role="status">{t("application.unavailable")}</p> : <LocationTransferHistory locationId={project.id} locationType="PROJECT" />}</RecordTabPanel> : null}
       {resolvedTab === "cost" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="cost">{capabilityMode ? (workforceClient && workforceScope ? <ExactProjectSalaryCost projectId={project.id} client={workforceClient} scope={workforceScope} /> : <p>{t("application.unavailable")}</p>) : <ProjectCostSection projectId={project.id} onOpenItems={() => onTabChange("items")} /> }</RecordTabPanel> : null}
     </RecordPageFrame>
   )

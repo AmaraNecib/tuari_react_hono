@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type FormEvent, type ReactElement } from 
 import type { Role } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 
-import { Button } from "@/components/ui/button"
 import {
   AppMutationError,
   useCreateEmployeesBatchMutation,
@@ -19,6 +18,7 @@ import {
   validateEmployeeBatch,
 } from "./employee-batch-schema"
 import { ExactEmployeeCreateForm } from "./exact-employee-create-form"
+import { EmployeeBatchCreatePageView } from "./employee-batch-create-page-view"
 import type { ExactEmployeeBatchProps } from "./exact-employee-pages"
 import {
   EmployeeBatchRowCard,
@@ -297,80 +297,66 @@ function NumericEmployeeBatchCreatePage({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 border-b border-border/60 pb-5 xl:flex-row xl:items-end xl:justify-between" dir="rtl">
-        <div className="space-y-2 text-start">
-          <h2 className="text-2xl font-semibold tracking-tight text-foreground">{copy.title}</h2>
-          <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{copy.description}</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3" dir="rtl">
-          <Button type="button" variant="outline" onClick={onCancel}>
-            {copy.cancel}
-          </Button>
-          <Button disabled={rows.length >= employeeBatchLimit} type="button" onClick={handleAddRow}>
-            {copy.addAnother}
-          </Button>
-        </div>
-      </div>
-
-      {rows.length >= employeeBatchLimit ? (
-        <p className="text-sm text-muted-foreground">{copy.batchLimit}</p>
-      ) : null}
-
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        {rows.map((row, index) => (
-          <EmployeeBatchRowCard
-            key={`employee-draft-${index}`}
-            canRemove={rows.length > 1}
-            copy={{
-              title: t("employeeForm.rowTitle", { count: index + 1 }),
-              firstNameLabel: copy.firstNameLabel,
-              lastNameLabel: copy.lastNameLabel,
-              phoneLabel: copy.phoneLabel,
-              roleLabel: copy.roleLabel,
-              occupationLabel: copy.occupationLabel,
-              salaryAmountLabel: copy.salaryAmountLabel,
-              salaryPeriodLabel: copy.salaryPeriodLabel,
-              salaryAmountPlaceholder: copy.salaryAmountPlaceholder,
-              salaryPeriodPlaceholder: copy.salaryPeriodPlaceholder,
-              salaryPeriodOptions: copy.salaryPeriodOptions,
-              managerLabel: copy.managerLabel,
-              managerPlaceholder: copy.managerPlaceholder,
-              managerDisabledHint: copy.managerDisabledHint,
-              projectLabel: t("employeeForm.projectLabel"),
-              projectPlaceholder: t("employeeForm.projectPlaceholder"),
-              projectDisabledHint: t("employeeForm.projectDisabledHint"),
-              notesLabel: copy.notesLabel,
-              firstNamePlaceholder: copy.firstNamePlaceholder,
-              lastNamePlaceholder: copy.lastNamePlaceholder,
-              phonePlaceholder: copy.phonePlaceholder,
-              rolePlaceholder: copy.rolePlaceholder,
-              occupationPlaceholder: copy.occupationPlaceholder,
-              notesPlaceholder: copy.notesPlaceholder,
-              remove: copy.remove,
-            }}
-            draft={row}
-            errors={rowErrors[index] ?? {}}
-            index={index}
-            managerOptions={managerOptions}
-            roles={roles}
-            workerRoleId={workerRoleId}
-            onChange={handleRowChange}
-            onRemove={handleRemoveRow}
-          />
-        ))}
-
-        <div className="flex items-center justify-end gap-3">
-          <Button className="min-w-44" disabled={createEmployeesBatchMutation.isPending} type="submit">
-            {rows.length === 1 ? copy.submitSingle : copy.submitBatch}
-          </Button>
-          <Button type="button" variant="outline" onClick={onCancel}>
-            {copy.cancel}
-          </Button>
-        </div>
-      </form>
-    </div>
+    <EmployeeBatchCreatePageView
+      title={copy.title}
+      description={copy.description}
+      cancelLabel={copy.cancel}
+      addLabel={copy.addAnother}
+      showAdd
+      addDisabled={rows.length >= employeeBatchLimit}
+      rowCount={rows.length}
+      rowLimit={employeeBatchLimit}
+      limitLabel={copy.batchLimit}
+      submitLabel={rows.length === 1 ? copy.submitSingle : copy.submitBatch}
+      busyLabel={t("common.loading")}
+      busy={createEmployeesBatchMutation.isPending}
+      submitDisabled={createEmployeesBatchMutation.isPending}
+      onCancel={onCancel}
+      onAdd={handleAddRow}
+      onSubmit={handleSubmit}
+    >
+      {rows.map((row, index) => (
+        <EmployeeBatchRowCard
+          key={`employee-draft-${index}`}
+          canRemove={rows.length > 1}
+          copy={{
+            title: t("employeeForm.rowTitle", { count: index + 1 }),
+            firstNameLabel: copy.firstNameLabel,
+            lastNameLabel: copy.lastNameLabel,
+            phoneLabel: copy.phoneLabel,
+            roleLabel: copy.roleLabel,
+            occupationLabel: copy.occupationLabel,
+            salaryAmountLabel: copy.salaryAmountLabel,
+            salaryPeriodLabel: copy.salaryPeriodLabel,
+            salaryAmountPlaceholder: copy.salaryAmountPlaceholder,
+            salaryPeriodPlaceholder: copy.salaryPeriodPlaceholder,
+            salaryPeriodOptions: copy.salaryPeriodOptions,
+            managerLabel: copy.managerLabel,
+            managerPlaceholder: copy.managerPlaceholder,
+            managerDisabledHint: copy.managerDisabledHint,
+            projectLabel: t("employeeForm.projectLabel"),
+            projectPlaceholder: t("employeeForm.projectPlaceholder"),
+            projectDisabledHint: t("employeeForm.projectDisabledHint"),
+            notesLabel: copy.notesLabel,
+            firstNamePlaceholder: copy.firstNamePlaceholder,
+            lastNamePlaceholder: copy.lastNamePlaceholder,
+            phonePlaceholder: copy.phonePlaceholder,
+            rolePlaceholder: copy.rolePlaceholder,
+            occupationPlaceholder: copy.occupationPlaceholder,
+            notesPlaceholder: copy.notesPlaceholder,
+            remove: copy.remove,
+          }}
+          draft={row}
+          errors={rowErrors[index] ?? {}}
+          index={index}
+          managerOptions={managerOptions}
+          roles={roles}
+          workerRoleId={workerRoleId}
+          onChange={handleRowChange}
+          onRemove={handleRemoveRow}
+        />
+      ))}
+    </EmployeeBatchCreatePageView>
   )
 }
 

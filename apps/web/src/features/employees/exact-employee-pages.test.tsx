@@ -8,7 +8,11 @@ import { EmployeeDetailsPage } from "./employee-details-page"
 import { EmployeeBatchCreatePage } from "./employee-batch-create-page"
 import { ExactEmployeeTable } from "./exact-employee-pages"
 
-vi.mock("@/features/debts/debts-queries", () => ({ useDebtPartyDetailQuery: () => ({ isPending: false, isError: false, data: { accounts: [], entriesByAccountId: {} } }) }))
+const { legacyDebtDetailQuery } = vi.hoisted(() => {
+  const query = vi.fn(() => ({ isPending: false, isError: false, data: { accounts: [], entriesByAccountId: {} } }))
+  return { legacyDebtDetailQuery: query }
+})
+vi.mock("@/features/debts/debts-queries", () => ({ useDebtPartyDetailQuery: legacyDebtDetailQuery }))
 vi.mock("@tanstack/react-router", async importOriginal => ({ ...await importOriginal<typeof import("@tanstack/react-router")>(), Link: ({ children }: { children: ReactNode }) => <a href="#">{children}</a> }))
 
 const role: Role = { id: "role-worker", key: "worker", name: "Worker", description: null, isSystem: true, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }
@@ -25,6 +29,7 @@ const ctx = (overrides: Record<string, unknown> = {}) => ({
     employeeStateHistoryList: vi.fn().mockResolvedValue({ items: [{ ...employee, id: "state-a", employeeId: employee.id, eventType: "UPDATED", startDate: "2026-01-01T00:00:00.000Z", endDate: null, actorUserId: null, transactionId: null }] }),
   } as unknown as ExactEmployeeClient,
   roles: [role], managerOptions: [], projectOptions: [], warehouseOptions: [], managedProjectOptions: [], managedWarehouseOptions: [],
+  assignmentReferences: { people: [employee], projects: [], warehouses: [], managerAssignments: [], projectAssignments: [], warehouseAssignments: [] },
   ...overrides,
 })
 afterEach(cleanup)
@@ -82,6 +87,30 @@ describe("exact employee page seams", () => {
     expect(screen.getByRole("button", { name: i18n.t("common.leave") })).toBeTruthy()
     expect(screen.getByRole("button", { name: i18n.t("common.delete") })).toBeTruthy()
     expect(screen.queryByRole("button", { name: i18n.t("salaries.addPayment") })).toBeNull()
+  })
+
+  it("shows the active manager and assigned project from authenticated references", async () => {
+    const managerRole: Role = { ...role, id: "role-manager", key: "project_manager", name: "Project manager" }
+    const worker = { ...employee, status: "ACTIVE" as const }
+    const manager = { ...employee, id: "manager-a", firstName: "Samir", lastName: "Belaid", roleId: managerRole.id }
+    const props = ctx({
+      roles: [role, managerRole],
+      assignmentReferences: {
+        people: [worker, manager],
+        projects: [{ id: "project-a", name: "North site", managerId: manager.id }],
+        warehouses: [],
+        managerAssignments: [{ id: "manager-assignment-a", workerId: worker.id, managerId: manager.id, status: "ACTIVE", startDate: "2026-11-01T00:00:00.000Z", endDate: null, notes: null, actorUserId: null, transactionId: null, createdAt: "2026-11-01T00:00:00.000Z", updatedAt: "2026-11-01T00:00:00.000Z" }],
+        projectAssignments: [{ id: "project-assignment-a", employeeId: worker.id, projectId: "project-a", status: "ACTIVE", startDate: "2026-11-02T00:00:00.000Z", endDate: null, notes: null, actorUserId: null, transactionId: null, createdAt: "2026-11-02T00:00:00.000Z", updatedAt: "2026-11-02T00:00:00.000Z" }],
+        warehouseAssignments: [],
+      },
+    })
+    vi.mocked(props.client.employeesListPaged).mockResolvedValue({ items: [worker], total: 1, nextCursor: null, hasMore: false })
+    render(<ExactEmployeeTable {...props} onView={vi.fn()} onEdit={vi.fn()} />)
+    const row = await screen.findByRole("row", { name: /Amina Kaci/ })
+    expect(within(row).getByText("Samir Belaid")).toBeTruthy()
+    expect(within(row).getByText("North site")).toBeTruthy()
+    expect(within(row).queryByText(i18n.t("shell.noManager"))).toBeNull()
+    expect(within(row).queryByText(i18n.t("detailPages.employee.noCurrentWorkplace"))).toBeNull()
   })
 
   it("uses server-side search and cursor paging on the exact employee list", async () => {
@@ -255,6 +284,16 @@ describe("exact employee page seams", () => {
     fireEvent.click(screen.getByRole("tab", { name: i18n.t("detailPages.employee.financeTab") }))
     expect(screen.getByText("0.0001")).toBeTruthy()
     expect(screen.getByRole("link", { name: i18n.t("salaryEarnings.approvalSection") })).toBeTruthy()
+  })
+
+  it("keeps the original debts tab but refuses the legacy numeric debt read", async () => {
+    legacyDebtDetailQuery.mockClear()
+    const props = ctx()
+    render(<EmployeeDetailsPage mode="exact" {...props} employeeId={employee.id} onDone={vi.fn()} onCancel={vi.fn()} />)
+    await screen.findByRole("heading", { name: "Amina Kaci" })
+    fireEvent.click(screen.getByRole("tab", { name: "الديون" }))
+    expect(screen.getByText(i18n.t("application.unavailable"))).toBeTruthy()
+    expect(legacyDebtDetailQuery).not.toHaveBeenCalled()
   })
 
   it("renders stored history through the exact reference renderer and surfaces delete refusal without dropping the row", async () => {

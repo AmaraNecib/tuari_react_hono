@@ -37,6 +37,7 @@ export function WarehouseDetailsPage({
   onTabChange,
   teamRows,
   warehouse,
+  capabilityMode = false,
 }: {
   activeTab: string
   managementHistoryRows: Array<{
@@ -57,6 +58,7 @@ export function WarehouseDetailsPage({
     statusLabel: string
   }>
   warehouse: WarehousePageRecord
+  capabilityMode?: boolean
 }) {
   const { t } = useTranslation()
   const supportedTabs = ["overview", "history", "team", "items", "transfers"]
@@ -122,8 +124,8 @@ export function WarehouseDetailsPage({
         />
       </RecordTabPanel>
 
-      {resolvedTab === "items" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items"><InventoryLocationContentsSection warehouseId={warehouse.id} /></RecordTabPanel> : null}
-      {resolvedTab === "transfers" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers"><LocationTransferHistory locationId={warehouse.id} locationType="WAREHOUSE" /></RecordTabPanel> : null}
+      {resolvedTab === "items" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="items">{capabilityMode ? <p role="status">{t("application.unavailable")}</p> : <InventoryLocationContentsSection warehouseId={warehouse.id} />}</RecordTabPanel> : null}
+      {resolvedTab === "transfers" ? <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="transfers">{capabilityMode ? <p role="status">{t("application.unavailable")}</p> : <LocationTransferHistory locationId={warehouse.id} locationType="WAREHOUSE" />}</RecordTabPanel> : null}
     </RecordPageFrame>
   )
 }

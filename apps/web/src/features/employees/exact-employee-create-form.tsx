@@ -3,11 +3,11 @@ import type { Role } from "@tuari/contracts"
 import { employeeBatchLimit } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 
-import { Button } from "@/components/ui/button"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 import { i18n } from "@/i18n"
 import { salaryReference } from "./exact-employee-pages"
 import type { ExactEmployeeBatchProps } from "./exact-employee-pages"
+import { EmployeeBatchCreatePageView } from "./employee-batch-create-page-view"
 import { EmployeeBatchRowCard } from "./employee-batch-row-card"
 import { createEmptyEmployeeDraft, duplicatePhoneInBatchMessage, type EmployeeDraft, type EmployeeDraftErrors } from "./employee-batch-schema"
 import { isEmployeeRoleSelectable } from "./role-classification"
@@ -131,19 +131,26 @@ export function ExactEmployeeCreateForm({ client, roles, managerOptions, onCance
     notesPlaceholder: t("employeeForm.notesPlaceholder"), remove: t("employeeForm.remove"),
   }
 
-  return <div className="space-y-6">
-    <div className="flex flex-col gap-4 border-b border-border/60 pb-5 xl:flex-row xl:items-end xl:justify-between" dir="rtl">
-      <div className="space-y-2 text-start"><h2 className="text-2xl font-semibold tracking-tight text-foreground">{t("employeeForm.pageTitle")}</h2><p className="max-w-3xl text-sm leading-6 text-muted-foreground">{t("employeeForm.description")}</p></div>
-      <div className="flex flex-wrap items-center gap-3" dir="rtl">
-        <Button type="button" variant="outline" disabled={saving || saved} onClick={onCancel}>{t("employeeForm.backToEmployees")}</Button>
-        {!single ? <Button type="button" disabled={rows.length >= maxRows || saving || saved} onClick={() => { setRows(current => [...current, createEmptyEmployeeDraft(defaultRoleId)]); setRowErrors(current => [...current, {}]) }}>{t("employeeForm.addAnother")}</Button> : null}
-      </div>
-    </div>
-    {!single && rows.length >= maxRows ? <p className="text-sm text-muted-foreground">{t("employeeForm.batchLimit", { count: maxRows })}</p> : null}
-    <form className="space-y-4" onSubmit={submit} aria-busy={saving}>
-      {rows.map((row, index) => <EmployeeBatchRowCard key={`exact-employee-draft-${index}`} copy={{ ...copy, title: t("employeeForm.rowTitle", { count: index + 1 }) }} draft={row} errors={rowErrors[index] ?? {}} index={index} managerOptions={managerOptions} roles={roles} workerRoleId={workerRoleId} canRemove={!single && rows.length > 1} onChange={change} onRemove={at => { setRows(current => current.filter((_, rowIndex) => rowIndex !== at)); setRowErrors(current => current.filter((_, rowIndex) => rowIndex !== at)) }} />)}
-      {failure ? <p role="alert">{failure}</p> : null}{completionFailure ? <p role="alert">{completionFailure}</p> : null}
-      <div className="flex items-center justify-end gap-3"><Button className="min-w-44" disabled={saving || saved} type="submit">{saving ? t("common.loading") : single ? t("common.create") : t("employeeForm.submitBatch")}</Button><Button type="button" variant="outline" disabled={saving || saved} onClick={onCancel}>{t("employeeForm.backToEmployees")}</Button></div>
-    </form>
-  </div>
+  return <EmployeeBatchCreatePageView
+    title={t("employeeForm.pageTitle")}
+    description={t("employeeForm.description")}
+    cancelLabel={t("employeeForm.backToEmployees")}
+    addLabel={t("employeeForm.addAnother")}
+    showAdd={!single}
+    addDisabled={rows.length >= maxRows || saving || saved}
+    rowCount={rows.length}
+    rowLimit={maxRows}
+    limitLabel={single ? undefined : t("employeeForm.batchLimit", { count: maxRows })}
+    submitLabel={single ? t("common.create") : t("employeeForm.submitBatch")}
+    busyLabel={t("common.loading")}
+    busy={saving}
+    submitDisabled={saving || saved}
+    cancelDisabled={saving || saved}
+    onCancel={onCancel}
+    onAdd={() => { setRows(current => [...current, createEmptyEmployeeDraft(defaultRoleId)]); setRowErrors(current => [...current, {}]) }}
+    onSubmit={submit}
+  >
+    {rows.map((row, index) => <EmployeeBatchRowCard key={`exact-employee-draft-${index}`} copy={{ ...copy, title: t("employeeForm.rowTitle", { count: index + 1 }) }} draft={row} errors={rowErrors[index] ?? {}} index={index} managerOptions={managerOptions} roles={roles} workerRoleId={workerRoleId} canRemove={!single && rows.length > 1} onChange={change} onRemove={at => { setRows(current => current.filter((_, rowIndex) => rowIndex !== at)); setRowErrors(current => current.filter((_, rowIndex) => rowIndex !== at)) }} />)}
+    {failure ? <p role="alert">{failure}</p> : null}{completionFailure ? <p role="alert">{completionFailure}</p> : null}
+  </EmployeeBatchCreatePageView>
 }

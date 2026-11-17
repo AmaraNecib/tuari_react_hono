@@ -103,7 +103,7 @@ export function ExactProjectWarehousePages({ client, workspaceId, userId, page, 
     const teamRows = assignments.map(item => { const person = people.find(row => row.id === item.employeeId); return { id: item.id, typeLabel: t("detailPages.warehouse.teamRole"), title: person ? `${person.firstName} ${person.lastName}` : item.employeeId, detail: item.notes, periodLabel: `${item.startDate} – ${item.endDate ?? "—"}`, statusLabel: item.status } })
     const managementHistoryRows = (warehouseHistory.data?.items ?? []).map(item => ({ id: item.id, typeLabel: t("detailPages.warehouse.manager"), title: people.find(person => person.id === item.managerId) ? managerName(item.managerId) : item.managerId, detail: item.notes, periodLabel: `${item.startDate} – ${item.endDate ?? "—"}`, statusLabel: item.status }))
     if (!warehouse) return <p role="alert">{t("detailPages.shared.missingRecordDescription")}</p>
-    return <WarehouseDetailsPage activeTab={detailTab ?? "overview"} warehouse={{ ...warehouse, managerName: managerName(warehouse.managerId), activeWorkers: new Set(assignments.filter(item => item.status === "ACTIVE").map(item => item.employeeId)).size }} teamRows={teamRows} managementHistoryRows={managementHistoryRows} onTabChange={tab => onWarehouseTab(warehouse.id, tab)} />
+    return <WarehouseDetailsPage activeTab={detailTab ?? "overview"} warehouse={{ ...warehouse, managerName: managerName(warehouse.managerId), activeWorkers: new Set(assignments.filter(item => item.status === "ACTIVE").map(item => item.employeeId)).size }} teamRows={teamRows} managementHistoryRows={managementHistoryRows} capabilityMode onTabChange={tab => onWarehouseTab(warehouse.id, tab)} />
   }
   return <p role="alert">{t("application.unavailable")}</p>
 }

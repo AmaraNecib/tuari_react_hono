@@ -22,15 +22,8 @@ import { defaultSalaryPaymentDays, parsePositiveInteger, roundMoneyToCents } fro
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { classifyWorkforceRole } from "./role-classification"
-import { workspaceRoutes } from "@/router/navigation"
-import {
-  RecordHistoryTable,
-  RecordInfoCard,
-  RecordInfoGrid,
-  RecordPageFrame,
-  RecordTabPanel,
-  RecordTabs,
-} from "@/features/shared/record-page-frame"
+import { EmployeeDetailsView } from "./employee-details-view"
+import { RecordInfoCard, RecordInfoGrid } from "@/features/shared/record-page-frame"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { computeProposedSalaryAmount } from "@tuari/contracts"
 
@@ -164,7 +157,25 @@ function NumericEmployeeDetailsPage({
   const managedProjectNamesLabel = managedProjects.length > 0 ? managedProjects.join("، ") : t("detailPages.employee.noManagedProjectNames")
   const managedWarehouseNamesLabel = managedWarehouses.length > 0 ? managedWarehouses.join("، ") : t("detailPages.employee.noManagedWarehouseNames")
   const hasExpandedNotes = (employee.notes?.trim().length ?? 0) > 90
-  const tabsBaseId = `employee-record-${employee.id}`
+  const display = {
+    id: employee.id,
+    name: employee.name,
+    role: employee.role,
+    occupation: employee.occupation,
+    phone: employee.phone,
+    status: getArabicStatusLabel(employee.status),
+    notes: employee.notes,
+    managerName: employee.managerName || t("detailPages.employee.noCurrentManager"),
+    currentWorkplace: employee.currentWorkplace || t("detailPages.employee.noCurrentWorkplace"),
+    isWorker,
+    isProjectManager,
+    isWarehouseManager,
+    managedProjectsCount: managedProjectCountLabel,
+    managedProjectsNames: managedProjectNamesLabel,
+    managedWarehousesCount: managedWarehouseCountLabel,
+    managedWarehousesNames: managedWarehouseNamesLabel,
+    notesWide: hasExpandedNotes,
+  }
 
   // Hand the payment to the split dialog. The quick form cannot attribute the
   // payment to projects, so opening the dialog for the same payment would leave
@@ -232,13 +243,12 @@ function NumericEmployeeDetailsPage({
   }, [createSalaryPaymentMutation.isSuccess, employee.salaryPeriod, employee.salaryAmountDzd])
 
   return (
-    <RecordPageFrame
-      backHref="/employees"
-      backLabel={t("detailPages.employee.back")}
-      description=""
-      editHref={`/employees/${encodeURIComponent(employee.id)}/edit`}
-      editLabel={t("detailPages.employee.edit")}
-      title={employee.name}
+    <EmployeeDetailsView
+      employee={display}
+      activeTab={resolvedTab}
+      onTabChange={onTabChange}
+      workHistory={workHistory}
+      canAssignWorkplace={canAssignWorkplace}
       action={
         isWorker && employee.status === "ACTIVE" ? (
           <>
@@ -265,56 +275,7 @@ function NumericEmployeeDetailsPage({
           </>
         ) : undefined
       }
-    >
-      <RecordTabs
-        activeTab={resolvedTab}
-        baseId={tabsBaseId}
-        tabs={[
-          { id: "personal", label: t("detailPages.employee.personalTab") },
-          { id: "history", label: t("detailPages.employee.historyTab") },
-          { id: "finance", label: t("detailPages.employee.financeTab") },
-          ...(isWorker ? [{ id: "debts", label: "الديون" }] : []),
-        ]}
-        onChange={onTabChange}
-      />
-
-      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="personal">
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <RecordInfoCard label={t("detailPages.employee.fullName")} value={employee.name} />
-          <RecordInfoCard label={t("detailPages.employee.role")} value={employee.role} />
-          <RecordInfoCard label={t("detailPages.employee.occupation")} value={employee.occupation?.trim() || t("detailPages.employee.noOccupation")} />
-          <RecordInfoCard label={t("detailPages.employee.phone")} value={employee.phone} valueClassName="text-right font-mono" />
-          <RecordInfoCard label={t("detailPages.employee.status")} value={getArabicStatusLabel(employee.status)} />
-          {isWorker ? <RecordInfoCard label={t("detailPages.employee.currentManager")} value={employee.managerName || t("detailPages.employee.noCurrentManager")} /> : null}
-          {isWorker ? <RecordInfoCard label={t("detailPages.employee.currentWorkplace")} value={employee.currentWorkplace || t("detailPages.employee.noCurrentWorkplace")} /> : null}
-          {isProjectManager ? <RecordInfoCard label={t("detailPages.employee.managedProjectsCount")} value={managedProjectCountLabel} /> : null}
-          {isProjectManager ? (
-            <RecordInfoCard label={t("detailPages.employee.managedProjectsNames")} value={managedProjectNamesLabel} valueClassName="text-sm leading-7" />
-          ) : null}
-          {isWarehouseManager ? <RecordInfoCard label={t("detailPages.employee.managedWarehousesCount")} value={managedWarehouseCountLabel} /> : null}
-          {isWarehouseManager ? (
-            <RecordInfoCard label={t("detailPages.employee.managedWarehousesNames")} value={managedWarehouseNamesLabel} valueClassName="text-sm leading-7" />
-          ) : null}
-          <div className={hasExpandedNotes ? "md:col-span-2 xl:col-span-3" : undefined}>
-            <RecordInfoCard label={t("detailPages.employee.notes")} value={employee.notes ?? noNotesLabel} wide={hasExpandedNotes} />
-          </div>
-        </div>
-      </RecordTabPanel>
-
-      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="history">
-        <RecordHistoryTable
-          emptyAction={
-            canAssignWorkplace
-              ? { label: t("detailPages.employee.noWorkHistoryAction"), target: workspaceRoutes.employeeEdit(employee.id) }
-              : undefined
-          }
-          emptyHint={canAssignWorkplace ? t("detailPages.employee.noWorkHistoryHint") : undefined}
-          emptyLabel={t("detailPages.employee.noWorkHistory")}
-          rows={workHistory}
-        />
-      </RecordTabPanel>
-
-      <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="finance">
+      financeContent={
         <div className="space-y-6">
           <RecordInfoGrid>
             <RecordInfoCard
@@ -511,19 +472,9 @@ function NumericEmployeeDetailsPage({
             </div>
           </div>
         </div>
-      </RecordTabPanel>
-
-      {isWorker ? (
-        <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="debts">
-          <DebtCasesPanel
-            accounts={debtAccounts}
-            debtEntriesByAccountId={debtEntriesByAccountId}
-            title="ديون العامل"
-            workerId={employee.id}
-          />
-        </RecordTabPanel>
-      ) : null}
-    </RecordPageFrame>
+      }
+      debtsContent={<DebtCasesPanel accounts={debtAccounts} debtEntriesByAccountId={debtEntriesByAccountId} title="ديون العامل" workerId={employee.id} />}
+    />
   )
 }
 

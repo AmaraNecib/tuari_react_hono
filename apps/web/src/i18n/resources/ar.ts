@@ -697,7 +697,7 @@ export const ar = {
       notes: "ملاحظات",
     },
     application: {
-      unavailable: "هذا القسم المالي غير متاح في هذه النسخة.",
+      unavailable: "هذا القسم غير متاح في هذه النسخة.",
     },
     salaryEarnings: {
       title: "اعتماد الأجور الشهرية",

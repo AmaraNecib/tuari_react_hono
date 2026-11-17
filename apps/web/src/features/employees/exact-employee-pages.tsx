@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 import { i18n } from "@/i18n"
-import type { ExactEmployee, ExactEmployeeClient, ExactEmployeeSaveInput, ExactEmployeeStateHistory, ExactSalaryReference, Role } from "@tuari/contracts"
+import type { EmployeeManagerAssignment, EmployeeProjectAssignment, EmployeeWarehouseAssignment, ExactEmployee, ExactEmployeeClient, ExactEmployeeSaveInput, ExactEmployeeStateHistory, ExactSalaryReference, Project, Role, Warehouse } from "@tuari/contracts"
 import { SalaryReference } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog"
@@ -14,14 +14,21 @@ import { NativeSelect } from "@/components/ui/form-controls"
 import { ExactSalaryReferenceValue } from "./exact-salary-reference-value"
 import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 import { RecordDeleteConfirmation } from "@/features/shared/record-delete-confirmation"
-import { RecordHistoryTable, RecordInfoCard, RecordInfoGrid, RecordPageFrame, RecordTabPanel, RecordTabs } from "@/features/shared/record-page-frame"
-import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
-import { useDebtPartyDetailQuery } from "@/features/debts/debts-queries"
+import { RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shared/record-page-frame"
+import { EmployeeDetailsView } from "./employee-details-view"
 import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
 import { EmployeeTable, type EmployeeTableRow } from "./employee-table"
 import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
 
 type Choice = { id: string; label: string }
+export type ExactEmployeeAssignmentReferences = {
+  people: ExactEmployee[]
+  projects: Array<Pick<Project, "id" | "name" | "managerId">>
+  warehouses: Array<Pick<Warehouse, "id" | "name">>
+  managerAssignments: EmployeeManagerAssignment[]
+  projectAssignments: EmployeeProjectAssignment[]
+  warehouseAssignments: EmployeeWarehouseAssignment[]
+}
 export type ExactEmployeeUiContext = {
   client: ExactEmployeeClient
   roles: Role[]
@@ -203,7 +210,6 @@ export function ExactEmployeeDetailsPage(props: ExactEmployeePageProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [activeTab, setActiveTab] = useState("personal")
-  const debts = useDebtPartyDetailQuery("INTERNAL_WORKER", employeeId, { enabled: activeTab === "debts" })
   const load = useCallback(async () => {
     setLoading(true); setFailure(null)
     try { const [person, records] = await Promise.all([client.employeesGet({ id: employeeId }), client.employeeStateHistoryList({ employeeId })]); setEmployee(requireSuccess(person)); setHistory(records.items) }
@@ -214,7 +220,6 @@ export function ExactEmployeeDetailsPage(props: ExactEmployeePageProps) {
   if (failure || !employee) return <section><p role="alert">{failure ?? t("common.none")}</p><Button onClick={() => void load()}>{t("common.retry")}</Button></section>
   const role = props.roles.find(value => value.id === employee.roleId)
   const worker = role?.key === "worker"
-  const statusLabel = employee.status === "ACTIVE" ? t("status.active") : employee.status === "LEFT" ? t("status.left") : t("status.inactive")
   const managedProjects = (props.currentManagedProjectIds ?? []).map(id => props.managedProjectOptions.find(option => option.id === id)?.label ?? id)
   const managedWarehouses = (props.currentManagedWarehouseIds ?? []).map(id => props.managedWarehouseOptions.find(option => option.id === id)?.label ?? id)
   const historyRows = [...(props.workHistory ?? []), ...history.map(entry => ({
@@ -231,40 +236,90 @@ export function ExactEmployeeDetailsPage(props: ExactEmployeePageProps) {
     void sortValue
     return historyRow
   })
-  return <RecordPageFrame backHref="/employees" backLabel={t("detailPages.employee.back")} editHref={`/employees/${encodeURIComponent(employee.id)}/edit`} editLabel={t("detailPages.employee.edit")} title={`${employee.firstName} ${employee.lastName}`} action={<Button variant="destructive" disabled={deleting} onClick={() => setConfirmDelete(true)}>{t("common.delete")}</Button>}>
-    <RecordDeleteConfirmation pendingLabel={confirmDelete ? `${employee.firstName} ${employee.lastName}` : null} pending={deleting} title={t("shell.destructiveTitle")} description={t("shell.destructiveDescription")} cancelLabel={t("common.cancel")} confirmLabel={t("common.confirm")} onDismiss={() => setConfirmDelete(false)} onConfirm={async () => { setConfirmDelete(false); setDeleting(true); setDeleteError(null); try { const result = await client.employeesDelete({ id: employee.id }); if (!result.success) throw new Error(result.error.message); props.onDone() } catch (error) { setDeleteError(serverError(error)) } finally { setDeleting(false) } }} />
-    {deleteError ? <p role="alert">{deleteError}</p> : null}
-    <RecordTabs activeTab={activeTab} baseId={`employee-record-${employee.id}`} tabs={[{ id: "personal", label: t("detailPages.employee.personalTab") }, { id: "history", label: t("detailPages.employee.historyTab") }, { id: "finance", label: t("detailPages.employee.financeTab") }, ...(worker ? [{ id: "debts", label: "الديون" }] : [])]} onChange={setActiveTab} />
-    <RecordTabPanel activeTab={activeTab} baseId={`employee-record-${employee.id}`} tabId="personal">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <RecordInfoCard label={t("detailPages.employee.fullName")} value={`${employee.firstName} ${employee.lastName}`} />
-        <RecordInfoCard label={t("detailPages.employee.role")} value={role?.name ?? employee.roleId} />
-        <RecordInfoCard label={t("detailPages.employee.occupation")} value={employee.occupation?.trim() || t("detailPages.employee.noOccupation")} />
-        <RecordInfoCard label={t("detailPages.employee.phone")} value={<bdi dir="ltr">{employee.phone}</bdi>} valueClassName="font-mono" />
-        <RecordInfoCard label={t("detailPages.employee.status")} value={statusLabel} />
-        {worker ? <RecordInfoCard label={t("detailPages.employee.currentManager")} value={props.managerOptions.find(option => option.id === props.currentPlacement?.managerId)?.label ?? t("detailPages.employee.noCurrentManager")} /> : null}
-        {worker ? <RecordInfoCard label={t("detailPages.employee.currentWorkplace")} value={props.projectOptions.find(option => option.id === props.currentPlacement?.projectId)?.label ?? props.warehouseOptions.find(option => option.id === props.currentPlacement?.warehouseId)?.label ?? t("detailPages.employee.noCurrentWorkplace")} /> : null}
-        {role?.key === "project_manager" ? <RecordInfoCard label={t("detailPages.employee.managedProjectsCount")} value={managedProjects.length ? `${managedProjects.length} ${t("detailPages.employee.projectUnit")}` : t("detailPages.employee.noManagedProjects")} /> : null}
-        {role?.key === "project_manager" ? <RecordInfoCard label={t("detailPages.employee.managedProjectsNames")} value={managedProjects.length ? managedProjects.join("، ") : t("detailPages.employee.noManagedProjectNames")} valueClassName="text-sm leading-7" /> : null}
-        {role?.key === "warehouse_manager" ? <RecordInfoCard label={t("detailPages.employee.managedWarehousesCount")} value={managedWarehouses.length ? `${managedWarehouses.length} ${t("detailPages.employee.warehouseUnit")}` : t("detailPages.employee.noManagedWarehouses")} /> : null}
-        {role?.key === "warehouse_manager" ? <RecordInfoCard label={t("detailPages.employee.managedWarehousesNames")} value={managedWarehouses.length ? managedWarehouses.join("، ") : t("detailPages.employee.noManagedWarehouseNames")} valueClassName="text-sm leading-7" /> : null}
-        <RecordInfoCard label={t("detailPages.employee.notes")} value={employee.notes?.trim() || t("common.noNotes")} wide />
-      </div>
-    </RecordTabPanel>
-    <RecordTabPanel activeTab={activeTab} baseId={`employee-record-${employee.id}`} tabId="history">
-      <RecordHistoryTable emptyLabel={t("detailPages.employee.noWorkHistory")} rows={historyRows} />
-    </RecordTabPanel>
-    <RecordTabPanel activeTab={activeTab} baseId={`employee-record-${employee.id}`} tabId="finance">
-      <div className="space-y-5">
-        <RecordInfoGrid><RecordInfoCard label={t("detailPages.employee.financeCurrentSalary")} value={<ExactSalaryReferenceValue reference={employee.salaryReference} />} /><RecordInfoCard label={t("detailPages.employee.financeSalaryPeriod")} value={employee.salaryReference ? t(({ DAILY: "detailPages.salary.daily", WEEKLY: "detailPages.salary.weekly", MONTHLY: "detailPages.salary.monthly" } as const)[employee.salaryReference.period]) : t("detailPages.salary.notSpecified")} /></RecordInfoGrid>
-        <section className="space-y-2 rounded-xl border border-border/70 bg-sidebar p-5 dark:bg-surface"><h2 className="text-lg font-semibold">{t("salaryEarnings.title")}</h2><p className="text-sm leading-6 text-muted-foreground">{t("salaryEarnings.cashUnavailable")}</p><WorkspaceLink target={workspaceRoutes.salaries()}>{t("salaryEarnings.approvalSection")}</WorkspaceLink></section>
-      </div>
-    </RecordTabPanel>
-    {worker ? <RecordTabPanel activeTab={activeTab} baseId={`employee-record-${employee.id}`} tabId="debts">{debts.isPending ? <p role="status">{t("common.loading")}</p> : debts.isError ? <section role="alert"><p>{t("debts.loadError")}</p><Button onClick={() => void debts.refetch()}>{t("common.retry")}</Button></section> : <DebtCasesPanel accounts={debts.data?.accounts ?? []} debtEntriesByAccountId={debts.data?.entriesByAccountId ?? {}} title="ديون العامل" workerId={employee.id} />}</RecordTabPanel> : null}
-  </RecordPageFrame>
+  const managerId = props.currentPlacement?.managerId
+  const currentManager = props.managerOptions.find(option => option.id === managerId)
+  const currentProject = props.projectOptions.find(option => option.id === props.currentPlacement?.projectId)
+  const currentWarehouse = props.warehouseOptions.find(option => option.id === props.currentPlacement?.warehouseId)
+  const employeeName = `${employee.firstName} ${employee.lastName}`
+  const display = {
+    id: employee.id,
+    name: employeeName,
+    role: role?.name ?? employee.roleId,
+    occupation: employee.occupation,
+    phone: employee.phone,
+    status: employee.status === "ACTIVE" ? t("status.active") : employee.status === "LEFT" ? t("status.left") : t("status.inactive"),
+    notes: employee.notes,
+    managerName: currentManager?.label ?? managerId ?? t("detailPages.employee.noCurrentManager"),
+    currentWorkplace: currentProject?.label ?? currentWarehouse?.label ?? props.currentPlacement?.projectId ?? props.currentPlacement?.warehouseId ?? t("detailPages.employee.noCurrentWorkplace"),
+    isWorker: worker,
+    isProjectManager: role?.key === "project_manager",
+    isWarehouseManager: role?.key === "warehouse_manager",
+    managedProjectsCount: managedProjects.length ? `${managedProjects.length} ${t("detailPages.employee.projectUnit")}` : t("detailPages.employee.noManagedProjects"),
+    managedProjectsNames: managedProjects.length ? managedProjects.join("، ") : t("detailPages.employee.noManagedProjectNames"),
+    managedWarehousesCount: managedWarehouses.length ? `${managedWarehouses.length} ${t("detailPages.employee.warehouseUnit")}` : t("detailPages.employee.noManagedWarehouses"),
+    managedWarehousesNames: managedWarehouses.length ? managedWarehouses.join("، ") : t("detailPages.employee.noManagedWarehouseNames"),
+    notesWide: (employee.notes?.trim().length ?? 0) > 90,
+  }
+  const action = <><RecordDeleteConfirmation pendingLabel={confirmDelete ? employeeName : null} pending={deleting} title={t("shell.destructiveTitle")} description={t("shell.destructiveDescription")} cancelLabel={t("common.cancel")} confirmLabel={t("common.confirm")} onDismiss={() => setConfirmDelete(false)} onConfirm={async () => { setConfirmDelete(false); setDeleting(true); setDeleteError(null); try { const result = await client.employeesDelete({ id: employee.id }); if (!result.success) throw new Error(result.error.message); props.onDone() } catch (error) { setDeleteError(serverError(error)) } finally { setDeleting(false) } }} /><Button variant="destructive" disabled={deleting} onClick={() => setConfirmDelete(true)}>{t("common.delete")}</Button></>
+  return <EmployeeDetailsView
+    employee={display}
+    activeTab={activeTab}
+    onTabChange={setActiveTab}
+    workHistory={historyRows}
+    canAssignWorkplace={worker && employee.status === "ACTIVE"}
+    beforeTabs={deleteError ? <p role="alert">{deleteError}</p> : null}
+    action={action}
+    financeContent={<div className="space-y-5">
+      <RecordInfoGrid><RecordInfoCard label={t("detailPages.employee.financeCurrentSalary")} value={<ExactSalaryReferenceValue reference={employee.salaryReference} />} /><RecordInfoCard label={t("detailPages.employee.financeSalaryPeriod")} value={employee.salaryReference ? t(({ DAILY: "detailPages.salary.daily", WEEKLY: "detailPages.salary.weekly", MONTHLY: "detailPages.salary.monthly" } as const)[employee.salaryReference.period]) : t("detailPages.salary.notSpecified")} /></RecordInfoGrid>
+      <section className="space-y-2 rounded-xl border border-border/70 bg-sidebar p-5 dark:bg-surface"><h2 className="text-lg font-semibold">{t("salaryEarnings.title")}</h2><p className="text-sm leading-6 text-muted-foreground">{t("salaryEarnings.cashUnavailable")}</p><WorkspaceLink target={workspaceRoutes.salaries()}>{t("salaryEarnings.approvalSection")}</WorkspaceLink></section>
+    </div>}
+    debtsContent={<p role="status">{t("application.unavailable")}</p>}
+  />
 }
 
-export function ExactEmployeeTable({ client, roles, onView, onEdit, onAdd, onDeleted }: ExactEmployeeUiContext & { onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void; onDeleted?: () => Promise<void> | void }) {
+export function mapExactEmployeeTableRow(employee: ExactEmployee, roles: Role[], references: ExactEmployeeAssignmentReferences, copy: { noManager: string; noWorkplace: string }): EmployeeTableRow {
+  const role = roles.find(item => item.id === employee.roleId)
+  const latest = <T extends { status: string; startDate: string }>(rows: T[]) => rows.filter(row => row.status === "ACTIVE").sort((left, right) => right.startDate.localeCompare(left.startDate))[0]
+  const managerAssignment = latest(references.managerAssignments.filter(item => item.workerId === employee.id))
+  const projectAssignment = latest(references.projectAssignments.filter(item => item.employeeId === employee.id))
+  const warehouseAssignment = latest(references.warehouseAssignments.filter(item => item.employeeId === employee.id))
+  const project = projectAssignment ? references.projects.find(item => item.id === projectAssignment.projectId) : undefined
+  const warehouse = warehouseAssignment ? references.warehouses.find(item => item.id === warehouseAssignment.warehouseId) : undefined
+  const managerId = managerAssignment?.managerId ?? project?.managerId ?? null
+  const manager = managerId ? references.people.find(item => item.id === managerId) : undefined
+  return {
+    id: employee.id,
+    firstName: employee.firstName,
+    lastName: employee.lastName,
+    name: `${employee.firstName} ${employee.lastName}`,
+    roleId: employee.roleId,
+    roleKey: role?.key ?? "",
+    role: role?.name ?? employee.roleId,
+    phone: employee.phone,
+    status: employee.status,
+    salaryAmountDzd: null,
+    salaryPeriod: null,
+    managerName: manager ? `${manager.firstName} ${manager.lastName}` : managerId ?? copy.noManager,
+    managerAssignmentId: managerAssignment?.id ?? null,
+    currentManagerId: managerId,
+    currentProjectId: projectAssignment?.projectId ?? null,
+    currentProjectAssignmentId: projectAssignment?.id ?? null,
+    currentWarehouseId: warehouseAssignment?.warehouseId ?? null,
+    currentWarehouseAssignmentId: warehouseAssignment?.id ?? null,
+    currentWorkplace: project?.name ?? projectAssignment?.projectId ?? warehouse?.name ?? warehouseAssignment?.warehouseId ?? copy.noWorkplace,
+    notes: employee.notes,
+    occupation: employee.occupation,
+    isWorker: role?.key === "worker",
+    canDelete: true,
+    canLeave: role?.key === "worker" && employee.status === "ACTIVE",
+    deleteDisabledReason: null,
+    leaveDisabledReason: null,
+    createdAt: employee.createdAt,
+    updatedAt: employee.updatedAt,
+  }
+}
+
+export function ExactEmployeeTable({ client, roles, assignmentReferences, onView, onEdit, onAdd, onDeleted }: ExactEmployeeUiContext & { assignmentReferences: ExactEmployeeAssignmentReferences; onView: (id: string) => void; onEdit: (id: string) => void; onAdd?: () => void; onDeleted?: () => Promise<void> | void }) {
   const { t } = useTranslation()
   const [employees, setEmployees] = useState<ExactEmployee[]>([])
   const [loading, setLoading] = useState(true)
@@ -288,23 +343,7 @@ export function ExactEmployeeTable({ client, roles, onView, onEdit, onAdd, onDel
     }).catch(error => { if (live) setFailure(serverError(error)) }).finally(() => { if (live) setLoading(false) })
     return () => { live = false }
   }, [client, cursor, refreshKey, search])
-  const rows = useMemo<EmployeeTableRow[]>(() => employees.map(employee => {
-    const role = roles.find(item => item.id === employee.roleId)
-    return {
-      id: employee.id, firstName: employee.firstName, lastName: employee.lastName,
-      name: `${employee.firstName} ${employee.lastName}`, roleId: employee.roleId,
-      roleKey: role?.key ?? "", role: role?.name ?? employee.roleId, phone: employee.phone,
-      status: employee.status, salaryAmountDzd: null, salaryPeriod: null,
-      managerName: t("shell.noManager"), managerAssignmentId: null,
-      currentManagerId: null, currentProjectId: null, currentProjectAssignmentId: null,
-      currentWarehouseId: null, currentWarehouseAssignmentId: null,
-      currentWorkplace: t("detailPages.employee.noCurrentWorkplace"), notes: employee.notes,
-      occupation: employee.occupation, isWorker: role?.key === "worker",
-      canDelete: true, canLeave: role?.key === "worker" && employee.status === "ACTIVE",
-      deleteDisabledReason: null, leaveDisabledReason: null,
-      createdAt: employee.createdAt, updatedAt: employee.updatedAt,
-    }
-  }), [employees, roles, t])
+  const rows = useMemo<EmployeeTableRow[]>(() => employees.map(employee => mapExactEmployeeTableRow(employee, roles, assignmentReferences, { noManager: t("shell.noManager"), noWorkplace: t("detailPages.employee.noCurrentWorkplace") })), [assignmentReferences, employees, roles, t])
   function changeSearch(query: string) { setSearch(query); setCursor(undefined); setCursorHistory([]) }
   function nextPage() { if (!nextCursor) return; setCursorHistory(history => [...history, cursor]); setCursor(nextCursor) }
   function previousPage() { const history = [...cursorHistory]; const previous = history.pop(); setCursorHistory(history); setCursor(previous) }
