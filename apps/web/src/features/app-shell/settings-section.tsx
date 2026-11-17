@@ -29,48 +29,15 @@ import {
 } from "./update-commands"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { useUpdateCheck } from "./use-update-check"
+import type { HomeViewCopy } from "./home-view-copy"
+import type { DemoSession } from "./workspace-mutations"
 
 type SettingsSectionProps = {
-  accountCurrentPasswordLabel: string
-  accountCurrentPasswordPlaceholder: string
-  accountDescription: string
-  accountNameLabel: string
-  accountNamePlaceholder: string
-  accountNewPasswordLabel: string
-  accountNewPasswordPlaceholder: string
-  accountPhoneLabel: string
-  accountPhoneHint: string
-  accountPhonePlaceholder: string
-  accountSaveLabel: string
-  accountSavingLabel: string
-  accountTitle: string
-  currentName: string
-  currentPhone: string
+  copy: HomeViewCopy
+  session: NonNullable<DemoSession>
+  theme: "light" | "dark"
   isResetPending: boolean
   isSavingAccount: boolean
-  resetDescription: string
-  resetLabel: string
-  themeDescription: string
-  themeLabel: string
-  themeValueLabel: string
-  title: string
-  passwordHideLabel: string
-  passwordShowLabel: string
-  settingsCheckForUpdates: string
-  settingsChecking: string
-  settingsUpToDate: string
-  settingsUpdateAvailable: string
-  settingsUpdateError: string
-  settingsApplyError: string
-  settingsLastChecked: string
-  settingsUpdateCached: string
-  settingsAboutTitle: string
-  settingsAboutVersion: string
-  settingsAboutInstallFromFile: string
-  settingsAboutInstallFromFileDescription: string
-  settingsUpdateVerifying: string
-  settingsUpdateSuccess: string
-  settingsAboutTab: string
   onSaveAccount: (input: {
     currentPassword?: string
     name?: string
@@ -87,51 +54,93 @@ type SettingsSectionProps = {
  * @description Component
  */
 export function SettingsSection({
-  accountCurrentPasswordLabel,
-  accountCurrentPasswordPlaceholder,
-  accountDescription,
-  accountNameLabel,
-  accountNamePlaceholder,
-  accountNewPasswordLabel,
-  accountNewPasswordPlaceholder,
-  accountPhoneLabel,
-  accountPhoneHint,
-  accountPhonePlaceholder,
-  accountSaveLabel,
-  accountSavingLabel,
-  accountTitle,
-  currentName,
-  currentPhone,
+  copy,
+  session,
+  theme,
   isResetPending,
   isSavingAccount,
-  resetDescription,
-  resetLabel,
-  themeDescription,
-  themeLabel,
-  themeValueLabel,
-  title,
-  passwordHideLabel,
-  passwordShowLabel,
-  settingsCheckForUpdates,
-  settingsChecking,
-  settingsUpToDate,
-  settingsUpdateAvailable,
-  settingsUpdateError,
-  settingsApplyError,
-  settingsLastChecked,
-  settingsUpdateCached,
-  settingsAboutTitle,
-  settingsAboutVersion,
-  settingsAboutInstallFromFile,
-  settingsAboutInstallFromFileDescription,
-  settingsUpdateVerifying,
-  settingsUpdateSuccess,
-  settingsAboutTab,
   onSaveAccount,
   onReset,
   onToggleTheme,
   onUpdateApplied,
 }: SettingsSectionProps) {
+  const {
+    accountCurrentPasswordLabel,
+    accountCurrentPasswordPlaceholder,
+    accountDescription,
+    accountNameLabel,
+    accountNamePlaceholder,
+    accountNewPasswordLabel,
+    accountNewPasswordPlaceholder,
+    accountPhoneLabel,
+    accountPhoneHint,
+    accountPhonePlaceholder,
+    accountSaveLabel,
+    accountSavingLabel,
+    accountTitle,
+    resetDescription,
+    resetLabel,
+    themeDescription,
+    themeLabel,
+    themeValueLabel,
+    title,
+    passwordHideLabel,
+    passwordShowLabel,
+    settingsCheckForUpdates,
+    settingsChecking,
+    settingsUpToDate,
+    settingsUpdateAvailable,
+    settingsUpdateError,
+    settingsApplyError,
+    settingsLastChecked,
+    settingsUpdateCached,
+    settingsAboutTitle,
+    settingsAboutVersion,
+    settingsAboutInstallFromFile,
+    settingsAboutInstallFromFileDescription,
+    settingsUpdateVerifying,
+    settingsUpdateSuccess,
+    settingsAboutTab,
+  } = {
+    accountCurrentPasswordLabel: copy.shell.settingsAccountCurrentPassword,
+    accountCurrentPasswordPlaceholder: copy.shell.settingsAccountCurrentPasswordPlaceholder,
+    accountDescription: copy.shell.settingsAccountDescription,
+    accountNameLabel: copy.shell.settingsAccountName,
+    accountNamePlaceholder: copy.shell.settingsAccountNamePlaceholder,
+    accountNewPasswordLabel: copy.shell.settingsAccountNewPassword,
+    accountNewPasswordPlaceholder: copy.shell.settingsAccountNewPasswordPlaceholder,
+    accountPhoneLabel: copy.shell.settingsAccountPhone,
+    accountPhoneHint: copy.shell.settingsAccountPhoneHint,
+    accountPhonePlaceholder: copy.shell.settingsAccountPhonePlaceholder,
+    accountSaveLabel: copy.shell.settingsAccountSave,
+    accountSavingLabel: copy.shell.settingsAccountSaving,
+    accountTitle: copy.shell.settingsAccountTitle,
+    resetDescription: copy.shell.settingsResetDescription,
+    resetLabel: copy.shell.resetWorkspace,
+    themeDescription: copy.shell.settingsThemeDescription,
+    themeLabel: copy.shell.themeToggle,
+    themeValueLabel: theme === "light" ? copy.shell.themeDark : copy.shell.themeLight,
+    title: copy.sections.settings.label,
+    passwordHideLabel: copy.common.hidePassword,
+    passwordShowLabel: copy.common.showPassword,
+    settingsCheckForUpdates: copy.shell.settingsCheckForUpdates,
+    settingsChecking: copy.shell.settingsChecking,
+    settingsUpToDate: copy.shell.settingsUpToDate,
+    settingsUpdateAvailable: copy.shell.settingsUpdateAvailable,
+    settingsUpdateError: copy.shell.settingsUpdateError,
+    settingsApplyError: copy.shell.settingsApplyError,
+    settingsLastChecked: copy.shell.settingsLastChecked,
+    settingsUpdateCached: copy.shell.settingsUpdateCached,
+    settingsAboutTitle: copy.shell.settingsAboutTitle,
+    settingsAboutVersion: copy.shell.settingsAboutVersion,
+    settingsAboutInstallFromFile: copy.shell.settingsAboutInstallFromFile,
+    settingsAboutInstallFromFileDescription: copy.shell.settingsAboutInstallFromFileDescription,
+    settingsUpdateVerifying: copy.shell.settingsUpdateVerifying,
+    settingsUpdateSuccess: copy.shell.settingsUpdateSuccess,
+    settingsAboutTab: copy.shell.settingsAboutTab,
+  }
+  const currentName = session.name ?? ""
+  const currentPhone = session.phone
   const { t } = useTranslation()
   const { state: checkUpdateState, checkUpdate } = useUpdateCheck()
 

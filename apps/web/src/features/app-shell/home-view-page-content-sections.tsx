@@ -247,52 +247,7 @@ export function HomeViewPageSectionContent({
 
     case "settings":
       return renderSection(
-        <SettingsSection
-          accountCurrentPasswordLabel={copy.shell.settingsAccountCurrentPassword}
-          accountCurrentPasswordPlaceholder={copy.shell.settingsAccountCurrentPasswordPlaceholder}
-          accountDescription={copy.shell.settingsAccountDescription}
-          accountNameLabel={copy.shell.settingsAccountName}
-          accountNamePlaceholder={copy.shell.settingsAccountNamePlaceholder}
-          accountNewPasswordLabel={copy.shell.settingsAccountNewPassword}
-          accountNewPasswordPlaceholder={copy.shell.settingsAccountNewPasswordPlaceholder}
-          accountPhoneHint={copy.shell.settingsAccountPhoneHint}
-          accountPhoneLabel={copy.shell.settingsAccountPhone}
-          accountPhonePlaceholder={copy.shell.settingsAccountPhonePlaceholder}
-          accountSaveLabel={copy.shell.settingsAccountSave}
-          accountSavingLabel={copy.shell.settingsAccountSaving}
-          accountTitle={copy.shell.settingsAccountTitle}
-          currentName={session.name ?? ""}
-          currentPhone={session.phone}
-          isSavingAccount={updateAccountPending}
-          passwordHideLabel={copy.common.hidePassword}
-          passwordShowLabel={copy.common.showPassword}
-          isResetPending={resetWorkspacePending}
-          resetDescription={copy.shell.settingsResetDescription}
-          resetLabel={copy.shell.resetWorkspace}
-          themeDescription={copy.shell.settingsThemeDescription}
-          themeLabel={copy.shell.themeToggle}
-          themeValueLabel={theme === "light" ? copy.shell.themeDark : copy.shell.themeLight}
-          title={copy.sections.settings.label}
-          settingsCheckForUpdates={copy.shell.settingsCheckForUpdates}
-          settingsChecking={copy.shell.settingsChecking}
-          settingsUpToDate={copy.shell.settingsUpToDate}
-          settingsUpdateAvailable={copy.shell.settingsUpdateAvailable}
-          settingsUpdateError={copy.shell.settingsUpdateError}
-          settingsApplyError={copy.shell.settingsApplyError}
-          settingsLastChecked={copy.shell.settingsLastChecked}
-          settingsUpdateCached={copy.shell.settingsUpdateCached}
-          settingsAboutTitle={copy.shell.settingsAboutTitle}
-          settingsAboutVersion={copy.shell.settingsAboutVersion}
-          settingsAboutInstallFromFile={copy.shell.settingsAboutInstallFromFile}
-          settingsAboutInstallFromFileDescription={copy.shell.settingsAboutInstallFromFileDescription}
-          settingsUpdateVerifying={copy.shell.settingsUpdateVerifying}
-          settingsUpdateSuccess={copy.shell.settingsUpdateSuccess}
-          settingsAboutTab={copy.shell.settingsAboutTab}
-          onReset={onResetWorkspace}
-          onSaveAccount={onSaveAccount}
-          onToggleTheme={onThemeToggle}
-          onUpdateApplied={onUpdateApplied}
-        />,
+        <SettingsSection copy={copy} session={session} theme={theme} isResetPending={resetWorkspacePending} isSavingAccount={updateAccountPending} onReset={onResetWorkspace} onSaveAccount={onSaveAccount} onToggleTheme={onThemeToggle} onUpdateApplied={onUpdateApplied} />,
       )
 
     default:

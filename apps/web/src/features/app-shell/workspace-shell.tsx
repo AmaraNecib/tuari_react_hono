@@ -148,52 +148,7 @@ export function WorkspaceShell({ client, capabilities, copy, employeeId, project
   }
   if (page === "salaries") return <ExactSalaryEarningsSection employees={people} projects={projectRows.map(project => ({ id: project.id, name: project.name }))} workforceClient={workforceClient} workspaceId={workspaceId} userId={userId} onPendingCommandChange={onPendingCommandChange} />
   if (page === "dashboard") return <DashboardSection financialFeaturesAvailable={false} metrics={{ workers: people.filter(person => person.status === "ACTIVE" && roleRows.some(role => role.id === person.roleId && role.key === "worker")).length, projects: projectRows.filter(project => project.status === "ACTIVE").length, warehouses: warehouseRows.length, roles: roleRows.length, counterparties: null }} labels={{ title: copy.dashboard.title, description: copy.dashboard.description, workers: copy.metrics.workers, projects: copy.metrics.projects, warehouses: copy.metrics.warehouses, roles: copy.metrics.roles, invoices: copy.metrics.invoices, outstandingDebts: copy.metrics.outstandingDebts, items: copy.metrics.items, counterparties: copy.metrics.counterparties }} />
-  if (page === "settings") return <SettingsSection
-    accountCurrentPasswordLabel={copy.shell.settingsAccountCurrentPassword}
-    accountCurrentPasswordPlaceholder={copy.shell.settingsAccountCurrentPasswordPlaceholder}
-    accountDescription={copy.shell.settingsAccountDescription}
-    accountNameLabel={copy.shell.settingsAccountName}
-    accountNamePlaceholder={copy.shell.settingsAccountNamePlaceholder}
-    accountNewPasswordLabel={copy.shell.settingsAccountNewPassword}
-    accountNewPasswordPlaceholder={copy.shell.settingsAccountNewPasswordPlaceholder}
-    accountPhoneLabel={copy.shell.settingsAccountPhone}
-    accountPhoneHint={copy.shell.settingsAccountPhoneHint}
-    accountPhonePlaceholder={copy.shell.settingsAccountPhonePlaceholder}
-    accountSaveLabel={copy.shell.settingsAccountSave}
-    accountSavingLabel={copy.shell.settingsAccountSaving}
-    accountTitle={copy.shell.settingsAccountTitle}
-    currentName={session.name ?? ""}
-    currentPhone={session.phone}
-    isResetPending={resetWorkspacePending}
-    isSavingAccount={updateAccountPending}
-    resetDescription={copy.shell.settingsResetDescription}
-    resetLabel={copy.shell.resetWorkspace}
-    themeDescription={copy.shell.settingsThemeDescription}
-    themeLabel={copy.shell.themeToggle}
-    themeValueLabel={theme === "light" ? copy.shell.themeDark : copy.shell.themeLight}
-    title={copy.sections.settings.label}
-    passwordHideLabel={copy.common.hidePassword}
-    passwordShowLabel={copy.common.showPassword}
-    settingsCheckForUpdates={copy.shell.settingsCheckForUpdates}
-    settingsChecking={copy.shell.settingsChecking}
-    settingsUpToDate={copy.shell.settingsUpToDate}
-    settingsUpdateAvailable={copy.shell.settingsUpdateAvailable}
-    settingsUpdateError={copy.shell.settingsUpdateError}
-    settingsApplyError={copy.shell.settingsApplyError}
-    settingsLastChecked={copy.shell.settingsLastChecked}
-    settingsUpdateCached={copy.shell.settingsUpdateCached}
-    settingsAboutTitle={copy.shell.settingsAboutTitle}
-    settingsAboutVersion={copy.shell.settingsAboutVersion}
-    settingsAboutInstallFromFile={copy.shell.settingsAboutInstallFromFile}
-    settingsAboutInstallFromFileDescription={copy.shell.settingsAboutInstallFromFileDescription}
-    settingsUpdateVerifying={copy.shell.settingsUpdateVerifying}
-    settingsUpdateSuccess={copy.shell.settingsUpdateSuccess}
-    settingsAboutTab={copy.shell.settingsAboutTab}
-    onSaveAccount={onSaveAccount}
-    onReset={onResetWorkspace}
-    onToggleTheme={onThemeToggle}
-    onUpdateApplied={onUpdateApplied}
-  />
+  if (page === "settings") return <SettingsSection copy={copy} session={session} theme={theme} isResetPending={resetWorkspacePending} isSavingAccount={updateAccountPending} onSaveAccount={onSaveAccount} onReset={onResetWorkspace} onToggleTheme={onThemeToggle} onUpdateApplied={onUpdateApplied} />
   return <section className="space-y-3" role="status"><p>{t("application.unavailable")}</p><nav className="flex flex-wrap gap-4"><WorkspaceLink target={workspaceRoutes.employees()}>{t("sections.employees.label")}</WorkspaceLink><WorkspaceLink target={workspaceRoutes.salaries()}>{t("sections.salaries.label")}</WorkspaceLink></nav></section>
 }
 

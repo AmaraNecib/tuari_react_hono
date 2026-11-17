@@ -23,7 +23,7 @@ const capabilities: ApplicationCapabilities = {
   inventoryMoney: "unavailable", expenses: "unavailable", monetaryReports: "unavailable", fullProjectCost: "unavailable",
 }
 
-function mount(page: "salaries" | "employees" = "salaries", clientOverrides: Record<string, unknown> = {}) {
+function mount(page: "salaries" | "employees" | "settings" = "salaries", clientOverrides: Record<string, unknown> = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
   const client = {
     employeesList: vi.fn(async () => ({ items: [person] })),
@@ -46,6 +46,15 @@ function mount(page: "salaries" | "employees" = "salaries", clientOverrides: Rec
 }
 
 describe("normal normal application application integration", () => {
+  it("dispatches exact Settings with the authenticated session and presentation copy", async () => {
+    mount("settings")
+    expect(await screen.findByDisplayValue("Operator")).toBeTruthy()
+    expect(screen.getByDisplayValue("0555000002")).toBeTruthy()
+    expect(screen.getAllByText(i18n.t("shell.settingsAccountTitle")).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole("button", { name: i18n.t("settings.tabs.appearance") }))
+    expect(screen.getByText(i18n.t("shell.themeToggle"))).toBeTruthy()
+    expect(screen.getByRole("button", { name: i18n.t("shell.themeDark") })).toBeTruthy()
+  })
   it("supplies authenticated active assignments and names to the original employee table", async () => {
     const managerRole = { id: "manager-role", key: "project_manager", name: "Project manager", description: null, isSystem: true, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }
     const manager: ExactEmployee = { ...person, id: "manager-a", firstName: "Samir", lastName: "Belaid", roleId: managerRole.id }

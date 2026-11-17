@@ -68,6 +68,14 @@ Lesson candidates: none identified yet.
 
 At base `61c9a5e75771cb0da0fc65cd5728540fc71f8c16`, `exact-workforce-client.ts` only wrapped `createORPCClient(createWorkspaceRpcLink(mount))`. Its only importers were `orpc-client.test.ts` and `exact-salary-earnings-section.test.tsx`; no production module imported it. Production uses the configured `applicationClient` singleton, and `WorkspaceShell` builds its narrow workforce facade from `client.workforceExact`. Remove the redundant wrapper. Keep transport validation, configured origin, authenticated browser/desktop dispatch and custom mount checks on `createWorkspaceRpcLink`; the salary proxy test now uses `applicationClient.workforceExact`. This is a narrow obsolete-module cleanup, not resolution of the full #555 diff.
 
+## #555 web-shell reductions C1/C2
+
+- Base: `54b8b2cbe59598073f6ee0f9784a725574ec8037`; mode: `focused-local / CI-final-pending`.
+- C1 moves the single Settings copy/session/theme composition into existing `settings-section.tsx`. Its caller interface is nine purpose-level values (copy, session, theme, pending flags and callbacks), rather than roughly 45 presentation props. Both exact and legacy dispatch tests exercise their production callers. The legacy `renderSection` Suspense wrapper and optional `onUpdateApplied` remain. Settings JSX/forms and mutation ownership did not move.
+- C2 project detail and cost props now expose only `Pick<ExactWorkforceEarningsClient, "getProjectSalaryCost">`; the project adapter constructs only that closure. The three-method facade in `WorkspaceShell` remains unchanged for salaries. A real oRPC proxy test asserts the project-cost path; schema parsing and workspace/user query key remain untouched.
+- Runtime delta: 46 lines of duplicate JSX prop mappings were removed from each caller (92 removed). The shared Settings composition adds 9 net lines in its module; the facade drops 2 lines. Production runtime files therefore shrink by 85 net lines. The Settings caller interface drops from about 45 labels/values to 9 purpose-shaped inputs. Two unused closure definitions disappeared. No feature/page or test was removed.
+- Preserved proof: legacy semantic account forms/password-byte and account-fence coverage; exact Settings caller session/copy; exact project salary cached 25,000→37,500 and other-user isolation; original project tabs; dynamic-proxy regression. Logs and exact-SHA verification are recorded under `.scratch/reviews/543-only-integration/`.
+
 ## #555 evidence-proven E2E cleanup
 
 - Worktree: `D:/worktrees/tuari_react_hono/t3-9f3476b8-76577619c9213797`

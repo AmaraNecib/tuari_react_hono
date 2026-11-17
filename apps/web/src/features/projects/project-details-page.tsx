@@ -62,7 +62,7 @@ export function ProjectDetailsPage({
     statusLabel: string
   }>
   capabilityMode?: boolean
-  workforceClient?: ExactWorkforceEarningsClient
+  workforceClient?: Pick<ExactWorkforceEarningsClient, "getProjectSalaryCost">
   workforceScope?: { workspaceId: string; userId: string }
 }) {
   const { t } = useTranslation()

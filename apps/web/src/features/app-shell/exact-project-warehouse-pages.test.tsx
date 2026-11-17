@@ -1,9 +1,10 @@
+import { createORPCClient } from "@orpc/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
 import type { ApplicationClient } from "@tuari/contracts"
 import { i18n } from "@/i18n"
-import { rpcClient } from "@/lib/orpc-client"
+import { createWorkspaceRpcLink, rpcClient } from "@/lib/orpc-client"
 import { ExactProjectWarehousePages } from "./exact-project-warehouse-pages"
 const { legacyInventoryReads } = vi.hoisted(() => {
   const rejectLegacyCall = (name: string) => vi.fn(() => { throw new Error(`Unexpected legacy RPC call: ${name}`) })
@@ -29,7 +30,24 @@ vi.mock("@/lib/orpc-client", async importOriginal => {
 vi.mock("./home-view-navigation", () => ({ useHomeViewNavigation: () => ({}) }))
 vi.mock("@/router/navigation", async importOriginal => ({ ...await importOriginal<typeof import("@/router/navigation")>(), WorkspaceLink: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }))
 vi.mock("@tanstack/react-router", async importOriginal => ({ ...await importOriginal<typeof import("@tanstack/react-router")>(), Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }))
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+it("routes exact project cost through the real proxy facade", async () => {
+  const paths: string[] = []
+  vi.stubGlobal("fetch", vi.fn<typeof globalThis.fetch>(async input => {
+    const path = new URL((input as Request).url).pathname
+    paths.push(path)
+    const json = path.endsWith("projectsList") ? { items: [{ id: "project-a", name: "North site", location: null, managerId: null, status: "ACTIVE", notes: null, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z" }] }
+      : path.endsWith("getProjectSalaryCost") ? { projectId: "project-a", currency: "DZD", totalAmount: "25000.00", segments: [] }
+        : { items: [] }
+    return new Response(JSON.stringify({ json }), { headers: { "content-type": "application/json" } })
+  }))
+  const client = createORPCClient<ApplicationClient>(createWorkspaceRpcLink("rpc"))
+  const query = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })
+  render(<QueryClientProvider client={query}><ExactProjectWarehousePages client={client} workspaceId="workspace-a" userId="user-a" page="project-details" projectId="project-a" detailTab="cost" onProjectTab={vi.fn()} onWarehouseTab={vi.fn()} /></QueryClientProvider>)
+  fireEvent.click(await screen.findByRole("tab", { name: i18n.t("detailPages.project.cost.tab") }))
+  await waitFor(() => expect(paths).toContain("/rpc/workforceExact/getProjectSalaryCost"))
+  expect(paths.filter(path => path.includes("/workforceExact/"))).toEqual(["/rpc/workforceExact/getProjectSalaryCost"])
+})
 it("throws when a legacy RPC method is not in the strict mock", () => {
   expect(() => Reflect.get(rpcClient, "unexpectedLegacyProcedure")).toThrow("Unexpected rpcClient.unexpectedLegacyProcedure access")
 })

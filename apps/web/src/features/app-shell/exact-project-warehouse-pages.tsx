@@ -33,8 +33,6 @@ export function ExactProjectWarehousePages({ client, workspaceId, userId, page, 
   const { t } = useTranslation()
   const navigation = useHomeViewNavigation()
   const workforceClient = useMemo(() => ({
-    approveMonthlyEarnings: (input: Parameters<typeof client.workforceExact.approveMonthlyEarnings>[0]) => client.workforceExact.approveMonthlyEarnings(input),
-    listEmployeeEarnings: (input: Parameters<typeof client.workforceExact.listEmployeeEarnings>[0]) => client.workforceExact.listEmployeeEarnings(input),
     getProjectSalaryCost: (input: Parameters<typeof client.workforceExact.getProjectSalaryCost>[0]) => client.workforceExact.getProjectSalaryCost(input),
   }), [client])
   const queryClient = useQueryClient()

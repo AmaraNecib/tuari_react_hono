@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { exactProjectSalaryCostSchema, type ExactWorkforceEarningsClient } from "@tuari/contracts"
 import { MoneyValue } from "@/features/shared/money-value"
 
-export function ExactProjectSalaryCost({ projectId, client, scope }: { projectId: string; client: ExactWorkforceEarningsClient; scope: { workspaceId: string; userId: string } }) {
+export function ExactProjectSalaryCost({ projectId, client, scope }: { projectId: string; client: Pick<ExactWorkforceEarningsClient, "getProjectSalaryCost">; scope: { workspaceId: string; userId: string } }) {
   const { t } = useTranslation()
   const query = useQuery({ queryKey: ["workspace", scope.workspaceId, scope.userId, "exact-workforce", "project", projectId], queryFn: async () => exactProjectSalaryCostSchema.parse(await client.getProjectSalaryCost({ projectId })) })
   if (query.isPending) return <p role="status">{t("common.loading")}</p>
