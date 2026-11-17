@@ -80,7 +80,7 @@ test("approval keeps project attribution and independent segment amounts without
   await dialog.getByRole("button", { name: "اعتماد الأجر", exact: true }).click()
   await expect(dialog).toBeHidden()
   expect(readEmployeeEarningSegmentsByEmployeeId(workerId)).toEqual([
-    { projectId, days: 12, amountMinor: 1_200_000 },
+    { projectId, days: 12, amountMinor: "1200000" },
   ])
   expect(readSalaryPaymentSplitsByEmployeeId(workerId)).toEqual([])
   await page.getByRole("tab", { name: "آخر دفعات الرواتب" }).click()

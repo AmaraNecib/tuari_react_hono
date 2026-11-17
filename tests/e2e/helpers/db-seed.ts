@@ -223,17 +223,17 @@ export function seedProjectAssignment(input: {
 export function readEmployeeEarningSegmentsByEmployeeId(employeeId: string): Array<{
   projectId: string
   days: number
-  amountMinor: number
+  amountMinor: string
 }> {
   const db = loadDatabaseConstructor()(findE2eDatabase())
   try {
     return db.prepare(
       `SELECT segment.project_id AS projectId, segment.days AS days,
-              segment.amount_minor AS amountMinor
+              CAST(segment.amount_minor AS TEXT) AS amountMinor
          FROM employee_earning_segment AS segment
          JOIN employee_earning AS earning ON earning.id = segment.earning_id
         WHERE earning.employee_id = ? ORDER BY segment.ordinal`,
-    ).all(employeeId) as Array<{ projectId: string; days: number; amountMinor: number }>
+    ).all(employeeId) as Array<{ projectId: string; days: number; amountMinor: string }>
   } finally {
     db.close()
   }
