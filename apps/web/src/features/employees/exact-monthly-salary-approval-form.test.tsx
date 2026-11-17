@@ -50,6 +50,8 @@ describe("opt-in allocation-capable monthly payroll form", () => {
     fireEvent.submit(within(stale.container).getByRole("form"))
     await waitFor(() => expect(within(stale.container).getByText(label("resolvedElsewhere"))).toBeTruthy())
     expect(within(stale.container).getByRole("button", { name: label("reload") })).toBeTruthy()
+    expect(within(stale.container).queryByText(i18n.t("salaryMonthly.approvalFailed"))).toBeNull()
+    expect(within(stale.container).queryByText(label("uncertain"))).toBeNull()
     expect(within(stale.container).getByRole("button", { name: label("add", 1) }).closest("fieldset")!.disabled).toBe(true)
     expect(stale.container.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true)
     fireEvent.submit(within(stale.container).getByRole("form"))

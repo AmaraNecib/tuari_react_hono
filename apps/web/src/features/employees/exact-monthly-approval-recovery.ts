@@ -13,6 +13,13 @@ const recordSchema = z.object({
   ambiguous: z.boolean(),
 }).strict()
 
+export class MonthlyApprovalRetiredError extends Error {
+  constructor() {
+    super("Monthly approval is no longer pending; reload before continuing")
+    this.name = "MonthlyApprovalRetiredError"
+  }
+}
+
 export type MonthlyApprovalRecord = {
   version: 1
   workspaceId: string
@@ -131,7 +138,7 @@ export function createMonthlyApprovalExecutor<TResult = z.output<typeof exactSal
     get record() { return record },
     get retired() { return retired },
     async run(payload: ExactSalaryMonthlyApprovalInput): Promise<TResult> {
-      if (retired) throw new Error("Monthly approval is no longer pending; reload before continuing")
+      if (retired) throw new MonthlyApprovalRetiredError()
       if (inFlight) throw new Error("Monthly approval is already in flight")
       const normalized = normalizePayload(payload)
       if (record && (record.employeeId !== normalized.employeeId || record.requestId !== normalized.requestId || canonical(record.payload) !== canonical(normalized))) {
@@ -147,7 +154,7 @@ export function createMonthlyApprovalExecutor<TResult = z.output<typeof exactSal
             record = null
             retired = true
             notify("idle")
-            throw new Error("Monthly approval is no longer pending; reload before continuing")
+            throw new MonthlyApprovalRetiredError()
           }
           if (durable) {
             record = durable

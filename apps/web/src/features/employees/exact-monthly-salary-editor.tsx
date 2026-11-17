@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
 import { MoneyValue } from "@/features/shared/money-value"
 import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
+import { MonthlyApprovalRetiredError } from "./exact-monthly-approval-recovery"
 
 type DraftMonth = ExactSalaryMonthAmount & { days: string }
 type Basis = "EQUAL" | "WORK_DAYS" | "CALENDAR_DAYS"
@@ -94,7 +95,7 @@ export function ExactMonthlySalaryEditor({ defaultMonth, initialMonths, onApprov
     try {
       await onApprove(plan)
       setSubmitted(JSON.stringify(plan))
-    } catch (error) { setFailed(error instanceof ORPCError && error.code === "UPGRADE_REQUIRED" ? "license" : "generic") }
+    } catch (error) { setFailed(error instanceof MonthlyApprovalRetiredError ? null : error instanceof ORPCError && error.code === "UPGRADE_REQUIRED" ? "license" : "generic") }
     finally { inFlight.current = false; setSubmitting(false) }
   }
 

@@ -27,6 +27,7 @@ import { showErrorToast, showSuccessToast } from "@/lib/toast"
 import { workspaceQueryPrefix } from "./workspace-queries"
 import { invalidateExactWorkspacesForUser } from "./exact-workspace-refresh"
 import { saveAccountWithoutAnyPendingApproval } from "./approval-account-fence"
+import { buildErrorMessage } from "@/lib/rpc-error-handling"
 import {
   getCachedSessionUserId,
   invalidateWorkspaceDomains,
@@ -458,7 +459,7 @@ export function useCreateProjectMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+      showErrorToast(buildErrorMessage(error, i18n.t("toasts.actionError")))
     },
   })
 }
