@@ -32,6 +32,9 @@ vi.mock("@/router/navigation", () => ({
 }))
 
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
+  AppMutationError: class AppMutationError extends Error {
+    fieldErrors: Array<{ field: string; message: string }> = []
+  },
   useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockSaveEmployee }),
 }))
 
@@ -342,6 +345,58 @@ describe("employee edit atomic save (issue #49)", () => {
     expect(payload.salaryReference).toEqual({ period: "DAILY", amount: "900719925474.0993" })
     expect(payload).not.toHaveProperty("salaryAmountDzd")
     expect(payload).not.toHaveProperty("salaryPeriod")
+  })
+
+  it("normalizes localized DAILY input to its exact canonical wire string", async () => {
+    mockSaveEmployee.mockResolvedValue({ success: true, message: "تم الحفظ" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "DAILY", amount: "10.0000" },
+    })
+
+    fireEvent.change(screen.getByLabelText(/قيمة الأجر/), { target: { value: "١٬٢٣٤٫٥٦٧٨" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(mockNavigateToWorkspaceRoute).toHaveBeenCalled())
+    expect(mockSaveEmployee.mock.calls[0]![0]).toEqual(expect.objectContaining({
+      salaryReference: { period: "DAILY", amount: "1234.5678" },
+    }))
+  })
+
+  it("accepts a large two-place MONTHLY reference without applying DAILY bounds", async () => {
+    mockSaveEmployee.mockResolvedValue({ success: true, message: "تم الحفظ" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "MONTHLY", amount: "1000000000000000.00" },
+    })
+
+    fireEvent.change(screen.getByLabelText(/قيمة الأجر/), { target: { value: "1000000000000000.01" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(mockNavigateToWorkspaceRoute).toHaveBeenCalled())
+    expect(mockSaveEmployee.mock.calls[0]![0]).toEqual(expect.objectContaining({
+      salaryReference: { period: "MONTHLY", amount: "1000000000000000.01" },
+    }))
+  })
+
+  it("shows translated salary field validation and keeps the draft after a server rejection", async () => {
+    const rejection = new Error("Input validation failed") as Error & { data: { issues: Array<{ message: string; path: string[] }> } }
+    rejection.data = {
+      issues: [{ message: "workforce.validation.salaryReference.precision", path: ["salaryReference", "amount"] }],
+    }
+    mockSaveEmployee.mockRejectedValue(rejection)
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "DAILY", amount: "10.0000" },
+    })
+
+    fireEvent.change(screen.getByLabelText(/قيمة الأجر/), { target: { value: "12.3456" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(screen.getByText("مرجع الأجر يجب أن يكون قيمة دقيقة مناسبة للدورية.")).toBeTruthy())
+    expect((screen.getByLabelText(/قيمة الأجر/) as HTMLInputElement).value).toBe("12.3456")
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(mockNavigateToWorkspaceRoute).not.toHaveBeenCalled()
   })
 
   it("rejects four fractional places for a monthly salary reference", async () => {

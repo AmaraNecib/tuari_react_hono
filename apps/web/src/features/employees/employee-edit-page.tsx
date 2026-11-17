@@ -1,6 +1,6 @@
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { type Role } from "@tuari/contracts"
+import { SalaryReference as ExactSalaryReference, type Role } from "@tuari/contracts"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { TriangleAlert } from "lucide-react"
@@ -8,8 +8,10 @@ import { TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
-import { useSaveEmployeeMutation } from "@/features/app-shell/mock-dashboard"
+import { AppMutationError, useSaveEmployeeMutation } from "@/features/app-shell/mock-dashboard"
+import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
 import { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
+import { translateRpcValidationIssues } from "@/lib/rpc-error-handling"
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import type { EmployeeManagerOption } from "./employee-batch-row-card"
@@ -73,10 +75,20 @@ function employeeSalaryReference(employee: EmployeeProfile): SalaryReference | n
   return employee.salaryReference ?? null
 }
 
-function isSalaryReferenceAmountValid(value: string, period: FormState["salaryReferencePeriod"]) {
-  if (!period || value.length > 96 || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)) return false
-  const decimals = value.split(".")[1]?.length ?? 0
-  return decimals <= (period === "DAILY" ? 4 : 2)
+function parseSalaryReferenceAmount(value: string, period: SalaryReference["period"]) {
+  const normalized = period === "DAILY"
+    ? parseLocalizedUnitPriceInput(value).toWire()
+    : parseLocalizedMoneyInput(value).toWire()
+  return ExactSalaryReference.parse(period, normalized).toWire().amount
+}
+
+function mapSalaryReferenceFieldErrors(errors: Array<{ field: string; message: string }>): Pick<FormErrors, "salaryReferenceAmount" | "salaryReferencePeriod"> {
+  const mapped: Pick<FormErrors, "salaryReferenceAmount" | "salaryReferencePeriod"> = {}
+  for (const error of errors) {
+    if (error.field === "salaryReference.amount") mapped.salaryReferenceAmount = error.message
+    if (error.field === "salaryReference.period") mapped.salaryReferencePeriod = error.message
+  }
+  return mapped
 }
 
 /** Employee edit page with form fields. */
@@ -196,6 +208,7 @@ export function EmployeeEditPage({
     const nextErrors: FormErrors = {}
     const salaryReferenceAmount = state.salaryReferenceAmount.trim()
     const hasSalaryReference = salaryReferenceAmount.length > 0 || state.salaryReferencePeriod.length > 0
+    let canonicalSalaryReferenceAmount = ""
 
     if (state.firstName.trim().length === 0) {
       nextErrors.firstName = t("detailPages.employee.editPage.validation.firstNameRequired")
@@ -220,11 +233,18 @@ export function EmployeeEditPage({
     if (hasSalaryReference && !state.salaryReferencePeriod) {
       nextErrors.salaryReferencePeriod = t("detailPages.employee.editPage.validation.salaryPeriodRequired")
     }
-    if (hasSalaryReference && !isSalaryReferenceAmountValid(salaryReferenceAmount, state.salaryReferencePeriod)) {
-      nextErrors.salaryReferenceAmount = t("workforce.validation.salaryReference.precision")
-    }
     if (hasSalaryReference && salaryReferenceAmount.length === 0) {
       nextErrors.salaryReferenceAmount = t("detailPages.employee.editPage.validation.salaryAmountRequired")
+    }
+    if (hasSalaryReference && state.salaryReferencePeriod && salaryReferenceAmount.length > 0) {
+      try {
+        canonicalSalaryReferenceAmount = parseSalaryReferenceAmount(
+          salaryReferenceAmount,
+          state.salaryReferencePeriod,
+        )
+      } catch {
+        nextErrors.salaryReferenceAmount = t("workforce.validation.salaryReference.precision")
+      }
     }
 
     if (isWorker && state.status === "ACTIVE" && (placementDirty || workerNeedsPlacement)) {
@@ -299,7 +319,7 @@ export function EmployeeEditPage({
         status: state.status,
         ...(salaryReferenceDirty ? {
           salaryReference: hasSalaryReference
-            ? { period: state.salaryReferencePeriod as SalaryReference["period"], amount: salaryReferenceAmount }
+            ? { period: state.salaryReferencePeriod as SalaryReference["period"], amount: canonicalSalaryReferenceAmount }
             : null,
         } : {}),
         occupation: state.occupation.trim() || null,
@@ -308,10 +328,19 @@ export function EmployeeEditPage({
         ...(savePlan.managedProjects ? { managedProjectIds: savePlan.managedProjects.nextIds } : {}),
         ...(savePlan.managedWarehouses ? { managedWarehouseIds: savePlan.managedWarehouses.nextIds } : {}),
       })
-    } catch {
+    } catch (error) {
       // A rejected batch means nothing persisted (the server transaction is
       // all-or-nothing), so keep every typed value and let the user retry.
-      setSaveError("nothingSaved")
+      const serverErrors = error instanceof AppMutationError
+        ? error.fieldErrors
+        : translateRpcValidationIssues(error)
+      const salaryReferenceErrors = mapSalaryReferenceFieldErrors(serverErrors)
+      if (salaryReferenceErrors.salaryReferenceAmount || salaryReferenceErrors.salaryReferencePeriod) {
+        setErrors((current) => ({ ...current, ...salaryReferenceErrors }))
+        setSaveError(null)
+      } else {
+        setSaveError("nothingSaved")
+      }
       return
     }
 
