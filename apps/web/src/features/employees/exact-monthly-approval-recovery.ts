@@ -129,6 +129,7 @@ export function createMonthlyApprovalExecutor<TResult = z.output<typeof exactSal
 
   return {
     get record() { return record },
+    get retired() { return retired },
     async run(payload: ExactSalaryMonthlyApprovalInput): Promise<TResult> {
       if (retired) throw new Error("Monthly approval is no longer pending; reload before continuing")
       if (inFlight) throw new Error("Monthly approval is already in flight")

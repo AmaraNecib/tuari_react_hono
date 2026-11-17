@@ -1,10 +1,11 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import type { ComponentProps } from "react"
 import { ORPCError } from "@orpc/client"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { exactSalaryMonthlyApprovalInputSchema, type ExactSalaryMonthlyApprovalInput, type ExactWorkforceClient } from "@tuari/contracts"
 import { i18n } from "@/i18n"
 import { ar } from "@/i18n/resources/ar"
+import { browserMonthlyApprovalStore } from "./exact-monthly-approval-recovery"
 import { ExactMonthlySalaryApprovalForm as ApprovalForm } from "./exact-monthly-salary-approval-form"
 
 const projects = [{ id: "A", name: "Project A" }, { id: "B", name: "Project B" }]
@@ -37,6 +38,24 @@ function unallocated(index = 1) { fireEvent.click(screen.getByRole("button", { n
 function submit() { fireEvent.submit(screen.getByRole("form", { name: i18n.t("salaryMonthly.title") })) }
 
 describe("opt-in allocation-capable monthly payroll form", () => {
+  it("keeps a stale recovered form locked with reload guidance after another tab resolves the intent", async () => {
+    const payload: ExactSalaryMonthlyApprovalInput = { requestId: "shared-request", employeeId: "worker", currency: "DZD", months: [{ id: "oct", month: "2026-10", amount: "10000", unallocatedAmount: "10000", segments: [] }] }
+    browserMonthlyApprovalStore("11111111-1111-4111-8111-111111111111", "operator").save({ version: 1, workspaceId: "11111111-1111-4111-8111-111111111111", userId: "operator", employeeId: "worker", requestId: payload.requestId, payload, ambiguous: true })
+    const firstSend = vi.fn(async (raw: ExactSalaryMonthlyApprovalInput) => response(raw))
+    const staleSend = vi.fn(async (raw: ExactSalaryMonthlyApprovalInput) => response(raw))
+    const first = render(<ExactMonthlySalaryApprovalForm employeeId="worker" defaultMonth="2026-10" projects={projects} client={{ approveMonthlyEarnings: firstSend }} />)
+    const stale = render(<ExactMonthlySalaryApprovalForm employeeId="worker" defaultMonth="2026-10" projects={projects} client={{ approveMonthlyEarnings: staleSend }} />)
+    fireEvent.submit(within(first.container).getByRole("form"))
+    await waitFor(() => expect(within(first.container).getByText(label("approved"))).toBeTruthy())
+    fireEvent.submit(within(stale.container).getByRole("form"))
+    await waitFor(() => expect(within(stale.container).getByText(label("resolvedElsewhere"))).toBeTruthy())
+    expect(within(stale.container).getByRole("button", { name: label("reload") })).toBeTruthy()
+    expect(within(stale.container).getByRole("button", { name: label("add", 1) }).closest("fieldset")!.disabled).toBe(true)
+    expect(stale.container.querySelector<HTMLButtonElement>('button[type="submit"]')!.disabled).toBe(true)
+    fireEvent.submit(within(stale.container).getByRole("form"))
+    expect(staleSend).not.toHaveBeenCalled()
+    expect(browserMonthlyApprovalStore("11111111-1111-4111-8111-111111111111", "operator").load()).toBeNull()
+  })
   it("requires explicit allocations and preserves independent months with localized money, repeated projects and optional whole days", async () => {
     const approve = vi.fn(async (raw: ExactSalaryMonthlyApprovalInput) => response(raw))
     mount(approve)
@@ -73,7 +92,7 @@ describe("opt-in allocation-capable monthly payroll form", () => {
       title: "alloc-title {{index}}", help: "alloc-help", add: "alloc-add {{index}}", project: "alloc-project {{index}} {{segment}}",
       selectProject: "alloc-select", amount: "alloc-amount {{index}} {{segment}}", days: "alloc-days {{index}} {{segment}}", daysUnit: "alloc-day", remove: "alloc-remove {{index}} {{segment}}",
       unallocated: "alloc-unallocated {{index}}", useRemainder: "alloc-remainder {{index}}", invalid: "alloc-invalid", valid: "alloc-valid",
-      retrySame: "alloc-retry", uncertain: "alloc-uncertain", approved: "alloc-approved", approvedHelp: "alloc-approved-help", noProjects: "alloc-no-projects",
+      retrySame: "alloc-retry", uncertain: "alloc-uncertain", approved: "alloc-approved", approvedHelp: "alloc-approved-help", noProjects: "alloc-no-projects", resolvedElsewhere: "alloc-resolved-elsewhere", reload: "alloc-reload",
     }
     i18n.addResourceBundle("ar", "translation", { salaryAllocations: translated }, true, true)
     const approve = vi.fn<(raw: ExactSalaryMonthlyApprovalInput) => Promise<ReturnType<typeof response>>>()
