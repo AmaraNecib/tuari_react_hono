@@ -4,6 +4,7 @@ import { bindMoney, prepareMoneyRead } from "../../../infrastructure/database/ex
 import { requireExactMoneySchema } from "../../../infrastructure/database/money-schema-gate";
 import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
+import type { ExactTransactionIdentity } from "../exact-finance.repository";
 import type { ExactDebtAccount, ExactDebtCommand, ExactDebtEntry, ExactFinanceRepository } from "../exact-finance.repository";
 
 const accountFields = {
@@ -16,7 +17,7 @@ const projection = (fields: Record<string, string>) => Object.entries(fields).ma
 
 /** Exact ledger adapter used by the normal application normal workspace root. */
 export class SqliteExactFinanceRepository implements ExactFinanceRepository {
-  get transactionIdentity() { return { connection: this.db, lock: this.lock }; }
+  get transactionIdentity(): ExactTransactionIdentity { return { connection: this.db, lock: this.lock }; }
   constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock) {
     requireExactMoneySchema(db, "debt");
     for (const [table, required] of [

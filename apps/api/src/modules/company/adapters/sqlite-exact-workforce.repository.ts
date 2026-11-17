@@ -4,6 +4,7 @@ import { requireExactMoneySchema } from "../../../infrastructure/database/money-
 import { exactFinanceJson } from "../exact-finance-json";
 import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
+import type { ExactTransactionIdentity } from "../exact-finance.repository";
 import { EXACT_WORKFORCE_READ_RECORD_LIMIT, type ExactSalaryEarning, type ExactWorkforceRepository } from "../workforce-exact.repository";
 import { ExactDebtError } from "../exact-finance.service";
 
@@ -17,7 +18,7 @@ const projection = Object.entries(fields).map(([key, column]) => `"${column}" AS
 
 /** Opt-in native source adapter. Production workforce composition remains numeric. */
 export class SqliteExactWorkforceRepository implements ExactWorkforceRepository {
-  get transactionIdentity() { return { connection: this.db, lock: this.lock }; }
+  get transactionIdentity(): ExactTransactionIdentity { return { connection: this.db, lock: this.lock }; }
   constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock) {
     this.withTransaction(() => {
       requireExactMoneySchema(db, "workforce");

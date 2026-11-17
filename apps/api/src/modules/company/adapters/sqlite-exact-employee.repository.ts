@@ -2,6 +2,7 @@ import { employeeManagerAssignmentSchema, employeeProjectAssignmentSchema, roleS
 import { requireExactMoneySchema } from "../../../infrastructure/database/money-schema-gate";
 import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
+import type { ExactTransactionIdentity } from "../exact-finance.repository";
 import type { MutationAuditContext, RoleRecord, EmployeeListFilters } from "../company.types";
 import type { ExactEmployeeRepository } from "../employee-exact.repository";
 import type { EmployeeTransitionLinks } from "../company.entity-resolvers";
@@ -10,7 +11,7 @@ import { bindExactSalaryReference, readExactEmployee, readExactEmployeeHistory }
 
 /** Trusted native profile storage. Public authorization and relationship rules belong to the employee service. */
 export class SqliteExactEmployeeRepository implements ExactEmployeeRepository {
-  get transactionIdentity() { return { connection: this.db, lock: this.lock }; }
+  get transactionIdentity(): ExactTransactionIdentity { return { connection: this.db, lock: this.lock }; }
   constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock, private readonly dependencies: { id(): string }) {
     this.withTransaction(() => {
       requireExactMoneySchema(db, "workforce");
