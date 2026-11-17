@@ -398,15 +398,14 @@ describe("contracts", () => {
 
   it("accepts a required employee identity shape", () => {
     expect(
-        employeeSchema.parse({
-          id: "employee-1",
-          firstName: "Amara",
-          lastName: "Necib",
-          phone: "0612345678",
-          roleId: "role-worker",
-          status: "ACTIVE",
-          salaryAmountDzd: 4500,
-          salaryPeriod: "DAILY",
+      employeeSchema.parse({
+        id: "employee-1",
+        firstName: "Amara",
+        lastName: "Necib",
+        phone: "0612345678",
+        roleId: "role-worker",
+        status: "ACTIVE",
+        salaryReference: null,
         notes: null,
         occupation: null,
         createdAt: "2026-03-13T10:00:00.000Z",
