@@ -48,9 +48,23 @@ describe("employee earned-wage approval page", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
+  it("allows an active salaried manager offered approval by the salaries list", () => {
+    render(
+      <EmployeeEarningApprovalPage
+        employee={{ ...employee, isWorker: false }}
+        projects={projects}
+        returnTo="salaries"
+        onCancel={vi.fn()}
+        onComplete={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId("approval-form").getAttribute("data-employee-id")).toBe("worker-1")
+    expect(screen.queryByRole("status")).toBeNull()
+  })
+
   it.each([
     ["missing employee", null],
-    ["non-worker", { ...employee, isWorker: false }],
     ["inactive worker", { ...employee, status: "INACTIVE" }],
   ])("shows an unavailable state for a %s", (_label, candidate) => {
     const onCancel = vi.fn()

@@ -22,7 +22,7 @@ export function EmployeeEarningApprovalPage({
 }) {
   const { t } = useTranslation()
 
-  if (!employee || !employee.isWorker || employee.status !== "ACTIVE") {
+  if (!employee || employee.status !== "ACTIVE") {
     return (
       <RecordPageFrame title={t("earnings.title")}>
         <Surface className="space-y-4 p-6" role="status" variant="panel">

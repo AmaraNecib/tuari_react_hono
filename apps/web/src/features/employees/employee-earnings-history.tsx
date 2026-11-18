@@ -101,7 +101,6 @@ function EarningHistoryRow({ earning, currencyLabel, showEmployeeIdentity, emplo
       </td>
       <td className="px-4 py-3 text-start">
         <div className="space-y-1">
-          <p className="text-[11px] text-ink-3">{t("earnings.unallocated")}</p>
           <MoneyValue exact value={earning.unallocatedAmount} currencyLabel={currencyLabel} />
         </div>
       </td>

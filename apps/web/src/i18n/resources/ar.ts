@@ -40,7 +40,7 @@ export const ar = {
       approvalPaymentClarification: "يسجل هذا الاعتماد الأجر المكتسب فقط، ولا يثبت دفعًا نقديًا.",
       historyPaymentClarificationLabel: "ما الذي يسجله هذا السجل؟",
       historyPaymentClarification: "يعرض السجل الأجور المكتسبة المعتمدة، ولا يثبت دفعًا نقديًا.",
-      employeeUnavailable: "لا يمكن اعتماد أجر لهذا الموظف. تحقق من أن الموظف عامل نشط.",
+      employeeUnavailable: "لا يمكن اعتماد أجر لهذا الموظف. تحقق من أن الموظف نشط.",
       backToSalaries: "العودة إلى الأجور",
       projectRows: "توزيع الأجر على المشاريع",
       project: "المشروع",
