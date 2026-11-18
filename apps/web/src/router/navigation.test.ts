@@ -22,6 +22,15 @@ describe("workspace navigation helpers", () => {
     })
   })
 
+  it("builds earned-wage approval and salaries return targets", () => {
+    expect(getWorkspaceLinkProps(workspaceRoutes.employeeEarningCreate("worker-1", "salaries"))).toEqual({
+      params: { employeeId: "worker-1" },
+      search: { returnTo: "salaries" },
+      to: "/employees/$employeeId/earnings/new",
+    })
+    expect(getWorkspaceLinkProps(workspaceRoutes.salaries())).toEqual({ to: "/salaries" })
+  })
+
   it("supports dedicated create pages for projects and warehouses", () => {
     expect(getWorkspaceLinkProps(workspaceRoutes.projectCreate())).toEqual({
       to: "/projects/create",

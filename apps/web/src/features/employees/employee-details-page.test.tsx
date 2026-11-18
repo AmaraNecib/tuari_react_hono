@@ -2,7 +2,7 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ComponentProps, ReactNode } from "react"
@@ -70,7 +70,7 @@ function worker(overrides: Partial<EmployeeTableRow> = {}): EmployeeTableRow {
   }
 }
 
-function renderDetails(employee: EmployeeTableRow = worker(), salaryPayments: SalaryPaymentsProp = []) {
+function renderDetails(employee: EmployeeTableRow = worker(), salaryPayments: SalaryPaymentsProp = [], onApproveEarning = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
@@ -83,6 +83,7 @@ function renderDetails(employee: EmployeeTableRow = worker(), salaryPayments: Sa
         managedWarehouses={[]}
         projects={[PROJECT]}
         onTabChange={vi.fn()}
+        onApproveEarning={onApproveEarning}
         salaryPayments={salaryPayments}
         workHistory={[]}
       />
@@ -99,16 +100,17 @@ describe("EmployeeDetailsPage earnings entry", () => {
 
   afterEach(cleanup)
 
-  it("shows the exact daily reference and opens the shared approval dialog", async () => {
-    renderDetails(worker({ salaryReference: { period: "DAILY", amount: "4500.1234" } }))
+  it("keeps the exact daily reference and routes both approval actions to the full page", () => {
+    const onApproveEarning = vi.fn()
+    renderDetails(worker({ salaryReference: { period: "DAILY", amount: "4500.1234" } }), [], onApproveEarning)
 
     expect(screen.getByText("4,500.1234")).toBeTruthy()
     fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
+    fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[1]!)
 
-    const dialog = await screen.findByRole("dialog")
-    expect(dialog).toBeTruthy()
-    expect(dialog.textContent).toContain("عامل الرواتب")
-    expect(screen.queryByRole("button", { name: "حفظ دفعة الراتب" })).toBeNull()
+    expect(onApproveEarning).toHaveBeenNthCalledWith(1, "worker-1")
+    expect(onApproveEarning).toHaveBeenNthCalledWith(2, "worker-1")
+    expect(screen.queryByRole("dialog")).toBeNull()
   })
 
   it("keeps a legal zero reference distinct from a missing reference and shows monthly precision", () => {
@@ -152,24 +154,13 @@ describe("EmployeeDetailsPage earnings entry", () => {
     expect(screen.queryByText(PROJECT.id)).toBeNull()
   })
 
-  it("opens approval without a salary reference and accepts an explicit earned amount", async () => {
-    renderDetails(worker({ salaryReference: null }))
+  it("routes approval for an employee without a salary reference", () => {
+    const onApproveEarning = vi.fn()
+    renderDetails(worker({ salaryReference: null }), [], onApproveEarning)
     fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
 
-    await screen.findByRole("dialog")
-    fireEvent.change(screen.getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري"), { target: { value: "1250" } })
-    fireEvent.click(screen.getByRole("checkbox", { name: /أقرّ بأن مبلغ/ }))
-    fireEvent.click(screen.getByRole("button", { name: "اعتماد الأجر" }))
-
-    await waitFor(() => expect(approveEarning).toHaveBeenCalledTimes(1))
-    expect(approveEarning.mock.calls[0]![0]).toMatchObject({
-      employeeId: "worker-1",
-      currencyCode: "DZD",
-      totalAmount: "1250.00",
-      unallocatedAmount: "1250.00",
-      segments: [],
-    })
-    expect(approveEarning.mock.calls[0]![0].referenceSalary).toBeNull()
+    expect(onApproveEarning).toHaveBeenCalledWith("worker-1")
+    expect(approveEarning).not.toHaveBeenCalled()
   })
 
   it("keeps recorded salary payments and their day count read-only", () => {

@@ -1,35 +1,40 @@
-# Earned-wage approval dialog UX
+# Earned-wage approval UX and salary navigation
 
 ## Scope and evidence
 
 - Worktree: `D:/worktrees/tuari_react_hono/t3-d5a68276-97285353df356c66`
-- Base: `a917525d6c028fd5cd45caf69490e5babf7aed56`
-- Verification mode: `focused-local / CI-final-enforced`. The parent verified active effective ruleset `26837184` with strict `CI acceptance` and no bypass before merging #556. This protection evidence does not establish hosted acceptance for this follow-up head. Local proof remains affected-only.
-- Review tier: high assurance. This dialog submits exact wage totals and ordered project segments, then freezes uncertain requests for retry.
-- Reachable failure: an operator can enter a remainder inconsistent with the total, or a retry can silently change a request after an uncertain response.
+- Follow-up base: `d1f987d61ed8aef2b6e729bfb755006a2a6d3750`
+- Verification mode: `focused-local / CI-final-enforced`. The active protection record does not establish hosted acceptance for this follow-up head. Run affected local proof only; CI remains the final acceptance gate.
+- Review tier: high assurance. Approval requests freeze exact amounts and ordered project rows when a response is uncertain. Salary navigation is a bounded separate commit within the same follow-up.
+- Existing unrelated dirty files: desktop Cargo manifest and two generated Tauri schemas; do not stage or modify them.
 
-## Domain terms and interfaces
+## Domain terms and boundaries
 
-An **approval total** is the single amount the operator enters. **Allocated amount** is the exact sum of project-segment amounts. **Unallocated remainder** is approval total minus allocated amount. A positive remainder stays unassigned; it is not a debt payment or a project allocation.
+An **approval total** is the earned amount the operator enters. **Allocated amount** is the exact sum assigned to project rows. **Unallocated remainder** is approval total minus allocations. A positive remainder stays unassigned. An approved earned wage is not evidence of cash payment; this work does not add or imply settlement, paid balances, or payment history.
 
-`AddSalaryPaymentDialog` remains the user-facing module. The draft finalizer remains responsible for exact wire validation and the pending-storage module remains responsible for frozen request identity. A small pure allocation helper may calculate minor-unit totals and opt-in suggestions. It does not change those interfaces or persisted payload semantics.
+The existing draft finalizer and pending-storage modules remain the authorities for wire validation and frozen retry identity. The route reuses those seams rather than creating a second approval workflow. The existing shared pagination primitive remains unchanged; only the salaries route owns URL-backed table state.
 
-## Decisions
+## Approval-page decisions
 
-- Keep the approval total editable and do not prefill it from `salaryReference`. A salary reference is context, not an earned-amount instruction.
-- Derive the remainder from the total and ordered row amounts in integer minor units. Do not round, clamp or hide a negative result. Block invalid or overallocated drafts through existing exact validation.
-- Require an explicit acknowledgement tied to the current positive remainder. Any change to the total or row values invalidates that acknowledgement.
-- Suggestions are opt-in. Distribute the exact unallocated amount across rows whose amount is blank, weighted by their positive day counts. Preserve every non-empty manual amount and the salary reference. Give leftover cents to the largest fractional shares, with original row order breaking ties. Never run suggestions on edit or retry.
-- Keep ordered project segments, stable row IDs, request IDs, UTC day boundaries and frozen uncertain retries unchanged.
-- Use Arabic copy in the existing Arabic resource. Keep money and numeric values explicitly LTR while surrounding dialog content follows the document's Arabic RTL or English LTR direction.
-- Improve grouping, required labels and field descriptions without changing the modal or shared control system. No app-level `DESIGN.md` or English locale exists; the existing shared controls and Arabic resource are the design and translation authorities.
+- Replace the modal as the user-facing approval surface with `/employees/$employeeId/earnings/new`. Keep the form lifecycle, exact payload, draft, and pending retry behavior. Both the employee-detail action and the salaries entrypoints navigate to the page. A missing or ineligible employee gets an explicit unavailable state.
+- Keep the approval total editable and do not infer it from `salaryReference`. Keep ordered project rows, stable row IDs, request IDs, UTC day boundaries, and immutable uncertain retries.
+- Offer a daily-reference suggestion only when the reference period is `DAILY` and the entered day count is a positive safe integer. Multiply exact unit-price units by days and round once using the existing exact-money contract. Do not infer weekly or monthly divisors. Preserve non-empty manual amounts and the salary reference; suggestions remain explicit.
+- Derive totals and the remainder in integer minor units. Do not clamp or hide a negative remainder. Clear a stale `positiveTotal` error when an edit makes the cross-field total valid, without clearing date, server, or other unrelated errors.
+- Keep the summary compact and right-aligned under short Arabic labels. Keep DZD visible in values, not repeated in labels. Use LTR direction only inside numeric `<bdi>` elements. Keep approval and earnings names explicit. In the history, put the concise approval-versus-payment distinction in a collapsed, keyboard-accessible disclosure beside the section, not in always-visible prose above the table. Keep form clarification at the moment of approval; do not repeat it in each row.
+- Let the document scroll normally. Keep dates and the total near the top, project rows in a table, and primary actions available at the bottom without an internally scrolling modal.
+
+## Salaries URL-state decisions
+
+- Validate `tab`, `page`, and `pageSize` in the `/salaries` route. Defaults are `recent`, page `1`, and the existing default page size. Invalid values fall back safely. Preserve unrelated search keys.
+- Drive the selected tab and all three salary tables' current pagination from route search. Tab, filter, and page-size changes reset page to `1`; page changes use normal history entries so back/forward can restore prior state.
+- Clamp an out-of-range page only after its table data has loaded. Do not let a transient empty/loading result rewrite the URL. Keep salary-specific pagination scoped to these tables; do not change shared pagination behavior or claim other tables are URL-backed.
+- Do not alter earned-wage approval or payment semantics as part of this navigation change.
 
 ## Verification and review
 
-- Red-first tests cover exact minor-unit remainder, positive acknowledgement, opt-in exact suggestions and preservation of manual overrides/reference salary.
-- Retain and update the dialog tests for ordered A/B/A segments and immutable retry payloads.
-- Run the focused dialog and helper tests, relevant web ESLint and typecheck. Full suites/builds remain CI-final.
-- Safe visual proof must use a synthetic fixture and must not touch the owner's live app, account or database.
-- Parent owns `debate`, `test-audit` and `code-review` at the committed head. No review reports are generated by this worker.
-- Applied wisdom: `architecture/a-form-opens-with-the-sensible-default-already-filled-in.md`; keep the date defaults and do not guess the earned total from reference salary. No other matching wage-allocation lesson was found.
-- Architecture: a pure calculation helper adds a focused internal test seam; the parent owns the scoped architecture review.
+- Architecture: the approval page owns route transitions while the existing form owns draft and retry state. `useSalaryRoutePagination` adapts URL-backed state without changing shared pagination behavior or domain contracts.
+- Focused tests cover full-page navigation and unavailable employee states, both approval entrypoints, daily and explicit total-weighted suggestions, manual/reference preservation, cross-field error clearing, and frozen retry recovery.
+- Focused salary-route tests cover for direct/reloaded search state, invalid values and unrelated keys, tab/filter/page-size resets, pagination history/back-forward, and the no-clamp loading case.
+- Run affected tests, web ESLint, web typecheck, and `git diff --check`. Full suites and builds remain CI-final unless a concrete gap justifies a queued run.
+- Parent owns final interactive/browser verification and the required review lenses at the integrated head. Worker does not publish, open a PR, merge, use the owner's live app, or claim hosted acceptance.
+- Applied wisdom: exact money splits reconcile across all lines; reset effects key on every default input; forms open with sensible defaults. Preserve the existing shared controls and Arabic resources as design authorities; this tree has no app-level `DESIGN.md` or `PRODUCT.md`.

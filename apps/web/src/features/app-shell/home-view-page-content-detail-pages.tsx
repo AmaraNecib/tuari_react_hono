@@ -28,6 +28,7 @@ const ExternalCounterpartyDetailsPage = lazy(async () => import("@/features/exte
 const ExternalCounterpartiesPage = lazy(async () => import("@/features/externals/externals-page").then((module) => ({ default: module.ExternalCounterpartiesPage })))
 const EmployeeDetailsPage = lazy(async () => import("@/features/employees/employee-details-page").then((module) => ({ default: module.EmployeeDetailsPage })))
 const EmployeeEditPage = lazy(async () => import("@/features/employees/employee-edit-page").then((module) => ({ default: module.EmployeeEditPage })))
+const EmployeeEarningApprovalPage = lazy(async () => import("@/features/employees/employee-earning-approval-page").then((module) => ({ default: module.EmployeeEarningApprovalPage })))
 const ProjectDetailsPage = lazy(async () => import("@/features/projects/project-details-page").then((module) => ({ default: module.ProjectDetailsPage })))
 const ProjectCreatePage = lazy(async () => import("@/features/projects/project-create-page").then((module) => ({ default: module.ProjectCreatePage })))
 const ProjectEditPage = lazy(async () => import("@/features/projects/project-edit-page").then((module) => ({ default: module.ProjectEditPage })))
@@ -68,6 +69,8 @@ export function HomeViewPageDetailContent({
   copy,
   derived,
   detailTab,
+  earningApproval,
+  returnTo,
   navigation,
   page,
   selectedInvoiceId,
@@ -84,6 +87,8 @@ export function HomeViewPageDetailContent({
   | "copy"
   | "derived"
   | "detailTab"
+  | "earningApproval"
+  | "returnTo"
   | "navigation"
   | "page"
   | "selectedCounterparty"
@@ -178,6 +183,27 @@ export function HomeViewPageDetailContent({
       )
 
     case "employee-details":
+      if (earningApproval) {
+        const destination = returnTo ?? "employee-finance"
+        const goBack = () => {
+          if (destination === "salaries") {
+            void navigation.goToSalaries()
+          } else if (selectedEmployee) {
+            void navigation.goToEmployeeFinance(selectedEmployee.id)
+          } else {
+            void navigation.goToEmployees()
+          }
+        }
+        return renderLazy(
+          <EmployeeEarningApprovalPage
+            employee={selectedEmployee}
+            projects={derived.salaryProjects}
+            returnTo={destination}
+            onCancel={goBack}
+            onComplete={goBack}
+          />,
+        )
+      }
       if (selectedEmployee && (detailTab ?? "personal") === "debts") {
         if (employeeDebtsDetailQuery.isPending) {
           return renderLazy(detailPageFallback)
@@ -201,6 +227,7 @@ export function HomeViewPageDetailContent({
               projectAssignments={derived.projectAssignmentsByEmployeeId[selectedEmployee.id] ?? []}
               salaryPayments={derived.salaryPaymentsByEmployeeId[selectedEmployee.id] ?? []}
               workHistory={derived.workHistoryByEmployeeId[selectedEmployee.id] ?? []}
+              onApproveEarning={(employeeId) => void navigation.goToEmployeeEarningCreate(employeeId, "employee-finance")}
               onTabChange={(tabId) => void navigation.setEmployeeTab(selectedEmployee.id, tabId)}
             />,
           )

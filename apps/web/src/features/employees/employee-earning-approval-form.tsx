@@ -4,10 +4,9 @@ import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { useApproveEmployeeEarningMutation } from "@/features/employees/employee-earnings-queries"
-import { calculateEarningAllocation, formatEarningMinorUnits, suggestBlankEarningRowAmounts } from "@/features/employees/employee-earning-allocation"
+import { calculateEarningAllocation, formatEarningMinorUnits, suggestBlankEarningRowAmounts, suggestDailyReferenceAmount } from "@/features/employees/employee-earning-allocation"
 import { useSessionQuery } from "@/features/session/use-session-query"
 import {
   editEarningDraftRow,
@@ -72,22 +71,25 @@ function appFieldIssues(error: unknown): DialogIssue[] {
   return translated.map(issue => ({ path: issue.path, message: issue.message }))
 }
 
-/** Approval composer kept at the existing shared-dialog import site for callers being migrated. */
-export function AddSalaryPaymentDialog({
-  employeeId,
-  employeeName,
-  salaryReference,
-  projects,
-  open,
-  onOpenChange,
-}: {
+type EmployeeEarningApprovalFormProps = {
   employeeId: string | null
   employeeName?: string | null
   salaryReference?: { period: "DAILY" | "WEEKLY" | "MONTHLY"; amount: string } | null
   projects: SalaryProjectOption[]
-  open: boolean
-  onOpenChange: (open: boolean) => void
-}) {
+  active?: boolean
+  onCancel: () => void
+  onComplete: () => void
+}
+
+export function EmployeeEarningApprovalForm({
+  employeeId,
+  employeeName,
+  salaryReference,
+  projects,
+  active = true,
+  onCancel,
+  onComplete,
+}: EmployeeEarningApprovalFormProps) {
   const { t } = useTranslation()
   const session = useSessionQuery()
   const userId = session.data?.user?.id ?? null
@@ -111,7 +113,7 @@ export function AddSalaryPaymentDialog({
   const previousIdentity = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!open) return
+    if (!active) return
     if (!identity) {
       setPending(null)
       setTotal("")
@@ -147,7 +149,7 @@ export function AddSalaryPaymentDialog({
     } catch {
       setStorageError(true)
     }
-  }, [open, identity])
+  }, [active, identity])
 
   const allocation = useMemo(() => calculateEarningAllocation(total, rows), [total, rows])
   const unallocatedAmountText = pending?.payload.unallocatedAmount ??
@@ -175,11 +177,21 @@ export function AddSalaryPaymentDialog({
   const removeRow = (id: string) => {
     setAcknowledgedRemainder(null)
     setRows(current => current.filter(row => row.id !== id))
+    const crossFieldMessages = [
+      t("workforce.validation.earning.positiveTotal"),
+      t("workforce.validation.earning.conservation"),
+    ]
+    setIssues(current => current.filter(issue => {
+      const removedRowIssue = issue.path[0] === "rows" && issue.path[1] === id
+      const staleAllocation = issue.path.length === 1 && issue.path[0] === "totalAmountText" && crossFieldMessages.includes(issue.message)
+      return !removedRowIssue && !staleAllocation
+    }))
   }
   const applySuggestion = () => {
     const suggestions = suggestBlankEarningRowAmounts(total, rows)
     if (!suggestions) return
     setAcknowledgedRemainder(null)
+    for (const suggestion of suggestions) clearIssue(["rows", suggestion.id, "amountText"])
     setRows(current => current.map(row => {
       const suggestion = suggestions.find(entry => entry.id === row.id)
       return suggestion ? { ...row, amountText: suggestion.amountText } : row
@@ -196,11 +208,15 @@ export function AddSalaryPaymentDialog({
   const clearIssue = (path: (string | number)[]) => {
     const changesMoneyTotal = path[0] === "totalAmountText" || path[0] === "unallocatedAmountText" ||
       (path[0] === "rows" && path[2] === "amountText")
+    const crossFieldMessages = [
+      t("workforce.validation.earning.positiveTotal"),
+      t("workforce.validation.earning.conservation"),
+    ]
     setIssues(current => current.filter(issue => {
       const samePath = issue.path.length === path.length && issue.path.every((part, index) => part === path[index])
-      const staleConservation = changesMoneyTotal && issue.path.length === 1 && issue.path[0] === "totalAmountText" &&
-        issue.message === t("workforce.validation.earning.conservation")
-      return !samePath && !staleConservation
+      const staleAllocation = changesMoneyTotal && issue.path.length === 1 && issue.path[0] === "totalAmountText" &&
+        crossFieldMessages.includes(issue.message)
+      return !samePath && !staleAllocation
     }))
   }
   const globalIssues = issues.filter(issue => !controlPath(issue.path))
@@ -245,7 +261,7 @@ export function AddSalaryPaymentDialog({
       setTotal("")
       setRows([])
       setAcknowledgedRemainder(null)
-      onOpenChange(false)
+      onComplete()
     } catch (cause) {
       if (mutationSucceeded || !mutationStarted) {
         setStorageError(true)
@@ -275,13 +291,14 @@ export function AddSalaryPaymentDialog({
   }
 
   const busy = mutation.isPending
-  return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="max-h-[min(90vh,52rem)] max-w-3xl overflow-y-auto">
-      <DialogHeader>
-        <DialogTitle>{t("earnings.title")}</DialogTitle>
-        {employeeName ? <p className="text-sm text-muted-foreground" dir="auto">{employeeName}</p> : null}
-      </DialogHeader>
-      {pending ? <p role="status" className="rounded-xl border border-border/60 bg-surface-2 p-3 text-sm">{t("earnings.pendingApproval")}</p> : null}
+  return <section className="space-y-5">
+    <header className="space-y-2">
+      {employeeName ? <p className="text-sm text-muted-foreground" dir="auto">{employeeName}</p> : null}
+      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{t("earnings.approvalPaymentClarification")}</p>
+      {salaryReference ? <p className="text-sm text-muted-foreground">{t("earnings.referenceSalary")}: <bdi dir="ltr">{salaryReference.amount} {t("detailPages.salary.currency")}</bdi></p> : null}
+      {salaryReference?.period === "DAILY" ? <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{t("earnings.dailyReferenceAmount")}</p> : null}
+    </header>
+    {pending ? <p role="status" className="rounded-xl border border-border/60 bg-surface-2 p-3 text-sm">{t("earnings.pendingApproval")}</p> : null}
       <form className="space-y-5" onSubmit={event => { event.preventDefault(); void submit() }}>
       <div className="space-y-5" aria-busy={busy}>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -311,10 +328,11 @@ export function AddSalaryPaymentDialog({
             const projectIssue = issueAt(projectPath)
             const daysIssue = issueAt(daysPath)
             const amountIssue = issueAt(amountPath)
+            const dailySuggestion = suggestDailyReferenceAmount(salaryReference, row.daysText)
             return <div key={row.id} className="grid gap-3 border-t border-border/60 pt-4 sm:grid-cols-[minmax(12rem,1fr)_minmax(6rem,0.45fr)_minmax(9rem,0.7fr)_auto] sm:items-end">
               <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.project")} <span aria-hidden="true" className="text-destructive">*</span></span><NativeSelect required aria-label={`${t("earnings.project")} ${index + 1}`} aria-invalid={projectIssue ? true : undefined} aria-describedby={projectIssue ? issueId(projectPath) : undefined} value={row.projectId} disabled={frozen || busy} onChange={event => { clearIssue(projectPath); updateRow(row.id, { projectId: event.target.value }) }}><option value="">{t("earnings.selectProject")}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</NativeSelect>{projectIssue ? <p id={issueId(projectPath)} className="text-sm text-destructive">{projectIssue.message}</p> : null}</label>
               <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.days")} <span aria-hidden="true" className="text-destructive">*</span></span><Input required aria-label={`${t("earnings.days")} ${index + 1}`} aria-invalid={daysIssue ? true : undefined} aria-describedby={daysIssue ? issueId(daysPath) : undefined} type="number" min={1} step={1} inputMode="numeric" dir="ltr" value={row.daysText} disabled={frozen || busy} onChange={event => { clearIssue(daysPath); updateRow(row.id, { daysText: event.target.value }) }} />{daysIssue ? <p id={issueId(daysPath)} className="text-sm text-destructive">{daysIssue.message}</p> : null}</label>
-              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.amount")} <span aria-hidden="true" className="text-destructive">*</span></span><CurrencyInput required aria-label={`${t("earnings.amount")} ${index + 1}`} aria-invalid={amountIssue ? true : undefined} aria-describedby={amountIssue ? issueId(amountPath) : undefined} value={row.amountText} disabled={frozen || busy} onChange={event => { clearIssue(amountPath); updateRow(row.id, { amountText: event.target.value }) }} />{amountIssue ? <p id={issueId(amountPath)} className="text-sm text-destructive">{amountIssue.message}</p> : null}</label>
+              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.amount")} <span aria-hidden="true" className="text-destructive">*</span></span><CurrencyInput required aria-label={`${t("earnings.amount")} ${index + 1}`} aria-invalid={amountIssue ? true : undefined} aria-describedby={amountIssue ? issueId(amountPath) : undefined} value={row.amountText} disabled={frozen || busy} onChange={event => { clearIssue(amountPath); updateRow(row.id, { amountText: event.target.value }) }} />{dailySuggestion !== null && !row.amountText.trim() ? <Button type="button" size="xs" variant="ghost" className="self-start" disabled={frozen || busy} onClick={() => { clearIssue(amountPath); updateRow(row.id, { amountText: dailySuggestion }) }}>{t("earnings.suggestDailyReferenceAmount", { number: index + 1 })}</Button> : null}{amountIssue ? <p id={issueId(amountPath)} className="text-sm text-destructive">{amountIssue.message}</p> : null}</label>
               <Button type="button" size="xs" variant="ghost" onClick={() => removeRow(row.id)} disabled={frozen || busy}>{t("earnings.removeProjectRow", { number: index + 1 })}</Button>
             </div>
           })}
@@ -328,7 +346,7 @@ export function AddSalaryPaymentDialog({
               ["earnings.unallocated", allocation.remainderMinor],
             ].map(([label, amount]) => <div key={String(label)} className="space-y-1">
               <dt className="text-xs text-muted-foreground">{t(String(label))}</dt>
-              <dd className="font-mono text-sm font-semibold tabular-nums" dir="ltr"><output aria-label={label === "earnings.unallocated" ? t(String(label)) : undefined}><bdi dir="ltr">{formattedMinor(amount as bigint | null)}</bdi></output> <bdi dir="auto" className="font-sans text-xs font-normal">{t("detailPages.salary.currency")}</bdi></dd>
+              <dd className="text-right font-mono text-sm font-semibold tabular-nums"><output aria-label={label === "earnings.unallocated" ? t(String(label)) : undefined}><bdi dir="ltr">{formattedMinor(amount as bigint | null)}</bdi></output> <bdi dir="auto" className="font-sans text-xs font-normal">{t("detailPages.salary.currency")}</bdi></dd>
             </div>)}
           </dl>
           {positiveRemainder && !frozen ? <label className="flex items-start gap-3 border-t border-border/60 pt-3 text-sm leading-6">
@@ -340,11 +358,10 @@ export function AddSalaryPaymentDialog({
         {storageError ? <p role="alert" className="text-sm text-destructive">{t("earnings.storageUnavailable")}</p> : null}
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
       </div>
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
+      <div className="sticky bottom-2 z-10 -mx-2 flex justify-end gap-2 rounded-xl border border-border/70 bg-background/95 p-3 shadow-lg backdrop-blur">
+        <Button type="button" variant="outline" onClick={onCancel}>{t("common.cancel")}</Button>
         <Button type="submit" disabled={!identity || busy || storageError}>{busy ? t("earnings.approving") : frozen ? t("earnings.retryApproval") : t("earnings.approve")}</Button>
-      </DialogFooter>
+      </div>
       </form>
-    </DialogContent>
-  </Dialog>
+  </section>
 }

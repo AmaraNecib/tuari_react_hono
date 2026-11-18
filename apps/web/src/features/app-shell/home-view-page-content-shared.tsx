@@ -14,6 +14,8 @@ import type { HomeViewCopy } from "./home-view-copy"
 import type { HomeViewDerived } from "./home-view-derived"
 import type { useHomeViewNavigation } from "./home-view-navigation"
 import type { DemoSession } from "./workspace-mutations"
+import type { EmployeeEarningReturnTo } from "@/router/navigation"
+import type { SalariesRouteSearch } from "./salaries-route-search"
 import type { HomeViewPage, HomeViewSystemLogFilters, PendingDelete } from "./home-view-types"
 import type { SettingsSection } from "./settings-section"
 
@@ -25,6 +27,10 @@ export type HomeViewPageContentProps = {
   copy: HomeViewCopy
   derived: HomeViewDerived
   detailTab?: string
+  earningApproval?: boolean
+  returnTo?: EmployeeEarningReturnTo
+  salariesSearch?: SalariesRouteSearch
+  onSalariesSearchChange?: (patch: Partial<Pick<SalariesRouteSearch, "tab" | "page" | "pageSize">>) => void
   invoiceId?: string
   page: HomeViewPage
   selectedCounterparty: HomeViewDerived["externalCounterparties"][number] | null

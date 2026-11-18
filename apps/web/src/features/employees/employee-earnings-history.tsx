@@ -8,9 +8,9 @@ import {
   AppShellTableHeaderCell,
   AppShellTableRow,
   TableQueryState,
-  usePaginatedRows,
 } from "@/features/shared/table-primitives"
 import { useEmployeeEarningsQuery } from "@/features/employees/employee-earnings-queries"
+import { useSalaryRoutePagination, type SalaryRoutePagination } from "@/features/app-shell/salary-route-pagination"
 import type { EmployeeEarning } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 
@@ -19,20 +19,25 @@ export type EmployeeEarningsHistoryProps = {
   /** Known display names. Missing identities render as their IDs, never guessed labels. */
   employeeNames?: Readonly<Record<string, string>>
   projectNames?: Readonly<Record<string, string>>
+  routePagination?: SalaryRoutePagination
 }
 
 /** Read-only view of server-approved earnings. Segment order and exact amounts come from the approval record. */
-export function EmployeeEarningsHistory({ employeeId, employeeNames, projectNames }: EmployeeEarningsHistoryProps) {
+export function EmployeeEarningsHistory({ employeeId, employeeNames, projectNames, routePagination }: EmployeeEarningsHistoryProps) {
   const { t } = useTranslation()
   const query = useEmployeeEarningsQuery(employeeId)
   const earnings = query.data?.items ?? []
-  const rows = usePaginatedRows({ rows: earnings })
+  const rows = useSalaryRoutePagination(earnings, routePagination, query.data !== undefined)
   const currencyLabel = t("detailPages.salary.currency")
   const showEmployeeIdentity = !employeeId
   const columnCount = showEmployeeIdentity ? 5 : 4
 
   return (
     <div className="space-y-4">
+      <details className="text-sm text-muted-foreground">
+        <summary className="w-fit cursor-pointer rounded-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("earnings.historyPaymentClarificationLabel")}</summary>
+        <p className="mt-2 max-w-3xl leading-6">{t("earnings.historyPaymentClarification")}</p>
+      </details>
       <TableQueryState query={query} resource={t("earnings.historyResource")}>
         <AppShellTableFrame>
           <table className="min-w-full">
@@ -62,10 +67,7 @@ export function EmployeeEarningsHistory({ employeeId, employeeNames, projectName
           pageSize={rows.pageSize}
           totalCount={earnings.length}
           onPageChange={rows.setPage}
-          onPageSizeChange={(nextPageSize) => {
-            rows.setPage(1)
-            rows.setPageSize(nextPageSize)
-          }}
+          onPageSizeChange={rows.setPageSize}
         />
       ) : null}
     </div>

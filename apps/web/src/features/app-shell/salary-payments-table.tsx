@@ -18,9 +18,9 @@ import {
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
-  usePaginatedRows,
 } from "@/features/shared/table-primitives"
 
+import { useSalaryRoutePagination, type SalaryRoutePagination } from "./salary-route-pagination"
 import {
   SalaryPeriodFilterField,
   SalaryProjectFilterField,
@@ -55,11 +55,15 @@ export function SalaryPaymentsTable({
   projects,
   onAddPayment,
   onEditSalary,
+  routePagination,
+  onFilterChange,
 }: {
   payments: SalaryPaymentRow[]
   projects: Array<{ id: string; name: string }>
   onAddPayment: (employeeId: string, employeeName: string) => void
   onEditSalary: (employeeId: string) => void
+  routePagination?: SalaryRoutePagination
+  onFilterChange?: () => void
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState("")
@@ -113,20 +117,17 @@ export function SalaryPaymentsTable({
     [payments, normalizedQuery, workerFilter, projectFilter, periodFilter],
   )
 
-  const rows = usePaginatedRows({
-    rows: filteredPayments,
-    resetPageDeps: [normalizedQuery, workerFilter, projectFilter, periodFilter],
-  })
+  const rows = useSalaryRoutePagination(filteredPayments, routePagination, true, [normalizedQuery, workerFilter, projectFilter, periodFilter])
 
   return (
     <div className="space-y-4">
       {payments.length > 0 ? (
         <AppShellFilterShell>
-          <SalarySearchField value={query} onChange={setQuery} />
+          <SalarySearchField value={query} onChange={(value) => { setQuery(value); onFilterChange?.() }} />
           <Field label={t("salaries.workerFilter")}>
             <NativeSelect
               value={workerFilter}
-              onChange={(event) => setWorkerFilter(event.target.value)}
+              onChange={(event) => { setWorkerFilter(event.target.value); onFilterChange?.() }}
             >
               <option value="ALL">{t("salaries.allWorkers")}</option>
               {workerOptions.map((option) => (
@@ -137,9 +138,9 @@ export function SalaryPaymentsTable({
           <SalaryProjectFilterField
             value={projectFilter}
             options={projectOptions}
-            onChange={setProjectFilter}
+            onChange={(value) => { setProjectFilter(value); onFilterChange?.() }}
           />
-          <SalaryPeriodFilterField value={periodFilter} onChange={setPeriodFilter} />
+          <SalaryPeriodFilterField value={periodFilter} onChange={(value) => { setPeriodFilter(value); onFilterChange?.() }} />
         </AppShellFilterShell>
       ) : null}
 
@@ -232,10 +233,7 @@ export function SalaryPaymentsTable({
           pageSize={rows.pageSize}
           totalCount={filteredPayments.length}
           onPageChange={rows.setPage}
-          onPageSizeChange={(nextPageSize) => {
-            rows.setPage(1)
-            rows.setPageSize(nextPageSize)
-          }}
+          onPageSizeChange={rows.setPageSize}
         />
       ) : null}
     </div>

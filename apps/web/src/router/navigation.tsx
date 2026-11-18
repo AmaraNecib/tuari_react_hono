@@ -3,6 +3,8 @@ import type { ComponentProps } from "react"
 import { Link } from "@tanstack/react-router"
 
 type WorkspaceTabSearch = { tab: string }
+export type EmployeeEarningReturnTo = "employee-finance" | "salaries"
+type EmployeeEarningSearch = { returnTo: EmployeeEarningReturnTo }
 
 export type WorkspaceRouteTarget =
   | { to: "/" }
@@ -10,6 +12,7 @@ export type WorkspaceRouteTarget =
   | { to: "/employees/create" }
   | { to: "/employees/$employeeId"; params: { employeeId: string }; search?: WorkspaceTabSearch }
   | { to: "/employees/$employeeId/edit"; params: { employeeId: string } }
+  | { to: "/employees/$employeeId/earnings/new"; params: { employeeId: string }; search?: EmployeeEarningSearch }
   | { to: "/debts" }
   | { to: "/debts/create" }
   | { to: "/expenses" }
@@ -59,6 +62,11 @@ export const workspaceRoutes = {
   employeeEdit: (employeeId: string): WorkspaceRouteTarget => ({
     to: "/employees/$employeeId/edit",
     params: { employeeId },
+  }),
+  employeeEarningCreate: (employeeId: string, returnTo: EmployeeEarningReturnTo): WorkspaceRouteTarget => ({
+    to: "/employees/$employeeId/earnings/new",
+    params: { employeeId },
+    search: { returnTo },
   }),
   employeeTab: (employeeId: string, tab: string): WorkspaceRouteTarget => ({
     to: "/employees/$employeeId",

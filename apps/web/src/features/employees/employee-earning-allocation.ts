@@ -1,10 +1,31 @@
-import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
+import { Money } from "@tuari/contracts"
+
+import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
 
 export type EarningAllocationRow = { id: string; daysText: string; amountText: string }
 export type EarningAllocationSummary = {
   totalMinor: bigint | null
   allocatedMinor: bigint | null
   remainderMinor: bigint | null
+}
+
+export function suggestDailyReferenceAmount(
+  salaryReference: { period: "DAILY" | "WEEKLY" | "MONTHLY"; amount: string } | null | undefined,
+  daysText: string,
+): string | null {
+  if (salaryReference?.period !== "DAILY" || !/^\d+$/.test(daysText.trim())) return null
+  const numericDays = Number(daysText.trim())
+  if (!Number.isSafeInteger(numericDays) || numericDays <= 0) return null
+
+  try {
+    const rateUnits = BigInt(parseLocalizedUnitPriceInput(salaryReference.amount).toWire().replace(".", ""))
+    if (rateUnits < 0n) return null
+    const exactMinorNumerator = rateUnits * BigInt(numericDays)
+    const cents = exactMinorNumerator / 100n + (exactMinorNumerator % 100n >= 50n ? 1n : 0n)
+    return Money.fromMinorUnits(cents.toString()).toWire()
+  } catch {
+    return null
+  }
 }
 
 function minorUnits(value: string): bigint | null {

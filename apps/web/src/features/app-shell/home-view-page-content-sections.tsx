@@ -54,6 +54,8 @@ export function HomeViewPageSectionContent({
   onThemeToggle,
   onUpdateApplied,
   page,
+  salariesSearch,
+  onSalariesSearchChange,
   resetWorkspacePending,
   session,
   systemLogFilters,
@@ -78,6 +80,8 @@ export function HomeViewPageSectionContent({
   | "paginationCursor"
   | "paginationLimit"
   | "paginationPrevCursors"
+  | "salariesSearch"
+  | "onSalariesSearchChange"
   | "page"
   | "resetWorkspacePending"
   | "session"
@@ -142,8 +146,6 @@ export function HomeViewPageSectionContent({
           managerOptions={derived.managerOptions}
           buildEmployeeTableRow={derived.buildEmployeeTableRow}
           roles={derived.roles}
-          projects={derived.salaryProjects}
-          projectAssignmentsByEmployeeId={derived.projectAssignmentsByEmployeeId}
           title={copy.sections.employees.label}
         />,
       )
@@ -187,6 +189,9 @@ export function HomeViewPageSectionContent({
           employees={derived.employeeRows}
           projects={derived.salaryProjects}
           onEditSalary={(employeeId) => void navigation.goToEmployeeEdit(employeeId)}
+          onAddPayment={(employeeId) => void navigation.goToEmployeeEarningCreate(employeeId, "salaries")}
+          routeSearch={salariesSearch}
+          onRouteSearchChange={onSalariesSearchChange}
         />,
       )
 

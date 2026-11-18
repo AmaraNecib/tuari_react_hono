@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { calculateEarningAllocation, suggestBlankEarningRowAmounts } from "./employee-earning-allocation"
+import { calculateEarningAllocation, suggestBlankEarningRowAmounts, suggestDailyReferenceAmount } from "./employee-earning-allocation"
 
 describe("earned-wage allocation calculations", () => {
   it("derives the exact remainder from total minus ordered manual amounts", () => {
@@ -42,6 +42,20 @@ describe("earned-wage allocation calculations", () => {
       { id: "first", amountText: "33.33" },
       { id: "second", amountText: "66.67" },
     ])
+  })
+
+  it("calculates a daily-reference suggestion with exact units and rounds once to cents", () => {
+    expect(suggestDailyReferenceAmount({ period: "DAILY", amount: "2500.0000" }, "5")).toBe("12500.00")
+    expect(suggestDailyReferenceAmount({ period: "DAILY", amount: "0.0050" }, "1")).toBe("0.01")
+    expect(suggestDailyReferenceAmount({ period: "DAILY", amount: "0.0049" }, "1")).toBe("0.00")
+  })
+
+  it("declines daily suggestions for non-daily rates, invalid rates, or unsafe day counts", () => {
+    expect(suggestDailyReferenceAmount({ period: "WEEKLY", amount: "2500" }, "5")).toBeNull()
+    expect(suggestDailyReferenceAmount({ period: "DAILY", amount: "2500" }, "0")).toBeNull()
+    expect(suggestDailyReferenceAmount({ period: "DAILY", amount: "2500" }, "1.5")).toBeNull()
+    expect(suggestDailyReferenceAmount({ period: "DAILY", amount: "2500" }, "9007199254740992")).toBeNull()
+    expect(suggestDailyReferenceAmount({ period: "DAILY", amount: "bad" }, "5")).toBeNull()
   })
 
   it("breaks an equal fractional-cent tie by the existing row order", () => {

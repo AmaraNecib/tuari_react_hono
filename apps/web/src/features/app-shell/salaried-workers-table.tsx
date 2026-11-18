@@ -18,9 +18,9 @@ import {
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
-  usePaginatedRows,
 } from "@/features/shared/table-primitives"
 
+import { useSalaryRoutePagination, type SalaryRoutePagination } from "./salary-route-pagination"
 import {
   SalaryPeriodFilterField,
   SalaryProjectFilterField,
@@ -64,11 +64,15 @@ export function SalariedWorkersTable({
   projects,
   onAddPayment,
   onEditSalary,
+  routePagination,
+  onFilterChange,
 }: {
   workers: SalariedWorkerRow[]
   projects: Array<{ id: string; name: string }>
   onAddPayment: (employeeId: string, employeeName: string) => void
   onEditSalary: (employeeId: string) => void
+  routePagination?: SalaryRoutePagination
+  onFilterChange?: () => void
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState("")
@@ -105,22 +109,19 @@ export function SalariedWorkersTable({
     [sortedWorkers, normalizedQuery, projectFilter, periodFilter],
   )
 
-  const rows = usePaginatedRows({
-    rows: filteredWorkers,
-    resetPageDeps: [normalizedQuery, projectFilter, periodFilter],
-  })
+  const rows = useSalaryRoutePagination(filteredWorkers, routePagination, true, [normalizedQuery, projectFilter, periodFilter])
 
   return (
     <div className="space-y-4">
       {workers.length > 0 ? (
         <AppShellFilterShell>
-          <SalarySearchField value={query} onChange={setQuery} />
+          <SalarySearchField value={query} onChange={(value) => { setQuery(value); onFilterChange?.() }} />
           <SalaryProjectFilterField
             value={projectFilter}
             options={projectOptions}
-            onChange={setProjectFilter}
+            onChange={(value) => { setProjectFilter(value); onFilterChange?.() }}
           />
-          <SalaryPeriodFilterField value={periodFilter} onChange={setPeriodFilter} />
+          <SalaryPeriodFilterField value={periodFilter} onChange={(value) => { setPeriodFilter(value); onFilterChange?.() }} />
         </AppShellFilterShell>
       ) : null}
 
@@ -188,10 +189,7 @@ export function SalariedWorkersTable({
           pageSize={rows.pageSize}
           totalCount={filteredWorkers.length}
           onPageChange={rows.setPage}
-          onPageSizeChange={(nextPageSize) => {
-            rows.setPage(1)
-            rows.setPageSize(nextPageSize)
-          }}
+          onPageSizeChange={rows.setPageSize}
         />
       ) : null}
     </div>

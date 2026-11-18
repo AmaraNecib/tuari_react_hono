@@ -17,21 +17,22 @@ vi.mock("@/components/ui/date-picker", () => ({
   ),
 }))
 
-import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
+import { EmployeeEarningApprovalForm } from "./employee-earning-approval-form"
 
 const projects = [{ id: "project-a", name: "A" }, { id: "project-b", name: "B" }]
-const props = { employeeId: "employee-1", employeeName: "عامل", projects, open: true, onOpenChange: vi.fn() }
+const props = { employeeId: "employee-1", employeeName: "worker", projects, onCancel: vi.fn(), onComplete: vi.fn() }
 
 describe("earned-wage approval composer", () => {
   beforeEach(() => {
     localStorage.clear()
     mutateAsync.mockReset()
-    props.onOpenChange.mockReset()
+    props.onCancel.mockReset()
+    props.onComplete.mockReset()
   })
 
   it("derives the remainder and requires acknowledgement before approval", async () => {
     mutateAsync.mockResolvedValue({})
-    render(<AddSalaryPaymentDialog {...props} salaryReference={{ period: "DAILY", amount: "4500.1234" }} />)
+    render(<EmployeeEarningApprovalForm {...props} salaryReference={{ period: "DAILY", amount: "4500.1234" }} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
     expect(screen.getByLabelText("earnings.total").getAttribute("aria-required")).toBe("true")
     expect(screen.getByLabelText("earnings.periodStart").getAttribute("aria-required")).toBe("true")
@@ -59,9 +60,19 @@ describe("earned-wage approval composer", () => {
     })
   })
 
+  it("suggests an exact daily-reference amount for positive row days without changing the reference", () => {
+    render(<EmployeeEarningApprovalForm {...props} salaryReference={{ period: "DAILY", amount: "2500" }} />)
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "5" } })
+
+    fireEvent.click(screen.getByRole("button", { name: "earnings.suggestDailyReferenceAmount" }))
+
+    expect((screen.getByLabelText("earnings.amount 1") as HTMLInputElement).value).toBe("12500.00")
+  })
+
   it("suggests exact values only for blank rows and leaves manual amounts untouched", async () => {
     mutateAsync.mockResolvedValue({})
-    render(<AddSalaryPaymentDialog {...props} salaryReference={{ period: "MONTHLY", amount: "30000" }} />)
+    render(<EmployeeEarningApprovalForm {...props} salaryReference={{ period: "MONTHLY", amount: "30000" }} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "100.01" } })
     for (let index = 0; index < 3; index++) fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
     const projectsByRow = screen.getAllByLabelText(/earnings.project /)
@@ -104,7 +115,7 @@ describe("earned-wage approval composer", () => {
       serverRecords.set(payload.requestId, payload)
       return {}
     })
-    const view = render(<AddSalaryPaymentDialog {...props} />)
+    const view = render(<EmployeeEarningApprovalForm {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
     fireEvent.click(screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
@@ -115,8 +126,8 @@ describe("earned-wage approval composer", () => {
 
     // A second tab resolved the approval and removed its browser recovery entry.
     localStorage.clear()
-    view.rerender(<AddSalaryPaymentDialog {...props} open={false} />)
-    view.rerender(<AddSalaryPaymentDialog {...props} open />)
+    view.rerender(<EmployeeEarningApprovalForm {...props} active={false} />)
+    view.rerender(<EmployeeEarningApprovalForm {...props} active />)
     expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "earnings.retryApproval" }))
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2))
@@ -127,16 +138,16 @@ describe("earned-wage approval composer", () => {
 
   it("allows an intentional repeat approval after the first success", async () => {
     mutateAsync.mockResolvedValue({})
-    const view = render(<AddSalaryPaymentDialog {...props} />)
+    const view = render(<EmployeeEarningApprovalForm {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
     fireEvent.click(screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
     const firstRequestId = mutateAsync.mock.calls[0]![0].requestId
-    await waitFor(() => expect(props.onOpenChange).toHaveBeenCalledWith(false))
+    await waitFor(() => expect(props.onComplete).toHaveBeenCalledTimes(1))
 
-    view.rerender(<AddSalaryPaymentDialog {...props} open={false} />)
-    view.rerender(<AddSalaryPaymentDialog {...props} open />)
+    view.rerender(<EmployeeEarningApprovalForm {...props} active={false} />)
+    view.rerender(<EmployeeEarningApprovalForm {...props} active />)
     expect(screen.queryByText("earnings.pendingApproval")).toBeNull()
     expect((screen.getByLabelText("earnings.total") as HTMLInputElement).value).toBe("")
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
@@ -150,7 +161,7 @@ describe("earned-wage approval composer", () => {
     mutateAsync.mockRejectedValueOnce(new Error("network uncertain"))
       .mockRejectedValueOnce(Object.assign(new Error("session expired"), { code: "UNAUTHORIZED", fieldErrors: [] }))
       .mockResolvedValueOnce({})
-    const view = render(<AddSalaryPaymentDialog {...props} />)
+    const view = render(<EmployeeEarningApprovalForm {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.periodStart"), { target: { value: "2026-03-01" } })
     fireEvent.change(screen.getByLabelText("earnings.periodEnd"), { target: { value: "2026-03-31" } })
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
@@ -183,8 +194,8 @@ describe("earned-wage approval composer", () => {
       ],
     })
     expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
-    view.rerender(<AddSalaryPaymentDialog {...props} open={false} />)
-    view.rerender(<AddSalaryPaymentDialog {...props} open />)
+    view.rerender(<EmployeeEarningApprovalForm {...props} active={false} />)
+    view.rerender(<EmployeeEarningApprovalForm {...props} active />)
     expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
     expect((screen.getByLabelText("earnings.periodStart") as HTMLInputElement).value).toBe("2026-03-01")
     expect((screen.getByLabelText("earnings.periodEnd") as HTMLInputElement).value).toBe("2026-03-31")
@@ -194,8 +205,8 @@ describe("earned-wage approval composer", () => {
     expect(mutateAsync.mock.calls[1]![0]).toEqual(submitted)
     expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
     expect((screen.getByLabelText("earnings.total") as HTMLInputElement).disabled).toBe(true)
-    view.rerender(<AddSalaryPaymentDialog {...props} open={false} />)
-    view.rerender(<AddSalaryPaymentDialog {...props} open />)
+    view.rerender(<EmployeeEarningApprovalForm {...props} active={false} />)
+    view.rerender(<EmployeeEarningApprovalForm {...props} active />)
     expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
     expect((screen.getByLabelText("earnings.total") as HTMLInputElement).disabled).toBe(true)
     fireEvent.click(screen.getByRole("button", { name: "earnings.retryApproval" }))
@@ -211,7 +222,7 @@ describe("earned-wage approval composer", () => {
         { field: "periodStart", message: "period start is invalid" },
       ],
     })).mockResolvedValueOnce({})
-    render(<AddSalaryPaymentDialog {...props} />)
+    render(<EmployeeEarningApprovalForm {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1500" } })
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
@@ -241,7 +252,7 @@ describe("earned-wage approval composer", () => {
   })
 
   it("derives positive remainder, invalidates acknowledgement after edits, and exposes over-allocation", () => {
-    render(<AddSalaryPaymentDialog {...props} />)
+    render(<EmployeeEarningApprovalForm {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
     fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
@@ -263,6 +274,10 @@ describe("earned-wage approval composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     expect(screen.getByText("workforce.validation.earning.positiveTotal")).toBeTruthy()
     expect(mutateAsync).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "999" } })
+    expect(screen.queryByText("workforce.validation.earning.positiveTotal")).toBeNull()
+    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("1.00")
   })
 
   it("unlocks a first registered wire-validation rejection for correction", async () => {
@@ -270,7 +285,7 @@ describe("earned-wage approval composer", () => {
       code: "BAD_REQUEST",
       data: { issues: [{ path: ["periodStart"], message: "workforce.validation.earning.periodOrder" }] },
     })).mockResolvedValueOnce({})
-    render(<AddSalaryPaymentDialog {...props} />)
+    render(<EmployeeEarningApprovalForm {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.periodStart"), { target: { value: "2026-03-01" } })
     fireEvent.change(screen.getByLabelText("earnings.periodEnd"), { target: { value: "2026-03-31" } })
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "100" } })
@@ -288,7 +303,7 @@ describe("earned-wage approval composer", () => {
   })
 
   it("shows localized precision and requires acknowledgement for the exact remainder", () => {
-    render(<AddSalaryPaymentDialog {...props} />)
+    render(<EmployeeEarningApprovalForm {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
     fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })

@@ -13,7 +13,7 @@ import { DebtCreatePage } from "@/features/debts/debt-create-page"
 import { getDebtAccountBalanceDisplay } from "@/features/debts/debt-utils"
 import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
 import { RecordPaymentDialog } from "@/features/debts/record-payment-dialog"
-import { AddSalaryPaymentDialog } from "@/features/employees/add-salary-payment-dialog"
+import { EmployeeEarningApprovalForm } from "@/features/employees/employee-earning-approval-form"
 import { TransferItemDialog } from "@/features/inventory/transfer-item-dialog"
 
 /**
@@ -172,16 +172,16 @@ describe("RecordPaymentDialog submits the picked day for a debt payment (#428)",
   })
 })
 
-describe("AddSalaryPaymentDialog approval period date controls", () => {
+describe("earned-wage approval page period date controls", () => {
   it("keeps the selected canonical day in the approval start-date control", () => {
     render(
-      <AddSalaryPaymentDialog
+      <EmployeeEarningApprovalForm
         employeeId="employee-1"
         employeeName="عامل"
         salaryReference={{ period: "MONTHLY", amount: "30000.00" }}
         projects={[]}
-        open
-        onOpenChange={vi.fn()}
+        onCancel={vi.fn()}
+        onComplete={vi.fn()}
       />,
     )
 
