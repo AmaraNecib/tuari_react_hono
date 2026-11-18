@@ -321,7 +321,7 @@ export const inventoryConsumableEntryCreateInputSchema = z.object({
   projectId: entityIdSchema.nullable().optional(),
   quantity: z.number().positive(),
   unitPriceDzd: nonNegativePaymentAmountAtScaleSchema(4),
-  totalPriceDzd: nonNegativePaymentAmountAtScaleSchema(2),
+  totalPriceDzd: nonNegativePaymentAmountSchema,
   note: z.string().trim().max(1000).nullable().optional(),
 }).superRefine((input, ctx) => {
   if (input.warehouseId && input.projectId) {

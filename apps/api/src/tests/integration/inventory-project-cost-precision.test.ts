@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createRouterClient } from "@orpc/server";
+import type { AppClient } from "@tuari/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createAppConfig } from "../../config";
@@ -12,6 +13,10 @@ import { createRouter } from "../../rpc/router";
 
 const directories: string[] = [];
 const openRoots: Array<{ close: () => void }> = [];
+
+function expectSuccess<T extends { success: boolean }>(result: T): asserts result is T & { success: true } {
+  if (!result.success) throw new Error("Expected authenticated inventory RPC to succeed");
+}
 
 afterEach(() => {
   for (const root of openRoots.splice(0)) root.close();
@@ -31,104 +36,129 @@ describe("legacy inventory costs read through strict project-cost codecs", { tim
     const adapter = authContext.internalAdapter as unknown as { createSession: (userId: string) => Promise<{ token: string }> };
     const session = await adapter.createSession(owner.item.id);
     const router = createRouter(root as never);
-    type PurchaseResult = { item: { entries: Array<{ assets: Array<{ id: string; purchasePriceDzd: number }>; unitPriceDzd: number }> } };
-    type ProjectResult = { item: { id: string } };
     const client = createRouterClient(router, {
       context: createRpcContext(new Headers({ authorization: `Bearer ${session.token}` }), root.sessionService) as never,
-    }) as unknown as {
-      projectsCreate(input: { name: string; status: "ACTIVE" }): Promise<ProjectResult>;
-      warehousesCreate(input: { name: string; status: "ACTIVE" }): Promise<ProjectResult>;
-      inventoryItemDefinitionsCreate(input: { name: string; itemType: "ASSET" | "CONSUMABLE"; unit?: string }): Promise<ProjectResult>;
-      inventoryInvoiceGroupsCreate(input: Record<string, unknown>): Promise<PurchaseResult>;
-      inventoryAssetsTransfer(input: Record<string, unknown>): Promise<unknown>;
-      projectCostGet(input: { projectId: string }): Promise<{
-        item: { stock: Array<{ amount: string }>; materialMovements: Array<{ unitPrice: string | null }>; parkedInventory: { assets: Array<{ purchaseAmount: string }> } };
-      }>;
-    };
+    }) as unknown as AppClient;
 
     const project = await client.projectsCreate({ name: "Inventory cost precision", status: "ACTIVE" });
     const warehouse = await client.warehousesCreate({ name: "Inventory cost warehouse", status: "ACTIVE" });
     const assetType = await client.inventoryItemDefinitionsCreate({ name: "Cost asset", itemType: "ASSET" });
     const materialType = await client.inventoryItemDefinitionsCreate({ name: "Cost material", itemType: "CONSUMABLE", unit: "kg" });
+    expectSuccess(project);
+    expectSuccess(warehouse);
+    expectSuccess(assetType);
+    expectSuccess(materialType);
     const projectId = project.item.id;
+    const invoiceGroupsBefore = await client.inventoryInvoiceGroupsList({ projectId });
 
     for (const amount of [0.375]) {
       const invalidAssetInput = {
         projectId, createDebt: false,
         entries: [{ kind: "ASSET", itemDefinitionId: assetType.item.id, assets: [{ assetName: "Invalid asset", purchasePriceDzd: amount }] }],
-      };
+      } satisfies Parameters<AppClient["inventoryInvoiceGroupsCreate"]>[0];
+      expect(() => root.inventoryService.createInvoiceGroup(invalidAssetInput, { actorUserId: owner.item.id, actorLabel: owner.item.name, transactionId: "invalid-asset-scale" })).toThrow(/سعر الشراء/);
       await expect(client.inventoryInvoiceGroupsCreate(invalidAssetInput)).rejects.toMatchObject({ code: "BAD_REQUEST", data: { issues: expect.arrayContaining([expect.objectContaining({ path: ["entries", 0, "assets", 0, "purchasePriceDzd"] })]) } });
       const invalidMaterialInput = {
         projectId, createDebt: false,
         entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 0.123456, totalPriceDzd: 0.123456 }],
-      };
+      } satisfies Parameters<AppClient["inventoryInvoiceGroupsCreate"]>[0];
+      expect(() => root.inventoryService.createInvoiceGroup(invalidMaterialInput, { actorUserId: owner.item.id, actorLabel: owner.item.name, transactionId: "invalid-material-scale" })).toThrow(/سعر الوحدة/);
       await expect(client.inventoryInvoiceGroupsCreate(invalidMaterialInput)).rejects.toMatchObject({ code: "BAD_REQUEST", data: { issues: expect.arrayContaining([expect.objectContaining({ path: ["entries", 0, "unitPriceDzd"] })]) } });
     }
+    const invoiceGroupsAfterRejectedWrites = await client.inventoryInvoiceGroupsList({ projectId });
+    expect(invoiceGroupsAfterRejectedWrites.items.map(({ id }) => id)).toEqual(invoiceGroupsBefore.items.map(({ id }) => id));
 
     const validAsset = await client.inventoryInvoiceGroupsCreate({
       projectId, createDebt: false,
       entries: [{ kind: "ASSET", itemDefinitionId: assetType.item.id, assets: [{ assetName: "Valid asset", purchasePriceDzd: 0.37 }] }],
     });
+    expectSuccess(validAsset);
     expect(validAsset.item.entries[0]!.assets[0]!.purchasePriceDzd).toBe(0.37);
     const validMaterial = await client.inventoryInvoiceGroupsCreate({
       projectId, createDebt: false,
       entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 0.1234, totalPriceDzd: 0.12 }],
     });
+    expectSuccess(validMaterial);
     expect(validMaterial.item.entries[0]!.unitPriceDzd).toBe(0.1234);
+    expect(validMaterial.item.entries[0]!.totalPriceDzd).toBe(0.1234);
+    const fractionQuantityProduct = await client.inventoryInvoiceGroupsCreate({
+      projectId, createDebt: false,
+      entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 0.1, unitPriceDzd: 0.12, totalPriceDzd: 0.01 }],
+    });
+    expectSuccess(fractionQuantityProduct);
+    expect(fractionQuantityProduct.item.entries[0]!.totalPriceDzd).toBe(0.012);
+    const persistedFractionalLine = await client.inventoryInvoiceGroupsGet({ id: fractionQuantityProduct.item.group.id });
+    expectSuccess(persistedFractionalLine);
+    expect(persistedFractionalLine.item.entries[0]!.totalPriceDzd).toBe(0.012);
     const highUnitPrice = await client.inventoryInvoiceGroupsCreate({
       projectId, createDebt: false,
       entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 900_719_925_474.09, totalPriceDzd: 900_719_925_474.09 }],
     });
+    expectSuccess(highUnitPrice);
     expect(highUnitPrice.item.entries[0]!.unitPriceDzd).toBe(900_719_925_474.09);
 
     const parkedProject = await client.projectsCreate({ name: "Large parked inventory", status: "ACTIVE" });
+    expectSuccess(parkedProject);
     const parkedPurchase = await client.inventoryInvoiceGroupsCreate({
       warehouseId: warehouse.item.id, createDebt: false,
       entries: [{ kind: "ASSET", itemDefinitionId: assetType.item.id, assets: [{ assetName: "Large parked", purchasePriceDzd: 1_000_000_000_000_000 }] }],
     });
+    expectSuccess(parkedPurchase);
     const parkedAsset = parkedPurchase.item.entries[0]!.assets[0]!;
     await client.inventoryAssetsTransfer({ assetUnitId: parkedAsset.id, toProjectId: parkedProject.item.id, chargeAmountDzd: 0 });
     const maxSafeParkedPurchase = await client.inventoryInvoiceGroupsCreate({
       warehouseId: warehouse.item.id, createDebt: false,
       entries: [{ kind: "ASSET", itemDefinitionId: assetType.item.id, assets: [{ assetName: "Max safe parked", purchasePriceDzd: Number.MAX_SAFE_INTEGER }] }],
     });
+    expectSuccess(maxSafeParkedPurchase);
     await client.inventoryAssetsTransfer({ assetUnitId: maxSafeParkedPurchase.item.entries[0]!.assets[0]!.id, toProjectId: parkedProject.item.id, chargeAmountDzd: 0 });
 
     const chargeProject = await client.projectsCreate({ name: "Large stock charge", status: "ACTIVE" });
+    expectSuccess(chargeProject);
     const chargeAsset = await client.inventoryInvoiceGroupsCreate({
       warehouseId: warehouse.item.id, createDebt: false,
       entries: [{ kind: "ASSET", itemDefinitionId: assetType.item.id, assets: [{ assetName: "Charge asset", purchasePriceDzd: 0 }] }],
     });
+    expectSuccess(chargeAsset);
     const unitId = chargeAsset.item.entries[0]!.assets[0]!.id;
     await client.inventoryAssetsTransfer({ assetUnitId: unitId, toProjectId: chargeProject.item.id, chargeAmountDzd: 1_000_000_000_000_000 });
     const highCost = await client.projectCostGet({ projectId: chargeProject.item.id });
+    expectSuccess(highCost);
     expect(highCost.item.stock).toEqual([expect.objectContaining({ amount: "1000000000000000.00" })]);
 
     const maxSafeProject = await client.projectsCreate({ name: "Max safe stock charge", status: "ACTIVE" });
+    expectSuccess(maxSafeProject);
     const maxSafeAsset = await client.inventoryInvoiceGroupsCreate({
       warehouseId: warehouse.item.id, createDebt: false,
       entries: [{ kind: "ASSET", itemDefinitionId: assetType.item.id, assets: [{ assetName: "Max safe charge", purchasePriceDzd: 0 }] }],
     });
+    expectSuccess(maxSafeAsset);
     await client.inventoryAssetsTransfer({ assetUnitId: maxSafeAsset.item.entries[0]!.assets[0]!.id, toProjectId: maxSafeProject.item.id, chargeAmountDzd: Number.MAX_SAFE_INTEGER });
     await expect(client.projectCostGet({ projectId: maxSafeProject.item.id })).resolves.toMatchObject({ item: { stock: [expect.objectContaining({ amount: "9007199254740991.00" })] } });
 
     const parkedCost = await client.projectCostGet({ projectId: parkedProject.item.id });
+    expectSuccess(parkedCost);
     expect(parkedCost.item.parkedInventory.assets).toEqual(expect.arrayContaining([
       expect.objectContaining({ purchaseAmount: "1000000000000000.00" }),
       expect.objectContaining({ purchaseAmount: "9007199254740991.00" }),
     ]));
     const materialCost = await client.projectCostGet({ projectId });
+    expectSuccess(materialCost);
     expect(materialCost.item.materialMovements).toEqual(expect.arrayContaining([
       expect.objectContaining({ unitPrice: "0.1234" }),
       expect.objectContaining({ unitPrice: "900719925474.0900" }),
+      expect.objectContaining({ quantity: "0.1", unitPrice: "0.1200", valueAmount: "0.01" }),
+      expect.objectContaining({ quantity: "1", unitPrice: "0.1234", valueAmount: "0.12" }),
     ]));
     expect(materialCost.item.parkedInventory.assets).toEqual([expect.objectContaining({ purchaseAmount: "0.37" })]);
 
     const roundedProject = await client.projectsCreate({ name: "Rounded legacy charge", status: "ACTIVE" });
+    expectSuccess(roundedProject);
     const roundedAsset = await client.inventoryInvoiceGroupsCreate({
       warehouseId: warehouse.item.id, createDebt: false,
       entries: [{ kind: "ASSET", itemDefinitionId: assetType.item.id, assets: [{ assetName: "Rounded charge", purchasePriceDzd: 0 }] }],
     });
+    expectSuccess(roundedAsset);
     await client.inventoryAssetsTransfer({ assetUnitId: roundedAsset.item.entries[0]!.assets[0]!.id, toProjectId: roundedProject.item.id, chargeAmountDzd: 0.375 });
     await expect(client.projectCostGet({ projectId: roundedProject.item.id })).resolves.toMatchObject({ item: { stock: [expect.objectContaining({ amount: "0.38" })] } });
   });

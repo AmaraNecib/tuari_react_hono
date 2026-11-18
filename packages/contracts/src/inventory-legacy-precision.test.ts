@@ -34,6 +34,6 @@ describe("legacy inventory purchase scales", () => {
     expect(makeInput(0.1234).success).toBe(true);
     expect(makeInput(0.123456).success).toBe(false);
     expect(makeInput(0.000001).success).toBe(false);
-    expect(makeInput(0.1234, 0.375).success).toBe(false);
+    expect(makeInput(0.1234, 0.375).success).toBe(true);
   });
 });
