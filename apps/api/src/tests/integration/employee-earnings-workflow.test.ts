@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createAppConfig } from "../../config";
 import { createDatabaseConnection } from "../../infrastructure/database/factory";
@@ -93,8 +93,8 @@ describe("approved employee earnings through the normal composition root", { tim
     const approval = {
       employeeId: employee,
       requestId: "d0f2fd98-5ca5-49ae-9074-b139df26614d",
-      periodStart: "2026-04-01T00:00:00.000Z",
-      periodEnd: "2026-04-26T00:00:00.000Z",
+      periodStart: "2026-04-02T00:30:00+02:00",
+      periodEnd: "2026-04-01T23:00:00Z",
       currencyCode: "DZD" as const,
       totalAmount: "62500.00",
       unallocatedAmount: "0.00",
@@ -108,6 +108,8 @@ describe("approved employee earnings through the normal composition root", { tim
 
     const saved = first.workforceService.approveEmployeeEarning(approval, audit);
     expect(saved.success).toBe(true);
+    expect(saved.item.periodStart).toBe("2026-04-01T22:30:00.000Z");
+    expect(saved.item.periodEnd).toBe("2026-04-01T23:00:00.000Z");
     expect(saved.item.segments.map((segment) => [segment.id, segment.days, segment.amount])).toEqual([
       ["segment-a1", 5, "10000.00"],
       ["segment-b", 15, "37500.00"],
@@ -123,16 +125,71 @@ describe("approved employee earnings through the normal composition root", { tim
     ]);
     expect(costB.parts.salariesAmount).toBe("37500.00");
     expect(costB.salaries.map(segment => [segment.segmentId, segment.days, segment.amount])).toEqual([["segment-b", 15, "37500.00"]]);
+    const otherEmployee = first.workforceService.createEmployee({
+      firstName: "Other",
+      lastName: "Worker",
+      phone: "0555123988",
+      roleId,
+      status: "ACTIVE",
+      salaryReference: null,
+    }, audit).item.id;
+    const otherApproval = first.workforceService.approveEmployeeEarning({
+      ...approval,
+      employeeId: otherEmployee,
+      requestId: "45e9bdf3-0992-4ea0-a975-b3d86af07007",
+      periodStart: "2026-04-01T00:00:00.000Z",
+      periodEnd: "2026-04-02T00:00:00.000Z",
+      totalAmount: "10.00",
+      unallocatedAmount: "0.00",
+      referenceSalary: null,
+      segments: [{ id: "other-segment", projectId: projectA, days: 1, amount: "10.00" }],
+    }, audit);
+    expect(otherApproval.success).toBe(true);
+    const earningRepository = (first.workforceService as unknown as {
+      earningRepository: { raw: { prepare: (...args: never[]) => unknown } };
+    }).earningRepository;
+    const prepareSpy = vi.spyOn(earningRepository.raw, "prepare");
+    expect(first.workforceService.listEmployeeEarnings(employee).items.map(item => item.employeeId)).toEqual([employee]);
+    const segmentReadSql = prepareSpy.mock.calls
+      .map(([statement]) => String(statement))
+      .filter(statement => statement.includes("employee_earning_segment"));
+    expect(segmentReadSql).toHaveLength(1);
+    expect(segmentReadSql[0]).toMatch(/earning_id.*in\s*\(/i);
+    prepareSpy.mockRestore();
+    expect(first.workforceService.listEmployeeEarnings(otherEmployee).items.map(item => item.segments.map(segment => segment.id)))
+      .toEqual([["other-segment"]]);
     first.close();
     openRoots.splice(openRoots.indexOf(first), 1);
 
     const reopened = await createAppDependencies({ databasePath, authInstance: fakeAuth }, config);
     openRoots.push(reopened);
+    const equivalentOffsetRetry = reopened.workforceService.approveEmployeeEarning({
+      ...approval,
+      periodStart: "2026-04-01T22:30:00Z",
+      periodEnd: "2026-04-02T01:00:00+02:00",
+    }, audit);
+    expect(equivalentOffsetRetry.success).toBe(true);
+    expect(equivalentOffsetRetry.item.id).toBe(savedId);
     const repeated = reopened.workforceService.approveEmployeeEarning(approval, audit);
     expect(repeated.success).toBe(true);
     expect(repeated.item.id).toBe(savedId);
     expect(repeated.item.referenceSalary).toEqual({ period: "DAILY", amount: "1250.1250" });
-    expect(reopened.workforceService.listEmployeeEarnings(employee).items).toHaveLength(1);
+    const persisted = reopened.workforceService.listEmployeeEarnings(employee).items;
+    expect(persisted).toHaveLength(1);
+    expect(persisted[0]?.periodStart).toBe("2026-04-01T22:30:00.000Z");
+    expect(persisted[0]?.periodEnd).toBe("2026-04-01T23:00:00.000Z");
+    const reopenedEarningRepository = (reopened.workforceService as unknown as {
+      earningRepository: { hasForEmployee: (id: string) => boolean; list: (id?: string) => unknown[] };
+    }).earningRepository;
+    const existsSpy = vi.spyOn(reopenedEarningRepository, "hasForEmployee");
+    const listSpy = vi.spyOn(reopenedEarningRepository, "list");
+    expect(() => reopened.workforceService.deleteEmployee(employee, audit)).toThrowError(
+      expect.objectContaining({ appError: expect.objectContaining({ code: "BUSINESS_RULE" }) }),
+    );
+    expect(existsSpy).toHaveBeenCalledWith(employee);
+    expect(listSpy).not.toHaveBeenCalled();
+    existsSpy.mockRestore();
+    listSpy.mockRestore();
 
     const daysOnlyConflict = {
       ...approval,

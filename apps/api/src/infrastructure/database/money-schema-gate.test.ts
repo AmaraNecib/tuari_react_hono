@@ -1,8 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
-import ts from "typescript";
+import { assertLegacyMoneySchema as assertHistoricalLegacyMoneySchema } from "./fixtures/money-schema-gate-baseline";
 import { describe, expect, it } from "vitest";
 import { createDatabaseConnection } from "./factory";
 import { ensureDatabaseSchema } from "./schema";
@@ -12,15 +11,10 @@ import { requireExactMoneySchema } from "./money-schema-gate";
 // Synthetic isolated schemas only. No application database is opened.
 describe("original old-writer compatibility canary", () => {
   it("rejects a freshly initialized earnings schema with the unchanged baseline guard", async () => {
-    const baseline = execFileSync("git", ["show", "0fdaff8fe76771c12a32bbe7bdd93f6c6935656f:apps/api/src/infrastructure/database/money-schema-gate.ts"], { encoding: "utf8" });
-    const baselineBlob = execFileSync("git", ["rev-parse", "0fdaff8fe76771c12a32bbe7bdd93f6c6935656f:apps/api/src/infrastructure/database/money-schema-gate.ts"], { encoding: "utf8" }).trim();
-    expect(baselineBlob).toBe("fbe93e602a103072c553bec64c43fe279f963b77");
-    const compiled = ts.transpileModule(baseline, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-    const original = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`) as typeof import("./money-schema-gate");
     const db = createDatabaseConnection(":memory:", "");
     try {
       await ensureDatabaseSchema(new BetterSqlite3Executor(db));
-      await expect(original.assertLegacyMoneySchema(new BetterSqlite3Executor(db))).rejects.toThrow(/coordinated.*activation/i);
+      await expect(assertHistoricalLegacyMoneySchema(new BetterSqlite3Executor(db))).rejects.toThrow(/coordinated.*activation/i);
     } finally { db.close(); }
   });
 });

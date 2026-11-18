@@ -552,7 +552,7 @@ export class WorkforceService {
         this.operationsRepo.listWarehouseManagerOwnershipHistory({ managerId: id }).length > 0;
       const hasSalaryPayments =
         this.repository.listSalaryPayments({ employeeId: id }).length > 0;
-      const hasApprovedEarnings = (this.earningRepository?.list(id).length ?? 0) > 0;
+      const hasApprovedEarnings = this.earningRepository?.hasForEmployee(id) ?? false;
       const managesProjects = this.operationsRepo.listProjects({ managerId: id }).length > 0;
       const managesWarehouses = this.operationsRepo.listWarehouses({ managerId: id }).length > 0;
 
@@ -585,7 +585,12 @@ export class WorkforceService {
 
   approveEmployeeEarning(input: EmployeeEarningApprovalInput, auditContext?: MutationAuditContext) {
     if (!this.earningRepository) throw new Error("Employee earning persistence is not configured");
-    const parsed = employeeEarningApprovalInputSchema.parse(input);
+    const validated = employeeEarningApprovalInputSchema.parse(input);
+    const parsed = {
+      ...validated,
+      periodStart: new Date(validated.periodStart).toISOString(),
+      periodEnd: new Date(validated.periodEnd).toISOString(),
+    };
     const requestHash = createHash("sha256").update(JSON.stringify({
       employeeId: parsed.employeeId,
       periodStart: parsed.periodStart,

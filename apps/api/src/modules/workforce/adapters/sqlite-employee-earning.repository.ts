@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import { Money, SalaryReference, UnitPrice, type EmployeeEarning, type EmployeeEarningApprovalInput } from "@tuari/contracts";
@@ -120,7 +120,9 @@ export class SqliteEmployeeEarningRepository implements EmployeeEarningRepositor
       ? query
       : query.where(eq(schema.employeeEarning.employeeId, employeeId)))
       .orderBy(desc(schema.employeeEarning.approvedAt), desc(schema.employeeEarning.id)).all();
-    const allSegments = this.db.select({
+    if (rows.length === 0) return [];
+    const earningIds = rows.map((row) => row.id);
+    const selectedSegments = this.db.select({
       id: schema.employeeEarningSegment.id,
       earningId: schema.employeeEarningSegment.earningId,
       projectId: schema.employeeEarningSegment.projectId,
@@ -129,14 +131,23 @@ export class SqliteEmployeeEarningRepository implements EmployeeEarningRepositor
       amountMinor: sql<string>`CAST(${schema.employeeEarningSegment.amountMinor} AS TEXT)`,
       createdAt: schema.employeeEarningSegment.createdAt,
     }).from(schema.employeeEarningSegment)
+      .where(inArray(schema.employeeEarningSegment.earningId, earningIds))
       .orderBy(asc(schema.employeeEarningSegment.earningId), asc(schema.employeeEarningSegment.ordinal)).all();
     const byEarning = new Map<string, SegmentRow[]>();
-    for (const segment of allSegments) {
+    for (const segment of selectedSegments) {
       const group = byEarning.get(segment.earningId) ?? [];
       group.push(segment as SegmentRow);
       byEarning.set(segment.earningId, group);
     }
     return rows.map((row) => mapEarning(row as EarningRow, byEarning.get(row.id) ?? []));
+  }
+
+  hasForEmployee(employeeId: string): boolean {
+    return this.db.select({ id: schema.employeeEarning.id })
+      .from(schema.employeeEarning)
+      .where(eq(schema.employeeEarning.employeeId, employeeId))
+      .limit(1)
+      .get() !== undefined;
   }
 
   create(
