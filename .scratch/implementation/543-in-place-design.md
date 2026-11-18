@@ -44,6 +44,10 @@ The project-cost report continues to finalize each valued material movement inde
 
 The source module interface remains the existing numeric inventory RPC and read-only project-cost repository. No adapter seam moved. A private exact accumulator keeps invoice arithmetic local to `InventoryService`; it accepts canonical legacy operands, not an intermediate product. Contract and service validators share input scale rules. Focused authenticated tests cover once-rounded mixed products, half-cent lines, payment/debt consistency, no-debt mode, overflow rollback, high whole amounts, large REAL readback and unchanged stock-charge results.
 
+## API coverage floor authority
+
+The owner approved lowering the API's four global coverage thresholds to 99%, rather than retaining 100% or dropping to 70–80%. The recorded CI baseline is lines 99.95%, functions 99.83%, statements 99.87% and branches 99.79%; each exceeds the selected floor. The change retains the existing coverage includes, exclusions and all other CI gates. Focused tests also preserve behavioral proof for unconfigured earning persistence errors and deterministic project-cost salary ordering; they do not claim to resolve the coverage-policy failure or establish global coverage.
+
 ## Proof and remaining gates
 
 Prior focused proof remains tied to its recorded source SHAs and logs. The hosted web correction's evidence records 126 tests across six files, web typecheck and nine-file lint passing at child SHA `ab0ac74e9e9f639178d8190d0df78e04e802f0aa`; workforce hosted corrections and CI registry fixes have their own child evidence in the parent automation record. These are local results, not a combined-delta reviewer verdict or current-head CI acceptance.

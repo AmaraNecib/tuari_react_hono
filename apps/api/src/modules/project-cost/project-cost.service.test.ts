@@ -88,6 +88,7 @@ describe("ProjectCostService exact read model", () => {
         { earningId: "earning-old", segmentId: "old", employeeId: "employee", employeeName: null, ordinal: 0, days: 1, amount: "1.00", periodStart: NOW, periodEnd: NOW, approvedAt: "2026-05-01T00:00:00.000Z" },
         { earningId: "earning-new", segmentId: "new-2", employeeId: "employee", employeeName: null, ordinal: 1, days: 2, amount: "2.00", periodStart: NOW, periodEnd: NOW, approvedAt: "2026-05-02T00:00:00.000Z" },
         { earningId: "earning-new", segmentId: "new-1", employeeId: "employee", employeeName: null, ordinal: 0, days: 3, amount: "3.00", periodStart: NOW, periodEnd: NOW, approvedAt: "2026-05-02T00:00:00.000Z" },
+        { earningId: "earning-middle", segmentId: "middle", employeeId: "employee", employeeName: null, ordinal: 0, days: 4, amount: "4.00", periodStart: NOW, periodEnd: NOW, approvedAt: "2026-05-02T00:00:00.000Z" },
       ],
       listProjectStockCharges: () => [
         { id: "stock-old", assetUnitId: "asset-old", assetName: null, amount: "1.00", placedAt: "2026-05-01T00:00:00.000Z" },
@@ -100,7 +101,7 @@ describe("ProjectCostService exact read model", () => {
     }));
 
     expect(result.expenses.map(row => row.id)).toEqual(["expense-a", "expense-b"]);
-    expect(result.salaries.map(row => row.segmentId)).toEqual(["new-1", "new-2", "old"]);
+    expect(result.salaries.map(row => row.segmentId)).toEqual(["new-1", "new-2", "middle", "old"]);
     expect(result.stock.map(row => row.id)).toEqual(["stock-new", "stock-old"]);
     expect(result.materialMovements.map(row => row.id)).toEqual(["move-new", "move-old"]);
   });

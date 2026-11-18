@@ -364,6 +364,16 @@ describe("WorkforceService coverage branches", () => {
     });
   });
 
+  describe("unconfigured employee earnings", () => {
+    it("returns the persistence configuration error for earning reads and approvals", () => {
+      const { service } = createHarness();
+      const expected = "Employee earning persistence is not configured";
+
+      expect(() => service.workforce.listEmployeeEarnings()).toThrow(expected);
+      expect(() => service.workforce.approveEmployeeEarning({} as never)).toThrow(expected);
+    });
+  });
+
   describe("read lists", () => {
     it("listEmployeeStateHistory, listSalaryPayments and getEmployee delegate to the repository", () => {
       const { service, roleIds } = createHarness();
