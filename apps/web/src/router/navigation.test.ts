@@ -29,6 +29,8 @@ describe("workspace navigation helpers", () => {
       to: "/employees/$employeeId/earnings/new",
     })
     expect(getWorkspaceLinkProps(workspaceRoutes.salaries())).toEqual({ to: "/salaries" })
+    expect(getWorkspaceLinkProps(workspaceRoutes.salaryEarnings())).toEqual({ to: "/salaries", search: { tab: "earnings", page: 1, pageSize: 10 } })
+    expect(getWorkspaceLinkProps(workspaceRoutes.salaryWorkers())).toEqual({ to: "/salaries", search: { tab: "workers", page: 1, pageSize: 10 } })
   })
 
   it("supports dedicated create pages for projects and warehouses", () => {

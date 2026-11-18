@@ -23,7 +23,7 @@ export type WorkspaceRouteTarget =
   | { to: "/projects/create" }
   | { to: "/projects/$projectId"; params: { projectId: string }; search?: WorkspaceTabSearch }
   | { to: "/projects/$projectId/edit"; params: { projectId: string } }
-  | { to: "/salaries" }
+  | { to: "/salaries"; search?: { tab: "recent" | "workers" | "earnings"; page?: number; pageSize?: number } }
   | { to: "/warehouses" }
   | { to: "/warehouses/create" }
   | { to: "/warehouses/$warehouseId"; params: { warehouseId: string }; search?: WorkspaceTabSearch }
@@ -98,6 +98,8 @@ export const workspaceRoutes = {
     search: { tab },
   }),
   salaries: (): WorkspaceRouteTarget => ({ to: "/salaries" }),
+  salaryEarnings: (): WorkspaceRouteTarget => ({ to: "/salaries", search: { tab: "earnings", page: 1, pageSize: 10 } }),
+  salaryWorkers: (): WorkspaceRouteTarget => ({ to: "/salaries", search: { tab: "workers", page: 1, pageSize: 10 } }),
   warehouses: (): WorkspaceRouteTarget => ({ to: "/warehouses" }),
   warehouseCreate: (): WorkspaceRouteTarget => ({ to: "/warehouses/create" }),
   inventory: (): WorkspaceRouteTarget => ({ to: "/inventory" }),

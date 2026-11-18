@@ -294,9 +294,12 @@ export function EmployeeEarningApprovalForm({
   return <section className="space-y-5">
     <header className="space-y-2">
       {employeeName ? <p className="text-sm text-muted-foreground" dir="auto">{employeeName}</p> : null}
-      <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{t("earnings.approvalPaymentClarification")}</p>
       {salaryReference ? <p className="text-sm text-muted-foreground">{t("earnings.referenceSalary")}: <bdi dir="ltr">{salaryReference.amount} {t("detailPages.salary.currency")}</bdi></p> : null}
-      {salaryReference?.period === "DAILY" ? <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{t("earnings.dailyReferenceAmount")}</p> : null}
+      <details className="text-sm text-muted-foreground">
+        <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4">{t("earnings.approvalHelp")}</summary>
+        <p className="mt-2 max-w-3xl leading-6">{t("earnings.approvalPaymentClarification")}</p>
+        {salaryReference?.period === "DAILY" ? <p className="mt-2 max-w-3xl leading-6">{t("earnings.dailyReferenceAmount")}</p> : null}
+      </details>
     </header>
     {pending ? <p role="status" className="rounded-xl border border-border/60 bg-surface-2 p-3 text-sm">{t("earnings.pendingApproval")}</p> : null}
       <form className="space-y-5" onSubmit={event => { event.preventDefault(); void submit() }}>
@@ -313,7 +316,7 @@ export function EmployeeEarningApprovalForm({
               {issue ? <p id={issueId(path)} className="text-sm text-destructive">{issue.message}</p> : null}
             </label>
           })}
-          <label className="flex flex-col gap-2">
+          <label className="flex flex-col gap-2 sm:col-span-2">
             <span className="text-sm font-medium">{t("earnings.total")} <span aria-hidden="true" className="text-destructive">*</span></span>
             <CurrencyInput aria-label={t("earnings.total")} required aria-required="true" aria-invalid={issueAt(["totalAmountText"]) ? true : undefined} aria-describedby={issueAt(["totalAmountText"]) ? issueId(["totalAmountText"]) : undefined} value={total} onChange={event => { clearIssue(["totalAmountText"]); setAcknowledgedRemainder(null); setTotal(event.target.value) }} disabled={frozen || busy} />
             {issueAt(["totalAmountText"]) ? <p id={issueId(["totalAmountText"])} className="text-sm text-destructive">{issueAt(["totalAmountText"])!.message}</p> : null}
@@ -346,7 +349,7 @@ export function EmployeeEarningApprovalForm({
               ["earnings.unallocated", allocation.remainderMinor],
             ].map(([label, amount]) => <div key={String(label)} className="space-y-1">
               <dt className="text-xs text-muted-foreground">{t(String(label))}</dt>
-              <dd className="text-right font-mono text-sm font-semibold tabular-nums"><output aria-label={label === "earnings.unallocated" ? t(String(label)) : undefined}><bdi dir="ltr">{formattedMinor(amount as bigint | null)}</bdi></output> <bdi dir="auto" className="font-sans text-xs font-normal">{t("detailPages.salary.currency")}</bdi></dd>
+              <dd className="text-right font-mono text-sm font-semibold tabular-nums"><output aria-label={label === "earnings.unallocated" ? t(String(label)) : undefined}><bdi dir={amount === null ? "auto" : "ltr"}>{formattedMinor(amount as bigint | null)}</bdi></output> <bdi dir="auto" className="font-sans text-xs font-normal">{t("detailPages.salary.currency")}</bdi></dd>
             </div>)}
           </dl>
           {positiveRemainder && !frozen ? <label className="flex items-start gap-3 border-t border-border/60 pt-3 text-sm leading-6">

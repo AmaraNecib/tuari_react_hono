@@ -187,7 +187,7 @@ export function HomeViewPageDetailContent({
         const destination = returnTo ?? "employee-finance"
         const goBack = () => {
           if (destination === "salaries") {
-            void navigation.goToSalaries()
+            void navigation.goToSalaryWorkers()
           } else if (selectedEmployee) {
             void navigation.goToEmployeeFinance(selectedEmployee.id)
           } else {
@@ -200,7 +200,7 @@ export function HomeViewPageDetailContent({
             projects={derived.salaryProjects}
             returnTo={destination}
             onCancel={goBack}
-            onComplete={goBack}
+            onComplete={() => destination === "salaries" ? void navigation.goToSalaryEarnings() : goBack()}
           />,
         )
       }

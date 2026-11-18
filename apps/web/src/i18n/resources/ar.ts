@@ -38,6 +38,7 @@ export const ar = {
       dailyReferenceAmount: "يحسب الاقتراح الأجر اليومي الدقيق مضروبًا في أيام العمل المدخلة؛ ويمكنك تعديل المبلغ المقترح.",
       referenceSalary: "مرجع الأجر الحالي",
       approvalPaymentClarification: "يسجل هذا الاعتماد الأجر المكتسب فقط، ولا يثبت دفعًا نقديًا.",
+      approvalHelp: "كيف يُحسب الأجر؟",
       historyPaymentClarificationLabel: "ما الذي يسجله هذا السجل؟",
       historyPaymentClarification: "يعرض السجل الأجور المكتسبة المعتمدة، ولا يثبت دفعًا نقديًا.",
       employeeUnavailable: "لا يمكن اعتماد أجر لهذا الموظف. تحقق من أن الموظف نشط.",
