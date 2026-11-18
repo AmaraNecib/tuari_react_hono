@@ -399,3 +399,7 @@ It verifies:
 2. A signed update manifest (`.update`) exists and the signature is valid against the public key
 
 Exit code 0 = all checks pass. Non-zero = at least one check failed.
+
+## 13. Typechecking
+
+The contracts, API and web workspace `typecheck` scripts use `tsrs --noEmit`. `tsrs` checks TypeScript source; package builds and ESLint still use the installed TypeScript 5.9.3 APIs through `tsup` and `typescript-eslint`. The web build runs its typecheck script before Vite. This changes neither Playwright nor E2E coverage or runtime behavior, and makes no E2E speed claim.

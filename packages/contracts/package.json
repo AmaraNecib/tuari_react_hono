@@ -15,7 +15,7 @@
     "build": "tsup src/index.ts --format esm --dts --clean --external zod",
     "dev": "tsup src/index.ts --format esm --dts --watch",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsrs --noEmit"
   },
   "dependencies": {
     "@orpc/contract": "^1.13.6",
