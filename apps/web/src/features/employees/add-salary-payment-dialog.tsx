@@ -133,7 +133,8 @@ export function AddSalaryPaymentDialog({
       const loaded = loadPendingEmployeeEarning(identity, window.localStorage)
       if (!loaded.ok) { setStorageError(true); return }
       setStorageError(false)
-      setPending(loaded.pending)
+      // Missing storage cannot prove the frozen request completed; another tab may have removed it.
+      if (loaded.pending) setPending(loaded.pending)
       setError("")
       if (loaded.pending) {
         const payload = loaded.pending.payload

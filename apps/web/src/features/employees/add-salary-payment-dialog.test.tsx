@@ -29,6 +29,57 @@ describe("earned-wage approval composer", () => {
     props.onOpenChange.mockReset()
   })
 
+  it("retries the same fully unallocated approval after another tab clears completed storage", async () => {
+    const serverRecords = new Map<string, unknown>()
+    mutateAsync.mockImplementationOnce(async (payload: { requestId: string }) => {
+      serverRecords.set(payload.requestId, payload)
+      throw new Error("response lost after server commit")
+    }).mockImplementationOnce(async (payload: { requestId: string }) => {
+      serverRecords.set(payload.requestId, payload)
+      return {}
+    })
+    const view = render(<AddSalaryPaymentDialog {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "62500" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    const firstPayload = mutateAsync.mock.calls[0]![0]
+    expect(firstPayload).toMatchObject({ totalAmount: "62500.00", unallocatedAmount: "62500.00", segments: [] })
+    expect(serverRecords.size).toBe(1)
+
+    // A second tab resolved the approval and removed its browser recovery entry.
+    localStorage.clear()
+    view.rerender(<AddSalaryPaymentDialog {...props} open={false} />)
+    view.rerender(<AddSalaryPaymentDialog {...props} open />)
+    expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "earnings.retryApproval" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2))
+    expect(mutateAsync.mock.calls[1]![0]).toEqual(firstPayload)
+    expect(serverRecords.size).toBe(1)
+    expect([...serverRecords.keys()]).toEqual([firstPayload.requestId])
+  })
+
+  it("allows an intentional repeat approval after the first success", async () => {
+    mutateAsync.mockResolvedValue({})
+    const view = render(<AddSalaryPaymentDialog {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "62500" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    const firstRequestId = mutateAsync.mock.calls[0]![0].requestId
+    await waitFor(() => expect(props.onOpenChange).toHaveBeenCalledWith(false))
+
+    view.rerender(<AddSalaryPaymentDialog {...props} open={false} />)
+    view.rerender(<AddSalaryPaymentDialog {...props} open />)
+    expect(screen.queryByText("earnings.pendingApproval")).toBeNull()
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).value).toBe("")
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "62500" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2))
+    expect(mutateAsync.mock.calls[1]![0].requestId).not.toBe(firstRequestId)
+  })
+
   it("keeps A/B/A amounts independent and retries the frozen approval after close and reopen", async () => {
     mutateAsync.mockRejectedValueOnce(new Error("network uncertain"))
       .mockRejectedValueOnce(Object.assign(new Error("session expired"), { code: "UNAUTHORIZED", fieldErrors: [] }))
