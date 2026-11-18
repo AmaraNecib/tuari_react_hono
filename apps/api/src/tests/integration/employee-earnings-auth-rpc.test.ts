@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { createRouterClient } from "@orpc/server";
+import type { AppClient } from "@tuari/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createAppConfig } from "../../config";
@@ -48,10 +49,10 @@ describe("approved earning RPC with real auth and encrypted persistence", { time
     const router = createRouter(first as never);
     const client = createRouterClient(router, {
       context: createRpcContext(headers, first.sessionService) as never,
-    }) as any;
+    }) as unknown as AppClient;
     const anonymousClient = createRouterClient(router, {
       context: createRpcContext(new Headers(), first.sessionService) as never,
-    }) as any;
+    }) as unknown as AppClient;
     await expect(anonymousClient.employeeEarningsList()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
 
     const workerRoleId = first.workforceService.listRoles().items.find((role) => role.key === "worker")!.id;
@@ -60,6 +61,7 @@ describe("approved earning RPC with real auth and encrypted persistence", { time
       lastName: "Numeric",
       phone: "0555123986",
       roleId: workerRoleId,
+      // @ts-expect-error Verify rejection of the retired numeric wire shape.
       salaryAmountDzd: 1500,
       salaryPeriod: "DAILY",
     })).rejects.toThrow();
@@ -71,6 +73,7 @@ describe("approved earning RPC with real auth and encrypted persistence", { time
       salaryReference: { period: "DAILY", amount: "1500.1250" },
     });
     expect(employee.success).toBe(true);
+    if (!employee.success) throw new Error("Employee creation failed");
     const employeeId = employee.item.id;
     const updated = await client.employeesUpdate({
       id: employeeId,
@@ -82,6 +85,7 @@ describe("approved earning RPC with real auth and encrypted persistence", { time
     const projectBResult = await client.projectsCreate({ name: "B", status: "ACTIVE" });
     expect(projectAResult.success).toBe(true);
     expect(projectBResult.success).toBe(true);
+    if (!projectAResult.success || !projectBResult.success) throw new Error("Project creation failed");
     const projectA = projectAResult.item.id;
     const projectB = projectBResult.item.id;
     const approval = {
@@ -100,6 +104,7 @@ describe("approved earning RPC with real auth and encrypted persistence", { time
     };
     const approved = await client.employeeEarningsApprove(approval);
     expect(approved.success).toBe(true);
+    if (!approved.success) throw new Error("Earning approval failed");
     expect(approved.item.segments.map((segment: { id: string; days: number; amount: string }) => [segment.id, segment.days, segment.amount])).toEqual([
       ["segment-a1", 5, "10000.00"],
       ["segment-b", 15, "37500.00"],
@@ -162,8 +167,10 @@ describe("approved earning RPC with real auth and encrypted persistence", { time
     const reopenedRouter = createRouter(reopened as never);
     const reopenedClient = createRouterClient(reopenedRouter, {
       context: createRpcContext(headers, reopened.sessionService) as never,
-    }) as any;
-    expect((await reopenedClient.employeesGet({ id: employeeId })).item.salaryReference).toEqual({
+    }) as unknown as AppClient;
+    const reopenedEmployee = await reopenedClient.employeesGet({ id: employeeId });
+    if (!reopenedEmployee.success) throw new Error("Employee read after reopen failed");
+    expect(reopenedEmployee.item.salaryReference).toEqual({
       period: "MONTHLY",
       amount: "90071992547409.93",
     });
@@ -171,6 +178,6 @@ describe("approved earning RPC with real auth and encrypted persistence", { time
       { period: "DAILY", amount: "1500.1250" },
       { period: "MONTHLY", amount: "90071992547409.93" },
     ]));
-    expect((await reopenedClient.employeeEarningsList({ employeeId })).items[0].segments.map((segment: { days: number }) => segment.days)).toEqual([5, 15, 5]);
+    expect((await reopenedClient.employeeEarningsList({ employeeId })).items[0]!.segments.map((segment: { days: number }) => segment.days)).toEqual([5, 15, 5]);
   });
 });
