@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paymentMethodSchema } from "./core";
+import { UnitPrice } from "./exact-money";
 
 export const counterpartyTypeSchema = z.enum(["EXTERNAL_COUNTERPARTY", "WORKER"]);
 
@@ -39,6 +40,16 @@ export function nonNegativePaymentAmountAtScaleSchema(scale: number) {
     return Number.isFinite(exponent) && Math.max(0, fractionDigits - exponent) <= scale;
   }, { message: `Amount permits at most ${scale} decimal places.` });
 }
+
+/** Entered inventory unit prices use the exact four-place, reversal-safe int64 codec range. */
+export const nonNegativeUnitPriceSchema = nonNegativePaymentAmountAtScaleSchema(4).refine((amount) => {
+  try {
+    UnitPrice.parse(String(amount));
+    return true;
+  } catch {
+    return false;
+  }
+}, { message: "Unit price exceeds the exact supported range." });
 
 /**
  * A COMPUTED aggregate that may legitimately be negative, bounded on both sides

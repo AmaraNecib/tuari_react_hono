@@ -23,7 +23,22 @@ describe("legacy inventory purchase scales", () => {
     expect(makeInput(Number.MAX_SAFE_INTEGER).success).toBe(true);
   });
 
-  it("limits entered consumable unit prices to four places while leaving product estimates permissive", () => {
+  it("limits purchase quantities to the six-place inventory quantum", () => {
+    const makeInput = (quantity: number) => inventoryConsumableEntryCreateInputSchema.safeParse({
+      kind: "CONSUMABLE",
+      itemDefinitionId,
+      quantity,
+      unitPriceDzd: 0.12,
+      totalPriceDzd: 1,
+    });
+
+    expect(makeInput(0.000001).success).toBe(true);
+    const excessive = makeInput(0.1234567);
+    expect(excessive.success).toBe(false);
+    if (!excessive.success) expect(excessive.error.issues[0]?.path).toEqual(["quantity"]);
+  });
+
+  it("limits entered consumable unit prices to four places and the exact codec range", () => {
     const makeInput = (unitPriceDzd: number, totalPriceDzd = 1) => inventoryConsumableEntryCreateInputSchema.safeParse({
       kind: "CONSUMABLE",
       itemDefinitionId,
@@ -35,6 +50,9 @@ describe("legacy inventory purchase scales", () => {
     expect(makeInput(0.1234).success).toBe(true);
     expect(makeInput(0.123456).success).toBe(false);
     expect(makeInput(0.000001).success).toBe(false);
+    expect(makeInput(922_337_203_685_477.5).success).toBe(true);
+    expect(makeInput(922_337_203_685_477.6).success).toBe(false);
+    expect(makeInput(1_000_000_000_000_000).success).toBe(false);
     expect(makeInput(0.1234, 0.375).success).toBe(true);
   });
 

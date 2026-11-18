@@ -2,9 +2,11 @@ import {
   Money,
   MAX_MONEY_DZD,
   invoiceLineUsage,
+  inventoryQuantitySchema,
   matchesItemOfferFilter,
   nonNegativePaymentAmountAtScaleSchema,
   nonNegativePaymentAmountSchema,
+  nonNegativeUnitPriceSchema,
   outboundPickUsage,
   resolveItemOffer,
 } from "@tuari/contracts"
@@ -104,6 +106,21 @@ function normalizeMoneyAtScale(value: number, field: string, message: string, sc
     throw new InventoryError("VALIDATION", message, [{ field, message }])
   }
 
+  return parsed.data
+}
+
+function normalizeInventoryPurchaseQuantity(value: number, field: string) {
+  const parsed = inventoryQuantitySchema.safeParse(value)
+  if (!parsed.success) {
+    const message = "الكمية خارج الدقة المسموح بها (6 منازل عشرية)."
+    throw new InventoryError("VALIDATION", message, [{ field, message }])
+  }
+  return parsed.data
+}
+
+function normalizeUnitPrice(value: number, field: string, message: string) {
+  const parsed = nonNegativeUnitPriceSchema.safeParse(value)
+  if (!parsed.success) throw new InventoryError("VALIDATION", message, [{ field, message }])
   return parsed.data
 }
 
@@ -556,12 +573,11 @@ export class InventoryService {
           throw new InventoryError("VALIDATION", "تعريف العنصر لا يطابق نوع إدخال المواد الاستهلاكية.", [{ field: `entries.${index}.itemDefinitionId`, message: "تعريف العنصر لا يطابق نوع إدخال المواد الاستهلاكية." }])
         }
 
-        const quantity = normalizePositive(entry.quantity, `entries.${index}.quantity`)
-        const unitPriceDzd = normalizeMoneyAtScale(
+        const quantity = normalizeInventoryPurchaseQuantity(entry.quantity, `entries.${index}.quantity`)
+        const unitPriceDzd = normalizeUnitPrice(
           entry.unitPriceDzd,
           `entries.${index}.unitPriceDzd`,
           "سعر الوحدة خارج النطاق أو الدقة المسموح بها.",
-          4,
         )
         // Keep the legacy REAL line product, but finalize the F document total from the original operands.
         const totalPriceDzd = quantity * unitPriceDzd

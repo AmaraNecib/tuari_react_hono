@@ -115,7 +115,7 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
       e.item_definition_id AS item_definition_id,
       e.item_name AS item_name,
       e.unit AS unit,
-      CAST(m.quantity AS TEXT) AS quantity,
+      m.quantity AS quantity,
       e.unit_price_dzd AS unit_price,
       m.occurred_at AS occurred_at,
       m.to_project_id AS to_project_id
@@ -132,7 +132,7 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
       itemDefinitionId: emptyToNull(row.item_definition_id),
       itemName: emptyToNull(row.item_name),
       unit: emptyToNull(row.unit),
-      quantity: Quantity.inventory(String(row.quantity ?? "0")).toWire(),
+      quantity: Quantity.inventory(sqliteNumberToDecimal(row.quantity ?? 0)).toWire(),
       unitPrice: row.unit_price == null ? null : UnitPrice.parse(String(row.unit_price)).toWire(),
       direction: String(row.to_project_id) === projectId ? "IN" : "OUT",
       occurredAt: String(row.occurred_at),
@@ -153,6 +153,22 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
       purchaseAmount: Money.parse(String(row.purchase_amount ?? "0")).toWire(),
     }));
   }
+}
+
+function sqliteNumberToDecimal(value: unknown): string {
+  const text = String(value).toLowerCase();
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(text);
+  if (!match) return text;
+  const sign = match[1] ?? "";
+  const whole = match[2] ?? "0";
+  const fraction = match[3] ?? "";
+  const exponent = Number(match[4] ?? 0);
+  if (!Number.isSafeInteger(exponent)) return text;
+  const digits = whole + fraction;
+  const decimalIndex = whole.length + exponent;
+  if (decimalIndex <= 0) return `${sign}0.${"0".repeat(-decimalIndex)}${digits}`;
+  if (decimalIndex >= digits.length) return `${sign}${digits}${"0".repeat(decimalIndex - digits.length)}`;
+  return `${sign}${digits.slice(0, decimalIndex)}.${digits.slice(decimalIndex)}`;
 }
 
 function emptyToNull(value: unknown): string | null {

@@ -51,6 +51,44 @@ describe("legacy inventory costs read through strict project-cost codecs", { tim
     const projectId = project.item.id;
     const invoiceGroupsBefore = await client.inventoryInvoiceGroupsList({ projectId });
 
+    const invalidQuantityInput = {
+      projectId, createDebt: false,
+      entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 0.1234567, unitPriceDzd: 1, totalPriceDzd: 1 }],
+    } satisfies Parameters<AppClient["inventoryInvoiceGroupsCreate"]>[0];
+    expect(() => root.inventoryService.createInvoiceGroup(invalidQuantityInput, { actorUserId: owner.item.id, actorLabel: owner.item.name, transactionId: "invalid-quantity-scale" })).toThrow(expect.objectContaining({ appError: expect.objectContaining({ fieldErrors: [expect.objectContaining({ field: "entries.0.quantity" })] }) }));
+    await expect(client.inventoryInvoiceGroupsCreate(invalidQuantityInput)).rejects.toMatchObject({ code: "BAD_REQUEST", data: { issues: expect.arrayContaining([expect.objectContaining({ path: ["entries", 0, "quantity"] })]) } });
+    const invalidLargePriceInput = {
+      projectId, createDebt: false,
+      entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 1_000_000_000_000_000, totalPriceDzd: 1 }],
+    } satisfies Parameters<AppClient["inventoryInvoiceGroupsCreate"]>[0];
+    expect(() => root.inventoryService.createInvoiceGroup(invalidLargePriceInput, { actorUserId: owner.item.id, actorLabel: owner.item.name, transactionId: "invalid-large-unit-price" })).toThrow(expect.objectContaining({ appError: expect.objectContaining({ fieldErrors: [expect.objectContaining({ field: "entries.0.unitPriceDzd" })] }) }));
+    await expect(client.inventoryInvoiceGroupsCreate(invalidLargePriceInput)).rejects.toMatchObject({ code: "BAD_REQUEST", data: { issues: expect.arrayContaining([expect.objectContaining({ path: ["entries", 0, "unitPriceDzd"] })]) } });
+    const groupsAfterRejectedBoundaryWrites = await client.inventoryInvoiceGroupsList({ projectId });
+    expect(groupsAfterRejectedBoundaryWrites.items.map(({ id }) => id)).toEqual(invoiceGroupsBefore.items.map(({ id }) => id));
+
+    const microQuantity = await client.inventoryInvoiceGroupsCreate({
+      projectId, createDebt: false,
+      entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 0.000001, unitPriceDzd: 1.2345, totalPriceDzd: 1 }],
+    });
+    expectSuccess(microQuantity);
+    expect(microQuantity.item.entries[0]!.quantity).toBe(0.000001);
+    const microQuantityCost = await client.projectCostGet({ projectId });
+    expectSuccess(microQuantityCost);
+    expect(microQuantityCost.item.materialMovements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ quantity: "0.000001", unitPrice: "1.2345" }),
+    ]));
+    const nearMaximumPrice = await client.inventoryInvoiceGroupsCreate({
+      projectId, createDebt: false,
+      entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 922_337_203_685_477.5, totalPriceDzd: 1 }],
+    });
+    expectSuccess(nearMaximumPrice);
+    const nearMaximumCost = await client.projectCostGet({ projectId });
+    expectSuccess(nearMaximumCost);
+    expect(nearMaximumCost.item.materialMovements).toEqual(expect.arrayContaining([
+      expect.objectContaining({ quantity: "1", unitPrice: "922337203685477.5000", valueAmount: "922337203685477.50" }),
+    ]));
+    const invoiceGroupsBeforeExistingScaleChecks = await client.inventoryInvoiceGroupsList({ projectId });
+
     for (const amount of [0.375]) {
       const invalidAssetInput = {
         projectId, createDebt: false,
@@ -66,7 +104,7 @@ describe("legacy inventory costs read through strict project-cost codecs", { tim
       await expect(client.inventoryInvoiceGroupsCreate(invalidMaterialInput)).rejects.toMatchObject({ code: "BAD_REQUEST", data: { issues: expect.arrayContaining([expect.objectContaining({ path: ["entries", 0, "unitPriceDzd"] })]) } });
     }
     const invoiceGroupsAfterRejectedWrites = await client.inventoryInvoiceGroupsList({ projectId });
-    expect(invoiceGroupsAfterRejectedWrites.items.map(({ id }) => id)).toEqual(invoiceGroupsBefore.items.map(({ id }) => id));
+    expect(invoiceGroupsAfterRejectedWrites.items.map(({ id }) => id)).toEqual(invoiceGroupsBeforeExistingScaleChecks.items.map(({ id }) => id));
 
     const validAsset = await client.inventoryInvoiceGroupsCreate({
       projectId, createDebt: false,
@@ -163,7 +201,7 @@ describe("legacy inventory costs read through strict project-cost codecs", { tim
       createDebt: true,
       paymentInputType: "AMOUNT",
       paidAmountDzd: 0,
-      entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 2, unitPriceDzd: Number.MAX_SAFE_INTEGER, totalPriceDzd: 1 }],
+      entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 10_001, unitPriceDzd: 900_719_925_474.09, totalPriceDzd: 1 }],
     });
     expect(overflowPurchase).toMatchObject({ success: false, error: { code: "BUSINESS_RULE" } });
     const groupsAfterOverflow = await client.inventoryInvoiceGroupsList({ warehouseId: warehouse.item.id });
