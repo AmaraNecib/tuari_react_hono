@@ -20,6 +20,17 @@ describe("earned-wage allocation calculations", () => {
     expect(calculateEarningAllocation("1.001", []).remainderMinor).toBeNull()
   })
 
+  it("keeps blank row amounts unknown rather than presenting an entered zero", () => {
+    for (const amountText of ["", "   "]) {
+      expect(calculateEarningAllocation("10", [{ id: "a", daysText: "1", amountText }]))
+        .toEqual({ totalMinor: 1000n, allocatedMinor: null, remainderMinor: null })
+    }
+    expect(calculateEarningAllocation("10", [{ id: "a", daysText: "1", amountText: "0" }]))
+      .toEqual({ totalMinor: 1000n, allocatedMinor: 0n, remainderMinor: 1000n })
+    expect(calculateEarningAllocation("10", []))
+      .toEqual({ totalMinor: 1000n, allocatedMinor: 0n, remainderMinor: 1000n })
+  })
+
   it("suggests exact weighted values only for blank rows and preserves manual amounts", () => {
     const suggestions = suggestBlankEarningRowAmounts("100.01", [
       { id: "manual", daysText: "3", amountText: "0.01" },

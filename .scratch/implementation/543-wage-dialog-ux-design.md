@@ -4,7 +4,7 @@
 
 - Worktree: `D:/worktrees/tuari_react_hono/t3-d5a68276-97285353df356c66`
 - Base: `a917525d6c028fd5cd45caf69490e5babf7aed56`
-- Verification mode: `focused-local / CI-final-pending`, per `docs/engineering-workflow.md` and `docs/ci-final-activation.md`.
+- Verification mode: `focused-local / CI-final-enforced`. The parent verified active effective ruleset `26837184` with strict `CI acceptance` and no bypass before merging #556. This protection evidence does not establish hosted acceptance for this follow-up head. Local proof remains affected-only.
 - Review tier: high assurance. This dialog submits exact wage totals and ordered project segments, then freezes uncertain requests for retry.
 - Reachable failure: an operator can enter a remainder inconsistent with the total, or a retry can silently change a request after an uncertain response.
 

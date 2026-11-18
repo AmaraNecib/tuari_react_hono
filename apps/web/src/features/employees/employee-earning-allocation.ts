@@ -8,7 +8,7 @@ export type EarningAllocationSummary = {
 }
 
 function minorUnits(value: string): bigint | null {
-  if (!value.trim()) return 0n
+  if (!value.trim()) return null
   try {
     return BigInt(parseLocalizedMoneyInput(value).toMinorUnits())
   } catch {
@@ -48,7 +48,8 @@ export function suggestBlankEarningRowAmounts(
   totalText: string,
   rows: readonly EarningAllocationRow[],
 ): Array<{ id: string; amountText: string }> | null {
-  const summary = calculateEarningAllocation(totalText, rows)
+  // Blank rows are suggestion targets, not entered zero amounts in the live summary.
+  const summary = calculateEarningAllocation(totalText, rows.filter(row => row.amountText.trim()))
   if (summary.totalMinor === null || summary.totalMinor <= 0n || summary.remainderMinor === null || summary.remainderMinor <= 0n) return null
   if (rows.some(row => {
     if (!row.amountText.trim()) return false
