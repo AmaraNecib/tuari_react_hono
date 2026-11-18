@@ -679,7 +679,7 @@ describe("debts MVP web UI", () => {
     expect(cell).not.toBeNull()
     fireEvent.click(cell!.querySelector("button")!)
 
-    expect(startDate.querySelector('[data-slot="popover-trigger"]')?.textContent).toContain("15")
+    expect(startDate.querySelector('[data-slot="popover-trigger"]')?.textContent).toContain(pickedDay.slice(-2))
     expect(createSalaryPaymentMutate).not.toHaveBeenCalled()
   })
 

@@ -17,19 +17,21 @@ import { SalariedWorkersTable, type SalariedWorkerRow } from "./salaried-workers
 export function SalariesSection({
   recentPayments,
   workers,
+  employees,
   projects,
   onEditSalary,
 }: {
   recentPayments: SalaryPaymentRow[]
   workers: SalariedWorkerRow[]
+  employees: Array<{ id: string; name: string }>
   projects: Array<{ id: string; name: string }>
   onEditSalary: (employeeId: string) => void
 }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("recent")
   const employeeNames = useMemo(
-    () => Object.fromEntries(workers.map((worker) => [worker.employeeId, worker.employeeName])),
-    [workers],
+    () => Object.fromEntries(employees.map((employee) => [employee.id, employee.name])),
+    [employees],
   )
   const projectNames = useMemo(
     () => Object.fromEntries(projects.map((project) => [project.id, project.name])),

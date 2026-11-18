@@ -95,6 +95,7 @@ describe("EmployeeEarningsHistory", () => {
     render(
       <QueryClientProvider client={queryClient}>
         <SalariesSection
+          employees={[{ id: "employee-1", name: "عامل الرواتب" }]}
           onEditSalary={vi.fn()}
           projects={[{ id: "project-a", name: "مشروع ألف" }, { id: "project-b", name: "مشروع باء" }]}
           recentPayments={[]}

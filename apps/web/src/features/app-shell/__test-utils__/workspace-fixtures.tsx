@@ -367,6 +367,10 @@ vi.mock("../mock-dashboard", () => ({
   AppMutationError,
 }))
 
+vi.mock("@/features/session/use-session-query", () => ({
+  useSessionQuery: () => ({ data: { user: { id: "user-1" } } }),
+}))
+
 vi.mock("../workspace-mutations", () => ({
   useCreateWarehouseMutation: () => ({ isPending: false, mutateAsync: mockFns.createWarehouseMutate }),
   useUpdateWarehouseMutation: () => ({ isPending: false, mutateAsync: mockFns.updateWarehouseMutate }),
@@ -422,6 +426,7 @@ vi.mock("../workspace-mutations", () => ({
 }))
 
 vi.mock("../workspace-queries", () => ({
+  useWorkspaceScopedQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
   // Hooks used by home-view-signed-in-shell (enabled only when search is open)
   useEmployeesQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
     searchState.employees = enabled

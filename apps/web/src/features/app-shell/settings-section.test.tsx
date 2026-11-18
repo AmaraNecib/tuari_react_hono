@@ -12,8 +12,11 @@ import { ar } from "@/i18n/resources/ar"
 // `t` resolves against the real Arabic resource (wisdom: testing.md), so keys
 // the component resolves itself cannot render as raw keys; the last-checked
 // label asserted below is also read from that resource.
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+vi.mock("react-i18next", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-i18next")>()
+  return {
+    ...actual,
+    useTranslation: () => ({
     t: (key: string, fallbackOrOptions?: unknown, maybeOptions?: Record<string, unknown>) => {
       const options =
         typeof fallbackOrOptions === "object"
@@ -36,8 +39,9 @@ vi.mock("react-i18next", () => ({
       }
       return result
     },
-  }),
-}))
+    }),
+  }
+})
 
 vi.mock("./use-update-check", () => ({
   useUpdateCheck: () => ({

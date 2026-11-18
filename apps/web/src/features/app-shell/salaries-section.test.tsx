@@ -3,15 +3,17 @@
 import "@/i18n"
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import type { ComponentProps } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const { mutateAsync, approveAsync, sessionUser } = vi.hoisted(() => ({ mutateAsync: vi.fn(), approveAsync: vi.fn(), sessionUser: { id: "user-1" } }))
+const { mutateAsync, approveAsync, sessionUser, earnings } = vi.hoisted(() => ({ mutateAsync: vi.fn(), approveAsync: vi.fn(), sessionUser: { id: "user-1" }, earnings: [] as Array<Record<string, unknown>> }))
 
 vi.mock("@/features/app-shell/workspace-mutations", () => ({
   useCreateSalaryPaymentMutation: () => ({ mutateAsync, isPending: false, isSuccess: false, reset: vi.fn() }),
 }))
 vi.mock("@/features/employees/employee-earnings-queries", () => ({
   useApproveEmployeeEarningMutation: () => ({ mutateAsync: approveAsync, isPending: false }),
+  useEmployeeEarningsQuery: () => ({ data: { items: earnings }, isPending: false, isError: false }),
 }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: sessionUser } }) }))
 vi.mock("@/components/ui/date-picker", () => ({
@@ -22,7 +24,12 @@ vi.mock("@/components/ui/date-picker", () => ({
 
 import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
 
-import { SalariesSection } from "./salaries-section"
+import { SalariesSection as SalariesSectionView } from "./salaries-section"
+
+type SalariesSectionProps = ComponentProps<typeof SalariesSectionView>
+function SalariesSection({ employees = [], ...props }: Omit<SalariesSectionProps, "employees"> & { employees?: SalariesSectionProps["employees"] }) {
+  return <SalariesSectionView employees={employees} {...props} />
+}
 
 const PROJECT = { id: "project-1", name: "مشروع ألف" }
 
@@ -70,6 +77,7 @@ describe("SalariesSection (#412)", () => {
   beforeEach(() => {
     mutateAsync.mockReset()
     approveAsync.mockReset()
+    earnings.length = 0
     localStorage.clear()
   })
 
@@ -83,7 +91,7 @@ describe("SalariesSection (#412)", () => {
     )
 
     fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
-    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة" }))
+    fireEvent.click(screen.getByRole("button", { name: "اعتماد الأجر" }))
 
     expect(screen.getByRole("dialog")).toBeTruthy()
     expect((screen.getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري") as HTMLInputElement).value).toBe("")
@@ -215,7 +223,7 @@ describe("SalariesSection (#412)", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0)
 
     // The row's action opens the payment dialog for that worker.
-    fireEvent.click(screen.getAllByRole("button", { name: "إضافة دفعة" })[0]!)
+    fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
     expect(screen.getByRole("dialog")).toBeTruthy()
   })
 
@@ -227,6 +235,37 @@ describe("SalariesSection (#412)", () => {
     fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
 
     expect(screen.getByText("لا يوجد عاملون بإعدادات راتب جاهزة حاليًا.")).toBeTruthy()
+  })
+
+  it("keeps names for employees without a salary reference or after it is cleared", () => {
+    earnings.push(
+      { id: "earning-no-reference", employeeId: "employee-no-reference", periodStart: "2026-03-01T00:00:00.000Z", periodEnd: "2026-03-31T00:00:00.000Z", approvedAt: "2026-04-01T00:00:00.000Z", totalAmount: "100.00", unallocatedAmount: "100.00", segments: [] },
+      { id: "earning-cleared-reference", employeeId: "employee-cleared-reference", periodStart: "2026-03-01T00:00:00.000Z", periodEnd: "2026-03-31T00:00:00.000Z", approvedAt: "2026-04-01T00:00:00.000Z", totalAmount: "200.00", unallocatedAmount: "200.00", segments: [] },
+    )
+    render(
+      <SalariesSection
+        employees={[
+          { id: "employee-no-reference", name: "عامل بلا مرجع" },
+          { id: "employee-cleared-reference", name: "عامل أزيل مرجعه" },
+        ]}
+        onEditSalary={vi.fn()}
+        projects={[]}
+        recentPayments={[]}
+        workers={[]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
+    expect(screen.getByText("لا يوجد عاملون بإعدادات راتب جاهزة حاليًا.")).toBeTruthy()
+    expect(screen.queryByText("عامل بلا مرجع")).toBeNull()
+    expect(screen.queryByText("عامل أزيل مرجعه")).toBeNull()
+
+    fireEvent.click(screen.getByRole("tab", { name: "سجل الأجور المعتمدة" }))
+    const history = screen.getByRole("table", { name: "سجل الأجور المعتمدة" })
+    expect(within(history).getByText("عامل بلا مرجع")).toBeTruthy()
+    expect(within(history).getByText("عامل أزيل مرجعه")).toBeTruthy()
+    expect(within(history).queryByText("employee-no-reference")).toBeNull()
+    expect(within(history).queryByText("employee-cleared-reference")).toBeNull()
   })
 })
 
@@ -603,7 +642,7 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     )
 
     fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
-    const payButton = within(screen.getByRole("table")).getByRole("button", { name: "إضافة دفعة" })
+    const payButton = within(screen.getByRole("table")).getByRole("button", { name: "اعتماد الأجر" })
     // A monthly guard would disable this for a worker already paid this month.
     expect(payButton.hasAttribute("disabled")).toBe(false)
 
