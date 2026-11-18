@@ -145,16 +145,29 @@ describe("approved employee earnings through the normal composition root", { tim
       segments: [{ id: "other-segment", projectId: projectA, days: 1, amount: "10.00" }],
     }, audit);
     expect(otherApproval.success).toBe(true);
+    const secondEmployeeEarning = first.workforceService.approveEmployeeEarning({
+      ...approval,
+      requestId: "c4bb2b33-d187-4575-a4e7-cf9a04eeb1e0",
+      periodStart: "2026-04-27T00:00:00.000Z",
+      periodEnd: "2026-04-28T00:00:00.000Z",
+      totalAmount: "10.00",
+      unallocatedAmount: "10.00",
+      referenceSalary: null,
+      segments: [],
+    }, audit);
+    expect(secondEmployeeEarning.success).toBe(true);
     const earningRepository = (first.workforceService as unknown as {
       earningRepository: { raw: { prepare: (...args: never[]) => unknown } };
     }).earningRepository;
     const prepareSpy = vi.spyOn(earningRepository.raw, "prepare");
-    expect(first.workforceService.listEmployeeEarnings(employee).items.map(item => item.employeeId)).toEqual([employee]);
+    expect(first.workforceService.listEmployeeEarnings(employee).items.map(item => item.employeeId)).toEqual([employee, employee]);
     const segmentReadSql = prepareSpy.mock.calls
       .map(([statement]) => String(statement))
       .filter(statement => statement.includes("employee_earning_segment"));
     expect(segmentReadSql).toHaveLength(1);
-    expect(segmentReadSql[0]).toMatch(/earning_id.*in\s*\(/i);
+    expect(segmentReadSql[0]).toMatch(/inner join "employee_earning" on/i);
+    expect(segmentReadSql[0]).toMatch(/where .*employee_id" = \?/i);
+    expect(segmentReadSql[0]?.match(/\?/g)).toHaveLength(1);
     prepareSpy.mockRestore();
     expect(first.workforceService.listEmployeeEarnings(otherEmployee).items.map(item => item.segments.map(segment => segment.id)))
       .toEqual([["other-segment"]]);
@@ -175,9 +188,9 @@ describe("approved employee earnings through the normal composition root", { tim
     expect(repeated.item.id).toBe(savedId);
     expect(repeated.item.referenceSalary).toEqual({ period: "DAILY", amount: "1250.1250" });
     const persisted = reopened.workforceService.listEmployeeEarnings(employee).items;
-    expect(persisted).toHaveLength(1);
-    expect(persisted[0]?.periodStart).toBe("2026-04-01T22:30:00.000Z");
-    expect(persisted[0]?.periodEnd).toBe("2026-04-01T23:00:00.000Z");
+    expect(persisted).toHaveLength(2);
+    const offsetPeriod = persisted.find(item => item.periodStart === "2026-04-01T22:30:00.000Z");
+    expect(offsetPeriod?.periodEnd).toBe("2026-04-01T23:00:00.000Z");
     const reopenedEarningRepository = (reopened.workforceService as unknown as {
       earningRepository: { hasForEmployee: (id: string) => boolean; list: (id?: string) => unknown[] };
     }).earningRepository;
@@ -202,8 +215,8 @@ describe("approved employee earnings through the normal composition root", { tim
       expect.objectContaining({ appError: expect.objectContaining({ code: "CONFLICT" }) }),
     );
     const afterDaysConflict = reopened.workforceService.listEmployeeEarnings(employee).items;
-    expect(afterDaysConflict).toHaveLength(1);
-    expect(afterDaysConflict[0]!.segments.map(segment => segment.days)).toEqual([5, 15, 5]);
+    expect(afterDaysConflict).toHaveLength(2);
+    expect(afterDaysConflict.find(item => item.segments.length === 3)?.segments.map(segment => segment.days)).toEqual([5, 15, 5]);
 
     const conflict = {
       ...approval,
@@ -215,7 +228,7 @@ describe("approved employee earnings through the normal composition root", { tim
       ],
     };
     expect(() => reopened.workforceService.approveEmployeeEarning(conflict, audit)).toThrow();
-    expect(reopened.workforceService.listEmployeeEarnings(employee).items).toHaveLength(1);
+    expect(reopened.workforceService.listEmployeeEarnings(employee).items).toHaveLength(2);
 
     const beyondSafeInteger = {
       ...approval,
@@ -233,13 +246,13 @@ describe("approved employee earnings through the normal composition root", { tim
       segments: [{ id: "new-segment", projectId: "missing-project", days: 25, amount: "62500.00" }],
     };
     expect(() => reopened.workforceService.approveEmployeeEarning(invalidReference, audit)).toThrow();
-    expect(reopened.workforceService.listEmployeeEarnings(employee).items).toHaveLength(2);
+    expect(reopened.workforceService.listEmployeeEarnings(employee).items).toHaveLength(3);
 
     const failedWrite = {
       ...approval,
       requestId: "a9e96750-dcc4-4d6d-9c99-26529aa6a95d",
     };
     expect(() => reopened.workforceService.approveEmployeeEarning(failedWrite, audit)).toThrow();
-    expect(reopened.workforceService.listEmployeeEarnings(employee).items).toHaveLength(2);
+    expect(reopened.workforceService.listEmployeeEarnings(employee).items).toHaveLength(3);
   });
 });

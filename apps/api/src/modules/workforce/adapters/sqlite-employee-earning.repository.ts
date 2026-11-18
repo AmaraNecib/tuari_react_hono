@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { drizzle, type BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 
 import { Money, SalaryReference, UnitPrice, type EmployeeEarning, type EmployeeEarningApprovalInput } from "@tuari/contracts";
@@ -121,8 +121,7 @@ export class SqliteEmployeeEarningRepository implements EmployeeEarningRepositor
       : query.where(eq(schema.employeeEarning.employeeId, employeeId)))
       .orderBy(desc(schema.employeeEarning.approvedAt), desc(schema.employeeEarning.id)).all();
     if (rows.length === 0) return [];
-    const earningIds = rows.map((row) => row.id);
-    const selectedSegments = this.db.select({
+    const segmentQuery = this.db.select({
       id: schema.employeeEarningSegment.id,
       earningId: schema.employeeEarningSegment.earningId,
       projectId: schema.employeeEarningSegment.projectId,
@@ -131,7 +130,10 @@ export class SqliteEmployeeEarningRepository implements EmployeeEarningRepositor
       amountMinor: sql<string>`CAST(${schema.employeeEarningSegment.amountMinor} AS TEXT)`,
       createdAt: schema.employeeEarningSegment.createdAt,
     }).from(schema.employeeEarningSegment)
-      .where(inArray(schema.employeeEarningSegment.earningId, earningIds))
+      .innerJoin(schema.employeeEarning, eq(schema.employeeEarning.id, schema.employeeEarningSegment.earningId));
+    const selectedSegments = (employeeId === undefined
+      ? segmentQuery
+      : segmentQuery.where(eq(schema.employeeEarning.employeeId, employeeId)))
       .orderBy(asc(schema.employeeEarningSegment.earningId), asc(schema.employeeEarningSegment.ordinal)).all();
     const byEarning = new Map<string, SegmentRow[]>();
     for (const segment of selectedSegments) {
