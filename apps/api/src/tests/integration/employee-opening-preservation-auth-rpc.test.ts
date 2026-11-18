@@ -123,7 +123,13 @@ describe("opening-balance preservation prerequisites through authenticated appli
       .resolves.toMatchObject({ success: false, error: { code: "BUSINESS_RULE" } });
     await assertNoReconstruction(client);
 
-    const approval = await client.employeeEarningsApprove({
+    close(imported);
+    const beforeApproval = await open();
+    const beforeApprovalClient = authenticatedClient(beforeApproval, headers);
+    await assertNoReconstruction(beforeApprovalClient);
+    expect((await beforeApprovalClient.salaryPaymentsList({ employeeId })).items).toEqual(historical);
+
+    const approval = await beforeApprovalClient.employeeEarningsApprove({
       employeeId, requestId: randomUUID(),
       periodStart: "2026-02-01T00:00:00.000Z", periodEnd: "2026-03-01T00:00:00.000Z",
       currencyCode: "DZD", totalAmount: "35000.00", unallocatedAmount: "0.00",
@@ -131,7 +137,7 @@ describe("opening-balance preservation prerequisites through authenticated appli
     });
     if (!approval.success) throw new Error("Explicit approval failed");
     expect(approval.item.totalAmount).toBe("35000.00");
-    close(imported);
+    close(beforeApproval);
 
     const reopened = await open();
     const reopenedClient = authenticatedClient(reopened, headers);
