@@ -1,15 +1,10 @@
 // @vitest-environment jsdom
+// @vitest-environment-options { "url": "http://localhost:1420/" }
 
-import { describe, expect, it, vi } from "vitest"
-
-const isDesktopRuntimeMock = vi.fn(() => true)
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@/lib/desktop-api-bridge", () => ({
   desktopApiFetch: vi.fn(),
-}))
-
-vi.mock("@/lib/desktop-auth-session", () => ({
-  isDesktopRuntime: isDesktopRuntimeMock,
 }))
 
 vi.mock("@/lib/runtime-config", () => ({
@@ -17,17 +12,23 @@ vi.mock("@/lib/runtime-config", () => ({
 }))
 
 describe("resolveRpcCredentials", () => {
-  it("omits cookies in desktop runtime", async () => {
-    isDesktopRuntimeMock.mockReturnValue(true)
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("omits browser cookies for Tauri hosted on localhost", async () => {
+    vi.stubGlobal("isTauri", true)
     const { resolveRpcCredentials } = await import("./orpc-client")
 
+    expect(window.location.origin).toBe("http://localhost:1420")
     expect(resolveRpcCredentials()).toBe("omit")
   })
 
-  it("includes cookies in browser runtime", async () => {
-    isDesktopRuntimeMock.mockReturnValue(false)
+  it("includes cookies for a browser at the same localhost URL", async () => {
+    vi.stubGlobal("isTauri", false)
     const { resolveRpcCredentials } = await import("./orpc-client")
 
+    expect(window.location.origin).toBe("http://localhost:1420")
     expect(resolveRpcCredentials()).toBe("include")
   })
 })
