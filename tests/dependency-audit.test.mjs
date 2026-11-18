@@ -70,7 +70,7 @@ test('CLI integration preserves JSON, stderr, and native exit status from a fake
     const fake = path.join(dir, 'fake-pnpm.mjs');
     const audit = report([allowed(['4.0.7'])]);
     writeFileSync(fake, `if (process.argv.slice(2).join(' ') !== 'audit --json --audit-level high') process.exit(4); process.stdout.write(${JSON.stringify(JSON.stringify(audit))}); process.stderr.write(${JSON.stringify('audit reported vulnerabilities\\n')}); process.exit(1);`);
-    const result = auditOnce({ command: process.execPath, args: [fake, 'audit', '--json', '--audit-level', 'high'], platform: 'linux', now: '2026-11-20T00:00:00Z' });
+    const result = auditOnce({ command: process.execPath, args: [fake, 'audit', '--json', '--audit-level', 'high'], platform: process.platform, now: '2026-11-20T00:00:00Z' });
     assert.equal(result.pass, true);
     assert.equal(result.status, 1);
     assert.equal(result.stdout, JSON.stringify(audit));
