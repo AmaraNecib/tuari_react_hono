@@ -106,6 +106,13 @@ describe("approved earning RPC with real auth and encrypted persistence", { time
       ["segment-a2", 5, "15000.00"],
     ]);
 
+    await expect(client.employeesDelete({ id: employeeId })).resolves.toMatchObject({
+      success: false,
+      error: { code: "BUSINESS_RULE" },
+    });
+    expect(first.workforceService.getEmployee(employeeId).item.id).toBe(employeeId);
+    expect((await client.employeeEarningsList({ employeeId })).items).toHaveLength(1);
+
     const rejected = await client.employeeEarningsApprove({
       ...approval,
       requestId: "a9e96750-dcc4-4d6d-9c99-26529aa6a95d",
