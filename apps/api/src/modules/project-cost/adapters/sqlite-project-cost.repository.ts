@@ -94,7 +94,7 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
       c.id AS id,
       c.asset_unit_id AS asset_unit_id,
       u.asset_name AS asset_name,
-      CAST(c.amount_dzd AS TEXT) AS amount,
+      c.amount_dzd AS amount,
       c.created_at AS created_at
       FROM "inventory_asset_charge" c
       LEFT JOIN "inventory_asset_unit" u ON u.id = c.asset_unit_id
@@ -116,7 +116,7 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
       e.item_name AS item_name,
       e.unit AS unit,
       CAST(m.quantity AS TEXT) AS quantity,
-      CAST(e.unit_price_dzd AS TEXT) AS unit_price,
+      e.unit_price_dzd AS unit_price,
       m.occurred_at AS occurred_at,
       m.to_project_id AS to_project_id
       FROM "inventory_movement" m
@@ -143,7 +143,7 @@ export class SqliteProjectCostRepository implements ProjectCostRepository {
     const rows = this.db.prepare(`SELECT
       u.id AS asset_unit_id,
       u.asset_name AS asset_name,
-      CAST(u.purchase_price_dzd AS TEXT) AS purchase_amount
+      u.purchase_price_dzd AS purchase_amount
       FROM "inventory_asset_unit" u
       WHERE u.current_project_id = ?`).all(projectId) as Array<Record<string, unknown>>;
 

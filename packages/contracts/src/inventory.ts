@@ -9,7 +9,7 @@ import {
   nullableTextSchema,
   timestampSchema,
 } from "./core";
-import { nonNegativePaymentAmountSchema, paymentAmountSchema, storedMoneyDzdSchema } from "./payment";
+import { nonNegativePaymentAmountAtScaleSchema, nonNegativePaymentAmountSchema, paymentAmountSchema, storedMoneyDzdSchema } from "./payment";
 
 /** inventoryItemDefinitionSchema - Item definition schema. */
 export const inventoryItemDefinitionSchema = z.object({
@@ -309,7 +309,7 @@ export const inventoryAssetUnitCreateInputSchema = z.object({
   serialNumber: z.string().trim().max(160).nullable().optional(),
   condition: inventoryAssetConditionSchema.nullable().optional(),
   purchaseDate: timestampSchema.nullable().optional(),
-  purchasePriceDzd: nonNegativePaymentAmountSchema,
+  purchasePriceDzd: nonNegativePaymentAmountAtScaleSchema(2),
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
@@ -320,8 +320,8 @@ export const inventoryConsumableEntryCreateInputSchema = z.object({
   warehouseId: entityIdSchema.nullable().optional(),
   projectId: entityIdSchema.nullable().optional(),
   quantity: z.number().positive(),
-  unitPriceDzd: nonNegativePaymentAmountSchema,
-  totalPriceDzd: nonNegativePaymentAmountSchema,
+  unitPriceDzd: nonNegativePaymentAmountAtScaleSchema(4),
+  totalPriceDzd: nonNegativePaymentAmountAtScaleSchema(2),
   note: z.string().trim().max(1000).nullable().optional(),
 }).superRefine((input, ctx) => {
   if (input.warehouseId && input.projectId) {

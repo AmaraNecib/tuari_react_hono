@@ -29,3 +29,13 @@ The legacy expense path is a settled, narrow boundary. Existing expense storage 
 Existing feature and integration tests cover exact salary references, approval validation and idempotency, ordered segments, retry recovery, authenticated persistence, startup-marker compatibility, and project-cost readback. The parent reports 103 focused tests passed, with typecheck and lint passing for expense follow-up `e4159afd`; that commit also corrected the missing-days router fixture. This documentation lane does not import that source commit or rerun its checks. Earlier failed attempts and their logs remain in local notes/reports; they are not erased or restated as if they did not happen.
 
 Affected local proof, three required review lenses (`debate`, `test-audit`, `code-review`), current-head hosted review, and current-head `CI acceptance` remain separate gates. Protection activation is pending. Greptile review is pending and must be requested only once for an authorized pushed head. No merge or release is authorized by this note.
+
+## Inventory writer compatibility correction
+
+This implementation follows the accepted #522 scales without converting inventory storage. Public purchase inputs remain numeric. Final purchase amounts, including asset purchase prices and consumable line totals, reject more than two fractional places. Entered consumable unit prices reject more than four. The contract and `InventoryService` use the same scale validator before persistence. Existing inventory quantities, safe-integer magnitude bounds, REAL columns, and stock-charge rounding remain unchanged.
+
+The project-cost SQLite adapter reads the three affected legacy REAL values through SQLite's native number decoder before strict `Money` or `UnitPrice` parsing: asset-charge amounts, consumable unit prices, and parked asset purchase prices. It does not cast those REALs to text, which can emit exponent notation for large whole values. Exact approved earnings remain text/int64 and untouched. Expense already uses the native decoder; its path is untouched.
+
+The source module's interface remains the existing numeric inventory RPC and the read-only project-cost repository. No new adapter or seam was added. The contract validator is shared by the public input schema and the service's direct-call validation, which keeps the rule local and avoids duplicate policy. Focused authenticated tests cover rejection paths, valid scales, large REAL readback and the existing `0.375` stock-charge result of `0.38`.
+
+Applied wisdom: service-boundary defense-in-depth reuses a contract validator; output schemas validate without transforming; stale contract dist must be rebuilt before API tests. No repeated wisdom candidate identified.

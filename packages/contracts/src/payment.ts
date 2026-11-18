@@ -30,6 +30,16 @@ export const paymentAmountSchema = z.number().positive().max(MAX_MONEY_DZD);
  */
 export const nonNegativePaymentAmountSchema = z.number().nonnegative().max(MAX_MONEY_DZD);
 
+/** Numeric legacy inventory inputs may keep their transport, but must honor the exact #522 scale. */
+export function nonNegativePaymentAmountAtScaleSchema(scale: number) {
+  return nonNegativePaymentAmountSchema.refine((amount) => {
+    const [coefficient, exponentText] = String(amount).toLowerCase().split("e");
+    const fractionDigits = coefficient?.split(".")[1]?.length ?? 0;
+    const exponent = exponentText === undefined ? 0 : Number(exponentText);
+    return Number.isFinite(exponent) && Math.max(0, fractionDigits - exponent) <= scale;
+  }, { message: `Amount permits at most ${scale} decimal places.` });
+}
+
 /**
  * A COMPUTED aggregate that may legitimately be negative, bounded on both sides
  * by `MAX_MONEY_DZD` so it always stays representable. The one consumer today

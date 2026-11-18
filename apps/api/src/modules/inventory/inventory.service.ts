@@ -2,6 +2,7 @@ import {
   MAX_MONEY_DZD,
   invoiceLineUsage,
   matchesItemOfferFilter,
+  nonNegativePaymentAmountAtScaleSchema,
   nonNegativePaymentAmountSchema,
   outboundPickUsage,
   resolveItemOffer,
@@ -97,6 +98,15 @@ function normalizeMoney(value: number, field: string) {
  */
 function normalizeMoneyWithinBound(value: number, field: string, message: string) {
   const parsed = nonNegativePaymentAmountSchema.safeParse(value)
+  if (!parsed.success) {
+    throw new InventoryError("VALIDATION", message, [{ field, message }])
+  }
+
+  return parsed.data
+}
+
+function normalizeMoneyAtScale(value: number, field: string, message: string, scale: number) {
+  const parsed = nonNegativePaymentAmountAtScaleSchema(scale).safeParse(value)
   if (!parsed.success) {
     throw new InventoryError("VALIDATION", message, [{ field, message }])
   }
@@ -480,10 +490,11 @@ export class InventoryService {
         }
 
         const quantity = normalizePositive(entry.quantity, `entries.${index}.quantity`)
-        const unitPriceDzd = normalizeMoneyWithinBound(
+        const unitPriceDzd = normalizeMoneyAtScale(
           entry.unitPriceDzd,
           `entries.${index}.unitPriceDzd`,
-          "سعر الوحدة خارج النطاق المسموح به.",
+          "سعر الوحدة خارج النطاق أو الدقة المسموح بها.",
+          4,
         )
         // Server derives total to prevent client-submitted inconsistencies
         const totalPriceDzd = quantity * unitPriceDzd
@@ -514,10 +525,11 @@ export class InventoryService {
         serialNumber: normalizeText(asset.serialNumber),
         condition: asset.condition ?? null,
         purchaseDate: asset.purchaseDate ?? null,
-        purchasePriceDzd: normalizeMoneyWithinBound(
+        purchasePriceDzd: normalizeMoneyAtScale(
           asset.purchasePriceDzd,
           `entries.${index}.assets.${assetIndex}.purchasePriceDzd`,
-          "سعر الشراء خارج النطاق المسموح به.",
+          "سعر الشراء خارج النطاق أو الدقة المسموح بها.",
+          2,
         ),
         currentWarehouseId: effectiveWarehouseId,
         currentProjectId: effectiveProjectId,
