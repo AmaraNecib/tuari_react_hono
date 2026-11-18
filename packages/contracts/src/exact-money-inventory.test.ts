@@ -113,6 +113,7 @@ describe("inert foundation inventory", () => {
       "packages/contracts/src/index.ts",
       "packages/contracts/src/inventory-exact.ts",
       "packages/contracts/src/invoice-exact.ts",
+      "packages/contracts/src/payment.ts",
       "packages/contracts/src/workforce.ts",
     ]);
   }, 15_000);

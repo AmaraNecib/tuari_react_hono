@@ -2151,23 +2151,36 @@ describe("contracts", () => {
 
     it("bounds the consumable line money INPUT with the shared money rule", () => {
       expect(inventoryConsumableEntryCreateInputSchema.safeParse(consumableInput).success).toBe(true);
+      // Unit prices use the exact four-place codec's signed-int64 range.
       expect(
         inventoryConsumableEntryCreateInputSchema.safeParse({
           ...consumableInput,
-          unitPriceDzd: Number.MAX_SAFE_INTEGER,
+          unitPriceDzd: 922_337_203_685_477.5,
         }).success,
       ).toBe(true);
-      // Above the bound is where the line total stops being representable.
       expect(
         inventoryConsumableEntryCreateInputSchema.safeParse({
           ...consumableInput,
-          unitPriceDzd: Number.MAX_SAFE_INTEGER + 1,
+          unitPriceDzd: 922_337_203_685_477.6,
         }).success,
       ).toBe(false);
       expect(
         inventoryConsumableEntryCreateInputSchema.safeParse({
           ...consumableInput,
-          totalPriceDzd: Number.MAX_SAFE_INTEGER + 1,
+          unitPriceDzd: Number.MAX_SAFE_INTEGER,
+        }).success,
+      ).toBe(false);
+      // Final line totals retain the shared money schema's separate bound.
+      expect(
+        inventoryConsumableEntryCreateInputSchema.safeParse({
+          ...consumableInput,
+          totalPriceDzd: MAX_MONEY_DZD,
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryConsumableEntryCreateInputSchema.safeParse({
+          ...consumableInput,
+          totalPriceDzd: MAX_MONEY_DZD + 1,
         }).success,
       ).toBe(false);
     });
