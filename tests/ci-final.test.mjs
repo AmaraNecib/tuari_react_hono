@@ -87,7 +87,7 @@ test('the CI-invoked SQLCipher proof command includes the availability regressio
   assert.ok(proofCommand.includes('./tests/sqlcipher-encryption-proof.test.mjs'));
   assert.ok(proofCommand.includes('./apps/desktop/scripts/sqlcipher-availability.test.mjs'));
   assert.ok(ci.includes('- run: pnpm check:sqlcipher-proof'));
-  assert.ok(ci.includes('- run: node --test tests/ci-final.test.mjs tests/workflow-policy.test.mjs'));
+  assert.ok(ci.includes('- run: node --test tests/ci-final.test.mjs tests/workflow-policy.test.mjs tests/dependency-audit.test.mjs'));
 });
 
 test('Rust CI requires both Linux and Windows crate tests under the same acceptance result', () => {
@@ -124,7 +124,8 @@ test('CI wiring exposes one always-running acceptance check and force-full event
   assert.doesNotMatch(encryption, /^    if:/m, 'Required encryption proof must run for fork PRs too');
   assert.doesNotMatch(encryption, /secrets\.|permissions:/);
   assert.match(ci, /permissions:\n  contents: read\n  pull-requests: read/);
-  assert.match(ci, /pnpm audit --audit-level high/);
+  assert.match(ci, /node scripts\/ci\/dependency-audit\.mjs/);
+  assert.doesNotMatch(ci, /audit-level high|audit --ignore|continue-on-error: true/);
   assert.doesNotMatch(ci, /continue-on-error: true/);
   const e2e = ci.slice(ci.indexOf('\n  test-e2e:'), ci.indexOf('\n  build:'));
   assert.match(e2e, /runs-on: ubuntu-24\.04/);
