@@ -2412,6 +2412,7 @@ mod tests {
         let mut command = Command::new(std::env::current_exe().expect("test executable"));
         command
             .args(["--exact", "tests::environment_probe_child", "--nocapture"])
+            .env("PATH", "production-path-must-not-cross")
             .env("TUARI_TEST_SECRET", "parent-secret-must-not-cross");
         configure_api_child_environment(&mut command, false);
         command.env("TUARI_ENV_PROBE", "1");
