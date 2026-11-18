@@ -17,14 +17,18 @@ test('auth client, server and adapter share the vetted security release', () => 
 
 test('runtime and tooling lock branches retain vetted security fixes', () => {
   for (const [name, expected] of Object.entries({
-    hono: ['4.13.11'], seroval: ['1.6.11'], 'proxy-addr': ['2.0.8'],
-    undici: ['7.30.1'], lodash: [], 'fast-uri': ['3.1.9'],
-    'brace-expansion': ['1.1.21', '5.0.12'], picomatch: ['2.3.2', '4.0.4'],
+    hono: ['4.13.11'], seroval: ['1.6.11'], 'proxy-addr': [],
+    undici: ['7.30.1'], lodash: [], 'fast-uri': [],
+    'brace-expansion': ['1.1.21', '5.0.12'],
+    // Keep each affected branch visible. Vitest 5 requires 4.0.7; Vite stays
+    // on 4.0.4, and shadcn's fast-glob/micromatch branch uses 2.3.2.
+    picomatch: ['2.3.2', '4.0.4', '4.0.7'],
     'deepmerge-ts': [], effect: [], postcss: ['8.5.23'], nanoid: ['3.3.20'],
-    'js-yaml': ['4.3.2'], '@modelcontextprotocol/sdk': ['1.32.0'],
+    'js-yaml': ['4.3.2'], '@modelcontextprotocol/sdk': [],
+    '@modelcontextprotocol/server': ['2.4.0'], '@modelcontextprotocol/core': ['2.4.0'],
     defu: ['6.1.5'], browserslist: ['4.28.7'], mysql2: ['3.23.1'],
-    flatted: ['3.4.2'], 'source-map-js': ['1.2.2'], 'body-parser': ['2.4.0'],
-    'path-to-regexp': ['6.3.0', '8.4.0'], 'ip-address': ['10.7.4'],
+    flatted: ['3.4.2'], 'source-map-js': ['1.2.2'], 'body-parser': [],
+    'path-to-regexp': ['6.3.0'], 'ip-address': ['10.7.4'],
     jose: ['6.2.13'], '@noble/ciphers': ['1.3.0', '2.4.0'],
     '@noble/hashes': ['1.8.0', '2.4.0'],
   })) assert.deepEqual(versions(name).sort(), expected.sort(), name);
@@ -35,8 +39,22 @@ test('contracts and compatible upstream tooling use the vetted Zod 4 release', (
     assert.equal(manifest(file).dependencies.zod, '4.6.6', file);
   }
   assert.deepEqual(versions('zod'), ['4.6.6']);
-  assert.equal(manifest('apps/web/package.json').devDependencies.shadcn, '4.22.1');
+  assert.equal(manifest('apps/web/package.json').devDependencies.shadcn, '4.23.0');
+  assert.deepEqual(versions('shadcn'), ['4.23.0']);
   assert.deepEqual(versions('puppeteer'), ['25.14.0']);
+});
+
+test('shadcn uses its MCP server 2 dependency tree, not the prior SDK 1 tree', () => {
+  assert.deepEqual(versions('@modelcontextprotocol/sdk'), []);
+  assert.deepEqual(versions('@modelcontextprotocol/server'), ['2.4.0']);
+  assert.deepEqual(versions('@modelcontextprotocol/core'), ['2.4.0']);
+});
+
+test('Vitest and its coverage provider share the vetted release', () => {
+  assert.equal(manifest('package.json').devDependencies.vitest, '5.1.0');
+  assert.equal(manifest('apps/api/package.json').devDependencies['@vitest/coverage-v8'], '5.1.0');
+  assert.deepEqual(versions('vitest'), ['5.1.0']);
+  assert.deepEqual(versions('@vitest/coverage-v8'), ['5.1.0']);
 });
 
 test('unused Next integration disappears without a cross-major crypto override', () => {
