@@ -28,7 +28,7 @@ function createTestDb(): Database.Database {
     INSERT INTO "user" (id, name, phoneNumber, phoneNumberVerified, created_at, updated_at)
     VALUES ('u1', 'Admin', '0555000001', 1, '${now}', '${now}');
 
-    INSERT INTO "employee" (id, first_name, last_name, phone, role_id, status, salary_amount_dzd, salary_period, notes, created_at, updated_at)
+    INSERT INTO "employee" (id, first_name, last_name, phone, role_id, status, salary_reference_period, salary_reference_amount, notes, created_at, updated_at)
     VALUES ('e1', 'Ahmed', 'Ali', '0555123456', 'r1', 'ACTIVE', NULL, NULL, NULL, '${now}', '${now}');
 
     INSERT INTO "project" (id, name, location, manager_id, status, notes, created_at, updated_at)

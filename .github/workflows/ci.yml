@@ -37,7 +37,7 @@ jobs:
       # Root-level gates turbo never runs: turbo has no root lint task, so the
       # prose gate and the issue-closing harness would silently pass CI.
       - run: pnpm check:unslop
-      - run: node --test tests/ci-final.test.mjs tests/workflow-policy.test.mjs
+      - run: node --test tests/ci-final.test.mjs tests/workflow-policy.test.mjs tests/dependency-audit.test.mjs
       - run: pnpm check:web-hygiene
       - run: pnpm check:i18n-keys
       - run: pnpm check:repo-hygiene
@@ -385,7 +385,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: pnpm audit --audit-level high
+      - run: node scripts/ci/dependency-audit.mjs
 
   acceptance:
     name: CI acceptance

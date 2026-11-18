@@ -35,8 +35,8 @@ const baseRow: SqliteRow = {
   phone: "0550123456",
   role_id: "role-1",
   status: "ACTIVE",
-  salary_amount_dzd: 50000,
-  salary_period: "MONTHLY",
+  salary_reference_period: "MONTHLY",
+  salary_reference_amount: "50000.00",
   notes: "ملاحظة",
   location: "الجزائر",
   manager_id: "manager-1",
@@ -123,17 +123,15 @@ describe("repository mappers", () => {
     expect(employee.phone).toBe("0550123456");
     expect(employee.roleId).toBe("role-1");
     expect(employee.status).toBe("ACTIVE");
-    expect(employee.salaryAmountDzd).toBe(50000);
-    expect(employee.salaryPeriod).toBe("MONTHLY");
+    expect(employee.salaryReference).toEqual({ period: "MONTHLY", amount: "50000.00" });
     expect(employee.notes).toBe("ملاحظة");
     expect(employee.occupation).toBeNull();
 
     const occupied = mapEmployee({ ...baseRow, occupation: "  عامل بناء  " });
     expect(occupied.occupation).toBe("عامل بناء");
 
-    const sparse = mapEmployee({ ...baseRow, salary_amount_dzd: null, salary_period: null, notes: null, occupation: null });
-    expect(sparse.salaryAmountDzd).toBeNull();
-    expect(sparse.salaryPeriod).toBeNull();
+    const sparse = mapEmployee({ ...baseRow, salary_reference_period: null, salary_reference_amount: null, notes: null, occupation: null });
+    expect(sparse.salaryReference).toBeNull();
     expect(sparse.notes).toBeNull();
     expect(sparse.occupation).toBeNull();
   });
@@ -199,13 +197,12 @@ describe("repository mappers", () => {
     expect(history.employeeId).toBe("employee-1");
     expect(history.roleId).toBe("role-1");
     expect(history.status).toBe("ACTIVE");
-    expect(history.salaryAmountDzd).toBe(50000);
-    expect(history.salaryPeriod).toBe("MONTHLY");
+    expect(history.salaryReference).toEqual({ period: "MONTHLY", amount: "50000.00" });
     expect(history.eventType).toBe("CREATED");
     expect(history.endDate).toBe("2026-06-01T00:00:00.000Z");
     expect(
-      mapEmployeeStateHistory({ ...baseRow, salary_amount_dzd: null, salary_period: null, end_date: null }),
-    ).toMatchObject({ salaryAmountDzd: null, salaryPeriod: null, endDate: null });
+      mapEmployeeStateHistory({ ...baseRow, salary_reference_period: null, salary_reference_amount: null, end_date: null }),
+    ).toMatchObject({ salaryReference: null, endDate: null });
   });
 
   it("mapProjectManagerOwnershipHistory maps nullable fields", () => {

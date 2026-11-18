@@ -367,6 +367,10 @@ vi.mock("../mock-dashboard", () => ({
   AppMutationError,
 }))
 
+vi.mock("@/features/session/use-session-query", () => ({
+  useSessionQuery: () => ({ data: { user: { id: "user-1" } } }),
+}))
+
 vi.mock("../workspace-mutations", () => ({
   useCreateWarehouseMutation: () => ({ isPending: false, mutateAsync: mockFns.createWarehouseMutate }),
   useUpdateWarehouseMutation: () => ({ isPending: false, mutateAsync: mockFns.updateWarehouseMutate }),
@@ -422,6 +426,7 @@ vi.mock("../workspace-mutations", () => ({
 }))
 
 vi.mock("../workspace-queries", () => ({
+  useWorkspaceScopedQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
   // Hooks used by home-view-signed-in-shell (enabled only when search is open)
   useEmployeesQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
     searchState.employees = enabled
@@ -625,8 +630,7 @@ export function makeWorkspaceData(
         phone: "0555200100",
         roleId: "role-project-manager",
         status: "ACTIVE",
-        salaryAmountDzd: 95000,
-        salaryPeriod: "MONTHLY",
+        salaryReference: { period: "MONTHLY", amount: "95000" },
         notes: null,
         occupation: null,
         createdAt: "2026-03-13T10:00:00.000Z",
@@ -639,8 +643,7 @@ export function makeWorkspaceData(
         phone: "0555200120",
         roleId: "role-worker",
         status: "ACTIVE",
-        salaryAmountDzd: 4500,
-        salaryPeriod: "DAILY",
+        salaryReference: { period: "DAILY", amount: "4500.0000" },
         notes: "عامل ميداني",
         occupation: "عامل بناء",
         createdAt: "2026-03-13T10:00:00.000Z",

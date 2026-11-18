@@ -53,8 +53,7 @@ const workspace: DemoWorkspace = {
       phone: "0555000001",
       roleId: "role-project-manager",
       status: "ACTIVE",
-      salaryAmountDzd: 100000,
-      salaryPeriod: "MONTHLY",
+      salaryReference: { amount: "100000.00", period: "MONTHLY" },
       notes: null,
       occupation: null,
       createdAt: "2026-03-13T10:00:00.000Z",
@@ -67,8 +66,7 @@ const workspace: DemoWorkspace = {
       phone: "0555000002",
       roleId: "role-worker",
       status: "ACTIVE",
-      salaryAmountDzd: 4500,
-      salaryPeriod: "DAILY",
+      salaryReference: { amount: "4500.1250", period: "DAILY" },
       notes: null,
       occupation: null,
       createdAt: "2026-03-13T10:00:00.000Z",
@@ -81,8 +79,7 @@ const workspace: DemoWorkspace = {
       phone: "0555000003",
       roleId: "role-warehouse-manager",
       status: "ACTIVE",
-      salaryAmountDzd: 70000,
-      salaryPeriod: "MONTHLY",
+      salaryReference: { amount: "70000.00", period: "MONTHLY" },
       notes: null,
       occupation: null,
       createdAt: "2026-03-13T10:00:00.000Z",
@@ -97,8 +94,7 @@ const workspace: DemoWorkspace = {
       phone: "0555000004",
       roleId: "role-worker",
       status: "LEFT",
-      salaryAmountDzd: 4500,
-      salaryPeriod: "DAILY",
+      salaryReference: { amount: "4500.1250", period: "DAILY" },
       notes: null,
       occupation: null,
       createdAt: "2026-02-01T10:00:00.000Z",
@@ -111,8 +107,7 @@ const workspace: DemoWorkspace = {
       phone: "0555000005",
       roleId: "role-missing",
       status: "ACTIVE",
-      salaryAmountDzd: null,
-      salaryPeriod: null,
+      salaryReference: null,
       notes: null,
       occupation: null,
       createdAt: "2026-03-13T10:00:00.000Z",
@@ -310,6 +305,13 @@ describe("buildHomeViewDerived composition (single public seam)", () => {
     // The drift invariant would be vacuous if the seam returned no rows at
     // all, so pin the exact row count (every fixture employee is present).
     expect(derived.employeeRows).toHaveLength(workspace.employees.length)
+    // Reference precision and an absent reference survive the derived seam.
+    expect(derived.employeeRows.find((row) => row.id === "worker-1")?.salaryReference).toEqual({
+      amount: "4500.1250",
+      period: "DAILY",
+    })
+    expect(derived.employeeRows.find((row) => row.id === "orphan-1")?.salaryReference).toBeNull()
+
     // And the fallback paths actually resolve through the seam.
     expect(derived.employeeRows.find((row) => row.id === "orphan-1")?.role).toBe("shell.noManager")
     expect(

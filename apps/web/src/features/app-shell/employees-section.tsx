@@ -18,10 +18,8 @@ import {
   EmployeeTable,
   type EmployeeTableRow,
 } from "@/features/employees/employee-table"
-import type {
-  SalaryProjectAssignmentWindow,
-  SalaryProjectOption,
-} from "@/features/employees/add-salary-payment-dialog"
+import type { SalaryProjectAssignmentWindow } from "@tuari/contracts"
+import type { SalaryProjectOption } from "@/features/employees/add-salary-payment-dialog"
 import type { EmployeeManagerOption } from "@/features/employees/employee-batch-row-card"
 import { cn } from "@/lib/utils"
 import type { Employee, Role } from "@tuari/contracts"

@@ -41,6 +41,7 @@ import { SessionService } from "../modules/session/session.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
 import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
+import { SqliteEmployeeEarningRepository } from "../modules/workforce/adapters/sqlite-employee-earning.repository";
 import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice-debt.port";
 import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { SqliteRecoveryKeyPort } from "../modules/auth/adapters/sqlite-recovery-key.port";
@@ -200,7 +201,8 @@ export async function createAppDependencies(
     // so the per-domain service owns its transaction + audit context and
     // the `CompanyService` only has to forward delegations.
     const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
-    const workforceService = new WorkforceService(companyRepository, companyRepository, mutation);
+    const employeeEarningRepository = new SqliteEmployeeEarningRepository(sharedDatabase, connectionLock);
+    const workforceService = new WorkforceService(companyRepository, companyRepository, mutation, employeeEarningRepository);
     const operationsService = new OperationsService(companyRepository, companyRepository, mutation);
     const financeService = new FinanceService(companyRepository, companyRepository, mutation);
     const auditService = new AuditService(companyRepository);

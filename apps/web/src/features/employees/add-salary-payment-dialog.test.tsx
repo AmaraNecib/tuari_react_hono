@@ -1,506 +1,258 @@
-import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const { mockMutateAsync } = vi.hoisted(() => ({ mockMutateAsync: vi.fn() }))
+const { mutateAsync, sessionUser } = vi.hoisted(() => ({ mutateAsync: vi.fn(), sessionUser: { id: "user-1" } }))
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    i18n: { dir: () => "rtl" },
-    t: (key: string, options?: { count?: number }) =>
-      options?.count !== undefined ? `${key}:${options.count}` : key,
-  }),
-}))
-
-vi.mock("@/features/app-shell/workspace-mutations", () => ({
-  useCreateSalaryPaymentMutation: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
-}))
-
-// The real picker renders and returns `dd/MM/yyyy` (see date-picker.test.ts);
-// expose that contract directly so the dialog's conversion is exercised without
-// driving the calendar popover in jsdom.
-vi.mock("@/components/ui/date-picker", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/components/ui/date-picker")>()
-  return {
-    ...actual,
-    DatePicker: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => (
-      <button
-        type="button"
-        data-testid="salary-date-picker"
-        data-value={value}
-        onClick={() => onChange("2026-03-15")}
-      >
-        pick
-      </button>
-    ),
-  }
+vi.mock("react-i18next", async importOriginal => {
+  const actual = await importOriginal<typeof import("react-i18next")>()
+  return { ...actual, useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "rtl" } }) }
 })
-
-import { toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+vi.mock("@/features/employees/employee-earnings-queries", () => ({
+  useApproveEmployeeEarningMutation: () => ({ mutateAsync, isPending: false }),
+}))
+vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: sessionUser } }) }))
+vi.mock("@/components/ui/date-picker", () => ({
+  DatePicker: ({ id, value, onChange, disabled, "aria-invalid": invalid, "aria-describedby": describedBy }: { id: string; value: string; onChange: (value: string) => void; disabled?: boolean; "aria-invalid"?: boolean; "aria-describedby"?: string }) => (
+    <input aria-label={id} aria-invalid={invalid} aria-describedby={describedBy} type="date" value={value} disabled={disabled} onChange={event => onChange(event.target.value)} />
+  ),
+}))
 
 import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 
-const PROJECT = { id: "project-1", name: "مشروع" }
-const PROJECT_TWO = { id: "project-2", name: "مشروع ب" }
-// Open-ended window far wider than any payment month: the derived default is
-// always full coverage of the dialog's period, whatever today's date is.
-const ASSIGNMENT = { projectId: PROJECT.id, startDate: "2000-01-01T00:00:00+01:00", endDate: null }
+const projects = [{ id: "project-a", name: "A" }, { id: "project-b", name: "B" }]
+const props = { employeeId: "employee-1", employeeName: "عامل", projects, open: true, onOpenChange: vi.fn() }
 
-function renderDialog(salaryPeriod: "MONTHLY" | "DAILY" = "MONTHLY") {
-  const onOpenChange = vi.fn()
-  const renderDialogElement = (period: "MONTHLY" | "DAILY") => (
-    <AddSalaryPaymentDialog
-      employeeId="employee-1"
-      employeeName="عامل"
-      salaryAmountDzd={period === "DAILY" ? 1500 : 30000}
-      salaryPeriod={period}
-      projectAssignments={[ASSIGNMENT]}
-      projects={[PROJECT]}
-      open
-      onOpenChange={onOpenChange}
-    />
-  )
-  const view = render(renderDialogElement(salaryPeriod))
-  const [daysInput, lineDaysInput] = screen.getAllByRole("spinbutton") as HTMLInputElement[]
-  return {
-    daysInput,
-    lineDaysInput,
-    // Simulate a workspace refresh that changes the worker's wage period while
-    // the dialog stays open.
-    rerenderPeriod: (period: "MONTHLY" | "DAILY") => view.rerender(renderDialogElement(period)),
-  }
-}
-
-describe("AddSalaryPaymentDialog (#412)", () => {
-  it("defaults a monthly worker to a full 30-day month", () => {
-    mockMutateAsync.mockReset()
-    const { daysInput } = renderDialog("MONTHLY")
-
-    expect(daysInput?.value).toBe("30")
+describe("earned-wage approval composer", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mutateAsync.mockReset()
+    props.onOpenChange.mockReset()
   })
 
-  it("defaults a daily worker to one day, not a 30-day month", () => {
-    mockMutateAsync.mockReset()
-    const { daysInput } = renderDialog("DAILY")
+  it("retries the same fully unallocated approval after another tab clears completed storage", async () => {
+    const serverRecords = new Map<string, unknown>()
+    mutateAsync.mockImplementationOnce(async (payload: { requestId: string }) => {
+      serverRecords.set(payload.requestId, payload)
+      throw new Error("response lost after server commit")
+    }).mockImplementationOnce(async (payload: { requestId: string }) => {
+      serverRecords.set(payload.requestId, payload)
+      return {}
+    })
+    const view = render(<AddSalaryPaymentDialog {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "62500" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    const firstPayload = mutateAsync.mock.calls[0]![0]
+    expect(firstPayload).toMatchObject({ totalAmount: "62500.00", unallocatedAmount: "62500.00", segments: [] })
+    expect(serverRecords.size).toBe(1)
 
-    // A daily wage paid for "30 days" would propose 30x the day's pay.
-    expect(daysInput?.value).toBe("1")
-    expect(screen.getAllByDisplayValue("1500").length).toBeGreaterThan(0)
+    // A second tab resolved the approval and removed its browser recovery entry.
+    localStorage.clear()
+    view.rerender(<AddSalaryPaymentDialog {...props} open={false} />)
+    view.rerender(<AddSalaryPaymentDialog {...props} open />)
+    expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
+    fireEvent.click(screen.getByRole("button", { name: "earnings.retryApproval" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2))
+    expect(mutateAsync.mock.calls[1]![0]).toEqual(firstPayload)
+    expect(serverRecords.size).toBe(1)
+    expect([...serverRecords.keys()]).toEqual([firstPayload.requestId])
   })
 
-  it("re-applies the daily default when the wage period changes while the dialog is open", () => {
-    mockMutateAsync.mockReset()
-    const { rerenderPeriod } = renderDialog("MONTHLY")
+  it("allows an intentional repeat approval after the first success", async () => {
+    mutateAsync.mockResolvedValue({})
+    const view = render(<AddSalaryPaymentDialog {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "62500" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    const firstRequestId = mutateAsync.mock.calls[0]![0].requestId
+    await waitFor(() => expect(props.onOpenChange).toHaveBeenCalledWith(false))
 
-    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("30")
-
-    // A refresh that reclassifies the worker as daily must not leave the stale
-    // 30-day default behind: accepting it would record 30 days of daily pay.
-    rerenderPeriod("DAILY")
-    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("1")
-    expect(screen.getAllByDisplayValue("1500").length).toBeGreaterThan(0)
+    view.rerender(<AddSalaryPaymentDialog {...props} open={false} />)
+    view.rerender(<AddSalaryPaymentDialog {...props} open />)
+    expect(screen.queryByText("earnings.pendingApproval")).toBeNull()
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).value).toBe("")
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "62500" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2))
+    expect(mutateAsync.mock.calls[1]![0].requestId).not.toBe(firstRequestId)
   })
 
-  it("keeps an edited day count when the wage period changes", () => {
-    mockMutateAsync.mockReset()
-    const { daysInput, rerenderPeriod } = renderDialog("MONTHLY")
+  it("keeps A/B/A amounts independent and retries the frozen approval after close and reopen", async () => {
+    mutateAsync.mockRejectedValueOnce(new Error("network uncertain"))
+      .mockRejectedValueOnce(Object.assign(new Error("session expired"), { code: "UNAUTHORIZED", fieldErrors: [] }))
+      .mockResolvedValueOnce({})
+    const view = render(<AddSalaryPaymentDialog {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.periodStart"), { target: { value: "2026-03-01" } })
+    fireEvent.change(screen.getByLabelText("earnings.periodEnd"), { target: { value: "2026-03-31" } })
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
 
-    fireEvent.change(daysInput!, { target: { value: "20" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    const selects = screen.getAllByLabelText(/earnings.project/) as HTMLSelectElement[]
+    fireEvent.change(selects[0]!, { target: { value: "project-a" } })
+    fireEvent.change(selects[1]!, { target: { value: "project-b" } })
+    fireEvent.change(selects[2]!, { target: { value: "project-a" } })
+    const days = screen.getAllByLabelText(/earnings.days /)
+    const amounts = screen.getAllByLabelText(/earnings.amount /)
+    for (const [index, value] of ["5", "15", "5"].entries()) fireEvent.change(days[index]!, { target: { value } })
+    for (const [index, value] of ["10000", "37500", "15000"].entries()) fireEvent.change(amounts[index]!, { target: { value } })
+    fireEvent.change(amounts[1]!, { target: { value: "36000" } })
+    expect((amounts[0] as HTMLInputElement).value).toBe("10000")
+    expect((amounts[2] as HTMLInputElement).value).toBe("15000")
+    fireEvent.change(amounts[1]!, { target: { value: "37500" } })
 
-    rerenderPeriod("DAILY")
-    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("20")
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    const submitted = mutateAsync.mock.calls[0]![0]
+    expect(submitted).toMatchObject({
+      employeeId: "employee-1", currencyCode: "DZD", totalAmount: "62500.00", unallocatedAmount: "0.00",
+      segments: [
+        { projectId: "project-a", days: 5, amount: "10000.00" },
+        { projectId: "project-b", days: 15, amount: "37500.00" },
+        { projectId: "project-a", days: 5, amount: "15000.00" },
+      ],
+    })
+    expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
+    view.rerender(<AddSalaryPaymentDialog {...props} open={false} />)
+    view.rerender(<AddSalaryPaymentDialog {...props} open />)
+    expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
+    expect((screen.getByLabelText("earnings.periodStart") as HTMLInputElement).value).toBe("2026-03-01")
+    expect((screen.getByLabelText("earnings.periodEnd") as HTMLInputElement).value).toBe("2026-03-31")
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole("button", { name: "earnings.retryApproval" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2))
+    expect(mutateAsync.mock.calls[1]![0]).toEqual(submitted)
+    expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).disabled).toBe(true)
+    view.rerender(<AddSalaryPaymentDialog {...props} open={false} />)
+    view.rerender(<AddSalaryPaymentDialog {...props} open />)
+    expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).disabled).toBe(true)
+    fireEvent.click(screen.getByRole("button", { name: "earnings.retryApproval" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(3))
+    expect(mutateAsync.mock.calls[2]![0]).toEqual(submitted)
   })
 
-  it("keeps a hand-typed amount when the wage period changes underneath it", async () => {
-    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
-    const { rerenderPeriod } = renderDialog("MONTHLY")
-
-    const amountInput = screen.getByLabelText(/salaries.actualAmount/) as HTMLInputElement
-    fireEvent.change(amountInput, { target: { value: "12000" } })
-
-    // The proposal is re-derived from the wage, but an edited amount is pinned:
-    // reclassifying the worker must not overwrite the operator's figure with a
-    // fresh proposal (a naive "sync amount to proposal" would).
-    rerenderPeriod("DAILY")
-    expect(
-      (screen.getByLabelText(/salaries.actualAmount/) as HTMLInputElement).value,
-    ).toBe("12000")
-
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
-    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
-    expect(mockMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ actualAmountDzd: 12000 }),
-    )
-  })
-
-  it("re-derives the split default from the new period when the day count was untouched", () => {
-    mockMutateAsync.mockReset()
-    const { rerenderPeriod } = renderDialog("MONTHLY")
-
-    expect((screen.getAllByRole("spinbutton")[1] as HTMLInputElement).value).toBe("30")
-
-    rerenderPeriod("DAILY")
-    expect((screen.getAllByRole("spinbutton")[1] as HTMLInputElement).value).toBe("1")
-  })
-
-  it("prefills the split from the derived default and tracks the days input until a line is edited", () => {
-    mockMutateAsync.mockReset()
-    const { daysInput, lineDaysInput } = renderDialog()
-
-    expect(daysInput?.value).toBe("30")
-    expect(lineDaysInput?.value).toBe("30")
-    expect(screen.getByText("salaries.unallocatedDays:0")).toBeTruthy()
-
-    // The untouched default re-derives with the paid day count.
-    fireEvent.change(daysInput!, { target: { value: "20" } })
-    expect(lineDaysInput?.value).toBe("20")
-    expect(screen.getByText("salaries.unallocatedDays:0")).toBeTruthy()
-  })
-
-  it("lets the person slide days off a project and shows the remainder", () => {
-    mockMutateAsync.mockReset()
-    const { daysInput, lineDaysInput } = renderDialog()
-
-    fireEvent.change(daysInput!, { target: { value: "20" } })
-    fireEvent.change(lineDaysInput!, { target: { value: "8" } })
-
-    // The hand edit wins over the default and the unallocated remainder is explicit.
-    expect(lineDaysInput?.value).toBe("8")
-    expect(screen.getByText("salaries.unallocatedDays:12")).toBeTruthy()
-  })
-
-  it("blocks submit on an over-allocated split and then records the hand-edited split", async () => {
-    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
-    const { daysInput, lineDaysInput } = renderDialog()
-
-    fireEvent.change(daysInput!, { target: { value: "5" } })
-    fireEvent.change(lineDaysInput!, { target: { value: "8" } })
-
-    expect(screen.getByText("salaries.overAllocatedDays:3")).toBeTruthy()
-    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
-    expect(submit.hasAttribute("disabled")).toBe(true)
-
-    // Sliding the line back under the paid days re-enables the submit.
-    fireEvent.change(lineDaysInput!, { target: { value: "5" } })
-    expect(screen.getByText("salaries.unallocatedDays:0")).toBeTruthy()
-    expect(submit.hasAttribute("disabled")).toBe(false)
-
-    fireEvent.click(submit)
-    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
-    expect(mockMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        employeeId: "employee-1",
-        days: 5,
-        projectSplits: [{ projectId: PROJECT.id, days: 5 }],
-      }),
-    )
-  })
-
-  it("keeps the derived split and submits the canonical day when a payment date is picked", async () => {
-    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
-    const { lineDaysInput } = renderDialog()
-
-    // The dialog hands the picker canonical state and takes canonical back; a
-    // mismatch here is what used to null the pay period.
-    const picker = screen.getByTestId("salary-date-picker")
-    expect(picker.getAttribute("data-value")).toMatch(/^\d{4}-\d{2}-\d{2}$/)
-
-    // Picking a day must not wipe the prefilled per-project split.
-    fireEvent.click(picker)
-    expect(lineDaysInput?.value).toBe("30")
-    expect(screen.getByText("salaries.unallocatedDays:0")).toBeTruthy()
-
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
-    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
-    expect(mockMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        paymentDate: toAlgeriaDayBoundaryIso("2026-03-15", "start"),
-        projectSplits: [{ projectId: PROJECT.id, days: 30 }],
-      }),
-    )
-  })
-
-  it("adopts a carried draft and normalises an over-precise override on submit", async () => {
-    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
-    const draft = {
-      days: 12,
-      daysTouched: true,
-      amount: 100.005,
-      amountTouched: true,
-      date: "2026-03-15",
-      note: "ملاحظة",
+  it("unlocks a first proven no-write rejection and marks the rejected row field", async () => {
+    mutateAsync.mockRejectedValueOnce(Object.assign(new Error("project does not exist"), {
+      code: "NOT_FOUND",
+      fieldErrors: [
+        { field: "segments.2.projectId", message: "project does not exist" },
+        { field: "periodStart", message: "period start is invalid" },
+      ],
+    })).mockResolvedValueOnce({})
+    render(<AddSalaryPaymentDialog {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1500" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    const projectFields = screen.getAllByLabelText(/earnings.project /) as HTMLSelectElement[]
+    fireEvent.change(projectFields[0]!, { target: { value: "project-a" } })
+    fireEvent.change(projectFields[1]!, { target: { value: "project-b" } })
+    fireEvent.change(projectFields[2]!, { target: { value: "project-a" } })
+    for (let index = 1; index <= 3; index++) {
+      fireEvent.change(screen.getByLabelText(`earnings.days ${index}`), { target: { value: "5" } })
+      fireEvent.change(screen.getByLabelText(`earnings.amount ${index}`), { target: { value: "500" } })
     }
-
-    render(
-      <AddSalaryPaymentDialog
-        employeeId="employee-1"
-        employeeName="عامل"
-        salaryAmountDzd={30000}
-        salaryPeriod="MONTHLY"
-        projectAssignments={[ASSIGNMENT]}
-        projects={[PROJECT]}
-        initialDraft={draft}
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
-
-    // The quick form's 12 days and amount open the dialog, not the monthly
-    // 30-day default.
-    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("12")
-    expect(screen.getByDisplayValue("100.005")).toBeTruthy()
-
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
-    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
-    // The override is stored at the currency's precision so it reconciles with
-    // the whole-cent split shares.
-    expect(mockMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ days: 12, actualAmountDzd: 100.01 }),
-    )
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(projectFields[2]!.getAttribute("aria-invalid")).toBe("true"))
+    expect(projectFields[0]!.getAttribute("aria-invalid")).toBeNull()
+    expect(projectFields[1]!.getAttribute("aria-invalid")).toBeNull()
+    const startDate = screen.getByLabelText("earnings.periodStart")
+    expect(startDate.getAttribute("aria-invalid")).toBe("true")
+    expect(screen.getByText("period start is invalid").id).toBe(startDate.getAttribute("aria-describedby"))
+    expect(screen.getByText("project does not exist").id).toBe(projectFields[2]!.getAttribute("aria-describedby"))
+    expect(screen.queryByText("earnings.pendingApproval")).toBeNull()
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).disabled).toBe(false)
+    fireEvent.change(projectFields[2]!, { target: { value: "project-b" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2))
+    expect(mutateAsync.mock.calls[1]![0].requestId).not.toBe(mutateAsync.mock.calls[0]![0].requestId)
   })
 
-  it("does not replay a carried draft over an operator edit on re-render", () => {
-    mockMutateAsync.mockReset()
-    const draft = {
-      days: 12,
-      daysTouched: true,
-      amount: 100,
-      amountTouched: true,
-      date: "2026-03-15",
-      note: "ملاحظة",
-    }
-    const element = (
-      <AddSalaryPaymentDialog
-        employeeId="employee-1"
-        employeeName="عامل"
-        salaryAmountDzd={30000}
-        salaryPeriod="MONTHLY"
-        projectAssignments={[ASSIGNMENT]}
-        projects={[PROJECT]}
-        initialDraft={draft}
-        open
-        onOpenChange={vi.fn()}
-      />
-    )
-    const view = render(element)
+  it("clears stale conservation after correcting A1 but keeps unrelated row errors", () => {
+    render(<AddSalaryPaymentDialog {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1.234" } })
 
-    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("12")
-    fireEvent.change(screen.getAllByRole("spinbutton")[0]!, { target: { value: "7" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(screen.getByText("workforce.validation.earning.amountPrecision")).toBeTruthy()
+    expect(mutateAsync).not.toHaveBeenCalled()
 
-    // The same draft object arrives again on a parent re-render: the
-    // applied-draft guard must keep the operator's edit rather than re-adopting
-    // the carried value.
-    view.rerender(element)
-    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("7")
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "500" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    const conservation = screen.getByText("workforce.validation.earning.conservation")
+    expect(screen.getByLabelText("earnings.total").getAttribute("aria-describedby")).toBe(conservation.id)
+    expect(mutateAsync).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(screen.getByText("workforce.validation.earning.daysPositive")).toBeTruthy()
+    expect(screen.getByText("workforce.validation.earning.conservation")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1000" } })
+    expect(screen.queryByText("workforce.validation.earning.conservation")).toBeNull()
+    expect(screen.getByText("workforce.validation.earning.daysPositive")).toBeTruthy()
+    expect(mutateAsync).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "999" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(screen.getByText("workforce.validation.earning.conservation")).toBeTruthy()
+    expect(mutateAsync).not.toHaveBeenCalled()
   })
 
-  it("adds a second hand-built project line and removes it again", () => {
-    mockMutateAsync.mockReset()
-    render(
-      <AddSalaryPaymentDialog
-        employeeId="employee-1"
-        employeeName="عامل"
-        salaryAmountDzd={30000}
-        salaryPeriod="MONTHLY"
-        projectAssignments={[ASSIGNMENT]}
-        projects={[PROJECT, PROJECT_TWO]}
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
-
-    // Slide half the month off the prefilled line first.
-    fireEvent.change(screen.getAllByRole("spinbutton")[1]!, { target: { value: "15" } })
-    expect(screen.getByText("salaries.unallocatedDays:15")).toBeTruthy()
-
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addProjectLine" }))
-    // The new line takes the next unused project and the remaining days.
-    const selects = screen.getAllByLabelText("salaries.project") as HTMLSelectElement[]
-    expect(selects).toHaveLength(2)
-    expect(selects[1]!.value).toBe(PROJECT_TWO.id)
-    expect((screen.getAllByRole("spinbutton")[2] as HTMLInputElement).value).toBe("15")
-    expect(screen.getByText("salaries.unallocatedDays:0")).toBeTruthy()
-
-    // Removing the hand-built line returns to the prefilled single line.
-    fireEvent.click(screen.getAllByRole("button", { name: "salaries.removeProjectLine" })[1]!)
-    expect(screen.getAllByRole("spinbutton")).toHaveLength(2)
-    expect(screen.getByText("salaries.unallocatedDays:15")).toBeTruthy()
+  it("unlocks a first registered wire-validation rejection for correction", async () => {
+    mutateAsync.mockRejectedValueOnce(Object.assign(new Error("Input validation failed"), {
+      code: "BAD_REQUEST",
+      data: { issues: [{ path: ["periodStart"], message: "workforce.validation.earning.periodOrder" }] },
+    })).mockResolvedValueOnce({})
+    render(<AddSalaryPaymentDialog {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.periodStart"), { target: { value: "2026-03-01" } })
+    fireEvent.change(screen.getByLabelText("earnings.periodEnd"), { target: { value: "2026-03-31" } })
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "100" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "100" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect((screen.getByLabelText("earnings.periodStart") as HTMLInputElement).getAttribute("aria-invalid")).toBe("true"))
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).disabled).toBe(false)
+    fireEvent.change(screen.getByLabelText("earnings.periodStart"), { target: { value: "2026-03-02" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2))
+    expect(mutateAsync.mock.calls[1]![0].requestId).not.toBe(mutateAsync.mock.calls[0]![0].requestId)
   })
 
-  it("keeps submit blocked while a hand-added line is unassigned or duplicates a project", () => {
-    mockMutateAsync.mockReset()
-    renderDialog()
+  it("shows localized precision and conservation issues without sending an invalid approval", () => {
+    render(<AddSalaryPaymentDialog {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1.234" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(screen.getByText("workforce.validation.earning.amountPrecision")).toBeTruthy()
+    expect(mutateAsync).not.toHaveBeenCalled()
 
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addProjectLine" }))
-    const selects = screen.getAllByLabelText("salaries.project") as HTMLSelectElement[]
-    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
-
-    // The only project is already used, so the new line starts unassigned and
-    // cannot be submitted.
-    expect(selects[1]!.value).toBe("")
-    expect(submit.hasAttribute("disabled")).toBe(true)
-
-    // Pointing it at the already-used project is a duplicate and stays blocked.
-    fireEvent.change(selects[1]!, { target: { value: PROJECT.id } })
-    expect(submit.hasAttribute("disabled")).toBe(true)
-  })
-
-  it("defaults the amount to the worker's full salary and keeps it editable", async () => {
-    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
-    renderDialog("MONTHLY")
-
-    // The field starts on the figure the app already knows, not empty: a full
-    // 30-day month is the worker's whole 30000 DZD wage.
-    const amountInput = screen.getByLabelText(/salaries.actualAmount/) as HTMLInputElement
-    expect(amountInput.value).toBe("30000")
-
-    // A known period means no missing-setting reason and a live save control.
-    expect(screen.queryByText("salaries.missingPeriodReason")).toBeNull()
-    expect(screen.queryByText("salaries.missingWageReason")).toBeNull()
-    expect(screen.queryByText("salaries.missingAmountReason")).toBeNull()
-    expect(
-      screen.getByRole("button", { name: "salaries.addPayment" }).hasAttribute("disabled"),
-    ).toBe(false)
-
-    // A partial payment is legitimate: a hand edit wins and is what is stored.
-    fireEvent.change(amountInput, { target: { value: "12000" } })
-    expect(amountInput.value).toBe("12000")
-
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
-    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
-    expect(mockMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ days: 30, actualAmountDzd: 12000 }),
-    )
-  })
-
-  it("defaults the amount to the known wage when the wage period is unknown", () => {
-    mockMutateAsync.mockReset()
-    render(
-      <AddSalaryPaymentDialog
-        employeeId="employee-1"
-        employeeName="عامل"
-        salaryAmountDzd={30000}
-        salaryPeriod={null}
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
-
-    // The app knows the wage even without a period; the field must not fall
-    // back to empty and force the operator to retype it.
-    const amountInput = screen.getByLabelText(/salaries.actualAmount/) as HTMLInputElement
-    expect(amountInput.value).toBe("30000")
-    // The day default already treats an unknown period as a month, so the
-    // amount default follows the same convention rather than inventing one.
-    expect((screen.getByLabelText(/salaries.days/) as HTMLInputElement).value).toBe("30")
-
-    // The API still requires a period, so the save control is visibly blocked
-    // with the reason and the fix instead of refusing silently after the
-    // operator types the amount.
-    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
-    expect(submit.hasAttribute("disabled")).toBe(true)
-    expect(screen.getByText("salaries.missingPeriodReason")).toBeTruthy()
-
-    // Typing a valid amount does not clear the period refusal: the API refuses
-    // on the missing period regardless of the amount.
-    fireEvent.change(screen.getByLabelText(/salaries.actualAmount/), {
-      target: { value: "12000" },
-    })
-    expect(submit.hasAttribute("disabled")).toBe(true)
-    expect(screen.getByText("salaries.missingPeriodReason")).toBeTruthy()
-  })
-
-  it("names an invalid amount so a disabled save is never silent", () => {
-    mockMutateAsync.mockReset()
-    render(
-      <AddSalaryPaymentDialog
-        employeeId="employee-1"
-        employeeName="عامل"
-        salaryAmountDzd={0}
-        salaryPeriod="MONTHLY"
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
-
-    // A zero wage proposes zero and the API rejects a non-positive amount, so
-    // the save is disabled; it must say why rather than be a silent dead end.
-    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
-    expect(submit.hasAttribute("disabled")).toBe(true)
-    expect(screen.getByText("salaries.missingAmountReason")).toBeTruthy()
-    // The wage is set (to zero), so the missing-wage reason must not also fire.
-    expect(screen.queryByText("salaries.missingWageReason")).toBeNull()
-  })
-
-  it("lets a zero-wage worker save once a positive amount is typed", async () => {
-    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
-    render(
-      <AddSalaryPaymentDialog
-        employeeId="employee-1"
-        employeeName="عامل"
-        salaryAmountDzd={0}
-        salaryPeriod="MONTHLY"
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
-
-    fireEvent.change(screen.getByLabelText(/salaries.actualAmount/), {
-      target: { value: "5000" },
-    })
-
-    // A zero wage is allowed by the contract and the API stores a hand-typed
-    // amount for it, so the dialog must not treat it as unpayable.
-    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
-    expect(submit.hasAttribute("disabled")).toBe(false)
-    expect(screen.queryByText("salaries.missingAmountReason")).toBeNull()
-
-    fireEvent.click(submit)
-    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
-    expect(mockMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ actualAmountDzd: 5000 }),
-    )
-  })
-
-  it("blocks save with a reason when the worker has no wage, even after an amount is typed", () => {
-    mockMutateAsync.mockReset()
-    render(
-      <AddSalaryPaymentDialog
-        employeeId="employee-1"
-        employeeName="عامل"
-        salaryAmountDzd={null}
-        salaryPeriod="MONTHLY"
-        open
-        onOpenChange={vi.fn()}
-      />,
-    )
-
-    // The operator can type an amount and days, but the API still needs the
-    // worker's wage, so save stays blocked with the missing setting named.
-    fireEvent.change(screen.getByLabelText(/salaries.actualAmount/), {
-      target: { value: "5000" },
-    })
-
-    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
-    expect(submit.hasAttribute("disabled")).toBe(true)
-    expect(screen.getByText("salaries.missingWageReason")).toBeTruthy()
-  })
-
-  it("records a second payment for the same worker in the same month (owner item 6, decision C)", async () => {
-    mockMutateAsync.mockReset().mockResolvedValue({ message: "ok" })
-    renderDialog("MONTHLY")
-
-    const submit = screen.getByRole("button", { name: "salaries.addPayment" })
-    fireEvent.click(submit)
-    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(1))
-
-    // The dialog closes (onOpenChange) but a controlled parent keeps it open;
-    // nothing in the form refuses a second payment for the same worker/month.
-    // Owner decision C: free payments, no monthly balance or guard.
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
-    await vi.waitFor(() => expect(mockMutateAsync).toHaveBeenCalledTimes(2))
-
-    const [firstCall, secondCall] = mockMutateAsync.mock.calls
-    expect(firstCall![0]).toMatchObject({ employeeId: "employee-1", days: 30 })
-    expect(secondCall![0]).toMatchObject({ employeeId: "employee-1", days: 30 })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "500" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    const conservation = screen.getByText("workforce.validation.earning.conservation")
+    const totalField = screen.getByLabelText("earnings.total")
+    expect(totalField.getAttribute("aria-invalid")).toBe("true")
+    expect(totalField.getAttribute("aria-describedby")).toBe(conservation.id)
+    expect(mutateAsync).not.toHaveBeenCalled()
   })
 })

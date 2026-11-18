@@ -8,8 +8,11 @@ import { RolesSection } from "./roles-section";
 
 // Mock useTranslation to return Arabic strings for the keys the
 // component uses. This mirrors the pattern in license-settings.test.tsx.
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+vi.mock("react-i18next", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-i18next")>()
+  return {
+    ...actual,
+    useTranslation: () => ({
     t: (key: string, second?: string | Record<string, unknown>, third?: Record<string, unknown>) => {
       // i18next v22+ form: t(key, options) — second arg is options
       if (typeof second === "object" && second !== null) {
@@ -39,8 +42,9 @@ vi.mock("react-i18next", () => ({
       }
       return result;
     },
-  }),
-}));
+    }),
+  }
+})
 
 function makeRole(overrides: Partial<RoleWithPermissions> & Pick<RoleWithPermissions, "id" | "key" | "name">): RoleWithPermissions {
   return {

@@ -35,7 +35,7 @@ function createTestEnv() {
   insertExpense.run("e-void", 99_999, "2026-05-11T00:00:00.000Z", "ملغى", null, null, "p-1", "VOIDED", NOW, NOW);
   insertExpense.run("e-other", 5_000, "2026-05-12T00:00:00.000Z", "مشروع آخر", null, null, "p-2", "LIVE", NOW, NOW);
 
-  // Salary payment + split: 18 of 30 days on p-1.
+  // Legacy salary payment splits no longer own approved labor cost.
   db.prepare(
     `INSERT INTO "employee_salary_payment" ("id","employee_id","period_type","days","expected_amount_dzd","actual_amount_dzd","payment_date","created_at","updated_at")
      VALUES ('pay-1','emp-1','MONTHLY',30,60000,60000,'2026-05-31T00:00:00.000Z',?,?)`,
@@ -46,6 +46,16 @@ function createTestEnv() {
   db.prepare(
     `INSERT INTO "employee_salary_payment_split" ("id","payment_id","project_id","days","created_at") VALUES ('split-2','pay-1','p-2',12,?)`,
   ).run(NOW);
+
+  db.prepare(`INSERT INTO "employee_earning" (
+    id, employee_id, request_id, request_hash, period_start, period_end,
+    currency_code, total_minor, unallocated_minor, approved_at, created_at
+  ) VALUES ('earning-1','emp-1','d0f2fd98-5ca5-49ae-9074-b139df26614d','hash','2026-05-01T00:00:00.000Z','2026-05-26T00:00:00.000Z','DZD',6250000,0,?,?)`).run(NOW, NOW);
+  const insertEarningSegment = db.prepare(`INSERT INTO "employee_earning_segment"
+    ("id","earning_id","project_id","ordinal","days","amount_minor","created_at") VALUES (?,?,?,?,?,?,?)`);
+  insertEarningSegment.run("earning-a1", "earning-1", "p-1", 0, 5, "1000000", NOW);
+  insertEarningSegment.run("earning-b", "earning-1", "p-2", 1, 15, "3750000", NOW);
+  insertEarningSegment.run("earning-a2", "earning-1", "p-1", 2, 5, "1500000", NOW);
 
   // Inventory: consumable entry + asset unit + charge.
   db.prepare(`INSERT INTO "inventory_item_definition" ("id","name","item_type","unit","is_active","created_at","updated_at") VALUES ('def-c','إسمنت','CONSUMABLE','كيس',1,?,?)`).run(NOW, NOW);
@@ -106,7 +116,7 @@ describe("SqliteProjectCostRepository (#414)", () => {
     expect(rows.map((row) => row.id)).toEqual(["e-live"]);
     expect(rows[0]?.responsibleWorkerName).toBe("كريم ب.");
     expect(rows[0]?.sellerName).toBe("مورد الإسمنت");
-    expect(rows[0]?.amountDzd).toBe(10_000);
+    expect(rows[0]?.amount).toBe("10000.00");
   });
 
   it("normalizes blank text to null so output validation cannot fail", () => {
@@ -127,16 +137,14 @@ describe("SqliteProjectCostRepository (#414)", () => {
     expect(row?.sellerName).toBeNull();
   });
 
-  it("reads the project's split lines with the payment's days and amount", () => {
+  it("reads ordered approved earnings as project labor cost, not historical cash splits", () => {
     const rows = env.repository.listProjectSalarySplits("p-1");
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      paymentId: "pay-1",
-      paymentDays: 30,
-      paymentAmountDzd: 60_000,
-      splitDays: 18,
-      employeeName: "كريم ب.",
-    });
+    expect(rows.map((row) => [row.segmentId, row.days, row.amount])).toEqual([
+      ["earning-a1", 5, "10000.00"],
+      ["earning-a2", 5, "15000.00"],
+    ]);
+    expect(rows.every((row) => row.employeeName === "كريم ب.")).toBe(true);
+    expect(env.repository.listProjectSalarySplits("p-2").map((row) => [row.days, row.amount])).toEqual([[15, "37500.00"]]);
   });
 
   it("reads only LIVE charges and resolves the asset name", () => {
@@ -151,15 +159,15 @@ describe("SqliteProjectCostRepository (#414)", () => {
     const incoming = rows.find((row) => row.id === "m-in");
     const outgoing = rows.find((row) => row.id === "m-out");
     const toOtherProject = rows.find((row) => row.id === "m-a-to-b");
-    expect(incoming).toMatchObject({ itemName: "إسمنت", unit: "كيس", quantity: 40, unitPriceDzd: 850, direction: "IN" });
-    expect(outgoing).toMatchObject({ quantity: 5, unitPriceDzd: 850, direction: "OUT" });
-    expect(toOtherProject).toMatchObject({ quantity: 2, unitPriceDzd: 850, direction: "OUT" });
+    expect(incoming).toMatchObject({ itemName: "إسمنت", unit: "كيس", quantity: "40", unitPrice: "850.0000", direction: "IN" });
+    expect(outgoing).toMatchObject({ quantity: "5", unitPrice: "850.0000", direction: "OUT" });
+    expect(toOtherProject).toMatchObject({ quantity: "2", unitPrice: "850.0000", direction: "OUT" });
   });
 
   it("reads the parked assets at the project, never a consumable balance", () => {
     const parked = env.repository.getProjectParkedAssets("p-1");
     expect(parked.map((asset) => asset.assetUnitId)).toEqual(["asset-1"]);
-    expect(parked[0]?.purchasePriceDzd).toBe(180_000);
+    expect(parked[0]?.purchaseAmount).toBe("180000.00");
     // bal-1 (10 bags) is at p-1 but is CHARGED, so it is not parked.
   });
 
@@ -171,16 +179,15 @@ describe("SqliteProjectCostRepository (#414)", () => {
   it("agrees with the service end to end over the real SQL", () => {
     const result = new ProjectCostService(env.repository).getProjectCost({ projectId: "p-1" });
     // Material is net: (40 in − 5 to wh-1 − 2 to p-2) × 850 = 28,050.
-    expect(result.item.parts).toEqual({
-      expensesDzd: 10_000,
-      salariesDzd: 36_000,
-      stockDzd: 180_000,
-      chargedMaterialsDzd: 28_050,
-    });
-    expect(result.item.totalDzd).toBe(254_050);
+    expect(result.item.parts).toEqual({ expensesAmount: "10000.00", salariesAmount: "25000.00", stockAmount: "180000.00", chargedMaterialsAmount: "28050.00" });
+    expect(result.item.totalAmount).toBe("243050.00");
     // Parked is the asset only (180_000); the 10 consumable bags at p-1 are
     // charged, not parked, and the asset is NOT in the total.
-    expect(result.item.parkedInventory.totalDzd).toBe(180_000);
+    expect(result.item.parkedInventory.totalAmount).toBe("180000.00");
     expect(result.item.parkedInventory.assets).toHaveLength(1);
+
+    const projectB = new ProjectCostService(env.repository).getProjectCost({ projectId: "p-2" });
+    expect(projectB.item.parts.salariesAmount).toBe("37500.00");
+    expect(projectB.item.salaries.map(row => row.amount)).toEqual(["37500.00"]);
   });
 });

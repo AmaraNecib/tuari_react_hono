@@ -1,9 +1,10 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { PageHeader } from "@/features/shared/page-primitives"
 import { RecordTabs } from "@/features/shared/record-page-frame"
 import { AddSalaryPaymentDialog } from "@/features/employees/add-salary-payment-dialog"
+import { EmployeeEarningsHistory } from "@/features/employees/employee-earnings-history"
 
 import { SalaryPaymentsTable, type SalaryPaymentRow } from "./salary-payments-table"
 import { SalariedWorkersTable, type SalariedWorkerRow } from "./salaried-workers-table"
@@ -16,16 +17,26 @@ import { SalariedWorkersTable, type SalariedWorkerRow } from "./salaried-workers
 export function SalariesSection({
   recentPayments,
   workers,
+  employees,
   projects,
   onEditSalary,
 }: {
   recentPayments: SalaryPaymentRow[]
   workers: SalariedWorkerRow[]
+  employees: Array<{ id: string; name: string }>
   projects: Array<{ id: string; name: string }>
   onEditSalary: (employeeId: string) => void
 }) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState("recent")
+  const employeeNames = useMemo(
+    () => Object.fromEntries(employees.map((employee) => [employee.id, employee.name])),
+    [employees],
+  )
+  const projectNames = useMemo(
+    () => Object.fromEntries(projects.map((project) => [project.id, project.name])),
+    [projects],
+  )
   // Only the identity is snapshotted when the dialog opens; the wage, period,
   // and assignment windows are read from the live query data below so a
   // workspace refresh cannot leave a stale proposal or day default behind.
@@ -44,9 +55,7 @@ export function SalariesSection({
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
         employeeName={paymentWorker?.employeeName ?? paymentTarget?.name}
-        salaryAmountDzd={paymentWorker?.salaryAmountDzd ?? null}
-        salaryPeriod={paymentWorker?.salaryPeriod ?? null}
-        projectAssignments={paymentWorker?.projectAssignments ?? []}
+        salaryReference={paymentWorker?.salaryReference ?? null}
         projects={projects}
         open={paymentTarget !== null}
         onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
@@ -59,6 +68,7 @@ export function SalariesSection({
         tabs={[
           { id: "recent", label: t("salaries.recentTitle") },
           { id: "workers", label: t("salaries.workersTitle") },
+          { id: "earnings", label: t("earnings.historyTitle") },
         ]}
         onChange={setActiveTab}
       />
@@ -85,6 +95,10 @@ export function SalariesSection({
           onEditSalary={onEditSalary}
         />
       </div>
+
+      {activeTab === "earnings" ? (
+        <EmployeeEarningsHistory employeeNames={employeeNames} projectNames={projectNames} />
+      ) : null}
     </div>
   )
 }

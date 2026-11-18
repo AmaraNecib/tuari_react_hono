@@ -5,10 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { createElement, type ReactNode } from "react"
 
-import { AppMutationError, useCreateDebtAccountMutation, useCreateEmployeesBatchMutation, useResetWorkspaceMutation } from "./workspace-mutations"
+import { AppMutationError, useCreateDebtAccountMutation, useCreateEmployeesBatchMutation, useResetWorkspaceMutation, useSaveEmployeeMutation } from "./workspace-mutations"
 import { workspaceDomainQueryPrefix, workspaceQueryPrefix } from "./workspace-keys"
 
-const rpcMocks = vi.hoisted(() => ({ employeesBatchCreate: vi.fn(), debtAccountsCreate: vi.fn() }))
+const rpcMocks = vi.hoisted(() => ({ employeesBatchCreate: vi.fn(), employeesSave: vi.fn(), debtAccountsCreate: vi.fn() }))
 
 vi.mock("@/lib/orpc-client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/orpc-client")>("@/lib/orpc-client")
@@ -16,6 +16,7 @@ vi.mock("@/lib/orpc-client", async () => {
     ...actual,
     rpcClient: {
       employeesBatchCreate: rpcMocks.employeesBatchCreate,
+      employeesSave: rpcMocks.employeesSave,
       debtAccountsCreate: rpcMocks.debtAccountsCreate,
     },
   }
@@ -275,14 +276,14 @@ describe("mutation result validation", () => {
   })
 })
 
-describe("useCreateEmployeesBatchMutation — created ids reach the caller", () => {
+describe("employee mutation adapters", () => {
   function wrapper(queryClient: QueryClient) {
     return function Wrapper({ children }: { children: ReactNode }) {
       return createElement(QueryClientProvider, { client: queryClient }, children)
     }
   }
 
-  it("returns the created employees with their real ids, not only a count", async () => {
+  it("passes exact salary references through batch create and save while returning created ids", async () => {
     const employee = { id: "emp-new-1", firstName: "سعيد", lastName: "بلقاسم" }
     rpcMocks.employeesBatchCreate.mockResolvedValue({
       success: true,
@@ -304,8 +305,7 @@ describe("useCreateEmployeesBatchMutation — created ids reach the caller", () 
           roleId: "role-project-manager",
           status: "ACTIVE",
           managerId: null,
-          salaryAmountDzd: null,
-          salaryPeriod: null,
+          salaryReference: { period: "DAILY", amount: "900719925474.0993" },
           notes: null,
         },
       ],
@@ -315,6 +315,43 @@ describe("useCreateEmployeesBatchMutation — created ids reach the caller", () 
     // `{ id: "new" }` would be invisible without this pin.
     expect(output.createdCount).toBe(1)
     expect(output.employees).toEqual([employee])
-    expect(rpcMocks.employeesBatchCreate).toHaveBeenCalledTimes(1)
+    expect(rpcMocks.employeesBatchCreate).toHaveBeenCalledWith({
+      employees: [expect.objectContaining({
+        salaryReference: { period: "DAILY", amount: "900719925474.0993" },
+      })],
+    })
+
+    rpcMocks.employeesSave.mockResolvedValue({ success: true, message: "Saved", item: employee })
+    const saveMutation = renderHook(() => useSaveEmployeeMutation(), { wrapper: wrapper(queryClient) })
+    const saveInput = {
+      id: "emp-new-1",
+      salaryReference: { period: "MONTHLY" as const, amount: "1000000000000000.01" },
+    }
+    await saveMutation.result.current.mutateAsync(saveInput)
+
+    expect(rpcMocks.employeesSave).toHaveBeenCalledWith(saveInput)
+  })
+
+  it("translates structured salary-reference field errors and retains paths", async () => {
+    rpcMocks.employeesSave.mockResolvedValue({
+      success: false,
+      error: {
+        message: "Validation failed",
+        code: "VALIDATION",
+        fieldErrors: [
+          { field: "salaryReference.amount", message: "workforce.validation.salaryReference.precision" },
+          { field: "notes", message: "Server supplied literal" },
+        ],
+      },
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const { result } = renderHook(() => useSaveEmployeeMutation(), { wrapper: wrapper(queryClient) })
+    const error = await result.current.mutateAsync({ id: "emp-1" }).catch((reason: unknown) => reason)
+
+    expect(error).toBeInstanceOf(AppMutationError)
+    expect((error as AppMutationError).fieldErrors[0]).toMatchObject({ field: "salaryReference.amount" })
+    expect((error as AppMutationError).fieldErrors[0]?.message).not.toBe("workforce.validation.salaryReference.precision")
+    expect((error as AppMutationError).fieldErrors[1]).toEqual({ field: "notes", message: "Server supplied literal" })
   })
 })

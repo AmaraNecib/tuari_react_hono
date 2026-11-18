@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { paymentMethodSchema } from "./core";
+import { UnitPrice } from "./exact-money";
 
 export const counterpartyTypeSchema = z.enum(["EXTERNAL_COUNTERPARTY", "WORKER"]);
 
@@ -29,6 +30,26 @@ export const paymentAmountSchema = z.number().positive().max(MAX_MONEY_DZD);
  * money rule; only the sign bound differs.
  */
 export const nonNegativePaymentAmountSchema = z.number().nonnegative().max(MAX_MONEY_DZD);
+
+/** Numeric legacy inventory inputs may keep their transport, but must honor the exact #522 scale. */
+export function nonNegativePaymentAmountAtScaleSchema(scale: number) {
+  return nonNegativePaymentAmountSchema.refine((amount) => {
+    const [coefficient, exponentText] = String(amount).toLowerCase().split("e");
+    const fractionDigits = coefficient?.split(".")[1]?.length ?? 0;
+    const exponent = exponentText === undefined ? 0 : Number(exponentText);
+    return Number.isFinite(exponent) && Math.max(0, fractionDigits - exponent) <= scale;
+  }, { message: `Amount permits at most ${scale} decimal places.` });
+}
+
+/** Entered inventory unit prices use the exact four-place, reversal-safe int64 codec range. */
+export const nonNegativeUnitPriceSchema = nonNegativePaymentAmountAtScaleSchema(4).refine((amount) => {
+  try {
+    UnitPrice.parse(String(amount));
+    return true;
+  } catch {
+    return false;
+  }
+}, { message: "Unit price exceeds the exact supported range." });
 
 /**
  * A COMPUTED aggregate that may legitimately be negative, bounded on both sides

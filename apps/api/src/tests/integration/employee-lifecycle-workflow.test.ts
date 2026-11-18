@@ -71,8 +71,7 @@ describe("Cross-domain: Employee lifecycle", () => {
         phone: "0555123456",
         roleId: "role-worker",
         status: "ACTIVE",
-        salaryAmountDzd: null,
-        salaryPeriod: null,
+        salaryReference: null,
         notes: null,
       },
       AUDIT,
@@ -144,11 +143,11 @@ describe("Cross-domain: Employee lifecycle", () => {
   it("creates multiple employees with separate debt accounts", () => {
     // Create two employees
     const emp1 = repo.createEmployee(
-      { firstName: "Karim", lastName: "Mokhtar", phone: "0666123456", roleId: "role-worker", status: "ACTIVE", salaryAmountDzd: null, salaryPeriod: null, notes: null },
+      { firstName: "Karim", lastName: "Mokhtar", phone: "0666123456", roleId: "role-worker", status: "ACTIVE", salaryReference: null, notes: null },
       AUDIT,
     );
     const emp2 = repo.createEmployee(
-      { firstName: "Sami", lastName: "Bensalem", phone: "0777123456", roleId: "role-worker", status: "ACTIVE", salaryAmountDzd: null, salaryPeriod: null, notes: null },
+      { firstName: "Sami", lastName: "Bensalem", phone: "0777123456", roleId: "role-worker", status: "ACTIVE", salaryReference: null, notes: null },
       AUDIT,
     );
 

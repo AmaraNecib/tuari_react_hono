@@ -62,6 +62,15 @@ vi.mock("@tanstack/react-router", async () => {
   }
 })
 
+vi.mock("@/features/session/use-session-query", () => ({
+  useSessionQuery: () => ({ data: { user: { id: "user-1" } } }),
+}))
+
+vi.mock("@/features/employees/employee-earnings-queries", async (importActual) => ({
+  ...(await importActual<typeof import("@/features/employees/employee-earnings-queries")>()),
+  useApproveEmployeeEarningMutation: () => ({ isPending: false, mutateAsync: vi.fn(async () => ({})) }),
+}))
+
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
   useCreateDebtAccountMutation: () => ({ isPending: mutationPending.createDebtAccount, mutateAsync: createDebtAccountMutateAsync }),
   useCreateDebtEntryMutation: () => ({ isPending: mutationPending.createDebtEntry, mutate: createDebtEntryMutate, mutateAsync: createDebtEntryMutate }),
@@ -592,8 +601,7 @@ describe("debts MVP web UI", () => {
           role: "عامل",
           roleId: "role-worker",
           roleKey: "worker",
-          salaryAmountDzd: 4500,
-          salaryPeriod: "DAILY",
+          salaryReference: { period: "DAILY", amount: "4500.0000" },
           status: "ACTIVE",
           updatedAt: "2026-03-27T10:00:00.000Z",
         }}
@@ -612,14 +620,13 @@ describe("debts MVP web UI", () => {
     expect(screen.getAllByText(/300/).length).toBeGreaterThan(0)
   })
 
-  it("submits a picked payment date (not the form default) as a canonical ISO instant on the employee finance tab (#428)", async () => {
+  it("keeps the picked canonical day in the employee earnings approval period (#428)", async () => {
     // Pick a day that is NOT the form's default (today) so the assertion
     // proves the pick changed the submitted value, instead of matching the
     // default that was already in state (round-2 review finding).
     const today = getAlgeriaDateInputValue()
     const pickedDay = `${today.slice(0, 7)}-${today.endsWith("-15") ? "16" : "15"}`
-    const expectedIso = toAlgeriaDayBoundaryIso(pickedDay, "start")
-    expect(expectedIso).not.toBe(toAlgeriaDayBoundaryIso(today, "start"))
+    expect(toAlgeriaDayBoundaryIso(pickedDay, "start")).not.toBe(toAlgeriaDayBoundaryIso(today, "start"))
 
     renderWithProviders(
       <EmployeeDetailsPage
@@ -651,8 +658,7 @@ describe("debts MVP web UI", () => {
           role: "عامل",
           roleId: "role-worker",
           roleKey: "worker",
-          salaryAmountDzd: 4500,
-          salaryPeriod: "DAILY",
+          salaryReference: { period: "DAILY", amount: "4500.0000" },
           status: "ACTIVE",
           updatedAt: "2026-03-27T10:00:00.000Z",
         }}
@@ -664,22 +670,17 @@ describe("debts MVP web UI", () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة راتب" }))
-    fireEvent.change(screen.getByPlaceholderText("0"), { target: { value: "4500" } })
-
-    const trigger = document.querySelector<HTMLElement>('[data-slot="popover-trigger"]')
+    fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
+    const startDate = screen.getByText("بداية فترة العمل").closest("label")!
+    const trigger = startDate.querySelector<HTMLElement>('[data-slot="popover-trigger"]')
     expect(trigger).not.toBeNull()
     fireEvent.click(trigger!)
     const cell = document.querySelector(`[data-day="${pickedDay}"]`)
     expect(cell).not.toBeNull()
     fireEvent.click(cell!.querySelector("button")!)
 
-    fireEvent.click(screen.getByRole("button", { name: "حفظ دفعة الراتب" }))
-
-    await waitFor(() => expect(createSalaryPaymentMutate).toHaveBeenCalledTimes(1))
-    expect(createSalaryPaymentMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentDate: expectedIso }),
-    )
+    expect(startDate.querySelector('[data-slot="popover-trigger"]')?.textContent).toContain(pickedDay.slice(-2))
+    expect(createSalaryPaymentMutate).not.toHaveBeenCalled()
   })
 
   describe("debt balance terminology", () => {

@@ -74,12 +74,12 @@ function createEnv() {
 
 type Env = ReturnType<typeof createEnv>;
 
-function chargedMaterials(env: Env, projectId: string): number {
-  return env.projectCost.getProjectCost({ projectId }).item.parts.chargedMaterialsDzd;
+function chargedMaterials(env: Env, projectId: string): string {
+  return env.projectCost.getProjectCost({ projectId }).item.parts.chargedMaterialsAmount;
 }
 
-function total(env: Env, projectId: string): number {
-  return env.projectCost.getProjectCost({ projectId }).item.totalDzd;
+function total(env: Env, projectId: string): string {
+  return env.projectCost.getProjectCost({ projectId }).item.totalAmount;
 }
 
 /** Buy consumables into the warehouse and return the entry id. */
@@ -118,8 +118,8 @@ describe("project material cost nets the movements in and out (#414)", () => {
 
     // 1) Buy 10 into the warehouse: no project is charged.
     const entryId = buyIntoWarehouse(env, item.id, 10, 500);
-    expect(chargedMaterials(env, PROJECT_A)).toBe(0);
-    expect(total(env, PROJECT_A)).toBe(0);
+    expect(chargedMaterials(env, PROJECT_A)).toBe("0.00");
+    expect(total(env, PROJECT_A)).toBe("0.00");
 
     // 2) Warehouse → A 10: A is charged 5,000.
     env.inventory.transferConsumable({
@@ -128,11 +128,11 @@ describe("project material cost nets the movements in and out (#414)", () => {
       fromWarehouseId: WAREHOUSE,
       toProjectId: PROJECT_A,
     });
-    expect(chargedMaterials(env, PROJECT_A)).toBe(5_000);
-    expect(total(env, PROJECT_A)).toBe(5_000);
+    expect(chargedMaterials(env, PROJECT_A)).toBe("5000.00");
+    expect(total(env, PROJECT_A)).toBe("5000.00");
 
     // 3) Physical use has no event: the charge is unchanged.
-    expect(chargedMaterials(env, PROJECT_A)).toBe(5_000);
+    expect(chargedMaterials(env, PROJECT_A)).toBe("5000.00");
 
     // 4) A → warehouse 3 reverses 1,500; A keeps 3,500.
     env.inventory.transferConsumable({
@@ -141,8 +141,8 @@ describe("project material cost nets the movements in and out (#414)", () => {
       fromProjectId: PROJECT_A,
       toWarehouseId: WAREHOUSE,
     });
-    expect(chargedMaterials(env, PROJECT_A)).toBe(3_500);
-    expect(total(env, PROJECT_A)).toBe(3_500);
+    expect(chargedMaterials(env, PROJECT_A)).toBe("3500.00");
+    expect(total(env, PROJECT_A)).toBe("3500.00");
 
     // 5) A → B 2 moves 1,000 from A to B.
     env.inventory.transferConsumable({
@@ -151,8 +151,8 @@ describe("project material cost nets the movements in and out (#414)", () => {
       fromProjectId: PROJECT_A,
       toProjectId: PROJECT_B,
     });
-    expect(chargedMaterials(env, PROJECT_A)).toBe(2_500);
-    expect(chargedMaterials(env, PROJECT_B)).toBe(1_000);
+    expect(chargedMaterials(env, PROJECT_A)).toBe("2500.00");
+    expect(chargedMaterials(env, PROJECT_B)).toBe("1000.00");
   });
 
   it("equals the net of the consumable movements the inventory module wrote", () => {
@@ -195,7 +195,7 @@ describe("project material cost nets the movements in and out (#414)", () => {
       }, 0);
 
     expect(netOfMovements).toBe(2_500);
-    expect(chargedMaterials(env, PROJECT_A)).toBe(netOfMovements);
+    expect(chargedMaterials(env, PROJECT_A)).toBe("2500.00");
   });
 
   it("charges a consumable at the project and parks only the assets there", () => {
@@ -235,11 +235,11 @@ describe("project material cost nets the movements in and out (#414)", () => {
     });
 
     const cost = env.projectCost.getProjectCost({ projectId: PROJECT_A }).item;
-    expect(cost.parts.chargedMaterialsDzd).toBe(2_500);
-    expect(cost.parts.stockDzd).toBe(180_000);
+    expect(cost.parts.chargedMaterialsAmount).toBe("2500.00");
+    expect(cost.parts.stockAmount).toBe("180000.00");
     // The tool is parked inventory; the material is charged, not parked.
     expect(cost.parkedInventory.assets.map((asset) => asset.assetName)).toEqual(["خلاطة"]);
-    expect(cost.parkedInventory.totalDzd).toBe(180_000);
+    expect(cost.parkedInventory.totalAmount).toBe("180000.00");
     expect("consumables" in cost.parkedInventory).toBe(false);
   });
 });

@@ -14,6 +14,7 @@ mod license_signer_interop {
     use app_lib::license::{ActivationResult, LicenseManager};
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
+    use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const GENERATE_KEYPAIR_JS: &str = r#"
@@ -35,12 +36,42 @@ mod license_signer_interop {
         }
     }
 
+    static NEXT_TEMP_DIR_ID: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_dir_at(nanos: u128) -> PathBuf {
+        loop {
+            let id = NEXT_TEMP_DIR_ID.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir().join(format!(
+                "tuari-license-interop-{nanos}-{}-{id}",
+                std::process::id()
+            ));
+            match std::fs::create_dir(&dir) {
+                Ok(()) => return dir,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => panic!("failed to create interop temp directory: {error}"),
+            }
+        }
+    }
+
     fn temp_dir() -> PathBuf {
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        std::env::temp_dir().join(format!("tuari-license-interop-{nanos}"))
+        temp_dir_at(nanos)
+    }
+
+    #[test]
+    fn temp_directories_are_unique_at_the_same_timestamp() {
+        let first = temp_dir_at(42);
+        let second = temp_dir_at(42);
+
+        assert_ne!(first, second);
+        assert!(first.is_dir());
+        assert!(second.is_dir());
+
+        std::fs::remove_dir_all(first).unwrap();
+        std::fs::remove_dir_all(second).unwrap();
     }
 
     fn repo_root() -> PathBuf {
@@ -63,11 +94,7 @@ mod license_signer_interop {
 
     /// Generate an Ed25519 keypair with Node and return the raw public key.
     fn generate_test_keypair(dir: &Path) -> [u8; 32] {
-        let output = run_node(&[
-            "-e",
-            GENERATE_KEYPAIR_JS,
-            dir.to_str().unwrap(),
-        ]);
+        let output = run_node(&["-e", GENERATE_KEYPAIR_JS, dir.to_str().unwrap()]);
         assert!(
             output.status.success(),
             "keypair generation failed: {}",
@@ -108,7 +135,10 @@ mod license_signer_interop {
     }
 
     fn assert_activated(manager: &LicenseManager, license: &str) -> app_lib::license::LicenseInfo {
-        match manager.activate(license).expect("minted license must verify") {
+        match manager
+            .activate(license)
+            .expect("minted license must verify")
+        {
             ActivationResult::Activated(info) => info,
             ActivationResult::Replaced(_, _) => panic!("fresh manager must report Activated"),
         }

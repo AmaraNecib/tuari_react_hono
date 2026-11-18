@@ -85,6 +85,17 @@ describe("ExpensesModule", () => {
       expect(created.projectId).toBeNull();
     });
 
+    it.each([0.375, 0.001])("rejects excess final precision %s at the module boundary", async (amount) => {
+      await expect(expensesModule.create(makeExpense({ amount }), AUDIT))
+        .rejects.toBeInstanceOf(ExpenseInvalidAmountError);
+      await expect(expensesModule.list()).resolves.toMatchObject({ items: [], totals: { count: 0 } });
+    });
+
+    it.each([0.1, 0.29, 12.34])("accepts legal cent amount %s without changing it", async (amount) => {
+      await expect(expensesModule.create(makeExpense({ amount }), AUDIT))
+        .resolves.toMatchObject({ amount });
+    });
+
     it("rejects a non-positive or unbounded amount at the service boundary", async () => {
       await expect(
         expensesModule.create(makeExpense({ amount: 0 }), AUDIT),
@@ -352,6 +363,16 @@ describe("ExpensesModule", () => {
 
       expect(updated).toEqual(created);
       expect((await expensesModule.get("expense-1"))?.revisions).toHaveLength(0);
+    });
+
+    it("rejects excess precision before updating or recording a revision", async () => {
+      await expensesModule.create(makeExpense(), AUDIT);
+
+      await expect(expensesModule.update({ id: "expense-1", amount: 0.375 }, AUDIT))
+        .rejects.toBeInstanceOf(ExpenseInvalidAmountError);
+      await expect(expensesModule.update({ id: "expense-1", amount: 0.001 }, AUDIT))
+        .rejects.toBeInstanceOf(ExpenseInvalidAmountError);
+      await expect(expensesModule.get("expense-1")).resolves.toMatchObject({ amount: 12500, revisions: [] });
     });
 
     it("rejects an invalid amount and an unknown expense", async () => {

@@ -366,6 +366,27 @@ describe("RPC router", () => {
     expect(result.success).toBe(true);
   });
 
+  it("requires employee permissions for approved earning reads and writes", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, { isBootstrapOwner: async () => false });
+    const noPermissionClient = createRouterClient(router, {
+      context: createContext({ ...currentUser, permissions: [] }) as never,
+    });
+    const anonymousClient = createRouterClient(router, { context: createContext(null) as never });
+
+    await expect(anonymousClient.employeeEarningsList()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(noPermissionClient.employeeEarningsApprove({
+      employeeId: "employee-1",
+      requestId: "d0f2fd98-5ca5-49ae-9074-b139df26614d",
+      periodStart: "2026-04-01T00:00:00.000Z",
+      periodEnd: "2026-04-02T00:00:00.000Z",
+      currencyCode: "DZD",
+      totalAmount: "1.00",
+      unallocatedAmount: "1.00",
+      segments: [],
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
   it("rejects employee creation when user lacks employees:create permission", async () => {
     const harness = createHarness();
     const { service, roleIds } = harness;
@@ -1336,7 +1357,7 @@ describe("RPC router", () => {
           id: "e-1",
           expenseDate: "2026-05-10T00:00:00.000Z",
           whatFor: "وقود",
-          amountDzd: 12_500,
+          amount: "12500.00",
           responsibleWorkerId: null,
           responsibleWorkerName: null,
           sellerId: null,
@@ -1345,24 +1366,27 @@ describe("RPC router", () => {
       ],
       listProjectSalarySplits: () => [
         {
-          paymentId: "pay-1",
+          earningId: "earning-1",
+          segmentId: "segment-1",
           employeeId: "emp-1",
           employeeName: "كريم ب.",
-          paymentDays: 30,
-          paymentAmountDzd: 60_000,
-          splitDays: 18,
-          paymentDate: "2026-05-31T00:00:00.000Z",
+          ordinal: 0,
+          days: 25,
+          amount: "36000.00",
+          periodStart: "2026-05-01T00:00:00.000Z",
+          periodEnd: "2026-05-31T00:00:00.000Z",
+          approvedAt: "2026-05-31T00:00:00.000Z",
         },
       ],
       listProjectStockCharges: () => [
-        { id: "c-1", assetUnitId: "a-1", assetName: "خلاطة", amountDzd: 180_000, placedAt: "2026-05-20T00:00:00.000Z" },
+        { id: "c-1", assetUnitId: "a-1", assetName: "خلاطة", amount: "180000.00", placedAt: "2026-05-20T00:00:00.000Z" },
       ],
       listProjectMaterialMovements: () => [
-        { id: "m-in", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 40, unitPriceDzd: 850, direction: "IN", occurredAt: "2026-05-20T00:00:00.000Z" },
-        { id: "m-out", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: 5, unitPriceDzd: 850, direction: "OUT", occurredAt: "2026-05-21T00:00:00.000Z" },
+        { id: "m-in", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: "40", unitPrice: "850.0000", direction: "IN", occurredAt: "2026-05-20T00:00:00.000Z" },
+        { id: "m-out", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: "5", unitPrice: "850.0000", direction: "OUT", occurredAt: "2026-05-21T00:00:00.000Z" },
       ],
       getProjectParkedAssets: () => [
-        { assetUnitId: "a-9", assetName: "رافعة", purchasePriceDzd: 500_000 },
+        { assetUnitId: "a-9", assetName: "رافعة", purchaseAmount: "500000.00" },
       ],
     });
     const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, { projectCostService });
@@ -1374,7 +1398,7 @@ describe("RPC router", () => {
       await client.projectCostGet({ projectId: "11111111-1111-4111-8111-111111111111" }),
     );
     // 12,500 + 36,000 + 180,000 + (40 − 5) × 850 = 258,250.
-    expect(response.item.totalDzd).toBe(258_250);
+    expect(response.item.totalAmount).toBe("258250.00");
     expect(projectCostSchema.safeParse(response.item).success).toBe(true);
     expect(response.item.expenses).toHaveLength(1);
     expect(response.item.salaries).toHaveLength(1);

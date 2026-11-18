@@ -1,29 +1,36 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+
+const { mutateAsync, sessionUser } = vi.hoisted(() => ({ mutateAsync: vi.fn(), sessionUser: { id: "user-1" } }))
 
 vi.mock("react-i18next", () => ({
-  // status-meta imports @/i18n, which calls i18n.use(initReactI18next).
   initReactI18next: { type: "3rdParty", init: () => {} },
   useTranslation: () => ({
     i18n: { dir: () => "rtl" },
-    t: (key: string, options?: { count?: number }) =>
-      options?.count !== undefined ? `${key}:${options.count}` : key,
+    t: (key: string) => key,
   }),
 }))
 
-vi.mock("@/features/app-shell/workspace-mutations", () => ({
-  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn(), reset: vi.fn() }),
+vi.mock("@/features/employees/employee-earnings-queries", () => ({
+  useApproveEmployeeEarningMutation: () => ({ mutateAsync, isPending: false }),
+}))
+
+vi.mock("@/features/session/use-session-query", () => ({
+  useSessionQuery: () => ({ data: { user: sessionUser } }),
+}))
+
+vi.mock("@/components/ui/date-picker", () => ({
+  DatePicker: ({ id, value, onChange, disabled }: { id: string; value: string; onChange: (value: string) => void; disabled?: boolean }) => (
+    <input aria-label={id} type="date" value={value} disabled={disabled} onChange={event => onChange(event.target.value)} />
+  ),
 }))
 
 import { EmployeeTable, type EmployeeTableRow } from "./employee-table"
 
 const PROJECT = { id: "project-1", name: "مشروع" }
-// An open-ended window far wider than any payment month: the derived default
-// always covers the dialog's period.
-const ASSIGNMENT = { projectId: PROJECT.id, startDate: "2000-01-01T00:00:00+01:00", endDate: null }
-
+const REFERENCE = { period: "MONTHLY" as const, amount: "30000.00" }
 const copy = {
   name: "name",
   role: "role",
@@ -65,16 +72,18 @@ const row: EmployeeTableRow = {
   role: "عامل",
   roleId: "role-worker",
   roleKey: "worker",
-  salaryAmountDzd: 30000,
-  salaryPeriod: "MONTHLY",
+  salaryReference: REFERENCE,
   status: "ACTIVE",
   updatedAt: "2026-03-01T10:00:00.000Z",
 }
 
-describe("EmployeeTable salary payment entry point (#412)", () => {
-  afterEach(() => {
-    cleanup()
+describe("EmployeeTable salary approval entry point", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mutateAsync.mockReset().mockResolvedValue({})
   })
+
+  afterEach(cleanup)
 
   function renderTable(overrides: Partial<EmployeeTableRow> = {}) {
     const element = (next: Partial<EmployeeTableRow>) => (
@@ -82,70 +91,61 @@ describe("EmployeeTable salary payment entry point (#412)", () => {
         copy={copy}
         rows={[{ ...row, ...next }]}
         projects={[PROJECT]}
-        projectAssignmentsByEmployeeId={{ [row.id]: [ASSIGNMENT] }}
         onDelete={vi.fn()}
         onEdit={vi.fn()}
         onLeave={vi.fn()}
         onView={vi.fn()}
       />
     )
-
     const view = render(element(overrides))
     return {
-      view,
-      // Simulate a workspace refresh that changes the row underneath the open
-      // dialog.
-      refresh: (next: Partial<EmployeeTableRow>) => {
-        view.rerender(element(next))
-      },
+      refresh: (next: Partial<EmployeeTableRow>) => view.rerender(element(next)),
     }
   }
 
-  it("opens the payment dialog with the project list and assignment windows", () => {
-    render(
-      <EmployeeTable
-        copy={copy}
-        rows={[row]}
-        projects={[PROJECT]}
-        projectAssignmentsByEmployeeId={{ [row.id]: [ASSIGNMENT] }}
-        onDelete={vi.fn()}
-        onEdit={vi.fn()}
-        onLeave={vi.fn()}
-        onView={vi.fn()}
-      />,
-    )
+  it("opens the real approval dialog and submits the exact employee reference", async () => {
+    renderTable()
 
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(screen.getByRole("heading", { name: "earnings.title" })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "50000" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "50000" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
 
-    // The dialog can attribute the payment: the project is selectable and the
-    // assignment window prefilled a full-period split.
-    const projectSelect = screen.getByLabelText("salaries.project") as HTMLSelectElement
-    expect(projectSelect.value).toBe(PROJECT.id)
-    expect(screen.getByText("salaries.unallocatedDays:0")).toBeTruthy()
-    expect(screen.getByRole("button", { name: "salaries.addProjectLine" }).hasAttribute("disabled")).toBe(false)
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    expect(mutateAsync.mock.calls[0]![0]).toMatchObject({
+      employeeId: "worker-1",
+      currencyCode: "DZD",
+      referenceSalary: { period: "MONTHLY", amount: "30000.00" },
+    })
   })
 
-  it("re-derives the open dialog's proposal from the live row after a wage refresh", () => {
-    const { refresh } = renderTable({ salaryAmountDzd: 30000, salaryPeriod: "MONTHLY" })
+  it("allows approval entry when the employee has no reference salary", async () => {
+    renderTable({ salaryReference: null })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(screen.getByRole("heading", { name: "earnings.title" })).toBeTruthy()
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "50000" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "50000" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
 
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
-    expect(screen.getAllByDisplayValue("30000").length).toBeGreaterThan(0)
-
-    // The open dialog snapshotted only the target's identity: the wage must
-    // follow the refreshed row rather than staying on the old proposal.
-    refresh({ salaryAmountDzd: 60000, salaryPeriod: "MONTHLY" })
-    expect(screen.getAllByDisplayValue("60000").length).toBeGreaterThan(0)
-    expect(screen.queryByDisplayValue("30000")).toBeNull()
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    expect(mutateAsync.mock.calls[0]![0]).toMatchObject({ employeeId: "worker-1", currencyCode: "DZD" })
+    expect(mutateAsync.mock.calls[0]![0].referenceSalary).toBeNull()
   })
 
-  it("follows a refreshed wage period so the untouched day default tracks it", () => {
-    const { refresh } = renderTable({ salaryAmountDzd: 30000, salaryPeriod: "MONTHLY" })
+  it("uses the refreshed reference while preserving employee identity", async () => {
+    const { refresh } = renderTable()
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    refresh({ salaryReference: { period: "DAILY", amount: "1500.00" }, name: "عامل محدّث" })
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "50000" } })
+    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "50000" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
 
-    fireEvent.click(screen.getByRole("button", { name: "salaries.addPayment" }))
-    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("30")
-
-    refresh({ salaryAmountDzd: 1500, salaryPeriod: "DAILY" })
-    expect((screen.getAllByRole("spinbutton")[0] as HTMLInputElement).value).toBe("1")
-    expect(screen.getAllByDisplayValue("1500").length).toBeGreaterThan(0)
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    expect(mutateAsync.mock.calls[0]![0]).toMatchObject({
+      employeeId: "worker-1",
+      referenceSalary: { period: "DAILY", amount: "1500.0000" },
+    })
+    expect(screen.getByText("عامل محدّث")).toBeTruthy()
   })
 })
