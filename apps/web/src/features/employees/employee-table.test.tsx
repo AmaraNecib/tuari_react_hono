@@ -109,7 +109,7 @@ describe("EmployeeTable salary approval entry point", () => {
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     expect(screen.getByRole("heading", { name: "earnings.title" })).toBeTruthy()
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "50000" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "50000" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
@@ -125,7 +125,7 @@ describe("EmployeeTable salary approval entry point", () => {
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     expect(screen.getByRole("heading", { name: "earnings.title" })).toBeTruthy()
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "50000" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "50000" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
@@ -138,7 +138,7 @@ describe("EmployeeTable salary approval entry point", () => {
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     refresh({ salaryReference: { period: "DAILY", amount: "1500.00" }, name: "عامل محدّث" })
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "50000" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "50000" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))

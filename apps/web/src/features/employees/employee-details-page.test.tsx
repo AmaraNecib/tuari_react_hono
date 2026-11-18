@@ -158,7 +158,7 @@ describe("EmployeeDetailsPage earnings entry", () => {
 
     await screen.findByRole("dialog")
     fireEvent.change(screen.getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري"), { target: { value: "1250" } })
-    fireEvent.change(screen.getByLabelText("المبلغ غير الموزع بالدينار الجزائري"), { target: { value: "1250" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /أقرّ بأن مبلغ/ }))
     fireEvent.click(screen.getByRole("button", { name: "اعتماد الأجر" }))
 
     await waitFor(() => expect(approveEarning).toHaveBeenCalledTimes(1))

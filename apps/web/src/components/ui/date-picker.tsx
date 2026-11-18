@@ -59,6 +59,7 @@ type DatePickerProps = {
   name?: string
   id?: string
   "aria-invalid"?: AriaAttributes["aria-invalid"]
+  "aria-required"?: AriaAttributes["aria-required"]
   "aria-describedby"?: string
 }
 
@@ -78,6 +79,7 @@ export function DatePicker({
   name,
   id,
   "aria-invalid": ariaInvalid,
+  "aria-required": ariaRequired,
   "aria-describedby": ariaDescribedby,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
@@ -106,6 +108,7 @@ export function DatePicker({
         <PopoverTrigger
           id={id}
           aria-invalid={ariaInvalid}
+          aria-required={ariaRequired}
           aria-describedby={ariaDescribedby}
           disabled={disabled}
           className={cn(

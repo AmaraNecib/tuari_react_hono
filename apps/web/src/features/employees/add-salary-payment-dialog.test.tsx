@@ -12,8 +12,8 @@ vi.mock("@/features/employees/employee-earnings-queries", () => ({
 }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: sessionUser } }) }))
 vi.mock("@/components/ui/date-picker", () => ({
-  DatePicker: ({ id, value, onChange, disabled, "aria-invalid": invalid, "aria-describedby": describedBy }: { id: string; value: string; onChange: (value: string) => void; disabled?: boolean; "aria-invalid"?: boolean; "aria-describedby"?: string }) => (
-    <input aria-label={id} aria-invalid={invalid} aria-describedby={describedBy} type="date" value={value} disabled={disabled} onChange={event => onChange(event.target.value)} />
+  DatePicker: ({ id, value, onChange, disabled, "aria-invalid": invalid, "aria-required": required, "aria-describedby": describedBy }: { id: string; value: string; onChange: (value: string) => void; disabled?: boolean; "aria-invalid"?: boolean; "aria-required"?: boolean | "true" | "false"; "aria-describedby"?: string }) => (
+    <input aria-label={id} aria-invalid={invalid} aria-required={required} aria-describedby={describedBy} type="date" value={value} disabled={disabled} onChange={event => onChange(event.target.value)} />
   ),
 }))
 
@@ -29,6 +29,72 @@ describe("earned-wage approval composer", () => {
     props.onOpenChange.mockReset()
   })
 
+  it("derives the remainder and requires acknowledgement before approval", async () => {
+    mutateAsync.mockResolvedValue({})
+    render(<AddSalaryPaymentDialog {...props} salaryReference={{ period: "DAILY", amount: "4500.1234" }} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
+    expect(screen.getByLabelText("earnings.total").getAttribute("aria-required")).toBe("true")
+    expect(screen.getByLabelText("earnings.periodStart").getAttribute("aria-required")).toBe("true")
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "600" } })
+
+    const remainder = screen.getByRole("status", { name: "earnings.unallocated" })
+    expect(remainder.tagName).toBe("OUTPUT")
+    expect(remainder.textContent).toContain("400.00")
+    const acknowledgement = screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }) as HTMLInputElement
+    expect(acknowledgement.required).toBe(true)
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(mutateAsync).not.toHaveBeenCalled()
+
+    fireEvent.click(acknowledgement)
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    expect(mutateAsync.mock.calls[0]![0]).toMatchObject({
+      totalAmount: "1000.00",
+      unallocatedAmount: "400.00",
+      referenceSalary: { period: "DAILY", amount: "4500.1234" },
+      segments: [{ projectId: "project-a", days: 1, amount: "600.00" }],
+    })
+  })
+
+  it("suggests exact values only for blank rows and leaves manual amounts untouched", async () => {
+    mutateAsync.mockResolvedValue({})
+    render(<AddSalaryPaymentDialog {...props} salaryReference={{ period: "MONTHLY", amount: "30000" }} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "100.01" } })
+    for (let index = 0; index < 3; index++) fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    const projectsByRow = screen.getAllByLabelText(/earnings.project /)
+    const daysByRow = screen.getAllByLabelText(/earnings.days /)
+    const amountsByRow = screen.getAllByLabelText(/earnings.amount /)
+    for (let index = 0; index < 3; index++) {
+      fireEvent.change(projectsByRow[index]!, { target: { value: index === 1 ? "project-b" : "project-a" } })
+    }
+    fireEvent.change(daysByRow[0]!, { target: { value: "3" } })
+    fireEvent.change(daysByRow[1]!, { target: { value: "1" } })
+    fireEvent.change(daysByRow[2]!, { target: { value: "2" } })
+    fireEvent.change(amountsByRow[0]!, { target: { value: "0.01" } })
+
+    fireEvent.click(screen.getByRole("button", { name: "earnings.suggestRemainingAcrossProjects" }))
+    expect((amountsByRow[0] as HTMLInputElement).value).toBe("0.01")
+    expect((amountsByRow[1] as HTMLInputElement).value).toBe("33.33")
+    expect((amountsByRow[2] as HTMLInputElement).value).toBe("66.67")
+    expect(screen.queryByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ })).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    expect(mutateAsync.mock.calls[0]![0]).toMatchObject({
+      totalAmount: "100.01",
+      unallocatedAmount: "0.00",
+      referenceSalary: { period: "MONTHLY", amount: "30000.00" },
+      segments: [
+        { projectId: "project-a", days: 3, amount: "0.01" },
+        { projectId: "project-b", days: 1, amount: "33.33" },
+        { projectId: "project-a", days: 2, amount: "66.67" },
+      ],
+    })
+  })
+
   it("retries the same fully unallocated approval after another tab clears completed storage", async () => {
     const serverRecords = new Map<string, unknown>()
     mutateAsync.mockImplementationOnce(async (payload: { requestId: string }) => {
@@ -40,7 +106,7 @@ describe("earned-wage approval composer", () => {
     })
     const view = render(<AddSalaryPaymentDialog {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "62500" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
     const firstPayload = mutateAsync.mock.calls[0]![0]
@@ -63,7 +129,7 @@ describe("earned-wage approval composer", () => {
     mutateAsync.mockResolvedValue({})
     const view = render(<AddSalaryPaymentDialog {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "62500" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
     const firstRequestId = mutateAsync.mock.calls[0]![0].requestId
@@ -74,7 +140,7 @@ describe("earned-wage approval composer", () => {
     expect(screen.queryByText("earnings.pendingApproval")).toBeNull()
     expect((screen.getByLabelText("earnings.total") as HTMLInputElement).value).toBe("")
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "62500" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2))
     expect(mutateAsync.mock.calls[1]![0].requestId).not.toBe(firstRequestId)
@@ -88,7 +154,6 @@ describe("earned-wage approval composer", () => {
     fireEvent.change(screen.getByLabelText("earnings.periodStart"), { target: { value: "2026-03-01" } })
     fireEvent.change(screen.getByLabelText("earnings.periodEnd"), { target: { value: "2026-03-31" } })
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "62500" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
 
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
@@ -148,7 +213,6 @@ describe("earned-wage approval composer", () => {
     })).mockResolvedValueOnce({})
     render(<AddSalaryPaymentDialog {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1500" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
@@ -176,39 +240,28 @@ describe("earned-wage approval composer", () => {
     expect(mutateAsync.mock.calls[1]![0].requestId).not.toBe(mutateAsync.mock.calls[0]![0].requestId)
   })
 
-  it("clears stale conservation after correcting A1 but keeps unrelated row errors", () => {
+  it("derives positive remainder, invalidates acknowledgement after edits, and exposes over-allocation", () => {
     render(<AddSalaryPaymentDialog {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
     fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
     fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
-    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1.234" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "500" } })
 
-    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
-    expect(screen.getByText("workforce.validation.earning.amountPrecision")).toBeTruthy()
-    expect(mutateAsync).not.toHaveBeenCalled()
+    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("500.00")
+    const acknowledgement = screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }) as HTMLInputElement
+    fireEvent.click(acknowledgement)
+    expect(acknowledgement.checked).toBe(true)
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1000" } })
+    expect(screen.queryByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ })).toBeNull()
+    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("0.00")
 
     fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "500" } })
+    expect((screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }) as HTMLInputElement).checked).toBe(false)
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1001" } })
+    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("-1.00")
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
-    const conservation = screen.getByText("workforce.validation.earning.conservation")
-    expect(screen.getByLabelText("earnings.total").getAttribute("aria-describedby")).toBe(conservation.id)
-    expect(mutateAsync).not.toHaveBeenCalled()
-
-    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "" } })
-    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
-    expect(screen.getByText("workforce.validation.earning.daysPositive")).toBeTruthy()
-    expect(screen.getByText("workforce.validation.earning.conservation")).toBeTruthy()
-
-    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1000" } })
-    expect(screen.queryByText("workforce.validation.earning.conservation")).toBeNull()
-    expect(screen.getByText("workforce.validation.earning.daysPositive")).toBeTruthy()
-    expect(mutateAsync).not.toHaveBeenCalled()
-
-    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
-    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "999" } })
-    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
-    expect(screen.getByText("workforce.validation.earning.conservation")).toBeTruthy()
+    expect(screen.getByText("workforce.validation.earning.positiveTotal")).toBeTruthy()
     expect(mutateAsync).not.toHaveBeenCalled()
   })
 
@@ -221,7 +274,6 @@ describe("earned-wage approval composer", () => {
     fireEvent.change(screen.getByLabelText("earnings.periodStart"), { target: { value: "2026-03-01" } })
     fireEvent.change(screen.getByLabelText("earnings.periodEnd"), { target: { value: "2026-03-31" } })
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "100" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
     fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
     fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
@@ -235,10 +287,9 @@ describe("earned-wage approval composer", () => {
     expect(mutateAsync.mock.calls[1]![0].requestId).not.toBe(mutateAsync.mock.calls[0]![0].requestId)
   })
 
-  it("shows localized precision and conservation issues without sending an invalid approval", () => {
+  it("shows localized precision and requires acknowledgement for the exact remainder", () => {
     render(<AddSalaryPaymentDialog {...props} />)
     fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "1000" } })
-    fireEvent.change(screen.getByLabelText("earnings.unallocated"), { target: { value: "0" } })
     fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
     fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
     fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
@@ -248,11 +299,8 @@ describe("earned-wage approval composer", () => {
     expect(mutateAsync).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "500" } })
-    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
-    const conservation = screen.getByText("workforce.validation.earning.conservation")
-    const totalField = screen.getByLabelText("earnings.total")
-    expect(totalField.getAttribute("aria-invalid")).toBe("true")
-    expect(totalField.getAttribute("aria-describedby")).toBe(conservation.id)
+    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("500.00")
+    expect((screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }) as HTMLInputElement).required).toBe(true)
     expect(mutateAsync).not.toHaveBeenCalled()
   })
 })

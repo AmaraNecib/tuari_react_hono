@@ -98,7 +98,7 @@ describe("SalariesSection (#412)", () => {
     fireEvent.change(screen.getByLabelText("بداية فترة العمل"), { target: { value: "2026-03-01" } })
     fireEvent.change(screen.getByLabelText("نهاية فترة العمل"), { target: { value: "2026-03-31" } })
     fireEvent.change(screen.getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري"), { target: { value: "1000" } })
-    fireEvent.change(screen.getByLabelText("المبلغ غير الموزع بالدينار الجزائري"), { target: { value: "1000" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /أقرّ بأن مبلغ/ }))
     fireEvent.click(screen.getByRole("button", { name: "اعتماد الأجر" }))
 
     await waitFor(() => expect(approveAsync).toHaveBeenCalledTimes(1))

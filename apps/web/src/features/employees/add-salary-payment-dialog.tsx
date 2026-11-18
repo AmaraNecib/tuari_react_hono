@@ -7,6 +7,7 @@ import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { useApproveEmployeeEarningMutation } from "@/features/employees/employee-earnings-queries"
+import { calculateEarningAllocation, formatEarningMinorUnits, suggestBlankEarningRowAmounts } from "@/features/employees/employee-earning-allocation"
 import { useSessionQuery } from "@/features/session/use-session-query"
 import {
   editEarningDraftRow,
@@ -100,8 +101,8 @@ export function AddSalaryPaymentDialog({
   const [periodStart, setPeriodStart] = useState(getAlgeriaDateInputValue())
   const [periodEnd, setPeriodEnd] = useState(getAlgeriaDateInputValue())
   const [total, setTotal] = useState("")
-  const [unallocated, setUnallocated] = useState("")
   const [rows, setRows] = useState<EmployeeEarningDraftRow[]>([])
+  const [acknowledgedRemainder, setAcknowledgedRemainder] = useState<string | null>(null)
   const [pending, setPending] = useState<PendingEmployeeEarning | null>(null)
   const [storageError, setStorageError] = useState(false)
   const [error, setError] = useState("")
@@ -114,8 +115,8 @@ export function AddSalaryPaymentDialog({
     if (!identity) {
       setPending(null)
       setTotal("")
-      setUnallocated("")
       setRows([])
+      setAcknowledgedRemainder(null)
       return
     }
     const identityKey = JSON.stringify([identity.userId, identity.workspaceId, identity.employeeId])
@@ -126,8 +127,8 @@ export function AddSalaryPaymentDialog({
       setPeriodStart(getAlgeriaDateInputValue())
       setPeriodEnd(getAlgeriaDateInputValue())
       setTotal("")
-      setUnallocated("")
       setRows([])
+      setAcknowledgedRemainder(null)
     }
     try {
       const loaded = loadPendingEmployeeEarning(identity, window.localStorage)
@@ -141,7 +142,6 @@ export function AddSalaryPaymentDialog({
         setPeriodStart(dateFromBoundary(payload.periodStart))
         setPeriodEnd(dateFromBoundary(payload.periodEnd))
         setTotal(payload.totalAmount)
-        setUnallocated(payload.unallocatedAmount)
         setRows(payload.segments.map(segment => ({ id: segment.id, projectId: segment.projectId, daysText: String(segment.days), amountText: segment.amount })))
       }
     } catch {
@@ -149,20 +149,43 @@ export function AddSalaryPaymentDialog({
     }
   }, [open, identity])
 
+  const allocation = useMemo(() => calculateEarningAllocation(total, rows), [total, rows])
+  const unallocatedAmountText = pending?.payload.unallocatedAmount ??
+    (allocation.remainderMinor === null ? "" : formatEarningMinorUnits(allocation.remainderMinor))
+  const positiveRemainder = allocation.remainderMinor !== null && allocation.remainderMinor > 0n
+
   const draft: EmployeeEarningDraft = {
     employeeId: employeeId ?? "",
     periodStart: toAlgeriaDayBoundaryIso(periodStart, "start") ?? "",
     periodEnd: toAlgeriaDayBoundaryIso(periodEnd, "end") ?? "",
     totalAmountText: total,
-    unallocatedAmountText: unallocated,
+    unallocatedAmountText,
     rows,
     referenceSalary: salaryReference,
   }
 
-  const addRow = () => setRows(current => [...current, newRow()])
-  const updateRow = (id: string, patch: Partial<Omit<EmployeeEarningDraftRow, "id">>) =>
+  const addRow = () => {
+    setAcknowledgedRemainder(null)
+    setRows(current => [...current, newRow()])
+  }
+  const updateRow = (id: string, patch: Partial<Omit<EmployeeEarningDraftRow, "id">>) => {
+    setAcknowledgedRemainder(null)
     setRows(current => editEarningDraftRow({ ...draft, rows: current }, id, patch).rows)
-  const removeRow = (id: string) => setRows(current => current.filter(row => row.id !== id))
+  }
+  const removeRow = (id: string) => {
+    setAcknowledgedRemainder(null)
+    setRows(current => current.filter(row => row.id !== id))
+  }
+  const applySuggestion = () => {
+    const suggestions = suggestBlankEarningRowAmounts(total, rows)
+    if (!suggestions) return
+    setAcknowledgedRemainder(null)
+    setRows(current => current.map(row => {
+      const suggestion = suggestions.find(entry => entry.id === row.id)
+      return suggestion ? { ...row, amountText: suggestion.amountText } : row
+    }))
+  }
+  const formattedMinor = (value: bigint | null) => value === null ? t("earnings.notAvailable") : formatEarningMinorUnits(value)
   const issueAt = (path: (string | number)[]) => issues.find(issue => issue.path.length === path.length && issue.path.every((part, index) => part === path[index]))
   const issueId = (path: (string | number)[]) => `earning-field-error-${path.join("-")}`
   const controlPath = (path: (string | number)[]) => {
@@ -187,6 +210,10 @@ export function AddSalaryPaymentDialog({
     setIssues([])
     if (!identity) { setError(t("earnings.identityRequired")); return }
     if (storageError) { setError(t("earnings.storageUnavailable")); return }
+    if (!pending && positiveRemainder && acknowledgedRemainder !== allocation.remainderMinor?.toString()) {
+      setError(t("earnings.acknowledgementRequired"))
+      return
+    }
     let hadPriorPending = pending !== null
     let payload = pending?.payload
     let mutationStarted = false
@@ -216,8 +243,8 @@ export function AddSalaryPaymentDialog({
       removePendingEmployeeEarning(identity, window.localStorage)
       setPending(null)
       setTotal("")
-      setUnallocated("")
       setRows([])
+      setAcknowledgedRemainder(null)
       onOpenChange(false)
     } catch (cause) {
       if (mutationSucceeded || !mutationStarted) {
@@ -249,14 +276,14 @@ export function AddSalaryPaymentDialog({
 
   const busy = mutation.isPending
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="max-w-2xl">
+    <DialogContent className="max-h-[min(90vh,52rem)] max-w-3xl overflow-y-auto">
       <DialogHeader>
         <DialogTitle>{t("earnings.title")}</DialogTitle>
         {employeeName ? <p className="text-sm text-muted-foreground" dir="auto">{employeeName}</p> : null}
       </DialogHeader>
       {pending ? <p role="status" className="rounded-xl border border-border/60 bg-surface-2 p-3 text-sm">{t("earnings.pendingApproval")}</p> : null}
-      <form onSubmit={event => { event.preventDefault(); void submit() }}>
-      <div className="space-y-4" aria-busy={busy}>
+      <form className="space-y-5" onSubmit={event => { event.preventDefault(); void submit() }}>
+      <div className="space-y-5" aria-busy={busy}>
         <div className="grid gap-4 sm:grid-cols-2">
           {(["periodStart", "periodEnd"] as const).map(field => {
             const path = [field]
@@ -264,25 +291,19 @@ export function AddSalaryPaymentDialog({
             const value = field === "periodStart" ? periodStart : periodEnd
             const setValue = field === "periodStart" ? setPeriodStart : setPeriodEnd
             return <label key={field} className="flex flex-col gap-2" aria-invalid={issue ? true : undefined} aria-describedby={issue ? issueId(path) : undefined}>
-              <span className="text-sm font-medium">{t(`earnings.${field}`)}</span>
-              <DatePicker id={t(`earnings.${field}`)} aria-invalid={issue ? true : undefined} aria-describedby={issue ? issueId(path) : undefined} value={value} onChange={next => { clearIssue(path); setValue(next) }} disabled={frozen || busy} />
+              <span className="text-sm font-medium">{t(`earnings.${field}`)} <span aria-hidden="true" className="text-destructive">*</span></span>
+              <DatePicker id={t(`earnings.${field}`)} aria-required="true" aria-invalid={issue ? true : undefined} aria-describedby={issue ? issueId(path) : undefined} value={value} onChange={next => { clearIssue(path); setValue(next) }} disabled={frozen || busy} />
               {issue ? <p id={issueId(path)} className="text-sm text-destructive">{issue.message}</p> : null}
             </label>
           })}
-          {(["totalAmountText", "unallocatedAmountText"] as const).map(field => {
-            const path = [field]
-            const issue = issueAt(path)
-            const isTotal = field === "totalAmountText"
-            const label = t(isTotal ? "earnings.total" : "earnings.unallocated")
-            return <label key={field} className="flex flex-col gap-2">
-              <span className="text-sm font-medium">{label}</span>
-              <CurrencyInput aria-label={label} aria-invalid={issue ? true : undefined} aria-describedby={issue ? issueId(path) : undefined} value={isTotal ? total : unallocated} onChange={event => { clearIssue(path); (isTotal ? setTotal : setUnallocated)(event.target.value) }} disabled={frozen || busy} />
-              {issue ? <p id={issueId(path)} className="text-sm text-destructive">{issue.message}</p> : null}
-            </label>
-          })}
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-medium">{t("earnings.total")} <span aria-hidden="true" className="text-destructive">*</span></span>
+            <CurrencyInput aria-label={t("earnings.total")} required aria-required="true" aria-invalid={issueAt(["totalAmountText"]) ? true : undefined} aria-describedby={issueAt(["totalAmountText"]) ? issueId(["totalAmountText"]) : undefined} value={total} onChange={event => { clearIssue(["totalAmountText"]); setAcknowledgedRemainder(null); setTotal(event.target.value) }} disabled={frozen || busy} />
+            {issueAt(["totalAmountText"]) ? <p id={issueId(["totalAmountText"])} className="text-sm text-destructive">{issueAt(["totalAmountText"])!.message}</p> : null}
+          </label>
         </div>
-        <section className="space-y-3 rounded-xl border border-border/60 bg-surface-2 p-4" aria-label={t("earnings.projectRows")}>
-          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-medium">{t("earnings.projectRows")}</h3><Button type="button" size="xs" variant="outline" onClick={addRow} disabled={frozen || busy}>{t("earnings.addProjectRow")}</Button></div>
+        <section className="space-y-4 rounded-xl border border-border/60 bg-surface-2 p-4 sm:p-5" aria-label={t("earnings.projectRows")}>
+          <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-sm font-semibold">{t("earnings.projectRows")}</h3><div className="flex flex-wrap gap-2"><Button type="button" size="xs" variant="outline" onClick={applySuggestion} disabled={frozen || busy || !suggestBlankEarningRowAmounts(total, rows)}>{t("earnings.suggestRemainingAcrossProjects")}</Button><Button type="button" size="xs" variant="outline" onClick={addRow} disabled={frozen || busy}>{t("earnings.addProjectRow")}</Button></div></div>
           {rows.map((row, index) => {
             const projectPath = ["rows", row.id, "projectId"]
             const daysPath = ["rows", row.id, "daysText"]
@@ -290,13 +311,30 @@ export function AddSalaryPaymentDialog({
             const projectIssue = issueAt(projectPath)
             const daysIssue = issueAt(daysPath)
             const amountIssue = issueAt(amountPath)
-            return <div key={row.id} className="grid gap-3 sm:grid-cols-[1fr_100px_140px_auto] sm:items-end">
-              <label className="flex flex-col gap-1"><span className="text-xs text-ink-3">{t("earnings.project")}</span><NativeSelect aria-label={`${t("earnings.project")} ${index + 1}`} aria-invalid={projectIssue ? true : undefined} aria-describedby={projectIssue ? issueId(projectPath) : undefined} value={row.projectId} disabled={frozen || busy} onChange={event => { clearIssue(projectPath); updateRow(row.id, { projectId: event.target.value }) }}><option value="">{t("earnings.selectProject")}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</NativeSelect>{projectIssue ? <p id={issueId(projectPath)} className="text-sm text-destructive">{projectIssue.message}</p> : null}</label>
-              <label className="flex flex-col gap-1"><span className="text-xs text-ink-3">{t("earnings.days")}</span><Input aria-label={`${t("earnings.days")} ${index + 1}`} aria-invalid={daysIssue ? true : undefined} aria-describedby={daysIssue ? issueId(daysPath) : undefined} type="number" min={1} step={1} inputMode="numeric" dir="ltr" value={row.daysText} disabled={frozen || busy} onChange={event => { clearIssue(daysPath); updateRow(row.id, { daysText: event.target.value }) }} />{daysIssue ? <p id={issueId(daysPath)} className="text-sm text-destructive">{daysIssue.message}</p> : null}</label>
-              <label className="flex flex-col gap-1"><span className="text-xs text-ink-3">{t("earnings.amount")}</span><CurrencyInput aria-label={`${t("earnings.amount")} ${index + 1}`} aria-invalid={amountIssue ? true : undefined} aria-describedby={amountIssue ? issueId(amountPath) : undefined} value={row.amountText} disabled={frozen || busy} onChange={event => { clearIssue(amountPath); updateRow(row.id, { amountText: event.target.value }) }} />{amountIssue ? <p id={issueId(amountPath)} className="text-sm text-destructive">{amountIssue.message}</p> : null}</label>
+            return <div key={row.id} className="grid gap-3 border-t border-border/60 pt-4 sm:grid-cols-[minmax(12rem,1fr)_minmax(6rem,0.45fr)_minmax(9rem,0.7fr)_auto] sm:items-end">
+              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.project")} <span aria-hidden="true" className="text-destructive">*</span></span><NativeSelect required aria-label={`${t("earnings.project")} ${index + 1}`} aria-invalid={projectIssue ? true : undefined} aria-describedby={projectIssue ? issueId(projectPath) : undefined} value={row.projectId} disabled={frozen || busy} onChange={event => { clearIssue(projectPath); updateRow(row.id, { projectId: event.target.value }) }}><option value="">{t("earnings.selectProject")}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</NativeSelect>{projectIssue ? <p id={issueId(projectPath)} className="text-sm text-destructive">{projectIssue.message}</p> : null}</label>
+              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.days")} <span aria-hidden="true" className="text-destructive">*</span></span><Input required aria-label={`${t("earnings.days")} ${index + 1}`} aria-invalid={daysIssue ? true : undefined} aria-describedby={daysIssue ? issueId(daysPath) : undefined} type="number" min={1} step={1} inputMode="numeric" dir="ltr" value={row.daysText} disabled={frozen || busy} onChange={event => { clearIssue(daysPath); updateRow(row.id, { daysText: event.target.value }) }} />{daysIssue ? <p id={issueId(daysPath)} className="text-sm text-destructive">{daysIssue.message}</p> : null}</label>
+              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.amount")} <span aria-hidden="true" className="text-destructive">*</span></span><CurrencyInput required aria-label={`${t("earnings.amount")} ${index + 1}`} aria-invalid={amountIssue ? true : undefined} aria-describedby={amountIssue ? issueId(amountPath) : undefined} value={row.amountText} disabled={frozen || busy} onChange={event => { clearIssue(amountPath); updateRow(row.id, { amountText: event.target.value }) }} />{amountIssue ? <p id={issueId(amountPath)} className="text-sm text-destructive">{amountIssue.message}</p> : null}</label>
               <Button type="button" size="xs" variant="ghost" onClick={() => removeRow(row.id)} disabled={frozen || busy}>{t("earnings.removeProjectRow", { number: index + 1 })}</Button>
             </div>
           })}
+        </section>
+        <section aria-label={t("earnings.allocationSummary")} aria-live="polite" className="space-y-3 rounded-xl border border-border/60 bg-background/60 p-4">
+          <h3 className="text-sm font-semibold">{t("earnings.allocationSummary")}</h3>
+          <dl className="grid gap-3 sm:grid-cols-3">
+            {[
+              ["earnings.total", allocation.totalMinor],
+              ["earnings.allocated", allocation.allocatedMinor],
+              ["earnings.unallocated", allocation.remainderMinor],
+            ].map(([label, amount]) => <div key={String(label)} className="space-y-1">
+              <dt className="text-xs text-muted-foreground">{t(String(label))}</dt>
+              <dd className="font-mono text-sm font-semibold tabular-nums" dir="ltr"><output aria-label={label === "earnings.unallocated" ? t(String(label)) : undefined}><bdi dir="ltr">{formattedMinor(amount as bigint | null)}</bdi></output> <bdi dir="auto" className="font-sans text-xs font-normal">{t("detailPages.salary.currency")}</bdi></dd>
+            </div>)}
+          </dl>
+          {positiveRemainder && !frozen ? <label className="flex items-start gap-3 border-t border-border/60 pt-3 text-sm leading-6">
+            <Input type="checkbox" required aria-required="true" className="mt-1 size-4 shrink-0" checked={acknowledgedRemainder === allocation.remainderMinor?.toString()} onChange={event => setAcknowledgedRemainder(event.target.checked ? allocation.remainderMinor?.toString() ?? null : null)} />
+            <span>{t("earnings.acknowledgeUnallocatedBefore")} <bdi dir="ltr">{formattedMinor(allocation.remainderMinor)} {t("detailPages.salary.currency")}</bdi> {t("earnings.acknowledgeUnallocatedAfter")} <span aria-hidden="true" className="text-destructive">*</span></span>
+          </label> : null}
         </section>
         {globalIssues.length ? <div role="alert" className="space-y-1 text-sm text-destructive">{globalIssues.map((issue, index) => <p key={`${issue.path.join(".")}-${index}`}>{issue.message}</p>)}</div> : null}
         {storageError ? <p role="alert" className="text-sm text-destructive">{t("earnings.storageUnavailable")}</p> : null}
