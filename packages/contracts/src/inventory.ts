@@ -359,7 +359,7 @@ export const inventoryInvoiceGroupCreateInputSchema = z.object({
   externalCounterpartyId: entityIdSchema.nullable().optional(),
   createDebt: z.boolean().optional(),
   paymentInputType: inventoryPaymentInputTypeSchema.optional(),
-  paidAmountDzd: nonNegativePaymentAmountSchema.nullable().optional(),
+  paidAmountDzd: nonNegativePaymentAmountAtScaleSchema(2).nullable().optional(),
   paidPercent: z.number().min(0).max(100).nullable().optional(),
   note: z.string().trim().max(1000).nullable().optional(),
   entries: z.array(inventoryInvoiceEntryCreateInputSchema).min(1),

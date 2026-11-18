@@ -1,4 +1,5 @@
 import {
+  Money,
   MAX_MONEY_DZD,
   invoiceLineUsage,
   matchesItemOfferFilter,
@@ -80,14 +81,6 @@ function normalizeText(value: string | null | undefined) {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function normalizeMoney(value: number, field: string) {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new InventoryError("VALIDATION", "يجب إدخال مبلغ صالح.", [{ field, message: "يجب إدخال مبلغ صالح." }])
-  }
-
-  return value
-}
-
 /**
  * The module seam for money that must also respect the wire contract's
  * magnitude bound (`MAX_MONEY_DZD`). The wire gate and this seam parse the SAME
@@ -114,22 +107,96 @@ function normalizeMoneyAtScale(value: number, field: string, message: string, sc
   return parsed.data
 }
 
-/**
- * Accumulate the invoice's running gross total and refuse a total that leaves
- * `MAX_MONEY_DZD`. Each line is bounded individually, but a batch of legal
- * lines can still sum past the safe-integer range (#429): a `quantity ×
- * unitPrice` or a per-line sum above the bound is no longer exactly
- * representable, so the write is refused with a typed BUSINESS_RULE before
- * anything is persisted rather than storing a silently wrong financial
- * number. Mirrors `AssetChargeService.sumLiveCharges` / `project-cost.service`.
- */
-function accumulateGrossTotal(currentTotalDzd: number, lineTotalDzd: number) {
-  return accumulateReportMoney(currentTotalDzd, lineTotalDzd, () => {
-    throw new InventoryError(
-      "BUSINESS_RULE",
-      `إجمالي الفاتورة يتجاوز الحد الأقصى المسموح به (${MAX_MONEY_DZD}).`,
-    )
-  })
+type ExactDecimalOperand = { coefficient: bigint; scale: number };
+
+/** Convert the accepted legacy numeric operand to its canonical base-10 value. */
+function canonicalDecimalOperand(value: number): ExactDecimalOperand {
+  if (!Number.isFinite(value) || value < 0) throw new TypeError("Expected a finite nonnegative invoice operand");
+  const match = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(value).toLowerCase());
+  if (!match) throw new TypeError("Expected a canonical numeric invoice operand");
+  const whole = match[1]!;
+  const fraction = match[2] ?? "";
+  const exponent = Number(match[3] ?? 0);
+  if (!Number.isInteger(exponent) || Math.abs(exponent) > 324) throw new RangeError("Invoice operand exceeds the numeric range");
+  let coefficient = BigInt(whole + fraction);
+  let scale = fraction.length - exponent;
+  if (scale < 0) {
+    coefficient *= 10n ** BigInt(-scale);
+    scale = 0;
+  }
+  while (scale > 0 && coefficient % 10n === 0n) {
+    coefficient /= 10n;
+    scale -= 1;
+  }
+  return { coefficient, scale };
+}
+
+/** Exact base-10 sum of invoice operands and unit-price products. */
+class InvoiceMoneyAccumulator {
+  private coefficient = 0n;
+  private scale = 0;
+
+  addAmount(value: number): void {
+    this.add(canonicalDecimalOperand(value));
+  }
+
+  addProduct(left: number, right: number): void {
+    const a = canonicalDecimalOperand(left);
+    const b = canonicalDecimalOperand(right);
+    this.add({ coefficient: a.coefficient * b.coefficient, scale: a.scale + b.scale });
+  }
+
+  toMoney(): Money {
+    const minorUnits = this.scale <= 2
+      ? this.coefficient * 10n ** BigInt(2 - this.scale)
+      : roundPositiveRatio(this.coefficient, 10n ** BigInt(this.scale - 2));
+    if (minorUnits > BigInt(MAX_MONEY_DZD) * 100n) throw invoiceTotalOutOfRange();
+    try {
+      return Money.fromMinorUnits(minorUnits.toString());
+    } catch {
+      throw invoiceTotalOutOfRange();
+    }
+  }
+
+  private add(value: ExactDecimalOperand): void {
+    if (value.scale > this.scale) {
+      this.coefficient *= 10n ** BigInt(value.scale - this.scale);
+      this.scale = value.scale;
+    }
+    this.coefficient += value.coefficient * 10n ** BigInt(this.scale - value.scale);
+    while (this.scale > 0 && this.coefficient % 10n === 0n) {
+      this.coefficient /= 10n;
+      this.scale -= 1;
+    }
+  }
+}
+
+function roundPositiveRatio(numerator: bigint, denominator: bigint): bigint {
+  return numerator / denominator + (2n * (numerator % denominator) >= denominator ? 1n : 0n);
+}
+
+function invoiceTotalOutOfRange(): InventoryError {
+  return new InventoryError("BUSINESS_RULE", `إجمالي الفاتورة يتجاوز الحد الأقصى المسموح به (${MAX_MONEY_DZD}).`);
+}
+
+function toLegacyMoneyNumber(money: Money): number {
+  const value = Number(money.toWire());
+  if (!Number.isFinite(value) || !nonNegativePaymentAmountSchema.safeParse(value).success) throw invoiceTotalOutOfRange();
+  try {
+    if (Money.parse(String(value)).toMinorUnits() !== money.toMinorUnits()) {
+      throw new Error("The finalized amount cannot be represented by the legacy REAL column without losing cents");
+    }
+  } catch {
+    throw new InventoryError("BUSINESS_RULE", "لا يمكن حفظ إجمالي الفاتورة بدقة في مخزن الأرقام القديم.");
+  }
+  return value;
+}
+
+function percentagePayment(gross: Money, percent: number): Money {
+  const percentage = canonicalDecimalOperand(percent);
+  const denominator = 10n ** BigInt(percentage.scale + 2);
+  const minorUnits = roundPositiveRatio(BigInt(gross.toMinorUnits()) * percentage.coefficient, denominator);
+  return Money.fromMinorUnits(minorUnits.toString());
 }
 
 /**
@@ -455,7 +522,7 @@ export class InventoryService {
       assets: InventoryAssetUnitCreateData[]
     }
     const preparedEntries: Array<PreparedConsumable | PreparedAsset> = []
-    let grossTotalDzd = 0
+    const invoiceTotal = new InvoiceMoneyAccumulator()
 
     for (const [index, entry] of input.entries.entries()) {
       const definition = this.repository.getItemDefinitionById(entry.itemDefinitionId)
@@ -496,9 +563,10 @@ export class InventoryService {
           "سعر الوحدة خارج النطاق أو الدقة المسموح بها.",
           4,
         )
-        // Server derives total to prevent client-submitted inconsistencies
+        // Keep the legacy REAL line product, but finalize the F document total from the original operands.
         const totalPriceDzd = quantity * unitPriceDzd
-        grossTotalDzd = accumulateGrossTotal(grossTotalDzd, totalPriceDzd)
+        if (!Number.isFinite(totalPriceDzd)) throw invoiceTotalOutOfRange()
+        invoiceTotal.addProduct(quantity, unitPriceDzd)
         preparedEntries.push({
           kind: "CONSUMABLE",
           definitionId: definition.id,
@@ -536,8 +604,12 @@ export class InventoryService {
         note: normalizeText(asset.note),
       }))
 
-      const totalPriceDzd = assets.reduce((sum, asset) => sum + asset.purchasePriceDzd, 0)
-      grossTotalDzd = accumulateGrossTotal(grossTotalDzd, totalPriceDzd)
+      const assetEntryTotal = new InvoiceMoneyAccumulator()
+      for (const asset of assets) {
+        assetEntryTotal.addAmount(asset.purchasePriceDzd)
+        invoiceTotal.addAmount(asset.purchasePriceDzd)
+      }
+      const totalPriceDzd = toLegacyMoneyNumber(assetEntryTotal.toMoney())
       preparedEntries.push({
         kind: "ASSET",
         definitionId: definition.id,
@@ -550,25 +622,31 @@ export class InventoryService {
       })
     }
 
-    // Phase 2: calculate and validate payment amounts
-    const paidAmountDzd = input.createDebt
-      ? input.paymentInputType === "PERCENT"
-        ? normalizeMoney((grossTotalDzd * (input.paidPercent ?? 0)) / 100, "paidPercent")
-        : normalizeMoneyWithinBound(
+    // Phase 2: finalize the exact document sum before deriving any paid/debt totals.
+    const grossMoney = invoiceTotal.toMoney()
+    const grossTotalDzd = toLegacyMoneyNumber(grossMoney)
+    const paidMoney = !input.createDebt
+      ? grossMoney
+      : input.paymentInputType === "PERCENT"
+        ? percentagePayment(grossMoney, input.paidPercent ?? 0)
+        : Money.parse(String(normalizeMoneyAtScale(
             input.paidAmountDzd ?? 0,
             "paidAmountDzd",
-            "المبلغ المدفوع خارج النطاق المسموح به.",
-          )
-      : grossTotalDzd
+            "المبلغ المدفوع خارج النطاق أو الدقة المسموح بها.",
+            2,
+          )))
+    const paidAmountDzd = toLegacyMoneyNumber(paidMoney)
 
-    if (input.createDebt && paidAmountDzd > grossTotalDzd) {
+    if (input.createDebt && paidMoney.compare(grossMoney) > 0) {
       const overpaymentField = input.paymentInputType === "PERCENT" ? "paidPercent" : "paidAmountDzd"
       throw new InventoryError("VALIDATION", "لا يمكن أن يتجاوز المبلغ المدفوع إجمالي الفاتورة.", [
         { field: overpaymentField, message: "لا يمكن أن يتجاوز المبلغ المدفوع إجمالي الفاتورة." },
       ])
     }
 
-    const remainingDebtDzd = input.createDebt ? Math.max(0, grossTotalDzd - paidAmountDzd) : 0
+    const remainingDebtDzd = input.createDebt
+      ? toLegacyMoneyNumber(grossMoney.subtract(paidMoney))
+      : 0
 
     // Phase 3: persist everything in a single atomic transaction.
     // Both company and inventory repositories share the same database connection,

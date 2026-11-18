@@ -81,21 +81,103 @@ describe("legacy inventory costs read through strict project-cost codecs", { tim
     expectSuccess(validMaterial);
     expect(validMaterial.item.entries[0]!.unitPriceDzd).toBe(0.1234);
     expect(validMaterial.item.entries[0]!.totalPriceDzd).toBe(0.1234);
+    expect(validMaterial.item.group).toMatchObject({ grossTotalDzd: 0.12, paidAmountDzd: 0.12, remainingDebtDzd: 0 });
     const fractionQuantityProduct = await client.inventoryInvoiceGroupsCreate({
       projectId, createDebt: false,
       entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 0.1, unitPriceDzd: 0.12, totalPriceDzd: 0.01 }],
     });
     expectSuccess(fractionQuantityProduct);
     expect(fractionQuantityProduct.item.entries[0]!.totalPriceDzd).toBe(0.012);
+    expect(fractionQuantityProduct.item.group).toMatchObject({ grossTotalDzd: 0.01, paidAmountDzd: 0.01, remainingDebtDzd: 0 });
     const persistedFractionalLine = await client.inventoryInvoiceGroupsGet({ id: fractionQuantityProduct.item.group.id });
     expectSuccess(persistedFractionalLine);
     expect(persistedFractionalLine.item.entries[0]!.totalPriceDzd).toBe(0.012);
+    const mixedProducts = await client.inventoryInvoiceGroupsCreate({
+      projectId, createDebt: false,
+      entries: [
+        { kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 0.1234, totalPriceDzd: 0.12 },
+        { kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 0.1, unitPriceDzd: 0.12, totalPriceDzd: 0.01 },
+      ],
+    });
+    expectSuccess(mixedProducts);
+    expect(mixedProducts.item.group).toMatchObject({ grossTotalDzd: 0.14, paidAmountDzd: 0.14, remainingDebtDzd: 0 });
+
+    const supplier = await client.externalCounterpartiesCreate({ fullName: "Invoice finalization supplier", phoneNumber: "0558005432" });
+    expectSuccess(supplier);
+    const groupsBeforeInvalidDirectPayment = await client.inventoryInvoiceGroupsList({ warehouseId: warehouse.item.id });
+    expect(() => root.inventoryService.createInvoiceGroup({
+      warehouseId: warehouse.item.id,
+      externalCounterpartyId: supplier.item.id,
+      createDebt: true,
+      paymentInputType: "AMOUNT",
+      paidAmountDzd: 0.375,
+      entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 0.375, totalPriceDzd: 0.38 }],
+    }, { actorUserId: owner.item.id, actorLabel: owner.item.name, transactionId: "invalid-initial-payment-scale" })).toThrow(/المبلغ المدفوع/);
+    const groupsAfterInvalidDirectPayment = await client.inventoryInvoiceGroupsList({ warehouseId: warehouse.item.id });
+    expect(groupsAfterInvalidDirectPayment.items.map(({ id }) => id)).toEqual(groupsBeforeInvalidDirectPayment.items.map(({ id }) => id));
+    const debtPurchase = await client.inventoryInvoiceGroupsCreate({
+      warehouseId: warehouse.item.id,
+      externalCounterpartyId: supplier.item.id,
+      createDebt: true,
+      paymentInputType: "AMOUNT",
+      paidAmountDzd: 0.25,
+      entries: [
+        { kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 0.375, totalPriceDzd: 0.38 },
+        { kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 0.375, totalPriceDzd: 0.38 },
+      ],
+    });
+    expectSuccess(debtPurchase);
+    expect(debtPurchase.item.group).toMatchObject({ grossTotalDzd: 0.75, paidAmountDzd: 0.25, remainingDebtDzd: 0.5 });
+    const persistedDebtPurchase = await client.inventoryInvoiceGroupsGet({ id: debtPurchase.item.group.id });
+    expectSuccess(persistedDebtPurchase);
+    expect(persistedDebtPurchase.item.group).toMatchObject({ grossTotalDzd: 0.75, paidAmountDzd: 0.25, remainingDebtDzd: 0.5 });
+    const purchaseDebtAccount = await client.debtAccountsGet({ id: persistedDebtPurchase.item.group.debtAccountId! });
+    expectSuccess(purchaseDebtAccount);
+    expect(purchaseDebtAccount.item.currentBalance).toBe(0.5);
+    const purchaseDebtEntries = await client.debtEntriesList({ debtAccountId: purchaseDebtAccount.item.id });
+    expect(purchaseDebtEntries.items.map(({ signedAmountDzd }) => signedAmountDzd)).toEqual(expect.arrayContaining([0.75, -0.25]));
+    expect(purchaseDebtEntries.items).toHaveLength(2);
+
+    const percentageDebtPurchase = await client.inventoryInvoiceGroupsCreate({
+      warehouseId: warehouse.item.id,
+      externalCounterpartyId: supplier.item.id,
+      createDebt: true,
+      paymentInputType: "PERCENT",
+      paidPercent: 50,
+      entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 0.375, totalPriceDzd: 0.38 }],
+    });
+    expectSuccess(percentageDebtPurchase);
+    expect(percentageDebtPurchase.item.group).toMatchObject({ grossTotalDzd: 0.38, paidAmountDzd: 0.19, remainingDebtDzd: 0.19 });
+    const persistedPercentageDebt = await client.inventoryInvoiceGroupsGet({ id: percentageDebtPurchase.item.group.id });
+    expectSuccess(persistedPercentageDebt);
+    expect(persistedPercentageDebt.item.group).toMatchObject({ grossTotalDzd: 0.38, paidAmountDzd: 0.19, remainingDebtDzd: 0.19 });
+    const percentageDebtAccount = await client.debtAccountsGet({ id: persistedPercentageDebt.item.group.debtAccountId! });
+    expectSuccess(percentageDebtAccount);
+    expect(percentageDebtAccount.item.currentBalance).toBe(0.69);
+
+    const groupsBeforeOverflow = await client.inventoryInvoiceGroupsList({ warehouseId: warehouse.item.id });
+    const accountsBeforeOverflow = await client.debtAccountsList({ externalCounterpartyId: supplier.item.id });
+    const overflowPurchase = await client.inventoryInvoiceGroupsCreate({
+      warehouseId: warehouse.item.id,
+      externalCounterpartyId: supplier.item.id,
+      createDebt: true,
+      paymentInputType: "AMOUNT",
+      paidAmountDzd: 0,
+      entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 2, unitPriceDzd: Number.MAX_SAFE_INTEGER, totalPriceDzd: 1 }],
+    });
+    expect(overflowPurchase).toMatchObject({ success: false, error: { code: "BUSINESS_RULE" } });
+    const groupsAfterOverflow = await client.inventoryInvoiceGroupsList({ warehouseId: warehouse.item.id });
+    const accountsAfterOverflow = await client.debtAccountsList({ externalCounterpartyId: supplier.item.id });
+    expect(groupsAfterOverflow.items.map(({ id }) => id)).toEqual(groupsBeforeOverflow.items.map(({ id }) => id));
+    expect(accountsAfterOverflow.items.map(({ id }) => id)).toEqual(accountsBeforeOverflow.items.map(({ id }) => id));
+
     const highUnitPrice = await client.inventoryInvoiceGroupsCreate({
       projectId, createDebt: false,
       entries: [{ kind: "CONSUMABLE", itemDefinitionId: materialType.item.id, quantity: 1, unitPriceDzd: 900_719_925_474.09, totalPriceDzd: 900_719_925_474.09 }],
     });
     expectSuccess(highUnitPrice);
     expect(highUnitPrice.item.entries[0]!.unitPriceDzd).toBe(900_719_925_474.09);
+    expect(highUnitPrice.item.group).toMatchObject({ grossTotalDzd: 900_719_925_474.09, paidAmountDzd: 900_719_925_474.09, remainingDebtDzd: 0 });
 
     const parkedProject = await client.projectsCreate({ name: "Large parked inventory", status: "ACTIVE" });
     expectSuccess(parkedProject);
@@ -104,6 +186,7 @@ describe("legacy inventory costs read through strict project-cost codecs", { tim
       entries: [{ kind: "ASSET", itemDefinitionId: assetType.item.id, assets: [{ assetName: "Large parked", purchasePriceDzd: 1_000_000_000_000_000 }] }],
     });
     expectSuccess(parkedPurchase);
+    expect(parkedPurchase.item.group.grossTotalDzd).toBe(1_000_000_000_000_000);
     const parkedAsset = parkedPurchase.item.entries[0]!.assets[0]!;
     await client.inventoryAssetsTransfer({ assetUnitId: parkedAsset.id, toProjectId: parkedProject.item.id, chargeAmountDzd: 0 });
     const maxSafeParkedPurchase = await client.inventoryInvoiceGroupsCreate({
@@ -111,6 +194,7 @@ describe("legacy inventory costs read through strict project-cost codecs", { tim
       entries: [{ kind: "ASSET", itemDefinitionId: assetType.item.id, assets: [{ assetName: "Max safe parked", purchasePriceDzd: Number.MAX_SAFE_INTEGER }] }],
     });
     expectSuccess(maxSafeParkedPurchase);
+    expect(maxSafeParkedPurchase.item.group).toMatchObject({ grossTotalDzd: Number.MAX_SAFE_INTEGER, paidAmountDzd: Number.MAX_SAFE_INTEGER, remainingDebtDzd: 0 });
     await client.inventoryAssetsTransfer({ assetUnitId: maxSafeParkedPurchase.item.entries[0]!.assets[0]!.id, toProjectId: parkedProject.item.id, chargeAmountDzd: 0 });
 
     const chargeProject = await client.projectsCreate({ name: "Large stock charge", status: "ACTIVE" });
