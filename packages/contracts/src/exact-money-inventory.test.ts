@@ -93,6 +93,7 @@ describe("inert foundation inventory", () => {
       "apps/api/src/modules/expenses/expenses.exact.ts",
       "apps/api/src/modules/inventory/adapters/sqlite-exact-inventory.repository.ts",
       "apps/api/src/modules/inventory/inventory-exact.service.ts",
+      "apps/api/src/modules/inventory/inventory.service.ts",
       "apps/api/src/modules/invoice/adapters/sqlite-exact-invoice.repository.ts",
       "apps/api/src/modules/invoice/invoice-exact.service.ts",
       "apps/api/src/modules/project-cost/adapters/sqlite-project-cost.repository.ts",

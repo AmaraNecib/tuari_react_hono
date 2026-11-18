@@ -111,6 +111,7 @@ test('selectSpecs: api module maps to the owning feature specs', () => {
   const scope = selectSpecs(['apps/api/src/modules/workforce/employee.module.ts']);
   assert.equal(scope.mode, 'affected');
   assert.ok(scope.specs.includes('employees.spec.ts'));
+  assert.ok(scope.specs.includes('employee-earnings.spec.ts'));
   assert.ok(scope.specs.includes('salaries.spec.ts'));
 });
 
@@ -128,6 +129,13 @@ test('selectAreas: an api-only diff runs test:api and skips test:web', () => {
   assert.equal(scope.gate, 'scoped');
   assert.equal(scope.api, '1');
   assert.equal(scope.web, '0');
+});
+
+test('selectAreas: a workforce API diff selects the employee earnings browser spec', () => {
+  const scope = selectAreas(['apps/api/src/modules/workforce/employee.module.ts']);
+  assert.equal(scope.gate, 'scoped');
+  assert.equal(scope.e2e_mode, 'affected');
+  assert.ok(scope.e2e_specs.includes('tests/e2e/employee-earnings.spec.ts'));
 });
 
 test('selectAreas: a docs-only diff scopes to no unit suites and skips e2e', () => {

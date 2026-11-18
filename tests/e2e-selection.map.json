@@ -129,6 +129,7 @@
       "specs": [
         "employees.spec.ts",
         "employees-search.spec.ts",
+        "employee-earnings.spec.ts",
         "salaries.spec.ts",
         "worker-assignment.spec.ts"
       ]
