@@ -38,6 +38,21 @@ Each row inherits G for initialization, generic SQL, snapshot/recovery and share
 | expense_revision.previous_amount_dzd | F nullable snapshot | E | E, X, T-E |
 | expense_revision.new_amount_dzd | F snapshot | E | E, X, T-E |
 
+## #543 physical-field reconciliation
+
+The 27 rows above preserve the #523 baseline names and callers. They are historical; they do not describe today's physical names for employee salary references or the new earning records. #543 replaces two baseline fields and adds four exact monetary fields. Its period column is a semantic tag, not an amount.
+
+| #523 baseline field | Current field | Storage type | Change |
+| --- | --- | --- | --- |
+| employee.salary_amount_dzd | employee.salary_reference_amount | TEXT | #543 |
+| employee_state_history.salary_amount_dzd | employee_state_history.salary_reference_amount | TEXT | #543 |
+| — | employee_earning.total_minor | INTEGER | #543 |
+| — | employee_earning.unallocated_minor | INTEGER | #543 |
+| — | employee_earning.reference_salary_units | INTEGER | #543 |
+| — | employee_earning_segment.amount_minor | INTEGER | #543 |
+
+The reference amount is stored with `employee.salary_reference_period` or `employee_state_history.salary_reference_period`; those period fields are not monetary values. `reference_salary_units` is monetary only when paired with `reference_salary_period`. The initialized monetary inventory is the 25 unchanged #523 fields plus the two renamed reference amounts and four new earning amounts: 31 fields across 19 tables. The inventory test checks every mapped field and storage type against initializer CREATE TABLE declarations, without treating day, quantity or period columns as money.
+
 ## Concrete persistence and calculation families
 
 Paths in this section are relative to `apps/api/src/modules/`.
@@ -85,8 +100,8 @@ All RPC families pass through `apps/api/src/rpc/router.ts`, `rpc-middleware.ts`,
 
 ## Exhaustiveness method and limits
 
-The inventory starts from every initializer CREATE TABLE REAL field, excluding quantity. It covers 27 columns across 17 tables, independently checked against the Markdown rows by the focused inventory test. Searches include SQL table/column spellings, Drizzle symbols, camelCase monetary aliases, repository ports and method callers across `apps/api/src`, `apps/web/src`, `packages/contracts/src` and desktop scripts. Dynamic metadata, generic query execution, audit strings, CSV and whole-file backup/key operations are separately named above because column-name searches alone miss them.
+The historical #523 inventory starts from initializer CREATE TABLE REAL fields and covers its 27 baseline columns across 17 tables. The #543 reconciliation above updates the current physical inventory to 31 monetary/reference fields across 19 tables. The focused inventory test checks the historical rows and every current mapped name and storage type against initialized CREATE TABLE declarations. Searches include SQL table/column spellings, Drizzle symbols, camelCase monetary aliases, repository ports and method callers across `apps/api/src`, `apps/web/src`, `packages/contracts/src` and desktop scripts. Dynamic metadata, generic query execution, audit strings, CSV and whole-file backup/key operations are separately named above because column-name searches alone miss them.
 
-The caller families intentionally include connected forms, hooks, validators, mappers, sort/cursors and derived reports, rather than treating a schema declaration as a reader/writer inventory. Test-only occurrences, generated output and historical documents are excluded as runtime callers. No additional initialized monetary field was found. `packages/contracts/src/recurring.ts` also declares optional `fixedAmountDzd` and formula metadata, but has no initialized table, active repository or RPC operation in this baseline. It is an unactivated contract placeholder, not permission to implement recurring finance. `apps/web/src/i18n/resources/ar.ts` supplies amount/price labels rather than values. Allocation project/day splits store identities/days, not independent monetary values. Report day rates, asset means, line intermediates and summary totals are derived non-column values and remain conversion obligations.
+The caller families intentionally include connected forms, hooks, validators, mappers, sort/cursors and derived reports, rather than treating a schema declaration as a reader/writer inventory. Test-only occurrences, generated output and historical documents are excluded as runtime callers. The current #543 additions are limited to the reconciled fields above. `packages/contracts/src/recurring.ts` also declares optional `fixedAmountDzd` and formula metadata, but has no initialized table, active repository or RPC operation in this baseline. It is an unactivated contract placeholder, not permission to implement recurring finance. `apps/web/src/i18n/resources/ar.ts` supplies amount/price labels rather than values. Allocation project/day splits store identities/days, not independent monetary values. Report day rates, asset means, line intermediates and summary totals are derived non-column values and remain conversion obligations.
 
 This is a pinned-source inventory, not an automated proof that future callers cannot appear. Successor issues must refresh it against their actual source and prove execution through their changed public interfaces. Design acceptance, static coverage, native capability proof, coordinated activation, recovery and packaged release remain separate claims.

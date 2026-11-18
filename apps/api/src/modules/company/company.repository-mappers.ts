@@ -57,8 +57,9 @@ export function mapEmployee(row: SqliteRow): EmployeeRecord {
     phone: String(row.phone),
     roleId: String(row.role_id),
     status: String(row.status) as EmployeeRecord["status"],
-    salaryAmountDzd: row.salary_amount_dzd === null || row.salary_amount_dzd === undefined ? null : Number(row.salary_amount_dzd),
-    salaryPeriod: row.salary_period ? String(row.salary_period) as EmployeeRecord["salaryPeriod"] : null,
+    salaryReference: row.salary_reference_period == null || row.salary_reference_amount == null
+      ? null
+      : { period: String(row.salary_reference_period) as NonNullable<EmployeeRecord["salaryReference"]>["period"], amount: String(row.salary_reference_amount) },
     notes: toNullableText(row.notes),
     occupation: toNullableText(row.occupation),
     createdAt: String(row.created_at),
@@ -149,8 +150,9 @@ export function mapEmployeeStateHistory(row: SqliteRow): EmployeeStateHistoryRec
     employeeId: String(row.employee_id),
     roleId: String(row.role_id),
     status: String(row.status),
-    salaryAmountDzd: row.salary_amount_dzd === null || row.salary_amount_dzd === undefined ? null : Number(row.salary_amount_dzd),
-    salaryPeriod: row.salary_period ? String(row.salary_period) as EmployeeStateHistoryRecord["salaryPeriod"] : null,
+    salaryReference: row.salary_reference_period == null || row.salary_reference_amount == null
+      ? null
+      : { period: String(row.salary_reference_period) as NonNullable<EmployeeStateHistoryRecord["salaryReference"]>["period"], amount: String(row.salary_reference_amount) },
     eventType: String(row.event_type),
     startDate: String(row.start_date),
     endDate: row.end_date ? String(row.end_date) : null,

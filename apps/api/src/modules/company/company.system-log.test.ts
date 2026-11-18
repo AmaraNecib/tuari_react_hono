@@ -59,8 +59,7 @@ describe("buildCompanySystemLog coverage", () => {
       phone,
       roleId: roleIds.worker,
       status,
-      salaryAmountDzd: 40000,
-      salaryPeriod: "MONTHLY",
+      salaryReference: { period: "MONTHLY", amount: "40000.00" },
     }).item;
 
   const createProjectManager = (phone: string) =>
@@ -99,7 +98,7 @@ describe("buildCompanySystemLog coverage", () => {
     );
     const insertHistory = db.prepare(
       `INSERT INTO "employee_state_history"
-        (id, employee_id, role_id, status, salary_amount_dzd, salary_period, event_type, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at)
+        (id, employee_id, role_id, status, salary_reference_period, salary_reference_amount, event_type, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at)
        VALUES (?, ?, ?, ?, NULL, NULL, 'UPDATED', ?, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
     );
     for (const status of ["STOPPED", "COMPLETED", "ARCHIVED", "ENDED"]) {
@@ -165,7 +164,11 @@ describe("buildCompanySystemLog coverage", () => {
       status: "ACTIVE",
       startDate: "2026-01-01T00:00:00.000Z",
     });
-    service.createSalaryPayment({ employeeId: worker.id, actualAmountDzd: 40000, days: 30, projectSplits: [] }, audit());
+    const paymentTime = new Date().toISOString();
+    db.prepare(`INSERT INTO "employee_salary_payment"
+      (id, employee_id, period_type, days, expected_amount_dzd, actual_amount_dzd, payment_date, created_at, updated_at)
+      VALUES (?, ?, 'MONTHLY', 30, 40000, 40000, ?, ?, ?)`)
+      .run(crypto.randomUUID(), worker.id, paymentTime, paymentTime, paymentTime);
     service.syncManagedProjects({ employeeId: manager.id, projectIds: [project.id] });
     service.syncManagedWarehouses({ employeeId: whManager.id, warehouseIds: [warehouse.id] });
 
@@ -259,7 +262,6 @@ describe("buildCompanySystemLog coverage", () => {
     service.syncManagedProjects({ employeeId: manager.id, projectIds: [project.id] });
     const whManager = createWarehouseManager("0556000052");
     service.syncManagedWarehouses({ employeeId: whManager.id, warehouseIds: [warehouse.id] });
-    service.createSalaryPayment({ employeeId: worker.id, actualAmountDzd: 40000, days: 30, projectSplits: [] }, audit());
     const counterparty = service.createExternalCounterparty({
       fullName: "طرف خارجي",
       phoneNumber: "0219999999",
@@ -279,12 +281,12 @@ describe("buildCompanySystemLog coverage", () => {
     db.pragma("foreign_keys = OFF");
     db.prepare(
       `INSERT INTO "employee_state_history"
-        (id, employee_id, role_id, status, salary_amount_dzd, salary_period, event_type, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at)
+        (id, employee_id, role_id, status, salary_reference_period, salary_reference_amount, event_type, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at)
        VALUES (?, 'ghost-emp', 'ghost-role', 'ACTIVE', NULL, NULL, 'UPDATED', ?, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
     ).run(crypto.randomUUID(), now, now, now);
     db.prepare(
       `INSERT INTO "employee_state_history"
-        (id, employee_id, role_id, status, salary_amount_dzd, salary_period, event_type, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at)
+        (id, employee_id, role_id, status, salary_reference_period, salary_reference_amount, event_type, start_date, end_date, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at)
        VALUES (?, 'ghost-emp5', 'ghost-role2', 'ACTIVE', NULL, NULL, 'CREATED', ?, NULL, NULL, NULL, NULL, NULL, ?, ?)`,
     ).run(crypto.randomUUID(), now, now, now);
     db.prepare(

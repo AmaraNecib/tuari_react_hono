@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { paymentAmountSchema } from "@tuari/contracts";
+import { expenseAmountSchema } from "@tuari/contracts";
 
 import type { ExpenseRepository } from "./expenses.repository";
 import type { ExpensesModule } from "./expenses-module.interface";
@@ -28,9 +28,8 @@ import type {
  * something that is not stock (issue #411).
  *
  * Rules enforced here:
- *  - `amount` reuses `paymentAmountSchema` (service-boundary defense-in-depth:
- *    a direct caller cannot record a zero/negative amount the wire gate would
- *    have rejected).
+ *  - `amount` uses the expense-specific final-amount schema at both the wire
+ *    and module seams, rejecting excess precision before any repository write.
  *  - Void, never delete: the row stays and is excluded from totals.
  *  - Tagging a project charges the WHOLE amount to that project — there is no
  *    partial allocation on an expense.
@@ -49,7 +48,7 @@ export interface ExpenseAmountPolicy<Amount> {
 const numericAmounts: ExpenseAmountPolicy<number> = {
   untagged: (total, tagged) => total - tagged,
   normalize(amount) {
-    if (!paymentAmountSchema.safeParse(amount).success) {
+    if (!expenseAmountSchema.safeParse(amount).success) {
       throw new ExpenseInvalidAmountError(amount);
     }
     return amount;

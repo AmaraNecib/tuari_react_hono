@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, type AriaAttributes } from "react"
 import { DayPicker } from "react-day-picker"
 import { ar } from "date-fns/locale/ar"
 import { format, parse, isValid } from "date-fns"
@@ -58,6 +58,8 @@ type DatePickerProps = {
   className?: string
   name?: string
   id?: string
+  "aria-invalid"?: AriaAttributes["aria-invalid"]
+  "aria-describedby"?: string
 }
 
 /**
@@ -75,6 +77,8 @@ export function DatePicker({
   className,
   name,
   id,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedby,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const order = useDateFormat()
@@ -101,6 +105,8 @@ export function DatePicker({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           id={id}
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedby}
           disabled={disabled}
           className={cn(
             formInputClassName,

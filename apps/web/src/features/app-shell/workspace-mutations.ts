@@ -24,6 +24,7 @@ import { getAuthClient } from "@/lib/auth-client"
 import { rpcClient } from "@/lib/orpc-client"
 import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
+import { translateRpcValidationIssues } from "@/lib/rpc-error-handling"
 import { workspaceQueryPrefix } from "./workspace-queries"
 import {
   getCachedSessionUserId,
@@ -53,7 +54,18 @@ export class AppMutationError extends Error {
     super(error.message)
     this.name = "AppMutationError"
     this.code = error.code ?? "BUSINESS_RULE"
-    this.fieldErrors = error.fieldErrors ?? []
+    const fieldErrors = error.fieldErrors ?? []
+    const translatedIssues = translateRpcValidationIssues({
+      data: {
+        issues: fieldErrors.map(({ field, message }) => ({
+          path: field ? field.split(".") : [],
+          message,
+        })),
+      },
+    })
+    this.fieldErrors = translatedIssues.length > 0
+      ? translatedIssues.map(({ field, message }) => ({ field, message }))
+      : fieldErrors
   }
 }
 
@@ -312,8 +324,7 @@ export function useUpdateEmployeeMutation() {
       phone?: string
       roleId?: string
       status?: Employee["status"]
-      salaryAmountDzd?: number | null
-      salaryPeriod?: Employee["salaryPeriod"]
+      salaryReference?: Employee["salaryReference"]
       notes?: string | null
       occupation?: string | null
     }) => {
@@ -605,6 +616,10 @@ export function useSyncManagedWarehousesMutation() {
   })
 }
 
+/**
+ * @deprecated Legacy numeric payment export. The backend deliberately returns
+ * BUSINESS_RULE for this RPC; it is not an authoritative payment workflow.
+ */
 export function useCreateSalaryPaymentMutation() {
   const queryClient = useQueryClient()
 

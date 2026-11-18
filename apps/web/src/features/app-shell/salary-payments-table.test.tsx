@@ -170,6 +170,21 @@ describe("SalaryPaymentsTable (#453)", () => {
     expect(screen.getByLabelText("بحث باسم العامل...")).toBeTruthy()
   })
 
+  it("labels the earning approval action distinctly from cash payment history", () => {
+    const onAddPayment = vi.fn()
+    render(
+      <SalaryPaymentsTable
+        payments={makePayments(1)}
+        projects={[PROJECT]}
+        onAddPayment={onAddPayment}
+        onEditSalary={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "اعتماد الأجر" }))
+    expect(onAddPayment).toHaveBeenCalledWith("worker-01", "عامل 01")
+  })
+
   it("shows the history empty state when there are no payments at all", () => {
     renderTable([])
 

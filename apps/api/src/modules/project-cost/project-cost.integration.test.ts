@@ -52,7 +52,7 @@ describe("project cost with a reassigned expense (#414)", () => {
     });
 
     expect(expense.projectId).toBeNull();
-    expect(env.projectCostService.getProjectCost({ projectId: "p-1" }).item.totalDzd).toBe(0);
+    expect(env.projectCostService.getProjectCost({ projectId: "p-1" }).item.totalAmount).toBe("0.00");
 
     const updated = await env.expensesModule.update({
       id: "e-1",
@@ -62,8 +62,8 @@ describe("project cost with a reassigned expense (#414)", () => {
 
     expect(updated.projectId).toBe("p-1");
     const result = env.projectCostService.getProjectCost({ projectId: "p-1" });
-    expect(result.item.parts.expensesDzd).toBe(42_500);
-    expect(result.item.totalDzd).toBe(42_500);
+    expect(result.item.parts.expensesAmount).toBe("42500.00");
+    expect(result.item.totalAmount).toBe("42500.00");
     expect(result.item.expenses).toHaveLength(1);
   });
 
@@ -78,7 +78,7 @@ describe("project cost with a reassigned expense (#414)", () => {
     const movedOff = await env.expensesModule.update({ id: "e-1", projectId: null, reason: "إسناد خاطئ" });
 
     expect(movedOff.projectId).toBeNull();
-    expect(env.projectCostService.getProjectCost({ projectId: "p-1" }).item.totalDzd).toBe(0);
+    expect(env.projectCostService.getProjectCost({ projectId: "p-1" }).item.totalAmount).toBe("0.00");
   });
 
   it("drops a voided expense from the project's cost", async () => {
@@ -89,10 +89,10 @@ describe("project cost with a reassigned expense (#414)", () => {
       projectId: "p-1",
     });
 
-    expect(env.projectCostService.getProjectCost({ projectId: "p-1" }).item.totalDzd).toBe(42_500);
+    expect(env.projectCostService.getProjectCost({ projectId: "p-1" }).item.totalAmount).toBe("42500.00");
 
     await env.expensesModule.void({ id: "e-1", reason: "خطأ" });
 
-    expect(env.projectCostService.getProjectCost({ projectId: "p-1" }).item.totalDzd).toBe(0);
+    expect(env.projectCostService.getProjectCost({ projectId: "p-1" }).item.totalAmount).toBe("0.00");
   });
 });

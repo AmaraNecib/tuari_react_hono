@@ -9,7 +9,7 @@ import {
   nullableTextSchema,
   timestampSchema,
 } from "./core";
-import { nonNegativePaymentAmountSchema, paymentAmountSchema, storedMoneyDzdSchema } from "./payment";
+import { nonNegativePaymentAmountAtScaleSchema, nonNegativePaymentAmountSchema, nonNegativeUnitPriceSchema, paymentAmountSchema, storedMoneyDzdSchema } from "./payment";
 
 /** inventoryItemDefinitionSchema - Item definition schema. */
 export const inventoryItemDefinitionSchema = z.object({
@@ -309,9 +309,17 @@ export const inventoryAssetUnitCreateInputSchema = z.object({
   serialNumber: z.string().trim().max(160).nullable().optional(),
   condition: inventoryAssetConditionSchema.nullable().optional(),
   purchaseDate: timestampSchema.nullable().optional(),
-  purchasePriceDzd: nonNegativePaymentAmountSchema,
+  purchasePriceDzd: nonNegativePaymentAmountAtScaleSchema(2),
   note: z.string().trim().max(1000).nullable().optional(),
 });
+
+/** Positive inventory purchase quantity, exact to the existing six-place stock quantum. */
+export const inventoryQuantitySchema = z.number().positive().refine((quantity) => {
+  const [coefficient, exponentText] = String(quantity).toLowerCase().split("e");
+  const fractionDigits = coefficient?.split(".")[1]?.length ?? 0;
+  const exponent = exponentText === undefined ? 0 : Number(exponentText);
+  return Number.isFinite(exponent) && Math.max(0, fractionDigits - exponent) <= 6;
+}, { message: "Quantity permits at most 6 decimal places." });
 
 /** inventoryConsumableEntryCreateInputSchema - Consumable entry create input schema. */
 export const inventoryConsumableEntryCreateInputSchema = z.object({
@@ -319,8 +327,8 @@ export const inventoryConsumableEntryCreateInputSchema = z.object({
   itemDefinitionId: entityIdSchema,
   warehouseId: entityIdSchema.nullable().optional(),
   projectId: entityIdSchema.nullable().optional(),
-  quantity: z.number().positive(),
-  unitPriceDzd: nonNegativePaymentAmountSchema,
+  quantity: inventoryQuantitySchema,
+  unitPriceDzd: nonNegativeUnitPriceSchema,
   totalPriceDzd: nonNegativePaymentAmountSchema,
   note: z.string().trim().max(1000).nullable().optional(),
 }).superRefine((input, ctx) => {
@@ -359,7 +367,7 @@ export const inventoryInvoiceGroupCreateInputSchema = z.object({
   externalCounterpartyId: entityIdSchema.nullable().optional(),
   createDebt: z.boolean().optional(),
   paymentInputType: inventoryPaymentInputTypeSchema.optional(),
-  paidAmountDzd: nonNegativePaymentAmountSchema.nullable().optional(),
+  paidAmountDzd: nonNegativePaymentAmountAtScaleSchema(2).nullable().optional(),
   paidPercent: z.number().min(0).max(100).nullable().optional(),
   note: z.string().trim().max(1000).nullable().optional(),
   entries: z.array(inventoryInvoiceEntryCreateInputSchema).min(1),

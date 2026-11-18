@@ -1,461 +1,312 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
-import { Input } from "@/components/ui/input"
 import { DatePicker } from "@/components/ui/date-picker"
-import { useCreateSalaryPaymentMutation } from "@/features/app-shell/workspace-mutations"
-import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
-import { useFormAmount, useDateField } from "@/features/shared/use-form-amount"
-import { computeProposedSalaryAmount, deriveSalaryProjectDays, roundMoneyToCents } from "@tuari/contracts"
-import type { SalaryPeriodType, SalaryProjectAssignmentWindow } from "@tuari/contracts"
-
+import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { useApproveEmployeeEarningMutation } from "@/features/employees/employee-earnings-queries"
+import { useSessionQuery } from "@/features/session/use-session-query"
 import {
-  computeUnallocatedDays,
-  defaultSalaryPaymentDays,
-  effectiveSalaryPeriod,
-  parsePositiveInteger,
-  resolveSalaryPaymentPeriod,
-} from "./salary-payment-form"
+  editEarningDraftRow,
+  loadPendingEmployeeEarning,
+  markEmployeeEarningPending,
+  removePendingEmployeeEarning,
+  type EarningDraftIdentity,
+  type PendingEmployeeEarning,
+  type EmployeeEarningDraft,
+  type EmployeeEarningDraftRow,
+} from "@/features/employees/employee-earning-draft"
+import { resolveApiBaseUrl } from "@/lib/runtime-config"
+import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { translateRpcValidationIssues } from "@/lib/rpc-error-handling"
 
-// Re-exported so the surrounding sections/tables keep one import site while the
-// window shape stays owned by the contract.
-export type { SalaryProjectAssignmentWindow } from "@tuari/contracts"
-
-/** UI projection of a project for the split picker: id plus display name only. */
 export type SalaryProjectOption = { id: string; name: string }
 
-/**
- * A quick-form draft handed to the split dialog. The dialog owns the payment
- * once it opens: the quick form clears its fields in the same action so one
- * payment never has two live drafts and no typed input is discarded.
- */
-export type SalaryPaymentDraft = {
-  days: number
-  daysTouched: boolean
-  amount: number | null
-  amountTouched: boolean
-  date: string
-  note: string
+const newRow = (): EmployeeEarningDraftRow => ({ id: crypto.randomUUID(), projectId: "", daysText: "", amountText: "" })
+const dateFromBoundary = (value: string) => getAlgeriaDateInputValue(new Date(value))
+type DialogIssue = { path: (string | number)[]; message: string }
+
+function normalizeIssuePath(path: Array<string | number>, rows: EmployeeEarningDraftRow[]): (string | number)[] {
+  const [root, segment, field, ...rest] = path
+  const topFields: Record<string, string> = {
+    totalAmount: "totalAmountText",
+    unallocatedAmount: "unallocatedAmountText",
+  }
+  if (root === "segments" && (typeof segment === "number" || typeof segment === "string")) {
+    const rowId = typeof segment === "number" ? rows[segment]?.id ?? String(segment) : segment
+    const rowFields: Record<string, string> = { projectId: "projectId", days: "daysText", daysText: "daysText", amount: "amountText", amountText: "amountText" }
+    return ["rows", rowId, rowFields[String(field)] ?? String(field), ...rest]
+  }
+  return [topFields[String(root)] ?? String(root), ...(segment === undefined ? [] : [segment]), ...(field === undefined ? [] : [field]), ...rest]
 }
 
-type SplitLine = { key: string; projectId: string; days: string }
+function hasKnownContractValidationIssues(error: unknown): boolean {
+  if (typeof error !== "object" || error === null || !("data" in error)) return false
+  const data = (error as { data?: unknown }).data
+  if (typeof data !== "object" || data === null || !("issues" in data)) return false
+  const rawIssues = (data as { issues?: unknown }).issues
+  if (!Array.isArray(rawIssues) || rawIssues.length === 0) return false
+  const translated = translateRpcValidationIssues(error)
+  return translated.length === rawIssues.length && rawIssues.every((issue, index) =>
+    typeof issue === "object" && issue !== null && "message" in issue &&
+    typeof (issue as { message?: unknown }).message === "string" &&
+    translated[index]?.message !== (issue as { message: string }).message,
+  )
+}
 
-/**
- * Dialog for recording a salary payment: days worked, a proposed amount that
- * stays editable, and a hand-typed per-project split prefilled from the
- * worker's assignment windows (issue #412).
- */
-/**
- * @description Component
- */
+function appFieldIssues(error: unknown): DialogIssue[] {
+  if (typeof error !== "object" || error === null || !("fieldErrors" in error)) return []
+  const fieldErrors = (error as { fieldErrors?: unknown }).fieldErrors
+  if (!Array.isArray(fieldErrors)) return []
+  const entries = fieldErrors.flatMap((candidate) => {
+    if (typeof candidate !== "object" || candidate === null) return []
+    const value = candidate as { field?: unknown; message?: unknown }
+    if (typeof value.field !== "string" || typeof value.message !== "string") return []
+    const path = value.field.replace(/\[(\d+)\]/g, ".$1").split(".").filter(Boolean).map(part => /^\d+$/.test(part) ? Number(part) : part)
+    return [{ path, message: value.message }]
+  })
+  const translated = translateRpcValidationIssues({ data: { issues: entries } })
+  return translated.map(issue => ({ path: issue.path, message: issue.message }))
+}
+
+/** Approval composer kept at the existing shared-dialog import site for callers being migrated. */
 export function AddSalaryPaymentDialog({
   employeeId,
   employeeName,
-  salaryAmountDzd = null,
-  salaryPeriod = null,
-  projectAssignments = [],
-  projects = [],
-  initialDraft = null,
+  salaryReference,
+  projects,
   open,
   onOpenChange,
 }: {
   employeeId: string | null
   employeeName?: string | null
-  /** The worker's configured wage, used to propose the amount. */
-  salaryAmountDzd?: number | null
-  salaryPeriod?: SalaryPeriodType | null
-  /** Assignment windows feeding the derived per-project default. */
-  projectAssignments?: SalaryProjectAssignmentWindow[]
-  /** Projects the split can be attributed to. */
-  projects?: SalaryProjectOption[]
-  /** A quick-form draft to adopt once when the dialog opens. */
-  initialDraft?: SalaryPaymentDraft | null
+  salaryReference?: { period: "DAILY" | "WEEKLY" | "MONTHLY"; amount: string } | null
+  projects: SalaryProjectOption[]
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const { t } = useTranslation()
-  const mutation = useCreateSalaryPaymentMutation()
-  const { amount: manualAmount, setAmount: setManualAmount, value: manualAmountValue, reset: resetAmount } = useFormAmount()
-  const { date, setDate, reset: resetDate } = useDateField(getAlgeriaDateInputValue())
-  const [note, setNote] = useState("")
-  const [daysText, setDaysText] = useState(() => String(defaultSalaryPaymentDays(salaryPeriod)))
-  const [daysTouched, setDaysTouched] = useState(false)
-  const [manualAmountTouched, setManualAmountTouched] = useState(false)
-  const [splits, setSplits] = useState<SplitLine[]>([])
-  const [splitsTouched, setSplitsTouched] = useState(false)
-  // `resetAmount`/`resetDate` are new function identities every render, so the
-  // reset effect below must not depend on their identity to decide whether the
-  // form was already initialized. It keys on what the defaults actually depend
-  // on — the employee and the wage period — so a workspace refresh that
-  // reclassifies the worker (monthly→daily) re-applies the day default while
-  // the dialog stays open, without discarding an operator edit.
-  const initializedTargetRef = useRef<{ employeeId: string; period: SalaryPeriodType | null } | null>(null)
-  // A handoff draft is adopted once per object identity, so a parent re-render
-  // cannot replay it over an edit the operator made inside the dialog.
-  const appliedDraftRef = useRef<SalaryPaymentDraft | null>(null)
-
-  const days = parsePositiveInteger(daysText)
-  // An unknown wage period still has a known wage. The day default already
-  // treats a null period as a month (see `effectiveSalaryPeriod`), so the
-  // amount default follows the same convention instead of leaving the field
-  // empty and forcing the operator to retype the wage the app already knows.
-  const proposedAmount =
-    salaryAmountDzd !== null && days !== null
-      ? computeProposedSalaryAmount({
-          periodType: effectiveSalaryPeriod(salaryPeriod),
-          salaryAmountDzd,
-          days,
-        })
-      : null
-
-  // The amount follows the proposal until the user edits it; then their value wins.
-  const displayedAmount = manualAmountTouched ? manualAmount : proposedAmount !== null ? String(proposedAmount) : ""
-  const effectiveAmount = manualAmountTouched ? manualAmountValue : proposedAmount
-  const hasValidAmount = effectiveAmount !== null && Number.isFinite(effectiveAmount) && effectiveAmount > 0
-
-  const period = useMemo(
-    () => resolveSalaryPaymentPeriod(date, salaryPeriod),
-    [date, salaryPeriod],
-  )
-
-  const assignmentsKey = JSON.stringify(projectAssignments)
-  const defaultSplits = useMemo(() => {
-    if (!period || days === null) {
-      return [] as Array<{ projectId: string; days: number }>
-    }
-    return deriveSalaryProjectDays({
-      assignments: JSON.parse(assignmentsKey) as SalaryProjectAssignmentWindow[],
-      periodStart: period.start,
-      periodEnd: period.end,
-      days,
-    })
-  }, [assignmentsKey, days, period])
+  const session = useSessionQuery()
+  const userId = session.data?.user?.id ?? null
+  const mutation = useApproveEmployeeEarningMutation()
+  const workspaceId = useMemo(() => {
+    try { return resolveApiBaseUrl() } catch { return null }
+  }, [])
+  const identity = useMemo<EarningDraftIdentity | null>(() => userId && employeeId && workspaceId
+    ? { userId, workspaceId, employeeId }
+    : null, [userId, workspaceId, employeeId])
+  const [periodStart, setPeriodStart] = useState(getAlgeriaDateInputValue())
+  const [periodEnd, setPeriodEnd] = useState(getAlgeriaDateInputValue())
+  const [total, setTotal] = useState("")
+  const [unallocated, setUnallocated] = useState("")
+  const [rows, setRows] = useState<EmployeeEarningDraftRow[]>([])
+  const [pending, setPending] = useState<PendingEmployeeEarning | null>(null)
+  const [storageError, setStorageError] = useState(false)
+  const [error, setError] = useState("")
+  const [issues, setIssues] = useState<Array<{ path: (string | number)[]; message: string }>>([])
+  const frozen = pending !== null
+  const previousIdentity = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!open || !employeeId) {
-      initializedTargetRef.current = null
+    if (!open) return
+    if (!identity) {
+      setPending(null)
+      setTotal("")
+      setUnallocated("")
+      setRows([])
       return
     }
-    const previous = initializedTargetRef.current
-    const employeeChanged = previous?.employeeId !== employeeId
-    const periodChanged = previous?.period !== salaryPeriod
-    if (!employeeChanged && !periodChanged) {
-      return
+    const identityKey = JSON.stringify([identity.userId, identity.workspaceId, identity.employeeId])
+    const identityChanged = previousIdentity.current !== identityKey
+    previousIdentity.current = identityKey
+    if (identityChanged) {
+      setPending(null)
+      setPeriodStart(getAlgeriaDateInputValue())
+      setPeriodEnd(getAlgeriaDateInputValue())
+      setTotal("")
+      setUnallocated("")
+      setRows([])
     }
-    initializedTargetRef.current = { employeeId, period: salaryPeriod }
-    // The day default depends only on the wage period, so an amount-only
-    // refresh leaves the field alone. Re-apply it for a new employee or a new
-    // period unless the operator edited the count; an edited count survives.
-    if (employeeChanged || !daysTouched) {
-      setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
-      setDaysTouched(false)
+    try {
+      const loaded = loadPendingEmployeeEarning(identity, window.localStorage)
+      if (!loaded.ok) { setStorageError(true); return }
+      setStorageError(false)
+      // Missing storage cannot prove the frozen request completed; another tab may have removed it.
+      if (loaded.pending) setPending(loaded.pending)
+      setError("")
+      if (loaded.pending) {
+        const payload = loaded.pending.payload
+        setPeriodStart(dateFromBoundary(payload.periodStart))
+        setPeriodEnd(dateFromBoundary(payload.periodEnd))
+        setTotal(payload.totalAmount)
+        setUnallocated(payload.unallocatedAmount)
+        setRows(payload.segments.map(segment => ({ id: segment.id, projectId: segment.projectId, daysText: String(segment.days), amountText: segment.amount })))
+      }
+    } catch {
+      setStorageError(true)
     }
-    // A new employee is a different record: reset everything, including an
-    // amount the operator had typed for the previous worker.
-    if (employeeChanged) {
-      resetAmount()
-      setManualAmountTouched(false)
-      resetDate()
-      setNote("")
-      setSplitsTouched(false)
-    }
-  }, [open, employeeId, salaryPeriod, daysTouched, resetAmount, resetDate])
+  }, [open, identity])
 
-  useEffect(() => {
-    if (!open || !employeeId || !initialDraft || appliedDraftRef.current === initialDraft) {
-      return
-    }
-    appliedDraftRef.current = initialDraft
-    // A carried draft wins over the default init: it is what the operator
-    // typed in the quick form. An untouched day/amount keeps following the
-    // wage, an edited one is pinned.
-    if (initialDraft.daysTouched) {
-      setDaysText(String(initialDraft.days))
-      setDaysTouched(true)
-    } else {
-      setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
-      setDaysTouched(false)
-    }
-    if (initialDraft.amountTouched && initialDraft.amount !== null) {
-      setManualAmount(String(initialDraft.amount))
-      setManualAmountTouched(true)
-    } else {
-      resetAmount()
-      setManualAmountTouched(false)
-    }
-    setDate(initialDraft.date || getAlgeriaDateInputValue())
-    setNote(initialDraft.note)
-    setSplitsTouched(false)
-    initializedTargetRef.current = { employeeId, period: salaryPeriod }
-  }, [open, employeeId, initialDraft, salaryPeriod, setDate, setManualAmount, resetAmount])
-
-  useEffect(() => {
-    if (!open || !employeeId || splitsTouched) {
-      return
-    }
-    setSplits(
-      defaultSplits.map((split, index) => ({
-        key: `${index}-${split.projectId}`,
-        projectId: split.projectId,
-        days: String(split.days),
-      })),
-    )
-  }, [open, employeeId, defaultSplits, splitsTouched])
-
-  const splitDays = splits.map((line) => Number(line.days))
-  const splitsValid = splits.every(
-    (line) => line.projectId.length > 0 && Number.isInteger(Number(line.days)) && Number(line.days) > 0,
-  )
-  const hasDuplicateProjects = new Set(splits.map((line) => line.projectId)).size !== splits.length
-  const unallocatedDays = days !== null && splitsValid ? computeUnallocatedDays(days, splitDays) : null
-  const overAllocated = unallocatedDays !== null && unallocatedDays < 0
-
-  const canSubmit =
-    Boolean(employeeId) &&
-    days !== null &&
-    hasValidAmount &&
-    splitsValid &&
-    !hasDuplicateProjects &&
-    !overAllocated &&
-    !mutation.isPending
-
-  // The API refuses a payment when the worker has no current wage or no wage
-  // period. The full-salary default now fills the amount, so the refusal would
-  // otherwise be a silent dead end at save time; name each missing setting and
-  // what to do next to the save control (the invoice save-reason pattern).
-  const missingWageReason = salaryAmountDzd === null ? t("salaries.missingWageReason") : null
-  const missingPeriodReason = salaryPeriod === null ? t("salaries.missingPeriodReason") : null
-  const saveBlocked = missingWageReason !== null || missingPeriodReason !== null
-  // A disabled save must always name why. An amount that is empty, zero, or not
-  // a number is the remaining silent case (a zero wage prefills "0", which the
-  // API rejects as "greater than zero"); name it too. This does NOT block on its
-  // own — `hasValidAmount` already does that — so a zero-wage worker who types a
-  // real amount can still save, exactly as the API's amount check allows. It is
-  // suppressed while days are invalid, because then the empty amount is a
-  // consequence of the days field, not a separate mistake to explain.
-  const invalidAmountReason =
-    days !== null && !hasValidAmount && !saveBlocked ? t("salaries.missingAmountReason") : null
-
-  const resetForm = () => {
-    setDaysText(String(defaultSalaryPaymentDays(salaryPeriod)))
-    setDaysTouched(false)
-    resetAmount()
-    setManualAmountTouched(false)
-    resetDate()
-    setNote("")
-    setSplits([])
-    setSplitsTouched(false)
+  const draft: EmployeeEarningDraft = {
+    employeeId: employeeId ?? "",
+    periodStart: toAlgeriaDayBoundaryIso(periodStart, "start") ?? "",
+    periodEnd: toAlgeriaDayBoundaryIso(periodEnd, "end") ?? "",
+    totalAmountText: total,
+    unallocatedAmountText: unallocated,
+    rows,
+    referenceSalary: salaryReference,
   }
 
-  const updateSplit = (key: string, patch: Partial<Pick<SplitLine, "projectId" | "days">>) => {
-    setSplitsTouched(true)
-    setSplits((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)))
+  const addRow = () => setRows(current => [...current, newRow()])
+  const updateRow = (id: string, patch: Partial<Omit<EmployeeEarningDraftRow, "id">>) =>
+    setRows(current => editEarningDraftRow({ ...draft, rows: current }, id, patch).rows)
+  const removeRow = (id: string) => setRows(current => current.filter(row => row.id !== id))
+  const issueAt = (path: (string | number)[]) => issues.find(issue => issue.path.length === path.length && issue.path.every((part, index) => part === path[index]))
+  const issueId = (path: (string | number)[]) => `earning-field-error-${path.join("-")}`
+  const controlPath = (path: (string | number)[]) => {
+    const [root, rowId, field] = path
+    if (root === "periodStart" || root === "periodEnd" || root === "totalAmountText" || root === "unallocatedAmountText") return true
+    return root === "rows" && rows.some(row => row.id === rowId) && ["projectId", "daysText", "amountText"].includes(String(field))
+  }
+  const clearIssue = (path: (string | number)[]) => {
+    const changesMoneyTotal = path[0] === "totalAmountText" || path[0] === "unallocatedAmountText" ||
+      (path[0] === "rows" && path[2] === "amountText")
+    setIssues(current => current.filter(issue => {
+      const samePath = issue.path.length === path.length && issue.path.every((part, index) => part === path[index])
+      const staleConservation = changesMoneyTotal && issue.path.length === 1 && issue.path[0] === "totalAmountText" &&
+        issue.message === t("workforce.validation.earning.conservation")
+      return !samePath && !staleConservation
+    }))
+  }
+  const globalIssues = issues.filter(issue => !controlPath(issue.path))
+
+  const submit = async () => {
+    setError("")
+    setIssues([])
+    if (!identity) { setError(t("earnings.identityRequired")); return }
+    if (storageError) { setError(t("earnings.storageUnavailable")); return }
+    let hadPriorPending = pending !== null
+    let payload = pending?.payload
+    let mutationStarted = false
+    let mutationSucceeded = false
+    try {
+      if (!payload) {
+        const loaded = loadPendingEmployeeEarning(identity, window.localStorage)
+        if (!loaded.ok) { setStorageError(true); setError(t("earnings.storageUnavailable")); return }
+        if (loaded.pending) {
+          hadPriorPending = true
+          payload = loaded.pending.payload
+          setPending(loaded.pending)
+        } else {
+          const result = markEmployeeEarningPending(draft, identity, window.localStorage, () => crypto.randomUUID())
+          if (!result.ok) {
+            if (result.issue) { setStorageError(true); setError(t("earnings.storageUnavailable")); return }
+            setIssues(result.issues.map(issue => ({ path: issue.path, message: t(issue.message) })))
+            return
+          }
+          payload = result.payload
+          setPending({ version: 1, identity, payload })
+        }
+      }
+      mutationStarted = true
+      await mutation.mutateAsync(payload)
+      mutationSucceeded = true
+      removePendingEmployeeEarning(identity, window.localStorage)
+      setPending(null)
+      setTotal("")
+      setUnallocated("")
+      setRows([])
+      onOpenChange(false)
+    } catch (cause) {
+      if (mutationSucceeded || !mutationStarted) {
+        setStorageError(true)
+        setError(t("earnings.storageUnavailable"))
+        return
+      }
+      const rpcIssues = translateRpcValidationIssues(cause)
+      const serverIssues = [...appFieldIssues(cause), ...rpcIssues]
+      const normalizedIssues = serverIssues.map(issue => ({ path: normalizeIssuePath(issue.path, rows), message: issue.message }))
+      const code = typeof cause === "object" && cause !== null && "code" in cause ? String((cause as { code?: unknown }).code) : ""
+      const wireValidation = code === "BAD_REQUEST" && hasKnownContractValidationIssues(cause)
+      const isProvenNoWrite = !hadPriorPending && (code === "VALIDATION" || code === "NOT_FOUND" || wireValidation)
+      if (isProvenNoWrite) {
+        try {
+          removePendingEmployeeEarning(identity, window.localStorage)
+          setPending(null)
+        } catch {
+          setStorageError(true)
+          setError(t("earnings.storageUnavailable"))
+          setIssues(normalizedIssues)
+          return
+        }
+      }
+      setIssues(normalizedIssues)
+      setError(normalizedIssues.length ? "" : cause instanceof Error ? cause.message : t("earnings.submitError"))
+    }
   }
 
-  const addSplit = () => {
-    const used = new Set(splits.map((line) => line.projectId))
-    const next = projects.find((project) => !used.has(project.id))
-    const remaining = unallocatedDays !== null && unallocatedDays > 0 ? unallocatedDays : 1
-    setSplitsTouched(true)
-    setSplits((current) => [
-      ...current,
-      { key: `line-${Date.now()}-${current.length}`, projectId: next?.id ?? "", days: String(remaining) },
-    ])
-  }
-
-  const removeSplit = (key: string) => {
-    setSplitsTouched(true)
-    setSplits((current) => current.filter((line) => line.key !== key))
-  }
-
-  const handleSubmit = async () => {
-    // `saveBlocked` is also checked here, not only by the disabled button: the
-    // guard lives in the handler so a future non-button submit path cannot skip
-    // the API's wage/period precondition.
-    if (!canSubmit || saveBlocked || !employeeId || days === null) return
-
-    await mutation.mutateAsync({
-      employeeId,
-      days,
-      // The override is stored at the currency's precision so it agrees with
-      // the whole-cent shares the split display attributes.
-      actualAmountDzd:
-        manualAmountTouched && manualAmountValue !== null
-          ? roundMoneyToCents(manualAmountValue)
-          : undefined,
-      paymentDate: date ? toAlgeriaDayBoundaryIso(date, "start") : undefined,
-      note: note.trim() || null,
-      projectSplits: splits.map((line) => ({ projectId: line.projectId, days: Number(line.days) })),
-    })
-
-    resetForm()
-    onOpenChange(false)
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(isOpen) => {
-        if (!isOpen) resetForm()
-        onOpenChange(isOpen)
-      }}
-    >
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{t("salaries.addPayment")}</DialogTitle>
-          {employeeName ? (
-            <p className="text-sm text-muted-foreground" dir="auto">{employeeName}</p>
-          ) : null}
-        </DialogHeader>
-
-        <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium">{t("salaries.days")}</span>
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                inputMode="numeric"
-                dir="ltr"
-                value={daysText}
-                onChange={(event) => {
-                  setDaysTouched(true)
-                  setDaysText(event.target.value)
-                }}
-              />
+  const busy = mutation.isPending
+  return <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="max-w-2xl">
+      <DialogHeader>
+        <DialogTitle>{t("earnings.title")}</DialogTitle>
+        {employeeName ? <p className="text-sm text-muted-foreground" dir="auto">{employeeName}</p> : null}
+      </DialogHeader>
+      {pending ? <p role="status" className="rounded-xl border border-border/60 bg-surface-2 p-3 text-sm">{t("earnings.pendingApproval")}</p> : null}
+      <form onSubmit={event => { event.preventDefault(); void submit() }}>
+      <div className="space-y-4" aria-busy={busy}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {(["periodStart", "periodEnd"] as const).map(field => {
+            const path = [field]
+            const issue = issueAt(path)
+            const value = field === "periodStart" ? periodStart : periodEnd
+            const setValue = field === "periodStart" ? setPeriodStart : setPeriodEnd
+            return <label key={field} className="flex flex-col gap-2" aria-invalid={issue ? true : undefined} aria-describedby={issue ? issueId(path) : undefined}>
+              <span className="text-sm font-medium">{t(`earnings.${field}`)}</span>
+              <DatePicker id={t(`earnings.${field}`)} aria-invalid={issue ? true : undefined} aria-describedby={issue ? issueId(path) : undefined} value={value} onChange={next => { clearIssue(path); setValue(next) }} disabled={frozen || busy} />
+              {issue ? <p id={issueId(path)} className="text-sm text-destructive">{issue.message}</p> : null}
             </label>
-
-            <label className="flex flex-col gap-2">
-              <span className="text-sm font-medium">{t("salaries.paymentDate")}</span>
-              <DatePicker
-                value={date}
-                onChange={setDate}
-              />
+          })}
+          {(["totalAmountText", "unallocatedAmountText"] as const).map(field => {
+            const path = [field]
+            const issue = issueAt(path)
+            const isTotal = field === "totalAmountText"
+            const label = t(isTotal ? "earnings.total" : "earnings.unallocated")
+            return <label key={field} className="flex flex-col gap-2">
+              <span className="text-sm font-medium">{label}</span>
+              <CurrencyInput aria-label={label} aria-invalid={issue ? true : undefined} aria-describedby={issue ? issueId(path) : undefined} value={isTotal ? total : unallocated} onChange={event => { clearIssue(path); (isTotal ? setTotal : setUnallocated)(event.target.value) }} disabled={frozen || busy} />
+              {issue ? <p id={issueId(path)} className="text-sm text-destructive">{issue.message}</p> : null}
             </label>
-
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">{t("salaries.proposedAmount")}</span>
-              <span className="flex h-10 items-center rounded-xl border border-dashed border-border/75 bg-surface-2 px-4 text-sm font-mono tabular-nums text-ink-2" dir="ltr">
-                {proposedAmount !== null
-                  ? new Intl.NumberFormat("ar-DZ", { maximumFractionDigits: 2 }).format(proposedAmount)
-                  : "—"}
-              </span>
-            </div>
-          </div>
-
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">{t("salaries.actualAmount")}</span>
-            <CurrencyInput
-              placeholder="0"
-              value={displayedAmount}
-              onChange={(event) => {
-                setManualAmountTouched(true)
-                setManualAmount(event.target.value)
-              }}
-            />
-          </label>
-
-          <div className="space-y-3 rounded-xl border border-border/60 bg-surface-2 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-medium">{t("salaries.projectSplit")}</span>
-              <Button type="button" size="xs" variant="outline" onClick={addSplit} disabled={projects.length === 0}>
-                {t("salaries.addProjectLine")}
-              </Button>
-            </div>
-
-            {splits.length > 0 ? (
-              <div className="space-y-3">
-                {splits.map((line) => (
-                  <div key={line.key} className="grid gap-3 sm:grid-cols-[1fr_120px_auto] sm:items-end">
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs text-ink-3">{t("salaries.project")}</span>
-                      <NativeSelect
-                        value={line.projectId}
-                        onChange={(event) => updateSplit(line.key, { projectId: event.target.value })}
-                      >
-                        <option value="">{t("salaries.selectProject")}</option>
-                        {projects.map((project) => (
-                          <option key={project.id} value={project.id}>{project.name}</option>
-                        ))}
-                      </NativeSelect>
-                    </label>
-                    <label className="flex flex-col gap-1">
-                      <span className="text-xs text-ink-3">{t("salaries.days")}</span>
-                      <Input
-                        type="number"
-                        min={1}
-                        step={1}
-                        inputMode="numeric"
-                        dir="ltr"
-                        value={line.days}
-                        onChange={(event) => updateSplit(line.key, { days: event.target.value })}
-                      />
-                    </label>
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="ghost"
-                      onClick={() => removeSplit(line.key)}
-                    >
-                      {t("salaries.removeProjectLine")}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-xs text-ink-3">{t("salaries.noProjectSplit")}</p>
-            )}
-
-            <p className={`text-sm font-medium ${overAllocated ? "text-destructive" : "text-ink-2"}`} dir="rtl">
-              {overAllocated && unallocatedDays !== null
-                ? t("salaries.overAllocatedDays", { count: Math.abs(unallocatedDays) })
-                : t("salaries.unallocatedDays", { count: unallocatedDays ?? days ?? 0 })}
-            </p>
-          </div>
-
-          <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium">{t("salaries.notes")}</span>
-            <Textarea
-              placeholder={t("common.noNotes")}
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </label>
+          })}
         </div>
-
-        {saveBlocked || invalidAmountReason ? (
-          <div role="status" aria-live="polite" className="space-y-1 text-sm text-destructive">
-            {missingWageReason ? <p>{missingWageReason}</p> : null}
-            {missingPeriodReason ? <p>{missingPeriodReason}</p> : null}
-            {invalidAmountReason ? <p>{invalidAmountReason}</p> : null}
-          </div>
-        ) : null}
-
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => {
-              resetForm()
-              onOpenChange(false)
-            }}
-          >
-            {t("common.cancel")}
-          </Button>
-          <Button disabled={!canSubmit || saveBlocked} onClick={handleSubmit}>
-            {t("salaries.addPayment")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
+        <section className="space-y-3 rounded-xl border border-border/60 bg-surface-2 p-4" aria-label={t("earnings.projectRows")}>
+          <div className="flex items-center justify-between gap-3"><h3 className="text-sm font-medium">{t("earnings.projectRows")}</h3><Button type="button" size="xs" variant="outline" onClick={addRow} disabled={frozen || busy}>{t("earnings.addProjectRow")}</Button></div>
+          {rows.map((row, index) => {
+            const projectPath = ["rows", row.id, "projectId"]
+            const daysPath = ["rows", row.id, "daysText"]
+            const amountPath = ["rows", row.id, "amountText"]
+            const projectIssue = issueAt(projectPath)
+            const daysIssue = issueAt(daysPath)
+            const amountIssue = issueAt(amountPath)
+            return <div key={row.id} className="grid gap-3 sm:grid-cols-[1fr_100px_140px_auto] sm:items-end">
+              <label className="flex flex-col gap-1"><span className="text-xs text-ink-3">{t("earnings.project")}</span><NativeSelect aria-label={`${t("earnings.project")} ${index + 1}`} aria-invalid={projectIssue ? true : undefined} aria-describedby={projectIssue ? issueId(projectPath) : undefined} value={row.projectId} disabled={frozen || busy} onChange={event => { clearIssue(projectPath); updateRow(row.id, { projectId: event.target.value }) }}><option value="">{t("earnings.selectProject")}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</NativeSelect>{projectIssue ? <p id={issueId(projectPath)} className="text-sm text-destructive">{projectIssue.message}</p> : null}</label>
+              <label className="flex flex-col gap-1"><span className="text-xs text-ink-3">{t("earnings.days")}</span><Input aria-label={`${t("earnings.days")} ${index + 1}`} aria-invalid={daysIssue ? true : undefined} aria-describedby={daysIssue ? issueId(daysPath) : undefined} type="number" min={1} step={1} inputMode="numeric" dir="ltr" value={row.daysText} disabled={frozen || busy} onChange={event => { clearIssue(daysPath); updateRow(row.id, { daysText: event.target.value }) }} />{daysIssue ? <p id={issueId(daysPath)} className="text-sm text-destructive">{daysIssue.message}</p> : null}</label>
+              <label className="flex flex-col gap-1"><span className="text-xs text-ink-3">{t("earnings.amount")}</span><CurrencyInput aria-label={`${t("earnings.amount")} ${index + 1}`} aria-invalid={amountIssue ? true : undefined} aria-describedby={amountIssue ? issueId(amountPath) : undefined} value={row.amountText} disabled={frozen || busy} onChange={event => { clearIssue(amountPath); updateRow(row.id, { amountText: event.target.value }) }} />{amountIssue ? <p id={issueId(amountPath)} className="text-sm text-destructive">{amountIssue.message}</p> : null}</label>
+              <Button type="button" size="xs" variant="ghost" onClick={() => removeRow(row.id)} disabled={frozen || busy}>{t("earnings.removeProjectRow", { number: index + 1 })}</Button>
+            </div>
+          })}
+        </section>
+        {globalIssues.length ? <div role="alert" className="space-y-1 text-sm text-destructive">{globalIssues.map((issue, index) => <p key={`${issue.path.join(".")}-${index}`}>{issue.message}</p>)}</div> : null}
+        {storageError ? <p role="alert" className="text-sm text-destructive">{t("earnings.storageUnavailable")}</p> : null}
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
+        <Button type="submit" disabled={!identity || busy || storageError}>{busy ? t("earnings.approving") : frozen ? t("earnings.retryApproval") : t("earnings.approve")}</Button>
+      </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>
 }

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
-import { MAX_MONEY_DZD } from "@tuari/contracts";
+import { MAX_MONEY_DZD, UnitPrice } from "@tuari/contracts";
 
 import { ensureDatabaseSchema } from "../../infrastructure/database/schema";
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor";
@@ -229,10 +229,10 @@ describe("Inventory debt signs (D4/D8)", () => {
     });
 
     it("refuses an invoice whose line total overflows MAX_MONEY_DZD, storing nothing (#429)", () => {
-      // A consumable invoice has no charge backstop: the gross-total guard is
-      // the only thing between a legal-per-line batch and a stored number
-      // outside the safe-integer range.
+      // Both entered operands fit their own bounds, but their exact line
+      // product exceeds MAX_MONEY_DZD. The gross guard must reject it before writes.
       const { supplier, warehouse, item } = setupPurchaseBase();
+      expect(UnitPrice.parse("900000000000000").toScaledUnits()).toBe("9000000000000000000");
 
       let thrown: unknown;
       try {
@@ -248,8 +248,8 @@ describe("Inventory debt signs (D4/D8)", () => {
                 kind: "CONSUMABLE",
                 itemDefinitionId: item.id,
                 warehouseId: warehouse.id,
-                quantity: 2,
-                unitPriceDzd: MAX_MONEY_DZD,
+                quantity: 20,
+                unitPriceDzd: 900_000_000_000_000,
                 totalPriceDzd: 10,
               },
             ],

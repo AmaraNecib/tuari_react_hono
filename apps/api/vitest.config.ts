@@ -5,10 +5,8 @@ import { defineConfig } from "vitest/config";
  *
  * - Uses v8 coverage provider (faster, more accurate branch tracking)
  * - Excludes test files, types, and adapters from coverage requirements
- * - Lines/statements/functions must stay at 100%; branches sit at a 99 safety
- *   floor so provably-unreachable defensive branches (see #242) do not force
- *   illegal-state tests or v8 pragmas. A genuinely impossible branch may be
- *   marked with a commented v8-ignore escape (see the thresholds note below).
+ * - All four global coverage thresholds are 99%. This floor follows the
+ *   owner's policy decision recorded in .scratch/implementation/543-in-place-design.md.
  */
 export default defineConfig({
   test: {
@@ -30,19 +28,13 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html"],
       thresholds: {
-        // Coverage policy: ALL thresholds are strict 100% ("tests pass" keeps
-        // its meaning). A provably-unreachable DEFENSIVE branch may be marked
-        // with a commented `/* v8 ignore */` escape: v8 then excludes it from
-        // the numbers, so any REACHABLE untested branch still fails the gate
-        // while impossible defensive branches don't demand illegal-state
-        // tests. (In-module: the #242 unreachable branches live in
-        // src/modules/company/finance.service.ts, covered here, so the escape
-        // applies in scope.) Do not lower the branch threshold: an aggregate
-        // floor would let real gaps pass silently.
-        statements: 100,
-        branches: 100,
-        functions: 100,
-        lines: 100,
+        // The owner selected a 99% global floor across all four measures:
+        // slightly below the recorded CI baseline, without weakening includes,
+        // exclusions, test assertions or other CI gates.
+        statements: 99,
+        branches: 99,
+        functions: 99,
+        lines: 99,
       },
       include: [
         "src/modules/workforce/**/*.ts",

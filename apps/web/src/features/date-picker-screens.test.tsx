@@ -41,6 +41,14 @@ vi.mock("@tanstack/react-router", async (importActual) => {
   }
 })
 
+vi.mock("@/features/session/use-session-query", () => ({
+  useSessionQuery: () => ({ data: { user: { id: "user-1" } } }),
+}))
+
+vi.mock("@/features/employees/employee-earnings-queries", () => ({
+  useApproveEmployeeEarningMutation: () => ({ isPending: false, mutateAsync: vi.fn(async () => ({})) }),
+}))
+
 vi.mock("@/features/app-shell/workspace-mutations", async (importActual) => ({
   ...(await importActual<typeof import("@/features/app-shell/workspace-mutations")>()),
   useCreateDebtAccountMutation: () => ({ isPending: false, mutateAsync: mocks.createDebtAccount }),
@@ -164,27 +172,23 @@ describe("RecordPaymentDialog submits the picked day for a debt payment (#428)",
   })
 })
 
-describe("AddSalaryPaymentDialog submits the picked day for a salary payment (#428)", () => {
-  it("passes the canonical picked day as paymentDate", async () => {
+describe("AddSalaryPaymentDialog approval period date controls", () => {
+  it("keeps the selected canonical day in the approval start-date control", () => {
     render(
       <AddSalaryPaymentDialog
         employeeId="employee-1"
         employeeName="عامل"
-        salaryAmountDzd={30000}
-        salaryPeriod="MONTHLY"
+        salaryReference={{ period: "MONTHLY", amount: "30000.00" }}
+        projects={[]}
         open
         onOpenChange={vi.fn()}
       />,
     )
 
-    fireEvent.change(screen.getByPlaceholderText("0"), { target: { value: "100" } })
     pickDate()
-    fireEvent.click(screen.getByRole("button", { name: "إضافة دفعة" }))
-
-    await waitFor(() => expect(mocks.createSalaryPayment).toHaveBeenCalledTimes(1))
-    expect(mocks.createSalaryPayment).toHaveBeenCalledWith(
-      expect.objectContaining({ paymentDate: PICKED_ISO }),
-    )
+    const startDateLabel = screen.getByText("بداية فترة العمل").closest("label")!
+    expect(startDateLabel.querySelector('[data-slot="popover-trigger"]')?.textContent).toContain("15")
+    expect(mocks.createSalaryPayment).not.toHaveBeenCalled()
   })
 })
 

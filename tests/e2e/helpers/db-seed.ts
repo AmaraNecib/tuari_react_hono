@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto"
-import { existsSync, readdirSync, statSync } from "node:fs"
+import { existsSync, readdirSync } from "node:fs"
 import { createRequire } from "node:module"
-import { isAbsolute, join } from "node:path"
+import { isAbsolute, join, relative, resolve, sep } from "node:path"
 
 /**
  * E2E DB seeding helper (issue #183).
@@ -59,61 +59,25 @@ export function loadDatabaseConstructor() {
 }
 
 /**
- * The newest E2E database file for the current run.
- *
- * `APP_DB_PATH=./data/…` is resolved relative to the API package cwd, so the
- * file lands in `apps/api/data/`; the root `data/` is checked as a fallback
- * (one file per Playwright run — the newest by mtime).
+ * The exact synthetic database declared by the managed Playwright config.
+ * Never guess a database from directory contents: reset and seed are writes.
  */
 export function findE2eDatabase(): string {
-  // An externally managed API has no local file to reset or seed. Failing here
-  // with an explanation beats silently mutating a stale local database while
-  // the browser talks to the external one (Greptile finding on this slice).
-  if (process.env.E2E_API_MANAGED === "0") {
-    throw new Error(
-      "This run targets an externally managed API (PLAYWRIGHT_API_URL), so the direct-SQLite fixtures cannot reset or seed its database. Run against a managed local server, or drop the specs that assert on the database file.",
-    )
+  if (process.env.E2E_API_MANAGED !== "1") {
+    throw new Error("Direct-SQLite E2E fixtures require the managed Playwright API (E2E_API_MANAGED=1).")
   }
-  // Prefer the database THIS run started: playwright.config.ts exports the
-  // exact path it handed to the API, so a concurrent run in the same
-  // checkout can never be reset by mistake (Greptile finding on this slice).
   const declared = process.env.APP_DB_PATH?.trim()
-  if (declared) {
-    // The managed API runs with cwd=apps/api (pnpm --filter @tuari/api dev) and
-    // opens the file there, while the workers run from the repo root. Check the
-    // API's own location FIRST: if both interpretations exist, the repo-root
-    // file is not the one the browser reads.
-    const candidates = isAbsolute(declared)
-      ? [declared]
-      : [join(process.cwd(), "apps", "api", declared), join(process.cwd(), declared)]
-    for (const candidate of candidates) {
-      if (existsSync(candidate)) return candidate
-    }
-    throw new Error(
-      `APP_DB_PATH is set to ${declared} but no database exists at: ${candidates.join(", ")} — did the API start?`,
-    )
+  if (!declared) throw new Error("Direct-SQLite E2E fixtures require Playwright's declared APP_DB_PATH.")
+  const root = resolve(process.cwd())
+  const apiData = resolve(root, "apps", "api", "data")
+  const candidate = resolve(isAbsolute(declared) ? declared : join(root, "apps", "api", declared))
+  const rel = relative(apiData, candidate)
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel) ||
+      !/^tuari\.phase1\.integration\..+\.sqlite$/.test(candidate.slice(apiData.length + 1))) {
+    throw new Error(`Refusing non-synthetic or out-of-scope E2E database path: ${candidate}`)
   }
-  const candidates: Array<{ path: string; mtime: number }> = []
-  for (const dataDir of [
-    join(process.cwd(), "apps", "api", "data"),
-    join(process.cwd(), "data"),
-  ]) {
-    if (!existsSync(dataDir)) continue
-    for (const file of readdirSync(dataDir).filter((f) =>
-      /^tuari\.phase1\.integration\..+\.sqlite$/.test(f),
-    )) {
-      const full = join(dataDir, file)
-      candidates.push({ path: full, mtime: statSync(full).mtimeMs })
-    }
-  }
-  candidates.sort((a, b) => b.mtime - a.mtime)
-  const dbPath = candidates[0]?.path
-  if (!dbPath) {
-    throw new Error(
-      "No E2E sqlite database found under apps/api/data or ./data — run the API first",
-    )
-  }
-  return dbPath
+  if (!existsSync(candidate)) throw new Error(`Playwright's declared E2E database does not exist: ${candidate}`)
+  return candidate
 }
 
 /**
@@ -134,7 +98,7 @@ export function seedEmployees(employees: SeedEmployee[]): void {
     const insert = db.prepare(
       `INSERT INTO employee
          (id, first_name, last_name, phone, user_id, role_id, status,
-          salary_amount_dzd, salary_period, notes, created_at, updated_at)
+          salary_reference_amount, salary_reference_period, notes, created_at, updated_at)
        VALUES (?, ?, ?, ?, NULL, ?, 'ACTIVE', NULL, NULL, NULL, ?, ?)`,
     )
     const defaultTs = new Date().toISOString()
@@ -166,8 +130,8 @@ export function seedEmployeeByRole(input: {
   phone: string
   roleKey: string
   status?: "ACTIVE" | "INACTIVE" | "LEFT"
-  salaryAmountDzd?: number | null
-  salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null
+  salaryReferenceAmount?: string | null
+  salaryReferencePeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null
 }): string {
   const db = loadDatabaseConstructor()(findE2eDatabase())
   try {
@@ -182,7 +146,7 @@ export function seedEmployeeByRole(input: {
     db.prepare(
       `INSERT INTO employee
          (id, first_name, last_name, phone, user_id, role_id, status,
-          salary_amount_dzd, salary_period, notes, created_at, updated_at)
+          salary_reference_amount, salary_reference_period, notes, created_at, updated_at)
        VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?)`,
     ).run(
       id,
@@ -191,8 +155,8 @@ export function seedEmployeeByRole(input: {
       input.phone,
       roleRow.id,
       input.status ?? "ACTIVE",
-      input.salaryAmountDzd ?? null,
-      input.salaryPeriod ?? null,
+      input.salaryReferenceAmount ?? null,
+      input.salaryReferencePeriod ?? null,
       ts,
       ts,
     )
@@ -251,6 +215,25 @@ export function seedProjectAssignment(input: {
       ts,
     )
     return id
+  } finally {
+    db.close()
+  }
+}
+
+export function readEmployeeEarningSegmentsByEmployeeId(employeeId: string): Array<{
+  projectId: string
+  days: number
+  amountMinor: string
+}> {
+  const db = loadDatabaseConstructor()(findE2eDatabase())
+  try {
+    return db.prepare(
+      `SELECT segment.project_id AS projectId, segment.days AS days,
+              CAST(segment.amount_minor AS TEXT) AS amountMinor
+         FROM employee_earning_segment AS segment
+         JOIN employee_earning AS earning ON earning.id = segment.earning_id
+        WHERE earning.employee_id = ? ORDER BY segment.ordinal`,
+    ).all(employeeId) as Array<{ projectId: string; days: number; amountMinor: string }>
   } finally {
     db.close()
   }

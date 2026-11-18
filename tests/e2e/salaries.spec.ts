@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test"
 
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 import {
+  readEmployeeEarningSegmentsByEmployeeId,
   readSalaryPaymentSplitsByEmployeeId,
   seedEmployeeByRole,
   seedProjectAssignment,
@@ -9,166 +10,102 @@ import {
 } from "./helpers/db-seed"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
-/**
- * Issue #412 — the salary payment dialog: proposed amount, split prefill from
- * the assignment, the unallocated remainder, the over-allocation block, and
- * the recorded payment's days.
- *
- * Employee creation through the UI is role-constrained (established pattern),
- * so the salaried worker and the project are seeded directly into the shared
- * E2E database. The assignment window is open-ended and starts in 2000, so it
- * covers whichever month the payment dialog defaults to.
- */
-
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 test.describe.configure({ mode: "serial" })
-
-const SALARY_DZD = 30000
 
 let workerName = ""
 let workerId = ""
 let projectId = ""
-let projectName = ""
 
 test.beforeAll(() => {
   resetE2eDatabase()
-
   const suffix = uniqueSuffix()
-  // Valid Algerian phones (0[5-7] + 8 digits), unique per attempt.
   const digits = `${Date.now().toString().slice(-7)}${Math.floor(Math.random() * 1000)}`
-
   const managerId = seedEmployeeByRole({
-    firstName: "مدير",
-    lastName: `الرواتب ${suffix}`,
-    phone: `053${digits.slice(0, 7)}`,
-    roleKey: "project_manager",
-    status: "ACTIVE",
+    firstName: "مدير", lastName: `الرواتب ${suffix}`, phone: `053${digits.slice(0, 7)}`,
+    roleKey: "project_manager", status: "ACTIVE",
   })
-  projectName = `مشروع الرواتب ${suffix}`
-  projectId = seedProjectWithManager({
-    name: projectName,
-    managerId,
-  })
+  projectId = seedProjectWithManager({ name: `مشروع الرواتب ${suffix}`, managerId })
   workerName = `عامل الرواتب ${suffix}`
   workerId = seedEmployeeByRole({
-    firstName: "عامل",
-    lastName: `الرواتب ${suffix}`,
-    phone: `054${digits.slice(0, 7)}`,
-    roleKey: "worker",
-    status: "ACTIVE",
-    salaryAmountDzd: SALARY_DZD,
-    salaryPeriod: "MONTHLY",
+    firstName: "عامل", lastName: `الرواتب ${suffix}`, phone: `054${digits.slice(0, 7)}`,
+    roleKey: "worker", status: "ACTIVE", salaryReferenceAmount: "30000.00",
+    salaryReferencePeriod: "MONTHLY",
   })
   seedProjectAssignment({ employeeId: workerId, projectId })
 })
 
-async function openPaymentDialog(page: import("@playwright/test").Page) {
+async function openApprovalDialog(page: import("@playwright/test").Page) {
   await bootstrapOrSignIn(page)
   await page.goto("/salaries")
   await expect(page.getByRole("heading", { name: "الرواتب" })).toBeVisible()
-
   await page.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }).click()
-  const workerRow = page.getByRole("row").filter({ hasText: workerName })
-  await expect(workerRow).toBeVisible()
-  await workerRow.getByRole("button", { name: "إضافة دفعة" }).click()
-
+  const row = page.getByRole("row").filter({ hasText: workerName })
+  await expect(row).toBeVisible()
+  await row.getByRole("button", { name: /اعتماد الأجر/ }).click()
   const dialog = page.getByRole("dialog")
   await expect(dialog).toBeVisible()
   return dialog
 }
 
-test("proposes salary/30 x days and prefills the split from the assignment", async ({ page }) => {
-  const dialog = await openPaymentDialog(page)
-
-  // The prefilled editable amount IS the proposal (the amount follows it until edited).
-  const amountInput = dialog.getByLabel("المبلغ المدفوع")
-  const daysInput = dialog.getByLabel("الأيام").first()
-  await expect(dialog.getByText("المبلغ المقترح")).toBeVisible()
-  await expect(daysInput).toHaveValue("30")
-  await expect(amountInput).toHaveValue(String(SALARY_DZD))
-
-  // The full-period assignment prefills one line and leaves nothing unallocated.
-  await expect(dialog.getByLabel("المشروع")).toHaveValue(projectId)
-  await expect(dialog.getByLabel("الأيام").last()).toHaveValue("30")
-  await expect(dialog.getByText("أيام غير موزعة: 0")).toBeVisible()
-
-  // A 27-day payment scales both the proposal and the untouched default split.
-  await daysInput.fill("27")
-  await expect(amountInput).toHaveValue("27000")
-  await expect(dialog.getByLabel("الأيام").last()).toHaveValue("27")
-  await expect(dialog.getByText("أيام غير موزعة: 0")).toBeVisible()
-
+test("approval conserves the entered total and explicit remainder", async ({ page }) => {
+  const dialog = await openApprovalDialog(page)
+  const total = dialog.getByLabel("إجمالي الأجر المعتمد بالدينار الجزائري")
+  const remainder = dialog.getByLabel("المبلغ غير الموزع بالدينار الجزائري")
+  await total.fill("27000.00")
+  await remainder.fill("27000.00")
+  await expect(total).toHaveValue("27000.00")
+  await expect(remainder).toHaveValue("27000.00")
   await page.keyboard.press("Escape")
   await expect(dialog).toBeHidden()
 })
 
-test("blocks an over-allocated split and records the payment with its days", async ({ page }) => {
-  const dialog = await openPaymentDialog(page)
-  const daysInput = dialog.getByLabel("الأيام").first()
-  const lineDays = dialog.getByLabel("الأيام").last()
-  const submit = dialog.getByRole("button", { name: "إضافة دفعة" })
-
-  // Hand-edit the line first (a hand edit wins over the derived default), then
-  // shrink the paid days: the split over-allocates and submit must be blocked.
-  await lineDays.fill("20")
-  await daysInput.fill("12")
-  await expect(dialog.getByText("التوزيع يتجاوز الأيام المدفوعة بـ 8")).toBeVisible()
-  await expect(submit).toBeDisabled()
-
-  // Slide the line back to the paid days: valid again, with the remainder explicit.
-  await lineDays.fill("12")
-  await expect(dialog.getByText("أيام غير موزعة: 0")).toBeVisible()
-  await expect(submit).toBeEnabled()
-  await submit.click()
+test("approval keeps project attribution and independent segment amounts without paying cash", async ({ page }) => {
+  const dialog = await openApprovalDialog(page)
+  await dialog.getByRole("button", { name: "إضافة بند مشروع" }).click()
+  const project = dialog.getByLabel("المشروع 1")
+  const days = dialog.getByLabel("أيام العمل 1")
+  const segmentAmount = dialog.getByLabel("المبلغ بالدينار الجزائري 1")
+  await project.selectOption(projectId)
+  await days.fill("12")
+  await segmentAmount.fill("12000.00")
+  const total = dialog.getByLabel("إجمالي الأجر المعتمد بالدينار الجزائري")
+  const remainder = dialog.getByLabel("المبلغ غير الموزع بالدينار الجزائري")
+  await total.fill("15000.00")
+  await remainder.fill("3000.00")
+  await days.fill("8")
+  await expect(segmentAmount).toHaveValue("12000.00")
+  await expect(remainder).toHaveValue("3000.00")
+  await days.fill("12")
+  await dialog.getByRole("button", { name: "اعتماد الأجر", exact: true }).click()
   await expect(dialog).toBeHidden()
-
-  // The payment appears in the history with the days that were paid, and the
-  // row now spells out which project received them and its share of the
-  // amount (issue #412 review: the split must be readable without the API).
+  expect(readEmployeeEarningSegmentsByEmployeeId(workerId)).toEqual([
+    { projectId, days: 12, amountMinor: "1200000" },
+  ])
+  expect(readSalaryPaymentSplitsByEmployeeId(workerId)).toEqual([])
   await page.getByRole("tab", { name: "آخر دفعات الرواتب" }).click()
-  const paymentRow = page.getByRole("row").filter({ hasText: workerName })
-  await expect(paymentRow).toBeVisible({ timeout: 10_000 })
-  const daysCell = paymentRow.getByRole("cell").nth(2)
-  await expect(daysCell).toContainText("12")
-  await expect(daysCell).toContainText(projectName)
-  await expect(daysCell).toContainText("12 يوم")
-  // 30000 / 30 x 12 days, all attributed to the one project.
-  await expect(daysCell).toContainText("12,000")
-
-  // And the project attribution survives the sqlite insert and read paths —
-  // an in-memory assertion cannot prove the split was persisted (issue #412
-  // review).
-  const persisted = readSalaryPaymentSplitsByEmployeeId(workerId)
-  expect(persisted[0]?.days).toBe(12)
-  expect(persisted[0]?.projectSplits).toEqual([{ projectId, days: 12 }])
+  await expect(page.getByRole("row").filter({ hasText: workerName })).toHaveCount(0)
 })
 
-test("money grouping setting retains decimals, whole amounts and persistence in both views", async ({ page }, testInfo) => {
+test("salary reference grouping persists across salary and employee views", async ({ page }, testInfo) => {
   const fractionalWorkerId = seedEmployeeByRole({
-    firstName: "عامل", lastName: "عرض تجريبي", phone: "0554999454",
-    roleKey: "worker", status: "ACTIVE", salaryAmountDzd: 1234.56, salaryPeriod: "MONTHLY",
+    firstName: "عامل", lastName: "عرض تجريبي", phone: `055${Date.now().toString().slice(-7)}`,
+    roleKey: "worker", status: "ACTIVE", salaryReferenceAmount: "1234.56",
+    salaryReferencePeriod: "MONTHLY",
   })
   await bootstrapOrSignIn(page)
   await page.goto("/salaries")
   await page.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }).click()
   const fractionalRow = page.getByRole("row").filter({ hasText: "عامل عرض تجريبي" })
+  const wholeRow = page.getByRole("row").filter({ hasText: workerName })
+  await expect(wholeRow).toContainText("30,000")
+  await expect(wholeRow).not.toContainText("30,000.00")
   await expect(fractionalRow).toContainText("1,234.56")
   await fractionalRow.screenshot({ path: testInfo.outputPath("after-salary-grouped.png") })
-  await fractionalRow.getByRole("button", { name: "إضافة دفعة" }).click()
-  const dialog = page.getByRole("dialog")
-  const amount = dialog.getByLabel("المبلغ المدفوع")
-  await expect(amount).toHaveValue("1234.56")
-  // Exercise real editable decimal entry, not just a seeded display value.
-  await amount.fill("1234.56")
-  await dialog.getByRole("button", { name: "إضافة دفعة" }).click()
-  await expect(dialog).toBeHidden()
-
-  await page.goto("/employees/" + fractionalWorkerId + "?tab=finance")
+  await page.goto(`/employees/${fractionalWorkerId}?tab=finance`)
   const wageCard = page.getByRole("article").filter({ hasText: "الأجر الحالي" })
   await expect(wageCard).toContainText("1,234.56")
   await wageCard.screenshot({ path: testInfo.outputPath("after-employee-grouped.png") })
-  const paidCard = page.getByRole("article").filter({ hasText: "إجمالي المدفوع" })
-  await expect(paidCard).toContainText("1,234.56")
 
   await page.goto("/settings?tab=appearance")
   const format = page.getByRole("combobox", { name: /^فواصل الآلاف في المبالغ/ })
@@ -179,22 +116,17 @@ test("money grouping setting retains decimals, whole amounts and persistence in 
   await page.reload()
   await expect(format).toHaveValue("plain")
 
-  await page.goto("/employees/" + fractionalWorkerId + "?tab=finance")
+  await page.goto(`/employees/${fractionalWorkerId}?tab=finance`)
   await expect(wageCard).toContainText("1234.56")
   await expect(wageCard).not.toContainText("1,234")
-  await expect(paidCard).toContainText("1234.56")
   await wageCard.screenshot({ path: testInfo.outputPath("after-employee-plain.png") })
   await page.goto("/salaries")
   await page.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }).click()
   await expect(fractionalRow).toContainText("1234.56")
   await expect(fractionalRow).not.toContainText("1,234")
-  const wholeRow = page.getByRole("row").filter({ hasText: workerName })
   await expect(wholeRow).toContainText("30000")
   await expect(wholeRow).not.toContainText("30000.00")
   await fractionalRow.screenshot({ path: testInfo.outputPath("after-salary-plain.png") })
-  await page.getByRole("tab", { name: "آخر دفعات الرواتب" }).click()
-  const paymentRow = page.getByRole("row").filter({ hasText: "عامل عرض تجريبي" })
-  await expect(paymentRow.getByRole("cell").nth(4)).toContainText("1234.56")
 
   await page.goto("/settings?tab=appearance")
   await format.focus()

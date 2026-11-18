@@ -25,6 +25,15 @@ vi.mock("@/hooks/use-notify-app-ready", () => ({
   useNotifyAppReady: vi.fn(),
 }))
 
+const { approveEmployeeEarningMutate } = vi.hoisted(() => ({ approveEmployeeEarningMutate: vi.fn() }))
+vi.mock("@/features/employees/employee-earnings-queries", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/features/employees/employee-earnings-queries")>()
+  return {
+    ...actual,
+    useApproveEmployeeEarningMutation: () => ({ isPending: false, mutateAsync: approveEmployeeEarningMutate }),
+  }
+})
+
 import { useNotifyAppReady } from "@/hooks/use-notify-app-ready"
 
 const useNotifyAppReadyMock = vi.mocked(useNotifyAppReady)
@@ -44,6 +53,7 @@ let mocks: WorkspaceMocks
 beforeEach(() => {
   mocks = mockAllMutations()
   resetAllMutations(mocks)
+  approveEmployeeEarningMutate.mockReset()
   useNotifyAppReadyMock.mockClear()
   window.localStorage.clear()
   // The first-run tour auto-starts 500ms after the shell mounts (autoStart).
@@ -323,16 +333,16 @@ describe("HomeView workspace shell", () => {
             lastName: "بوقرة",
             phone: "0555123456",
             roleId: "role-project-manager",
-            salaryAmountDzd: 95000,
-            salaryPeriod: "MONTHLY",
+            salaryReference: { amount: "95000", period: "MONTHLY" },
+            status: "ACTIVE",
           }),
           expect.objectContaining({
             firstName: "نجيب",
             lastName: "قاسمي",
             phone: "0666123456",
             roleId: "role-worker",
-            salaryAmountDzd: 4500,
-            salaryPeriod: "DAILY",
+            salaryReference: { amount: "4500", period: "DAILY" },
+            status: "ACTIVE",
             managerId: "employee-manager-1",
             projectId: "project-1",
           }),
@@ -360,7 +370,7 @@ describe("HomeView workspace shell", () => {
     fireEvent.click(screen.getByRole("button", { name: "حفظ العامل" }))
 
     await waitFor(() => {
-      expect(screen.getByText("أدخل قيمة الأجر عند اختيار دورية الأجر.")).toBeTruthy()
+      expect(screen.getByText("مرجع الأجر غير صالح.")).toBeTruthy()
     })
     expect(mocks.createEmployeesBatchMutate).not.toHaveBeenCalled()
   })
@@ -439,39 +449,34 @@ describe("HomeView workspace shell", () => {
       workspaceData: makeWorkspaceData({ salaryPayments: [noNotePayment] }),
     })
 
-    expect(await screen.findByText("لا توجد ملاحظات.")).toBeTruthy()
+    const legacyHistory = await screen.findByRole("table", { name: "سجل الرواتب" })
+    expect(within(legacyHistory).getByText("لا توجد ملاحظات.")).toBeTruthy()
   })
 
-  it("submits salary payment form without client-controlled expected amount fields", async () => {
+  it("opens earnings approval instead of the removed cash-payment form", async () => {
     renderWorkspace("employee-details", { sessionUser: demoUser, detailTab: "finance", employeeId: "employee-worker-1" })
 
-    fireEvent.click(await screen.findByRole("button", { name: "إضافة دفعة راتب" }))
-    fireEvent.change(screen.getByPlaceholderText("0"), {
-      target: { value: "5000" },
-    })
-    fireEvent.change(screen.getByLabelText("ملاحظات"), {
-      target: { value: "دفعة مع زيادة" },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "حفظ دفعة الراتب" }))
+    fireEvent.click((await screen.findAllByRole("button", { name: "اعتماد الأجر" }))[0]!)
 
-    expect(mocks.createSalaryPaymentMutate).toHaveBeenCalledWith({
-      employeeId: "employee-worker-1",
-      days: 1,
-      actualAmountDzd: 5000,
-      paymentDate: expect.any(String),
-      note: "دفعة مع زيادة",
-    })
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري")).toBeTruthy()
+    expect(within(dialog).getByLabelText("المبلغ غير الموزع بالدينار الجزائري")).toBeTruthy()
+    expect(within(dialog).queryByLabelText("ملاحظات")).toBeNull()
+    expect(within(dialog).queryByRole("button", { name: "حفظ دفعة الراتب" })).toBeNull()
+    expect(mocks.createSalaryPaymentMutate).not.toHaveBeenCalled()
   })
 
-  it("keeps salary payment save disabled when the paid amount is empty", async () => {
+  it("does not write an empty earnings approval", async () => {
     renderWorkspace("employee-details", { sessionUser: demoUser, detailTab: "finance", employeeId: "employee-worker-1" })
 
-    fireEvent.click(await screen.findByRole("button", { name: "إضافة دفعة راتب" }))
-    fireEvent.change(screen.getByPlaceholderText("0"), {
-      target: { value: "" },
-    })
+    fireEvent.click((await screen.findAllByRole("button", { name: "اعتماد الأجر" }))[0]!)
+    const dialog = screen.getByRole("dialog")
+    expect((within(dialog).getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري") as HTMLInputElement).value).toBe("")
+    fireEvent.click(within(dialog).getByRole("button", { name: "اعتماد الأجر" }))
 
-    expect(screen.getByRole("button", { name: "حفظ دفعة الراتب" }).hasAttribute("disabled")).toBe(true)
+    expect(within(dialog).getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري").getAttribute("aria-invalid")).toBe("true")
+    expect(approveEmployeeEarningMutate).not.toHaveBeenCalled()
+    expect(mocks.createSalaryPaymentMutate).not.toHaveBeenCalled()
   })
 
   it("renders project details as a dedicated page", async () => {
@@ -715,7 +720,7 @@ describe("HomeView workspace shell", () => {
     expect(await screen.findByRole("heading", { name: "الرواتب" })).toBeTruthy()
     expect(screen.getAllByText("آخر دفعات الرواتب").length).toBeGreaterThan(0)
     expect(screen.getAllByText("علي بن حميد").length).toBeGreaterThan(0)
-    expect(screen.getAllByRole("button", { name: "إضافة دفعة" }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole("button", { name: "اعتماد الأجر" }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole("button", { name: "تعديل الأجر" }).length).toBeGreaterThan(0)
   })
 

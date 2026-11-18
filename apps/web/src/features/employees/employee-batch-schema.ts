@@ -1,6 +1,4 @@
-/**
- * Employee batch creation schema validation.
- */
+/** Employee batch creation schema validation. */
 import {
   employeeBatchCreateInputSchema,
   employeeBatchCreateRowInputSchema,
@@ -9,74 +7,58 @@ import {
   type EmployeeBatchCreateInput,
 } from "@tuari/contracts"
 
-/**
- * duplicatePhoneInBatchMessage = "تم تكرار رقم الهاتف داخل نفس الدفعة." component.
- */
+import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
+
 export const duplicatePhoneInBatchMessage = "تم تكرار رقم الهاتف داخل نفس الدفعة."
 
+type SalaryPeriod = NonNullable<Employee["salaryReference"]>["period"]
 export type EmployeeDraft = {
   firstName: string
   lastName: string
   phone: string
   occupation: string
   roleId: string
-  salaryAmountDzd: string
-  salaryPeriod: NonNullable<Employee["salaryPeriod"]> | ""
+  salaryReferenceAmount: string
+  salaryReferencePeriod: SalaryPeriod | ""
   managerId: string
   projectId: string
   notes: string
 }
-/**
- * createEmptyEmployeeDraft(defaultRoleId = "") component.
- */
-
 export type EmployeeDraftErrors = Partial<Record<keyof EmployeeDraft, string>>
 
 export function createEmptyEmployeeDraft(defaultRoleId = ""): EmployeeDraft {
   return {
-    firstName: "",
-    lastName: "",
-    phone: "",
-    occupation: "",
-    roleId: defaultRoleId,
-    salaryAmountDzd: "",
-    salaryPeriod: "",
-/**
- * parseSalaryAmount(value component.
- */
-    managerId: "",
-    projectId: "",
-    notes: "",
+    firstName: "", lastName: "", phone: "", occupation: "", roleId: defaultRoleId,
+    salaryReferenceAmount: "", salaryReferencePeriod: "", managerId: "", projectId: "", notes: "",
   }
 }
 
-export function parseSalaryAmount(value: string) {
-  const trimmed = value.trim()
-/**
- * normalizeEmployeeDraft(draft component.
- */
+function parseSalaryReferenceAmount(amount: string, period: SalaryPeriod) {
+  return period === "DAILY" ? parseLocalizedUnitPriceInput(amount) : parseLocalizedMoneyInput(amount)
+}
 
-  if (trimmed.length === 0) {
-    return null
+function salaryReferenceFromDraft(draft: EmployeeDraft) {
+  const amount = draft.salaryReferenceAmount.trim()
+  const period = draft.salaryReferencePeriod
+  if (!amount && !period) return null
+  if (!amount || !period) return null
+  try {
+    const wire = parseSalaryReferenceAmount(amount, period).toWire()
+    return { period, amount: wire.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "") }
+  } catch {
+    return { period, amount }
   }
-
-  const numeric = Number(trimmed)
-  return Number.isFinite(numeric) && numeric >= 0 ? numeric : Number.NaN
 }
 
 export function normalizeEmployeeDraft(draft: EmployeeDraft) {
   return {
     firstName: draft.firstName.trim(),
-/**
- * validateEmployeeDraft(draft component.
- */
     lastName: draft.lastName.trim(),
     phone: draft.phone.trim(),
     occupation: draft.occupation.trim() || undefined,
     roleId: draft.roleId,
     status: "ACTIVE" as const,
-    salaryAmountDzd: parseSalaryAmount(draft.salaryAmountDzd),
-    salaryPeriod: draft.salaryPeriod || null,
+    salaryReference: salaryReferenceFromDraft(draft),
     managerId: draft.managerId.trim() || null,
     projectId: draft.projectId.trim() || null,
     notes: draft.notes.trim() || undefined,
@@ -85,121 +67,54 @@ export function normalizeEmployeeDraft(draft: EmployeeDraft) {
 
 export function validateEmployeeDraft(draft: EmployeeDraft) {
   const errors: EmployeeDraftErrors = {}
-  const salaryAmount = parseSalaryAmount(draft.salaryAmountDzd)
-  const result = employeeBatchCreateRowInputSchema.safeParse(normalizeEmployeeDraft(draft))
-
-  if (!result.success) {
-    for (const issue of result.error.issues) {
-      const field = issue.path[0]
-
-      if (field === "firstName") {
-        errors.firstName = issue.message
-      }
-
-      if (field === "lastName") {
-        errors.lastName = issue.message
-      }
-
-      if (field === "phone") {
-        errors.phone = issue.message
-      }
-
-      if (field === "occupation") {
-        errors.occupation = issue.message
-      }
-
-      if (field === "roleId") {
-        errors.roleId = issue.message
-      }
-
-      if (field === "salaryAmountDzd") {
-        errors.salaryAmountDzd = issue.message
-      }
-
-      if (field === "salaryPeriod") {
-        errors.salaryPeriod = issue.message
-      }
-
-      if (field === "managerId") {
-        errors.managerId = issue.message
-      }
-
-      if (field === "projectId") {
-        errors.projectId = issue.message
-      }
-
-      if (field === "notes") {
-        errors.notes = issue.message
-      }
+  const amount = draft.salaryReferenceAmount.trim()
+  const period = draft.salaryReferencePeriod
+  if (Boolean(amount) !== Boolean(period)) {
+    if (!amount) errors.salaryReferenceAmount = "required"
+    if (!period) errors.salaryReferencePeriod = "required"
+  }
+  if (amount && period) {
+    try {
+      parseSalaryReferenceAmount(amount, period)
+    } catch {
+      errors.salaryReferenceAmount = "invalid"
     }
   }
 
-/**
- * validateEmployeeBatch(drafts component.
- */
-  if (Number.isNaN(salaryAmount)) {
-    errors.salaryAmountDzd = errors.salaryAmountDzd ?? "invalid"
+  const result = employeeBatchCreateRowInputSchema.safeParse(normalizeEmployeeDraft(draft))
+  if (!result.success) {
+    for (const issue of result.error.issues) {
+      const field = issue.path[0]
+      if (field === "firstName" || field === "lastName" || field === "phone" || field === "occupation" || field === "roleId" || field === "managerId" || field === "projectId" || field === "notes") {
+        errors[field] = issue.message
+      }
+      if (field === "salaryReference") {
+        const nested = issue.path[1]
+        if (nested === "period") errors.salaryReferencePeriod ??= issue.message
+        else errors.salaryReferenceAmount ??= issue.message
+      }
+    }
   }
-
-  if (salaryAmount !== null && !draft.salaryPeriod) {
-    errors.salaryPeriod = errors.salaryPeriod ?? "required"
-  }
-
-  if (salaryAmount === null && draft.salaryPeriod) {
-    errors.salaryAmountDzd = errors.salaryAmountDzd ?? "required"
-  }
-
   return errors
 }
 
 export function validateEmployeeBatch(drafts: EmployeeDraft[]) {
   const rowErrors = drafts.map(validateEmployeeDraft)
-
-  const result = employeeBatchCreateInputSchema.safeParse({
-    employees: drafts.map(normalizeEmployeeDraft),
-  } satisfies EmployeeBatchCreateInput)
-
+  const result = employeeBatchCreateInputSchema.safeParse({ employees: drafts.map(normalizeEmployeeDraft) } satisfies EmployeeBatchCreateInput)
   if (!result.success) {
     for (const issue of result.error.issues) {
-      if (issue.path[0] !== "employees") {
-        continue
-      }
-
+      if (issue.path[0] !== "employees") continue
       const rowIndex = Number(issue.path[1])
       const field = issue.path[2]
-
-      if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= rowErrors.length) {
-        continue
-      }
-
-      if (field === "phone") {
-        rowErrors[rowIndex] = {
-          ...rowErrors[rowIndex],
-          phone: issue.message,
-        }
-      }
-
-      if (field === "managerId") {
-        rowErrors[rowIndex] = {
-          ...rowErrors[rowIndex],
-          managerId: issue.message,
-        }
-      }
-
-      if (field === "projectId") {
-        rowErrors[rowIndex] = {
-          ...rowErrors[rowIndex],
-          projectId: issue.message,
-        }
+      if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= rowErrors.length) continue
+      if (field === "phone" || field === "managerId" || field === "projectId") {
+        rowErrors[rowIndex] = { ...rowErrors[rowIndex], [field]: issue.message }
       }
     }
   }
-
   return {
     rowErrors,
-    isValid:
-      result.success &&
-      rowErrors.every((rowError) => Object.values(rowError).every((message) => message === undefined)),
+    isValid: result.success && rowErrors.every(rowError => Object.values(rowError).every(message => message === undefined)),
   }
 }
 

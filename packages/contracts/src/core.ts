@@ -93,7 +93,7 @@ export const healthCheckSchema = z.object({
 });
 
 export const employeeStatusSchema = z.enum(["ACTIVE", "INACTIVE", "LEFT"]);
-export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
+export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"], { error: "دورية الأجر غير صالحة." });
 export const debtPartyTypeSchema = z.enum(["INTERNAL_WORKER", "EXTERNAL_COUNTERPARTY"]);
 export const debtAccountStatusSchema = z.enum(["OPEN", "SETTLED"]);
 export const debtAccountDirectionSchema = z.enum(["PAYABLE", "RECEIVABLE"]);

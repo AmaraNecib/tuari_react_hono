@@ -14,8 +14,8 @@ import {
   AppShellTableRow,
 } from "@/features/shared/table-primitives"
 import { getArabicStatusLabel, getStatusTone } from "@/features/shared/status-meta"
-import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
-import type { SalaryProjectAssignmentWindow, SalaryProjectOption } from "./add-salary-payment-dialog"
+import type { SalaryProjectAssignmentWindow } from "@tuari/contracts"
+import { AddSalaryPaymentDialog, type SalaryProjectOption } from "./add-salary-payment-dialog"
 
 export type EmployeeTableRow = {
   id: string
@@ -27,8 +27,7 @@ export type EmployeeTableRow = {
   role: string
   phone: string
   status: "ACTIVE" | "INACTIVE" | "LEFT"
-  salaryAmountDzd: number | null
-  salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | null
+  salaryReference?: { period: "DAILY" | "WEEKLY" | "MONTHLY"; amount: string } | null
   managerName: string
   managerAssignmentId: string | null
   currentManagerId: string | null
@@ -69,7 +68,7 @@ type EmployeeTableProps = {
   rows: EmployeeTableRow[]
   /** Projects the payment dialog can attribute a split to. */
   projects?: SalaryProjectOption[]
-  /** Per-employee assignment windows feeding the dialog's derived split. */
+  /** Temporary public compatibility for callers that still derive assignment windows. */
   projectAssignmentsByEmployeeId?: Record<string, SalaryProjectAssignmentWindow[]>
   onAdd?: () => void
   onDelete: (row: EmployeeTableRow) => void
@@ -86,7 +85,6 @@ export function EmployeeTable({
   copy,
   rows,
   projects,
-  projectAssignmentsByEmployeeId,
   onAdd,
   onDelete,
   onEdit,
@@ -94,10 +92,8 @@ export function EmployeeTable({
   onView,
 }: EmployeeTableProps) {
   const { t } = useTranslation()
-  // rows are already paginated by the parent (cursor-based pagination)
-  // Only the target's identity is snapshotted when the dialog opens. The wage,
-  // period, and assignment windows are read from the live props so a workspace
-  // refresh cannot leave a stale proposal or day default in the open dialog.
+  // Rows are already paginated by the parent (cursor-based pagination).
+  // Keep employee identity stable while reading the optional reference live.
   const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
   const paymentRow = paymentTarget
     ? rows.find((candidate) => candidate.id === paymentTarget.id) ?? null
@@ -108,11 +104,7 @@ export function EmployeeTable({
       <AddSalaryPaymentDialog
         employeeId={paymentTarget?.id ?? null}
         employeeName={paymentRow?.name ?? paymentTarget?.name}
-        salaryAmountDzd={paymentRow?.salaryAmountDzd ?? null}
-        salaryPeriod={paymentRow?.salaryPeriod ?? null}
-        projectAssignments={
-          paymentTarget ? (projectAssignmentsByEmployeeId?.[paymentTarget.id] ?? []) : []
-        }
+        salaryReference={paymentRow?.salaryReference ?? null}
         projects={projects ?? []}
         open={paymentTarget !== null}
         onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
@@ -170,7 +162,7 @@ export function EmployeeTable({
                           size="xs"
                           onClick={() => setPaymentTarget({ id: row.id, name: row.name })}
                         >
-                          {t("salaries.addPayment")}
+                          {t("earnings.approve")}
                         </Button>
                       ) : null}
                       <Button size="xs" variant="outline" onClick={() => onView(row)}>
