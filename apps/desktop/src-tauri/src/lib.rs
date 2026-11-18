@@ -2126,6 +2126,25 @@ fn license_failure_env_map(error: &crate::error::RustCoreError) -> HashMap<Strin
     ])
 }
 
+fn configure_api_child_environment(command: &mut Command, development: bool) {
+    command.env_clear();
+
+    // Bundled Node needs SystemRoot on Windows. Keep that existing exception to
+    // the cleared environment in both development and release.
+    #[cfg(target_os = "windows")]
+    if let Some(system_root) = std::env::var_os("SystemRoot") {
+        command.env("SystemRoot", system_root);
+    }
+
+    // Development tools such as pnpm.cmd invoke `node` through PATH. Release
+    // launches bundled Node by absolute path and does not inherit PATH.
+    if development {
+        if let Some(path) = std::env::var_os("PATH") {
+            command.env("PATH", path);
+        }
+    }
+}
+
 fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
     let attachments_root = resolve_attachments_root(&app_db_path);
@@ -2175,8 +2194,9 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     #[cfg(target_os = "windows")]
     command.creation_flags(CREATE_NO_WINDOW);
 
+    configure_api_child_environment(&mut command, cfg!(debug_assertions));
+
     command
-        .env_clear()
         .env("API_HOST", API_HOST)
         .env("API_PORT", API_PORT.to_string())
         .env("ALLOWED_ORIGINS", ALLOWED_ORIGINS)
@@ -2191,17 +2211,6 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .env("DATABASE_URL", to_sqlite_url(&app_db_path))
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
-
-    // The bundled Node runtime needs `SystemRoot`: Node seeds its OpenSSL CSPRNG
-    // from the Windows security provider through that path, and `env_clear()`
-    // above removes it. Without it Node aborts during startup with
-    // `Assertion failed: ncrypto::CSPRNG(nullptr, 0)` and the sidecar dies
-    // before it can bind the API port. `windir`, `PATH`, and `TEMP` were each
-    // tested and made no difference; see scripts/smoke/sidecar-env-repro.ps1.
-    #[cfg(target_os = "windows")]
-    if let Ok(system_root) = std::env::var("SystemRoot") {
-        command.env("SystemRoot", system_root);
-    }
 
     // Point the API sidecar at the user-editable config.json (may not exist
     // yet — the API treats a missing file as "use env/defaults").
@@ -2353,25 +2362,84 @@ fn kill_api(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::{
-        copy_allowlisted_legacy_runtime_files_if_missing, encode_secret,
-        api_sidecar_entry_path,
-        has_portable_runtime_layout, is_allowed_desktop_bridge_path,
+        api_sidecar_entry_path, clear_app_ready, complete_db_key_rotation_in_store,
+        configure_api_child_environment, copy_allowlisted_legacy_runtime_files_if_missing,
+        encode_secret, has_portable_runtime_layout, is_allowed_desktop_bridge_path,
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
-        license_failure_env_map, license_status_for_error,
-        load_or_create_secret, matches_inventory_attachment_download_path,
+        license_failure_env_map, license_status_for_error, load_or_create_secret,
+        mark_app_ready_if_first, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
-        complete_db_key_rotation_in_store, restore_db_key_in_store, rotate_db_key_in_store,
-        should_force_reveal_main_window, strip_windows_extended_path_prefix,
-        AppReadyState, DesktopApiBridgeError,
-        DESKTOP_API_BRIDGE_ERROR_KIND, APP_DB_KEY_ACCOUNT,
-        BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
-        SecretStore, clear_app_ready, mark_app_ready_if_first,
+        restore_db_key_in_store, rotate_db_key_in_store, should_force_reveal_main_window,
+        strip_windows_extended_path_prefix, AppReadyState, DesktopApiBridgeError, SecretStore,
+        APP_DB_KEY_ACCOUNT, BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES,
+        DESKTOP_API_BRIDGE_ERROR_KIND, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
+    use std::process::Command;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use crate::error::RustCoreError;
+
+    #[test]
+    fn development_api_process_can_resolve_node_through_host_path() {
+        let mut command = if cfg!(target_os = "windows") {
+            let system_root = std::env::var_os("SystemRoot").expect("Windows SystemRoot");
+            let mut command =
+                Command::new(PathBuf::from(system_root).join("System32").join("cmd.exe"));
+            command.args(["/d", "/c", "node --version"]);
+            command
+        } else {
+            let mut command = Command::new("/bin/sh");
+            command.args(["-c", "node --version"]);
+            command
+        };
+        configure_api_child_environment(&mut command, true);
+
+        let output = command.output().expect("launch node lookup probe");
+        assert!(
+            output.status.success(),
+            "development child could not resolve node: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .starts_with('v'));
+    }
+
+    #[test]
+    fn production_api_process_does_not_inherit_arbitrary_parent_secrets() {
+        let mut command = Command::new(std::env::current_exe().expect("test executable"));
+        command
+            .args(["--exact", "tests::environment_probe_child", "--nocapture"])
+            .env("TUARI_TEST_SECRET", "parent-secret-must-not-cross");
+        configure_api_child_environment(&mut command, false);
+        command.env("TUARI_ENV_PROBE", "1");
+
+        let output = command.output().expect("launch isolated environment probe");
+        assert!(output.status.success(), "environment probe child failed");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("PATH_PRESENT=false"),
+            "unexpected child PATH: {stdout}"
+        );
+        assert!(
+            stdout.contains("SECRET_PRESENT=false"),
+            "parent secret leaked: {stdout}"
+        );
+    }
+
+    #[test]
+    fn environment_probe_child() {
+        if std::env::var_os("TUARI_ENV_PROBE").is_none() {
+            return;
+        }
+        println!("PATH_PRESENT={}", std::env::var_os("PATH").is_some());
+        println!(
+            "SECRET_PRESENT={}",
+            std::env::var_os("TUARI_TEST_SECRET").is_some()
+        );
+    }
 
     fn unique_temp_dir() -> PathBuf {
         let unique_suffix = SystemTime::now()
