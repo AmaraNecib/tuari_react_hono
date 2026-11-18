@@ -37,6 +37,26 @@ test('clean audit passes after expiry and reports the obsolete exception', () =>
   assert.match(result.message, /remove obsolete picomatch exception/i);
 });
 
+test('rejects every muted advisory even when the listed finding is allowed', () => {
+  const base = report([allowed(['4.0.7'])]);
+  const input = { ...base, muted: [{ github_advisory_id: 'GHSA-hidden', module_name: 'other-package', severity: 'high' }] };
+  assert.equal(evaluateAudit(input, { now: '2026-11-20T00:00:00Z', expiresAt, exitCode: 1 }).pass, false);
+});
+
+test('rejects a severity downgrade for the exact exception advisory', () => {
+  for (const severity of ['moderate', 'low']) {
+    const input = report([{ id: 'GHSA-fc5q-39xc-vjpf', module: 'picomatch', severity, versions: ['4.0.7'] }]);
+    assert.equal(evaluateAudit(input, { now: '2026-11-20T00:00:00Z', expiresAt }).pass, false, `${severity} severity must not weaken the exact exception`);
+  }
+});
+
+test('rejects the exception advisory with a mismatched package or version at low severity', () => {
+  for (const item of [
+    { id: 'GHSA-fc5q-39xc-vjpf', module: 'other-package', severity: 'low', versions: ['4.0.7'] },
+    { id: 'GHSA-fc5q-39xc-vjpf', module: 'picomatch', severity: 'moderate', versions: ['4.0.8'] },
+  ]) assert.equal(evaluateAudit(report([item]), { now: '2026-11-20T00:00:00Z', expiresAt }).pass, false);
+});
+
 test('fails for a different GHSA, package, version, or severity', () => {
   for (const item of [
     { id: 'GHSA-other', versions: ['4.0.7'] },

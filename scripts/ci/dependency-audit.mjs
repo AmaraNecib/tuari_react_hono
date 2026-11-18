@@ -11,6 +11,7 @@ export function evaluateAudit(report, { now = new Date().toISOString(), expiresA
   const fail = (reason) => ({ pass: false, reason });
   if (!Number.isFinite(Date.parse(now)) || !Number.isFinite(Date.parse(expiresAt))) return fail('invalid audit clock or exception expiry');
   if (!report || typeof report !== 'object' || Array.isArray(report) || Object.keys(report).sort().join(',') !== 'actions,advisories,metadata,muted' || !Array.isArray(report.actions) || !Array.isArray(report.muted) || !report.metadata || !report.metadata.vulnerabilities || !report.advisories || typeof report.advisories !== 'object' || Array.isArray(report.advisories)) return fail('malformed pnpm audit report');
+  if (report.muted.length > 0) return fail('pnpm audit report contains muted advisories');
   const metadata = report.metadata;
   if (Object.keys(metadata).sort().join(',') !== 'dependencies,devDependencies,optionalDependencies,totalDependencies,vulnerabilities' || !Number.isSafeInteger(metadata.dependencies) || !Number.isSafeInteger(metadata.devDependencies) || !Number.isSafeInteger(metadata.optionalDependencies) || !Number.isSafeInteger(metadata.totalDependencies)) return fail('malformed pnpm audit metadata');
   const counts = metadata.vulnerabilities;
@@ -28,6 +29,8 @@ export function evaluateAudit(report, { now = new Date().toISOString(), expiresA
   if ([...SEVERITIES].some((severity) => observed[severity] !== counts[severity])) return fail('vulnerability counts do not match advisory findings');
   if (![0, 1].includes(exitCode)) return fail(`unexpected pnpm audit exit code ${exitCode}`);
 
+  const exceptionFindings = findings.filter(({ id }) => id === ALLOWED_ID);
+  if (exceptionFindings.some(({ module, severity, version }) => module !== ALLOWED_PACKAGE || severity !== 'high' || !ALLOWED_VERSIONS.has(version))) return fail('picomatch exception advisory identity, severity, or version changed');
   const highOrCritical = findings.filter(({ severity }) => severity === 'high' || severity === 'critical');
   if (exitCode === 1 && highOrCritical.length === 0) return fail('pnpm audit exited nonzero without a high or critical finding');
   if (exitCode === 0 && highOrCritical.length > 0) return fail('pnpm audit exited zero despite a high or critical finding');
