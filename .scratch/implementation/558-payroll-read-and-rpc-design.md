@@ -4,7 +4,7 @@
 
 Base source is reviewed payroll foundation `ea849b4a1908299b8802cfdc7a5216750a58f2e2`. Verification remains `focused-local / CI-final-pending`, high-assurance. The owner approved full/partial/no salary offset and independent later repayment, then authorized their implementation. Storage, command and offset scopes have completed their required local reviews and source-matched proof.
 
-The internal read-only lifecycle and nonblocking opening review seam below implement existing #558/#427 acceptance without new storage, public contracts or production activation. They may proceed under the current issue authority. The proposed public RPC and UI contract remains for owner approval before those public interfaces change. Do not infer that implementing a reader authorizes its public registration or changes the normal database.
+The internal read-only lifecycle and nonblocking opening review seam below implement existing #558/#427 acceptance without new storage, public contracts or production activation. They may proceed under the current issue authority. The owner approved the proposed four public RPC operations and current-route UI integration in this session after the concrete interface explanation. The owner also directed the parent to resolve routine engineering choices from current issue and parent decisions rather than requesting repeated approval. Escalate genuinely unsettled business decisions or major changes, not ordinary implementation details. This authorizes the contract/router/UI slice, not destructive database operations or an unexamined mixed numeric/exact writer activation.
 
 ## Internal bounded lifecycle reader
 
@@ -36,7 +36,7 @@ Missing provider means UNREVIEWED, reminder true and unknown opening wage/advanc
 
 Define a narrow optional same-connection/FIFO provider for employee-scoped review status and reviewed source metadata. It may return an explicit UNREVIEWED metadata row with no sources; that row counts toward the hydration budget and retains unknown/null opening amounts. It supplies bounded row cost, review state and exact wage/advance originals owned by PAYROLL_OPENING. REVIEWED with no sources is explicit confirmed zero; never derive that state from absence. Reviewed sources must match worker, currency, producer, direction, original status and exact source amounts before inclusion. No opening entry/correction tables or writers are introduced. This is a stable read integration point for #545, not delivery of #545 or permission to use reserved opening kinds in current offset commands.
 
-## Proposed public contract, pending owner approval
+## Owner-approved public contract
 
 Use additive top-level workforce procedures, matching the current normal employee API rather than restoring the preserved alternate workforce namespace. Keep existing employee earning identities and legacy history. Do not reopen the refused numeric salaryPaymentsCreate writer.
 
@@ -53,4 +53,4 @@ The UI proposal adds an optional Record payment action from current approved ear
 
 Internal reader proof uses native plain/keyed current earning/finance/cash/offset sources. Cover no-payment approvals, unposted earnings, 35,000/25,000/10,000, advance/offset/repayment, unchanged allocation semantics, no automatic netting, no implicit opening zero, reminder after first cash, explicit reviewed zero and real provider linkage, wide report totals, combined pre-hydration refusal, source/ledger mismatch, foreign connection/FIFO and no reads that mutate data. Preserve exact-source logs and native exits; affected tests/types/lint only.
 
-The public contract, authenticated normal UI and final normal-app acceptance require owner approval of the proposed interface and coordinated exact-debt root composition. No production schema conversion, migration/reset, real-data cutover, publication, merge or release is authorized here. Full #558 acceptance and hosted gates remain open. Record implementation proof separately from those decisions.
+The public contract and current-route UI integration are now owner-approved. Final normal-app acceptance still requires coherent exact-debt root composition and actual connected proof. The owner confirmed there is no historical customer dataset to migrate; do not invent legacy-customer adoption work or repeatedly ask about settled design choices. No production schema conversion, migration/reset, real-data cutover, publication, merge or release is authorized here. Full #558 acceptance and hosted gates remain open. Record implementation proof separately from those decisions.
