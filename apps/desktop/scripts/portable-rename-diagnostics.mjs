@@ -11,11 +11,11 @@ const diagnosticFile = "portable-rename-failure.json";
 function nativeBindings(candidate) {
   const runtimeModules = path.join(candidate, "bin", "api-runtime", "node_modules");
   const bindingPaths = [
-    path.join(runtimeModules, "better-sqlite3-multiple-ciphers", "prebuilds", "win32-x64"),
     path.join(runtimeModules, "better-sqlite3-multiple-ciphers", "build", "Release"),
     path.join(runtimeModules, "better-sqlite3", "build", "Release"),
   ];
-  const bindings = [];
+  const selectedPrebuild = path.join(runtimeModules, "better-sqlite3-multiple-ciphers", "prebuilds", "win32-x64.node");
+  const bindings = existsSync(selectedPrebuild) ? [selectedPrebuild] : [];
   for (const directory of bindingPaths) {
     if (!existsSync(directory)) continue;
     try {

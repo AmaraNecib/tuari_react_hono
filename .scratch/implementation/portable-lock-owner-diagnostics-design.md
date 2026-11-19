@@ -28,6 +28,10 @@ Use the real Win32 no-share-delete directory handle with an absent destination. 
 
 The packaging script is the module that proves and publishes the candidate. The final rename is the failure seam. A diagnostic adapter observes that same in-process failure without changing the rename interface or retry policy. The deletion test is simple: if the diagnostic adapter is removed, the package output and failure remain identical; only the evidence disappears. The module earns its place by recording facts from this exact call, with no new package API.
 
+## Parent integration
+
+Parent inspection corrected the selected native resource to the actual `prebuilds/win32-x64.node` file, not a nonexistent `prebuilds/win32-x64` directory. The owned-file test permits either an actual reported owner or an honest empty result; it does not hardcode this laptop's empty result as the contract. Parent proof passed 44 packaging/encryption cases with no skips and 12 workflow cases. Actionlint and whitespace checks passed. Diagnostics remain optional and cannot mask the original rename exception. No retry or packaging acceptance policy changed.
+
 ## Remaining risks
 
 Restart Manager may not report directory handles, WPR may be unavailable or blocked by runner policy, and this local machine cannot reproduce the original hosted holder. A successful local packaging run is not a reproduction. Only a future failed hosted package run with scoped evidence can identify a holder or provide a useful WPR trace. No hosted artifact is available to this worker.

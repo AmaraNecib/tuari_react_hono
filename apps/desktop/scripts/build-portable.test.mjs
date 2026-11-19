@@ -435,6 +435,9 @@ test("Restart Manager reports its honest result for a known owned packaged-file 
   const diagnosticsDir = path.join(root, "diagnostics");
   mkdirSync(candidate);
   writeFileSync(executable, "fixture executable");
+  const prebuild = path.join(candidate, "bin", "api-runtime", "node_modules", "better-sqlite3-multiple-ciphers", "prebuilds", "win32-x64.node");
+  mkdirSync(path.dirname(prebuild), { recursive: true });
+  writeFileSync(prebuild, "synthetic prebuild resource, not loaded");
   const lockScript = path.join(root, "file-lock.ps1");
   writeFileSync(lockScript, `
     Add-Type -TypeDefinition @'
@@ -473,8 +476,15 @@ test("Restart Manager reports its honest result for a known owned packaged-file 
   assert.ok(reportPath);
   const report = JSON.parse(readFileSync(reportPath, "utf8"));
   assert.equal(report.process.sourceSha?.length, 40);
-  assert.equal(report.immediateFailureSnapshot.restartManager.status, "no-owners-reported", JSON.stringify(report.immediateFailureSnapshot.restartManager));
-  assert.ok(!report.immediateFailureSnapshot.restartManager.owners.some(owner => owner.pid === holderPid), "do not attribute a holder that Restart Manager did not report");
+  const manager = report.immediateFailureSnapshot.restartManager;
+  assert.ok(["queried", "no-owners-reported"].includes(manager.status), JSON.stringify(manager));
+  assert.deepEqual(manager.errors, []);
+  if (manager.owners.some(owner => owner.pid === holderPid)) {
+    assert.ok(manager.owners.some(owner => owner.pid === holderPid && owner.resource === executable));
+  } else {
+    assert.ok(manager.limitations.some(limit => limit.includes("empty file-owner list does not prove")));
+  }
+  assert.ok(report.immediateFailureSnapshot.resources.some(resource => resource.path === prebuild && resource.exists), "selected native prebuild file is captured, not an imaginary directory");
   assert.ok(report.immediateFailureSnapshot.resources.some(resource => resource.path === executable && resource.exists), "the exact locked file was registered as a resource");
   child.stdin.end("release\n");
   await owned.stop();
