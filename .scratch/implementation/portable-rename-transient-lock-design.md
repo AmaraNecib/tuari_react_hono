@@ -35,6 +35,12 @@ The encryption proof still completes before publication. The existing destinatio
 - Existing plaintext binding and loader rejection tests remain green.
 - Run the affected portable test file and record any skipped native-runtime tests. Do not run a full build or browser suite locally.
 
+## Hosted review corrections
+
+The initial Greptile review found two test gaps. Test-owned build and lock children now register cleanup immediately after spawn. Cleanup waits for close with a five-second deadline before removing fixture or script files, even when lock startup fails before returning. Regressions exercise a build blocked at the proof barrier and a failed lock startup without releasing that barrier normally.
+
+The injected rename interface also has platform-independent tests for recovery and four-attempt exhaustion for each allowed native error. They assert exact waits of 100, 250 and 500 ms. These run in Ubuntu CI; the native Windows tests remain intact. Parent focused proof passed 42 cases without failures or skips. Production retry policy and encryption proof did not change in this correction.
+
 ## Wisdom applied
 
 Read desktop wisdom index and overview. No matching lesson covers directory-handle rename failures. The earlier native DLL-lock test was explicitly excluded because it used an existing destination and did not discriminate rename locking.

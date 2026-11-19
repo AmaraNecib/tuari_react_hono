@@ -11,7 +11,45 @@ import { renamePortableCandidate } from "./portable-rename.mjs";
 
 const scriptsRoot = path.dirname(fileURLToPath(import.meta.url));
 
-async function startDirectoryLock(t, directory) {
+const ownedChildren = new WeakMap();
+
+function registerChild(t, child) {
+  const children = ownedChildren.get(t) ?? new Set();
+  ownedChildren.set(t, children);
+  let closed = false;
+  const done = new Promise(resolve => {
+    child.once("error", () => {}); // close still follows a failed spawn.
+    child.once("close", (status, signal) => {
+      closed = true;
+      resolve({ status, signal });
+    });
+  });
+  const stop = async () => {
+    if (!closed && child.pid) child.kill("SIGKILL");
+    let timer;
+    try {
+      await Promise.race([
+        done,
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`Owned child ${child.pid} did not close within 5000ms`)), 5000);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  children.add(stop);
+  t.after(stop);
+  return { done, stop };
+}
+
+async function stopOwnedChildren(t) {
+  const results = await Promise.allSettled([...(ownedChildren.get(t) ?? [])].map(stop => stop()));
+  const failures = results.filter(result => result.status === "rejected").map(result => result.reason);
+  if (failures.length) throw new AggregateError(failures, "Owned children did not stop; fixture files retained");
+}
+
+async function startDirectoryLock(t, directory, { startupTimeoutMs = 10_000 } = {}) {
   const script = path.join(os.tmpdir(), `tuari-dir-lock-${process.pid}-${Date.now()}.ps1`);
   writeFileSync(script, `
     Add-Type -TypeDefinition @'
@@ -31,14 +69,18 @@ async function startDirectoryLock(t, directory) {
     [void][DirectoryLock]::CloseHandle($handle)
     Write-Output "RELEASED pid=$PID"
   `);
-  t.after(() => rmSync(script, { force: true }));
+  t.after(async () => {
+    await stopOwnedChildren(t);
+    rmSync(script, { force: true });
+  });
   const child = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, directory], {
     stdio: ["pipe", "pipe", "pipe"],
   });
+  const owned = registerChild(t, child);
   let output = "";
   child.stdout.on("data", chunk => { output += chunk.toString(); });
   child.stderr.on("data", chunk => { output += chunk.toString(); });
-  const deadline = Date.now() + 10_000;
+  const deadline = Date.now() + startupTimeoutMs;
   while (!output.includes("LOCKED") && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
   assert.match(output, /LOCKED pid=\d+ .*shareDelete=false/, `Directory lock did not start: ${output}`);
   let released = false;
@@ -48,15 +90,18 @@ async function startDirectoryLock(t, directory) {
     release() {
       if (released) return;
       released = true;
-      child.stdin.end("release\n");
+      if (child.exitCode === null && child.signalCode === null && !child.stdin.destroyed) child.stdin.end("release\n");
     },
-    done: new Promise(resolve => child.once("close", (status, signal) => resolve({ status, signal }))),
+    done: owned.done,
   };
 }
 
 function fixture(t, { reject = false, realProof = false, proofBarrier = false } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "tuari-portable-test-"));
-  t.after(() => rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  t.after(async () => {
+    await stopOwnedChildren(t);
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
   const scripts = path.join(root, "scripts");
   const release = path.join(root, "src-tauri", "target", "release");
   const portable = path.join(release, "bundle", "portable");
@@ -120,6 +165,7 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false } 
         env: { ...process.env, NODE_OPTIONS: "" },
         stdio: ["ignore", "pipe", "pipe"],
       });
+      const owned = registerChild(t, child);
       let output = "";
       const waitFor = async (pattern) => {
         const deadline = Date.now() + 10_000;
@@ -128,7 +174,7 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false } 
       };
       child.stdout.on("data", chunk => { output += chunk.toString(); });
       child.stderr.on("data", chunk => { output += chunk.toString(); });
-      const done = new Promise(resolve => child.once("close", (status, signal) => resolve({ status, signal, output })));
+      const done = owned.done.then(result => ({ ...result, output }));
       return { child, waitFor, done, get output() { return output; } };
     },
   };
@@ -202,6 +248,75 @@ test("portable:only keeps the previous archive when a held Win32 directory handl
   assert.ok(existsSync(path.join(f.portable, ".tmp-Tuari-portable")), "failed candidate must remain for diagnosis");
 });
 
+for (const code of ["EACCES", "EBUSY", "EPERM"]) {
+  test(`portable rename recovers from temporary ${code} on every platform`, async () => {
+    let attempts = 0;
+    const waits = [];
+    await renamePortableCandidate("source", "destination", {
+      move: async () => {
+        attempts += 1;
+        if (attempts < 3) throw Object.assign(new Error("temporary lock"), { code });
+      },
+      pause: async milliseconds => { waits.push(milliseconds); },
+      log: () => {},
+    });
+    assert.equal(attempts, 3);
+    assert.deepEqual(waits, [100, 250]);
+  });
+
+  test(`portable rename exhausts four ${code} attempts on every platform`, async () => {
+    let attempts = 0;
+    const waits = [];
+    const failure = Object.assign(new Error("persistent lock"), { code });
+    await assert.rejects(renamePortableCandidate("source", "destination", {
+      move: async () => { attempts += 1; throw failure; },
+      pause: async milliseconds => { waits.push(milliseconds); },
+      log: () => {},
+    }), error => error === failure);
+    assert.equal(attempts, 4);
+    assert.deepEqual(waits, [100, 250, 500]);
+  });
+}
+
+test("failed setup stops a blocked build before deleting its fixture", async () => {
+  const hooks = [];
+  const scope = { after: hook => hooks.push(hook) };
+  const f = fixture(scope, { proofBarrier: true });
+  const run = f.start();
+  try {
+    const deadline = Date.now() + 10_000;
+    while (!existsSync(path.join(f.root, "proof-ready")) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.ok(existsSync(path.join(f.root, "proof-ready")), "build must actually be blocked in proof before cleanup");
+    // Run failure hooks without writing proof-continue, as a failed lock setup does.
+    for (const hook of hooks) await hook();
+    assert.ok(run.child.exitCode !== null || run.child.signalCode !== null);
+    assert.ok(!existsSync(f.root), "fixture removed only after the owned child closes");
+  } finally {
+    await stopOwnedChildren(scope);
+    if (existsSync(f.root)) rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+test("lock startup timeout cleans both children before deleting fixture files", { skip: process.platform !== "win32" }, async () => {
+  const hooks = [];
+  const scope = { after: hook => hooks.push(hook) };
+  const f = fixture(scope, { proofBarrier: true });
+  const run = f.start();
+  try {
+    const deadline = Date.now() + 10_000;
+    while (!existsSync(path.join(f.root, "proof-ready")) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.ok(existsSync(path.join(f.root, "proof-ready")));
+    await assert.rejects(startDirectoryLock(scope, path.join(f.root, "absent"), { startupTimeoutMs: 1 }), /Directory lock did not start/);
+    assert.equal(ownedChildren.get(scope).size, 2, "both spawns registered before lock startup assertion");
+    for (const hook of hooks) await hook();
+    assert.ok(run.child.exitCode !== null || run.child.signalCode !== null);
+    assert.ok(!existsSync(f.root));
+  } finally {
+    await stopOwnedChildren(scope);
+    if (existsSync(f.root)) rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
 test("portable candidate rename retries only recognized transient Windows errors", async () => {
   let moves = 0;
   let pauses = 0;
@@ -223,7 +338,10 @@ test("portable candidate rename retries only recognized transient Windows errors
 
 test("portable candidate rename reproduces a real Win32 directory-handle lock", { skip: process.platform !== "win32" }, async (t) => {
   const root = mkdtempSync(path.join(os.tmpdir(), "tuari-rename-lock-proof-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
+  t.after(async () => {
+    await stopOwnedChildren(t);
+    rmSync(root, { recursive: true, force: true });
+  });
   const source = path.join(root, "candidate");
   const destination = path.join(root, "published");
   mkdirSync(source);
