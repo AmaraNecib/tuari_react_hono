@@ -11,8 +11,10 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { extractAndCollectExecutables } from '../scripts/collect-extracted-executables.mjs';
+import { resetOwnedExtraction } from '../scripts/smoke/reset-owned-extraction.mjs';
 
 const scriptDir = fileURLToPath(new URL('../scripts', import.meta.url));
+const extractionScript = join(scriptDir, 'extract-zip.ps1');
 
 function runScript(script, args) {
   const fullPath = join(scriptDir, script);
@@ -53,7 +55,104 @@ async function createZip(zipPath, sourceDir, filenames) {
   }
 }
 
+test('smoke reset refuses unowned directories and preserves unrelated files', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'smoke-reset-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'Tuari.exe'), 'original');
+  assert.throws(() => resetOwnedExtraction(root), /ownership marker/);
+  assert.equal(await readFile(join(root, 'Tuari.exe'), 'utf8'), 'original');
+  await writeFile(join(root, '.tuari-smoke-extract'), 'owned');
+  await writeFile(join(root, 'keep.txt'), 'unrelated');
+  resetOwnedExtraction(root);
+  assert.equal(await readFile(join(root, 'keep.txt'), 'utf8'), 'unrelated');
+  assert.ok((await readdir(root)).includes('.tuari-smoke-extract'));
+});
+
+test('Windows smoke force-reset permits repeated archive extraction with resources', async (t) => {
+  if (process.platform !== 'win32') { t.skip('Real Windows extractor regression'); return; }
+  const root = await mkdtemp(join(tmpdir(), 'smoke-rerun-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const source = join(root, 'source');
+  const destination = join(root, 'owned');
+  await mkdir(join(source, 'resources'), { recursive: true });
+  await mkdir(destination);
+  await writeFile(join(source, 'Tuari.exe'), 'synthetic app');
+  await writeFile(join(source, 'resources', 'asset.txt'), 'resource payload');
+  const zip = join(root, 'portable.zip');
+  await createZip(zip, source, ['Tuari.exe', 'resources']);
+  await writeFile(join(destination, '.tuari-smoke-extract'), 'owned');
+  await writeFile(join(destination, 'keep.txt'), 'unrelated');
+  const extract = () => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', extractionScript, zip, destination], { encoding: 'utf8' });
+  const first = extract();
+  assert.equal(first.status, 0, first.stderr);
+  assert.equal(await readFile(join(destination, 'resources', 'asset.txt'), 'utf8'), 'resource payload');
+  resetOwnedExtraction(destination);
+  assert.ok(!(await readdir(destination)).includes('resources'));
+  const second = extract();
+  assert.equal(second.status, 0, second.stderr);
+  assert.equal(await readFile(join(destination, 'resources', 'asset.txt'), 'utf8'), 'resource payload');
+  assert.equal(await readFile(join(destination, 'keep.txt'), 'utf8'), 'unrelated');
+});
+
 // ─── Tests ────────────────────────────────────────────────────────
+
+test('Windows PowerShell models the unsupported three-argument bool extraction API', (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('Windows PowerShell and System.IO.Compression are required');
+    return;
+  }
+
+  const script = [
+    'Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop',
+    '$supported = [System.IO.Compression.ZipFile].GetMethods() | Where-Object { $_.Name -eq "ExtractToDirectory" -and $_.GetParameters().Count -eq 3 -and $_.GetParameters()[2].ParameterType -eq [bool] }',
+    'if ($supported) { throw "This runtime unexpectedly has the bool overload" }',
+    '[System.IO.Compression.ZipFile]::ExtractToDirectory("unused.zip", "unused-destination", $true)',
+  ].join('; ');
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.notEqual(result.status, 0, 'the three-argument bool call must fail on this runtime');
+  assert.match(`${result.stdout}\n${result.stderr}`, /Cannot (?:find an overload|convert argument).*ExtractToDirectory/is);
+});
+
+test('Windows extraction helper extracts a ZIP through the supported two-argument .NET API', async (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('Windows PowerShell and System.IO.Compression are required');
+    return;
+  }
+
+  const tmp = await mkdtemp(join(tmpdir(), 'verify-extraction-'));
+  const sourceDir = join(tmp, 'source');
+  const destination = join(tmp, "destination '[safe]'");
+  const basicArchive = join(tmp, 'portable.zip');
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(destination, { recursive: true });
+  await writeFile(join(sourceDir, 'Tuari.exe'), 'actual executable bytes');
+  await createZip(basicArchive, sourceDir, ['Tuari.exe']);
+  const archive = join(tmp, "archive '[literal]'.zip");
+  await rename(basicArchive, archive);
+
+  const result = spawnSync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+    extractionScript, archive, destination,
+  ], { encoding: 'utf8', windowsHide: true });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(await readFile(join(destination, 'Tuari.exe'), 'utf8'), 'actual executable bytes');
+});
+
+test('Windows verifier and installer smoke share the PowerShell extraction adapter', async () => {
+  const verifier = await readFile(join(scriptDir, 'verify-release-assets.mjs'), 'utf8');
+  const smoke = await readFile(join(scriptDir, 'smoke', 'installer-smoke.mjs'), 'utf8');
+  assert.match(verifier, /extract-zip\.ps1/);
+  assert.match(smoke, /extract-zip\.ps1/);
+  assert.doesNotMatch(verifier, /Expand-Archive/);
+  assert.doesNotMatch(smoke, /Expand-Archive/);
+});
 
 test('verify-release-assets exits with non-zero when --artifacts is missing', () => {
   const result = runScript('verify-release-assets.mjs', []);

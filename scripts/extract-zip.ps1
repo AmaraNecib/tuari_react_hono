@@ -6,4 +6,5 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-Expand-Archive -LiteralPath $ArchivePath -DestinationPath $DestinationPath -Force -ErrorAction Stop
+Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+[System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $DestinationPath)
