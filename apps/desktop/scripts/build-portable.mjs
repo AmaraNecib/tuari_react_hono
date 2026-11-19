@@ -1,9 +1,10 @@
-import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyValidatedTree, resolveTrustedTarPath, validateReleaseBinEntries } from "./script-security-utils.mjs";
 import { parseArgs, runProof } from "./sqlcipher-encryption-proof.mjs";
+import { renamePortableCandidate } from "./portable-rename.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,8 +60,8 @@ try {
   rmSync(finalPortableDir, { recursive: true, force: true });
 }
 
+await renamePortableCandidate(tempPortableDir, finalPortableDir);
 rmSync(finalZipPath, { force: true });
-renameSync(tempPortableDir, finalPortableDir);
 
 const tarExecutable = resolveTrustedTarPath();
 const zipResult = spawnSync(
