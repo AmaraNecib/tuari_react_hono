@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { payrollFixture, cleanup, now, paidAt } from "./__test-utils__/payroll-native";
 import { payrollOffsetSchemaStatements } from "./adapters/payroll-offset-schema";
 import { SqlitePayrollOffsetRepository } from "./adapters/sqlite-payroll-offset.repository";
@@ -16,18 +16,69 @@ function fixture(key = "") {
   return { ...f, offsets, service, reader };
 }
 
+function snapshotPayroll(f: ReturnType<typeof fixture>) {
+  const tables = ["employee", "project", "employee_earning", "employee_earning_segment", "employee_salary_cash", "employee_salary_payment_allocation", "employee_salary_advance", "employee_salary_settlement", "employee_salary_advance_offset", "debt_account", "debt_entry", "debt_command", "exact_finance_command"];
+  return {
+    changes: f.db.prepare("SELECT total_changes() AS count").safeIntegers(true).get(),
+    tables: tables.map(table => ({ table, rows: f.db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).safeIntegers(true).all() })),
+  };
+}
+
 describe.each([["plain", ""], ["keyed", "558-lifecycle-key"]] as const)("payroll lifecycle reader %s", (_driver, key) => {
-  it("shows approved but unposted earnings as owed and performs no debt writes", () => {
+  it("shows approved but unposted earnings as owed and performs no data writes", () => {
     const f = fixture(key);
     const earning = f.earning("35000.00");
-    const before = ["debt_account", "debt_entry", "debt_command", "exact_finance_command"].map(table => Number((f.db.prepare(`SELECT count(*) AS count FROM ${table}`).get() as { count: number }).count));
+    const before = snapshotPayroll(f);
     const result = f.reader().getEmployeePayroll(f.employeeId);
-    const after = ["debt_account", "debt_entry", "debt_command", "exact_finance_command"].map(table => Number((f.db.prepare(`SELECT count(*) AS count FROM ${table}`).get() as { count: number }).count));
+    const after = snapshotPayroll(f);
     expect(result.earnings).toMatchObject([{ earning: { id: earning.id, totalAmount: "35000.00" }, registration: "PENDING_REGISTRATION", remaining: "35000.00" }]);
     expect(result.cash).toEqual([]);
     expect(result.summary).toMatchObject({ approvedEarnings: "35000.00", wageCashPaid: "0.00", wagesOffset: "0.00", wagesOwed: "35000.00" });
     expect(result.opening).toEqual({ review: "UNREVIEWED", reminder: true, wages: null, advances: null });
     expect(after).toEqual(before);
+  });
+
+  it("leaves populated payroll and ledger rows unchanged while returning exact balances", () => {
+    const f = fixture(key); const earning = f.earning("35000.00");
+    f.service.recordCash({ ...f.audit, requestId: "snapshot-wage", employeeId: f.employeeId, amount: "25000.00", paymentDate: paidAt, wages: [{ earningId: earning.id, amount: "25000.00" }] });
+    const cash = f.service.recordCash({ ...f.audit, requestId: "snapshot-advance", employeeId: f.employeeId, amount: "5000.00", paymentDate: paidAt, wages: [], advanceAmount: "5000.00" });
+    f.service.offsetAdvance({ ...f.audit, requestId: "snapshot-offset", employeeId: f.employeeId, amount: "2000.00", settlementDate: paidAt, wageSource: { kind: "EARNING", id: earning.id }, advanceSource: { kind: "ADVANCE", id: cash.advance!.id } });
+    f.service.repayAdvance({ ...f.audit, requestId: "snapshot-repayment", employeeId: f.employeeId, advanceId: cash.advance!.id, amount: "1000.00", paymentDate: paidAt });
+    const before = snapshotPayroll(f);
+    const result = f.reader().getEmployeePayroll(f.employeeId);
+    expect(result.summary).toMatchObject({ approvedEarnings: "35000.00", wageCashPaid: "25000.00", wagesOffset: "2000.00", wagesOwed: "8000.00", advancesGiven: "5000.00", advancesCashRecovered: "1000.00", advancesOffset: "2000.00", advancesOwed: "2000.00" });
+    expect(snapshotPayroll(f)).toEqual(before);
+  });
+
+  it("reuses one native finance detail read for posted originals sharing an account", () => {
+    const f = fixture(key); const first = f.earning("1000.00"); const second = f.earning("2000.00");
+    const original = f.service.registerEarning({ ...f.audit, requestId: "cache-first", earningId: first.id })!;
+    const otherOriginal = f.service.registerEarning({ ...f.audit, requestId: "cache-second", earningId: second.id })!;
+    expect(otherOriginal.debtAccountId).toBe(original.debtAccountId);
+    f.finance.postEntry({ requestId: "cache-unrelated", debtAccountId: original.debtAccountId, entryType: "ADJUSTMENT", signedAmountDzd: "1.00", currency: "DZD" });
+    const detail = vi.spyOn(f.finance, "detail");
+    try {
+      const result = f.reader().getEmployeePayroll(f.employeeId);
+      expect(result.earnings.map(row => row.remaining).sort()).toEqual(["1000.00", "2000.00"]);
+      expect(result.earnings.every(row => row.registration === "POSTED")).toBe(true);
+      expect(result.summary).toMatchObject({ approvedEarnings: "3000.00", wagesOwed: "3000.00", wageCashPaid: "0.00" });
+      expect(f.finance.getAccount(original.debtAccountId).currentBalance).toBe("3001.00");
+      expect(detail).toHaveBeenCalledTimes(1);
+      expect(detail).toHaveBeenCalledWith(original.debtAccountId);
+    } finally { detail.mockRestore(); }
+  });
+
+  it.each(["metadata", "ledger", "both"] as const)("rejects foreign opening-source %s even with correctly scoped review metadata", mismatch => {
+    const f = fixture(key); const foreignEmployee = f.employee(); const sourceId = randomUUID();
+    const sourceEmployee = mismatch === "ledger" ? f.employeeId : foreignEmployee;
+    const ledgerEmployee = mismatch === "metadata" ? f.employeeId : foreignEmployee;
+    const producer = f.finance.forProducer({ type: "PAYROLL_OPENING", id: sourceId });
+    const account = producer.createAccount({ requestId: randomUUID(), partyType: "INTERNAL_WORKER", workerId: ledgerEmployee, direction: "PAYABLE", currency: "DZD" });
+    const original = producer.postEntry({ requestId: randomUUID(), debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: "900.00", currency: "DZD" });
+    const provider: PayrollOpeningReviewProvider = { transactionIdentity: f.finance.transactionIdentity, countRows: () => 2,
+      getReview: () => ({ state: "REVIEWED", employeeId: f.employeeId, sources: [{ kind: "WAGE", sourceId, employeeId: sourceEmployee, currency: "DZD", amount: "900.00", debtAccountId: account.id, debtEntryId: original.id }] }) };
+    expect(() => f.reader(provider).getEmployeePayroll(f.employeeId)).toThrow(/opening source.*mismatch/i);
+    expect(f.finance.remaining(original.id)).toBe("900.00");
   });
 
   it("keeps cash, offsets, repayments, and advances separate without changing allocation provenance", () => {
