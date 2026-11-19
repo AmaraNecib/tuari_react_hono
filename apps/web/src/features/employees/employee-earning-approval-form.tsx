@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { HelpCircle } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
@@ -142,6 +142,18 @@ export function EmployeeEarningApprovalForm({
     formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
   }, [invalidSaveCount])
 
+  const restorePending = useCallback((saved: PendingEmployeeEarning) => {
+    const payload = saved.payload
+    setPending(saved)
+    setPeriodStart(dateFromBoundary(payload.periodStart))
+    setPeriodEnd(dateFromBoundary(payload.periodEnd))
+    setTotal(payload.totalAmount)
+    setRows(payload.segments.map(segment => ({ id: segment.id, projectId: segment.projectId, daysText: String(segment.days), amountText: segment.amount })))
+    setAcknowledgedRemainder(null)
+    setIssues([])
+    setError("")
+  }, [])
+
   useEffect(() => {
     if (!active) return
     if (!identity) {
@@ -167,19 +179,12 @@ export function EmployeeEarningApprovalForm({
       if (!loaded.ok) { setStorageError(true); return }
       setStorageError(false)
       // Missing storage cannot prove the frozen request completed; another tab may have removed it.
-      if (loaded.pending) setPending(loaded.pending)
       setError("")
-      if (loaded.pending) {
-        const payload = loaded.pending.payload
-        setPeriodStart(dateFromBoundary(payload.periodStart))
-        setPeriodEnd(dateFromBoundary(payload.periodEnd))
-        setTotal(payload.totalAmount)
-        setRows(payload.segments.map(segment => ({ id: segment.id, projectId: segment.projectId, daysText: String(segment.days), amountText: segment.amount })))
-      }
+      if (loaded.pending) restorePending(loaded.pending)
     } catch {
       setStorageError(true)
     }
-  }, [active, identity])
+  }, [active, identity, restorePending])
 
   const allocation = useMemo(() => calculateEarningAllocation(total, rows), [total, rows])
   const unallocatedAmountText = pending?.payload.unallocatedAmount ??
@@ -305,6 +310,10 @@ export function EmployeeEarningApprovalForm({
         }
         return
       }
+      if (storedPending.pending && storedPending.pending.payload.requestId !== payload.requestId) {
+        if (isCurrentSubmission()) restorePending(storedPending.pending)
+        return
+      }
       if (storedPending.pending?.payload.requestId === payload.requestId) {
         removePendingEmployeeEarning(identity, window.localStorage)
       }
@@ -331,6 +340,10 @@ export function EmployeeEarningApprovalForm({
         try {
           const storedPending = loadPendingEmployeeEarning(identity, window.localStorage)
           if (!storedPending.ok) throw new Error("pending storage unavailable")
+          if (storedPending.pending && storedPending.pending.payload.requestId !== payload?.requestId) {
+            if (isCurrentSubmission()) restorePending(storedPending.pending)
+            return
+          }
           if (storedPending.pending?.payload.requestId === payload?.requestId) {
             removePendingEmployeeEarning(identity, window.localStorage)
           }

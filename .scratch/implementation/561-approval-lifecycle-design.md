@@ -21,6 +21,8 @@ Impeccable context reported `NO_PRODUCT_MD`. The existing form and `DESIGN.md` a
 
 The bounded review found the same lifecycle and request-identity guards missing from rejection paths. The parent correction applies the current-submission predicate to all asynchronous UI updates, including storage failures. Proven no-write rejections remove only their matching stored request, even after navigation. Deferred rejection regressions cover both a changed employee and an inactive form while preserving a newer same-identity recovery request.
 
+After the third correction review, the parent reassessed the lifecycle rather than adding another one-off guard. Storage identity and visible frozen payload must agree when a completed or proven-rejected old request encounters a newer stored request. A shared `restorePending` operation now hydrates that request's dates, total and rows for both initial recovery and reply handling; it does not navigate or unlock the form. Parameterized deferred success/rejection tests assert the newer displayed total, frozen state, preserved storage, and exact retry payload. No seam or domain contract changed.
+
 Parent integration worktree: `D:/worktrees/tuari_react_hono/t3-412838f5-c2c7983838174217`.
 
 No unrelated contracts inventory, audit, or legacy fixture files are in scope. Local proof is focused; hosted CI acceptance remains failed/unaccepted at handoff.

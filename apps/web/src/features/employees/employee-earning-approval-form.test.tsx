@@ -102,6 +102,38 @@ describe("earned-wage approval composer", () => {
     expect(props.onComplete).not.toHaveBeenCalled()
   })
 
+  it.each(["success", "rejection"] as const)("restores a newer frozen request after an active form receives an old %s", async result => {
+    let resolveSave!: (value: unknown) => void
+    let rejectSave!: (reason: unknown) => void
+    const deferred = new Promise((resolve, reject) => { resolveSave = resolve; rejectSave = reject })
+    mutateAsync.mockReturnValueOnce(deferred).mockResolvedValueOnce({})
+    render(<EmployeeEarningApprovalForm {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "100" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }))
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    const key = Object.keys(localStorage).find(key => localStorage.getItem(key)?.includes(mutateAsync.mock.calls[0]![0].requestId))!
+    const replacement = JSON.parse(localStorage.getItem(key)!)
+    replacement.payload.requestId = "22222222-2222-4222-8222-222222222222"
+    replacement.payload.totalAmount = "777.00"
+    replacement.payload.unallocatedAmount = "777.00"
+    localStorage.setItem(key, JSON.stringify(replacement))
+    await act(async () => {
+      if (result === "success") resolveSave({})
+      else rejectSave(Object.assign(new Error("old no-write rejection"), { code: "NOT_FOUND" }))
+      await deferred.catch(() => undefined)
+    })
+    expect(JSON.parse(localStorage.getItem(key)!).payload).toEqual(replacement.payload)
+    const total = screen.getByLabelText("earnings.total") as HTMLInputElement
+    expect(total.disabled).toBe(true)
+    expect(total.value).toBe("777.00")
+    expect(screen.getByText("earnings.pendingApproval")).toBeTruthy()
+    expect(props.onComplete).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "earnings.retryApproval" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(2))
+    expect(mutateAsync.mock.calls[1]![0]).toEqual(replacement.payload)
+  })
+
   it("completes a mounted save once through StrictMode effect replay", async () => {
     mutateAsync.mockResolvedValue({})
     render(<StrictMode><EmployeeEarningApprovalForm {...props} /></StrictMode>)
