@@ -22,45 +22,74 @@ param(
 $ErrorActionPreference = 'Stop'
 
 Add-Type -TypeDefinition @'
+using System;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class TuariWindowsPaths
 {
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    public static extern uint GetShortPathName(string longPath, StringBuilder shortPath, uint bufferLength);
-    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     public static extern uint GetLongPathName(string shortPath, StringBuilder longPath, uint bufferLength);
+    [DllImport("shell32.dll", SetLastError = true)]
+    private static extern IntPtr CommandLineToArgvW([MarshalAs(UnmanagedType.LPWStr)] string commandLine, out int argumentCount);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr LocalFree(IntPtr memory);
+
+    public static string[] ParseCommandLine(string commandLine)
+    {
+        int count;
+        IntPtr arguments = CommandLineToArgvW(commandLine, out count);
+        if (arguments == IntPtr.Zero)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "CommandLineToArgvW failed");
+        try
+        {
+            string[] parsed = new string[count];
+            for (int i = 0; i < count; i++)
+                parsed[i] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(arguments, i * IntPtr.Size));
+            return parsed;
+        }
+        finally
+        {
+            LocalFree(arguments);
+        }
+    }
 }
 '@
 
+function ConvertTo-CanonicalWindowsPath {
+  param([string]$Path)
+  $fullPath = [System.IO.Path]::GetFullPath($Path)
+  $longPath = New-Object System.Text.StringBuilder 32768
+  $longLength = [TuariWindowsPaths]::GetLongPathName($fullPath, $longPath, [uint32]$longPath.Capacity)
+  if ($longLength -eq 0) {
+    throw "GetLongPathName failed for '$Path' (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
+  }
+  $canonical = $longPath.ToString()
+  if ($canonical.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) {
+    $canonical = '\\' + $canonical.Substring(8)
+  } elseif ($canonical.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
+    $canonical = $canonical.Substring(4)
+  }
+  return $canonical.TrimEnd('\').ToLowerInvariant()
+}
+
 function Get-SidecarProcesses {
   param([string]$Root)
-  # Windows can expose a long path in one caller and its 8.3 alias in another.
-  # Compare both spellings while retaining the full runtime-entry markers.
-  $pathForms = @($Root)
-  $shortPath = New-Object System.Text.StringBuilder 32768
-  $shortLength = [TuariWindowsPaths]::GetShortPathName($Root, $shortPath, [uint32]$shortPath.Capacity)
-  if ($shortLength -eq 0) {
-    throw "GetShortPathName failed for '$Root' (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
-  }
-  $pathForms += $shortPath.ToString()
-  $longPath = New-Object System.Text.StringBuilder 32768
-  $longLength = [TuariWindowsPaths]::GetLongPathName($Root, $longPath, [uint32]$longPath.Capacity)
-  if ($longLength -eq 0) {
-    throw "GetLongPathName failed for '$Root' (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
-  }
-  $pathForms += $longPath.ToString()
-  $rootForms = @($pathForms | ForEach-Object { $_.ToLowerInvariant().Replace('\', '/') } | Select-Object -Unique)
-  $entryForms = @($rootForms | ForEach-Object { "$_/bin/api-runtime/dist/index.cjs" })
+  $expectedEntry = ConvertTo-CanonicalWindowsPath (Join-Path $Root 'bin\api-runtime\dist\index.cjs')
   $result = @()
   $candidates = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction Stop
   foreach ($candidate in $candidates) {
     $commandLine = [string]$candidate.CommandLine
-    if ([string]::IsNullOrEmpty($commandLine)) { continue }
-    $lower = $commandLine.ToLowerInvariant().Replace('\', '/')
-    # Match the exact runtime entry under this extract root, accepting its
-    # long or 8.3 spelling. Keep both layout markers; never infer identity by port.
-    if (($entryForms | Where-Object { $lower.Contains($_) }).Count -gt 0 -and $lower.Contains('api-runtime') -and $lower.Contains('index.cjs')) {
+    if ([string]::IsNullOrEmpty($commandLine) -or [string]::IsNullOrEmpty([string]$candidate.ExecutablePath)) { continue }
+    $arguments = [TuariWindowsPaths]::ParseCommandLine($commandLine)
+    if ($arguments.Length -lt 2 -or -not [System.IO.Path]::IsPathRooted($arguments[0]) -or $arguments[1].StartsWith('-') -or -not [System.IO.Path]::IsPathRooted($arguments[1])) { continue }
+    if (-not [System.IO.File]::Exists($arguments[1])) { continue }
+
+    # The process executable is argv[0]; Node's main script is argv[1].
+    # Compare complete canonical paths, never substrings or later arguments.
+    $commandExecutable = ConvertTo-CanonicalWindowsPath $arguments[0]
+    $processExecutable = ConvertTo-CanonicalWindowsPath ([string]$candidate.ExecutablePath)
+    $mainScript = ConvertTo-CanonicalWindowsPath $arguments[1]
+    if ($commandExecutable -eq $processExecutable -and $mainScript -eq $expectedEntry) {
       $result += [pscustomobject]@{
         pid            = [int]$candidate.ProcessId
         commandLine    = $commandLine
