@@ -21,7 +21,7 @@ export function selectCiScope(files, { event = 'pull_request', full = false } = 
     'scripts/smoke/portable-shell-entry-names.test.ps1',
     'scripts/smoke/check-portable-zip-shell.ps1',
     'pnpm-workspace.yaml',
-    'pnpm-lock.yaml', 'package.json', '.github/workflows/ci.yml',
+    'pnpm-lock.yaml', 'package.json', '.github/workflows/ci.yml', '.github/workflows/nightly.yml',
   ].map(globToRegExp);
   return {
     api: areas.api === '1' ? 'true' : 'false',
