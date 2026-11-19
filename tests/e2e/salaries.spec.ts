@@ -35,7 +35,7 @@ test.beforeAll(() => {
   seedProjectAssignment({ employeeId: workerId, projectId })
 })
 
-async function openApprovalDialog(page: import("@playwright/test").Page) {
+async function openApprovalPage(page: import("@playwright/test").Page) {
   await bootstrapOrSignIn(page)
   await page.goto("/salaries")
   await expect(page.getByRole("heading", { name: "الرواتب" })).toBeVisible()
@@ -43,42 +43,55 @@ async function openApprovalDialog(page: import("@playwright/test").Page) {
   const row = page.getByRole("row").filter({ hasText: workerName })
   await expect(row).toBeVisible()
   await row.getByRole("button", { name: /اعتماد الأجر/ }).click()
-  const dialog = page.getByRole("dialog")
-  await expect(dialog).toBeVisible()
-  return dialog
+  await expect(page).toHaveURL(/\/employees\/[^/]+\/earnings\/new\?returnTo=salaries/)
+  await expect(page.getByRole("heading", { name: "اعتماد الأجر المكتسب" })).toBeVisible()
+  const approvalForm = page.getByRole("main").locator("form")
+  await expect(approvalForm).toBeVisible()
+  return approvalForm
 }
 
-test("approval conserves the entered total and explicit remainder", async ({ page }) => {
-  const dialog = await openApprovalDialog(page)
-  const total = dialog.getByLabel("إجمالي الأجر المعتمد بالدينار الجزائري")
-  const remainder = dialog.getByLabel("المبلغ غير الموزع بالدينار الجزائري")
+test("approval derives the remainder and requires acknowledgement before any write", async ({ page }) => {
+  const approvalForm = await openApprovalPage(page)
+  const total = approvalForm.getByLabel("إجمالي الأجر المعتمد")
   await total.fill("27000.00")
-  await remainder.fill("27000.00")
   await expect(total).toHaveValue("27000.00")
-  await expect(remainder).toHaveValue("27000.00")
-  await page.keyboard.press("Escape")
-  await expect(dialog).toBeHidden()
+  await expect(approvalForm.getByLabel("دون مشروع")).toContainText("27,000")
+  const acknowledgement = approvalForm.getByRole("checkbox")
+  await expect(acknowledgement).toBeVisible()
+  const requests: string[] = []
+  await page.route("**/rpc/employeeEarningsApprove", async route => {
+    requests.push(route.request().postData() ?? "")
+    await route.continue()
+  })
+  await approvalForm.getByRole("button", { name: "اعتماد الأجر", exact: true }).click()
+  await expect(approvalForm.getByRole("alert")).toContainText("أكّد أن المبلغ المتبقي سيبقى غير موزع قبل الاعتماد.")
+  expect(requests).toHaveLength(0)
+  await acknowledgement.check()
+  await expect(approvalForm.getByRole("alert")).toHaveCount(0)
+  await approvalForm.getByRole("button", { name: "إلغاء" }).click()
+  await expect(page.getByRole("heading", { name: "الرواتب" })).toBeVisible()
 })
 
 test("approval keeps project attribution and independent segment amounts without paying cash", async ({ page }) => {
-  const dialog = await openApprovalDialog(page)
-  await dialog.getByRole("button", { name: "إضافة بند مشروع" }).click()
-  const project = dialog.getByLabel("المشروع 1")
-  const days = dialog.getByLabel("أيام العمل 1")
-  const segmentAmount = dialog.getByLabel("المبلغ بالدينار الجزائري 1")
+  const approvalForm = await openApprovalPage(page)
+  await approvalForm.getByRole("button", { name: "إضافة بند مشروع" }).click()
+  const project = approvalForm.getByLabel("المشروع 1")
+  const days = approvalForm.getByLabel("أيام العمل 1")
+  const segmentAmount = approvalForm.getByLabel("المبلغ 1")
   await project.selectOption(projectId)
   await days.fill("12")
   await segmentAmount.fill("12000.00")
-  const total = dialog.getByLabel("إجمالي الأجر المعتمد بالدينار الجزائري")
-  const remainder = dialog.getByLabel("المبلغ غير الموزع بالدينار الجزائري")
+  const total = approvalForm.getByLabel("إجمالي الأجر المعتمد")
+  const remainder = approvalForm.getByLabel("دون مشروع")
   await total.fill("15000.00")
-  await remainder.fill("3000.00")
   await days.fill("8")
   await expect(segmentAmount).toHaveValue("12000.00")
-  await expect(remainder).toHaveValue("3000.00")
+  await expect(remainder).toContainText("3,000")
   await days.fill("12")
-  await dialog.getByRole("button", { name: "اعتماد الأجر", exact: true }).click()
-  await expect(dialog).toBeHidden()
+  await expect(remainder).toContainText("3,000")
+  await approvalForm.getByRole("checkbox").check()
+  await approvalForm.getByRole("button", { name: "اعتماد الأجر", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "الرواتب" })).toBeVisible()
   expect(readEmployeeEarningSegmentsByEmployeeId(workerId)).toEqual([
     { projectId, days: 12, amountMinor: "1200000" },
   ])

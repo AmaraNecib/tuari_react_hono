@@ -15,6 +15,8 @@ export function HomeViewPageContent({
   copy,
   derived,
   detailTab,
+  earningApproval,
+  returnTo,
   invoiceId,
   navigation,
   page,
@@ -42,6 +44,8 @@ export function HomeViewPageContent({
         copy={copy}
         derived={derived}
         detailTab={detailTab}
+        earningApproval={earningApproval}
+        returnTo={returnTo}
         selectedInvoiceId={invoiceId}
         navigation={navigation}
         page={page}

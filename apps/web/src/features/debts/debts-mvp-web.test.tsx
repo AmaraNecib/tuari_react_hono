@@ -620,14 +620,8 @@ describe("debts MVP web UI", () => {
     expect(screen.getAllByText(/300/).length).toBeGreaterThan(0)
   })
 
-  it("keeps the picked canonical day in the employee earnings approval period (#428)", async () => {
-    // Pick a day that is NOT the form's default (today) so the assertion
-    // proves the pick changed the submitted value, instead of matching the
-    // default that was already in state (round-2 review finding).
-    const today = getAlgeriaDateInputValue()
-    const pickedDay = `${today.slice(0, 7)}-${today.endsWith("-15") ? "16" : "15"}`
-    expect(toAlgeriaDayBoundaryIso(pickedDay, "start")).not.toBe(toAlgeriaDayBoundaryIso(today, "start"))
-
+  it("routes employee earnings approval without recording a salary payment", async () => {
+    const onApproveEarning = vi.fn()
     renderWithProviders(
       <EmployeeDetailsPage
         activeTab="finance"
@@ -664,6 +658,7 @@ describe("debts MVP web UI", () => {
         }}
         managedProjects={[]}
         managedWarehouses={[]}
+        onApproveEarning={onApproveEarning}
         onTabChange={vi.fn()}
         salaryPayments={[]}
         workHistory={[]}
@@ -671,15 +666,8 @@ describe("debts MVP web UI", () => {
     )
 
     fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
-    const startDate = screen.getByText("بداية فترة العمل").closest("label")!
-    const trigger = startDate.querySelector<HTMLElement>('[data-slot="popover-trigger"]')
-    expect(trigger).not.toBeNull()
-    fireEvent.click(trigger!)
-    const cell = document.querySelector(`[data-day="${pickedDay}"]`)
-    expect(cell).not.toBeNull()
-    fireEvent.click(cell!.querySelector("button")!)
 
-    expect(startDate.querySelector('[data-slot="popover-trigger"]')?.textContent).toContain(pickedDay.slice(-2))
+    expect(onApproveEarning).toHaveBeenCalledWith("worker-1")
     expect(createSalaryPaymentMutate).not.toHaveBeenCalled()
   })
 

@@ -3,14 +3,13 @@ import { AppDate } from "@/components/app-date"
 import { Button } from "@/components/ui/button"
 import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
 import { CurrencyRun, MoneyValue } from "@/features/shared/money-value"
-import { formatExactMoney } from "@/features/shared/exact-money-display"
-import { parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
-import { useMemo, useState } from "react"
+import { formatSalaryReferenceAmount } from "@/features/shared/exact-salary-reference-display"
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry, SalaryProjectAssignmentWindow } from "@tuari/contracts"
 
 import { getSalaryPeriodLabelKey } from "@/features/app-shell/salary-table-primitives"
-import { AddSalaryPaymentDialog, type SalaryProjectOption } from "./add-salary-payment-dialog"
+import type { SalaryProjectOption } from "./employee-earning-approval-form"
 import { EmployeeEarningsHistory } from "./employee-earnings-history"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
@@ -34,20 +33,6 @@ type EmployeeWorkHistoryRow = {
   typeLabel: string
   periodLabel: ReactNode
   statusLabel: string
-}
-
-function formatSalaryReferenceAmount(
-  reference: NonNullable<EmployeeTableRow["salaryReference"]>,
-  grouped: boolean,
-): string {
-  if (reference.period !== "DAILY") {
-    return formatExactMoney(reference.amount, { grouped }).text
-  }
-
-  const formatted = parseLocalizedUnitPriceInput(reference.amount).format()
-  if (!grouped) return formatted
-  const [whole = "", fraction] = formatted.split(".")
-  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${fraction ? `.${fraction}` : ""}`
 }
 
 function getSalaryDifferenceMeta(expectedAmountDzd: number, actualAmountDzd: number) {
@@ -86,6 +71,7 @@ export function EmployeeDetailsPage({
   managedWarehouses,
   projects = [],
   onTabChange,
+  onApproveEarning,
   salaryPayments,
   workHistory,
 }: {
@@ -100,6 +86,7 @@ export function EmployeeDetailsPage({
   /** Projects the payment dialog can attribute a split to. */
   projects?: SalaryProjectOption[]
   onTabChange: (tabId: string) => void
+  onApproveEarning?: (employeeId: string) => void
   salaryPayments: Array<{
     id: string
     paymentDate: string
@@ -113,7 +100,6 @@ export function EmployeeDetailsPage({
 }) {
   const { t } = useTranslation()
   const { isProjectManager, isWarehouseManager, isWorker } = classifyWorkforceRole(employee.roleKey)
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const availableTabs = isWorker ? ["personal", "history", "finance", "debts"] : ["personal", "history", "finance"]
   const resolvedTab = availableTabs.includes(activeTab) ? activeTab : "personal"
   const sortedSalaryPayments = useMemo(
@@ -157,20 +143,10 @@ export function EmployeeDetailsPage({
       editLabel={t("detailPages.employee.edit")}
       title={employee.name}
       action={
-        isWorker && employee.status === "ACTIVE" ? (
-          <>
-            <AddSalaryPaymentDialog
-              employeeId={employee.id}
-              employeeName={employee.name}
-              salaryReference={salaryReference}
-              projects={projects}
-              open={paymentDialogOpen}
-              onOpenChange={setPaymentDialogOpen}
-            />
-            <Button size="lg" onClick={() => setPaymentDialogOpen(true)}>
-              {t("earnings.approve")}
-            </Button>
-          </>
+        employee.status === "ACTIVE" ? (
+          <Button size="lg" onClick={() => onApproveEarning?.(employee.id)}>
+            {t("earnings.approve")}
+          </Button>
         ) : undefined
       }
     >
@@ -255,8 +231,8 @@ export function EmployeeDetailsPage({
                   {t("detailPages.employee.financeSectionDescription")}
                 </p>
               </div>
-              {isWorker && employee.status === "ACTIVE" ? (
-                <Button size="lg" onClick={() => setPaymentDialogOpen(true)}>
+              {employee.status === "ACTIVE" ? (
+                <Button size="lg" onClick={() => onApproveEarning?.(employee.id)}>
                   {t("earnings.approve")}
                 </Button>
               ) : null}

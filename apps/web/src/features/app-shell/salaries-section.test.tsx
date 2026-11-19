@@ -2,7 +2,7 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import type { ComponentProps } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -85,30 +85,18 @@ describe("SalariesSection (#412)", () => {
     cleanup()
   })
 
-  it("opens the approval composer with the exact reference salary, without pre-filling an earning", async () => {
+  it("routes approval from the worker table without treating it as a payment", () => {
+    const onAddPayment = vi.fn()
     render(
-      <SalariesSection onEditSalary={vi.fn()} projects={[PROJECT]} recentPayments={[]} workers={[worker("30000.25")]} />,
+      <SalariesSection onAddPayment={onAddPayment} onEditSalary={vi.fn()} projects={[PROJECT]} recentPayments={[]} workers={[worker("30000.25")]} />,
     )
 
     fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
     fireEvent.click(screen.getByRole("button", { name: "اعتماد الأجر" }))
 
-    expect(screen.getByRole("dialog")).toBeTruthy()
-    expect((screen.getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري") as HTMLInputElement).value).toBe("")
-    fireEvent.change(screen.getByLabelText("بداية فترة العمل"), { target: { value: "2026-03-01" } })
-    fireEvent.change(screen.getByLabelText("نهاية فترة العمل"), { target: { value: "2026-03-31" } })
-    fireEvent.change(screen.getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري"), { target: { value: "1000" } })
-    fireEvent.change(screen.getByLabelText("المبلغ غير الموزع بالدينار الجزائري"), { target: { value: "1000" } })
-    fireEvent.click(screen.getByRole("button", { name: "اعتماد الأجر" }))
-
-    await waitFor(() => expect(approveAsync).toHaveBeenCalledTimes(1))
-    expect(approveAsync.mock.calls[0]![0]).toMatchObject({
-      employeeId: "worker-1",
-      currencyCode: "DZD",
-      totalAmount: "1000.00",
-      unallocatedAmount: "1000.00",
-      referenceSalary: { period: "MONTHLY", amount: "30000.25" },
-    })
+    expect(onAddPayment).toHaveBeenCalledWith("worker-1", "عامل الرواتب")
+    expect(approveAsync).not.toHaveBeenCalled()
+    expect(mutateAsync).not.toHaveBeenCalled()
   })
 
   it("shows each project's days and prorated amount in the payment history row", () => {
@@ -184,9 +172,11 @@ describe("SalariesSection (#412)", () => {
     expect(screen.getAllByText(/50\.25/).length).toBe(2)
   })
 
-  it("lists the salaried workers with their wage, period, and last payment on the workers tab", () => {
+  it("lists salaried workers and exposes the approval action", () => {
+    const onAddPayment = vi.fn()
     render(
       <SalariesSection
+        onAddPayment={onAddPayment}
         onEditSalary={vi.fn()}
         projects={[PROJECT, { id: "project-2", name: "مشروع باء" }]}
         recentPayments={[PAYMENT]}
@@ -222,9 +212,10 @@ describe("SalariesSection (#412)", () => {
     // A worker without a wage renders the placeholder rather than a zero wage.
     expect(screen.getAllByText("—").length).toBeGreaterThan(0)
 
-    // The row's action opens the payment dialog for that worker.
-    fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
-    expect(screen.getByRole("dialog")).toBeTruthy()
+    // Approval is delegated to the route owner; this table does not create a payment.
+    const monthlyRow = screen.getByRole("row", { name: /عامل شهري/ })
+    fireEvent.click(within(monthlyRow).getByRole("button", { name: "اعتماد الأجر" }))
+    expect(onAddPayment).toHaveBeenCalledWith("w-monthly", "عامل شهري")
   })
 
   it("shows the workers empty state when no worker has a wage", () => {
@@ -308,9 +299,19 @@ function makeWorkers(count: number, period: "MONTHLY" | "DAILY", idOffset = 0) {
 
 /** The page-size select is the control with the 10/25/50/100 presets. */
 function getPageSizeSelect(): HTMLSelectElement | undefined {
-  return (screen.getAllByRole("combobox") as HTMLSelectElement[]).find(
+  const pageSizeSelects = (screen.getAllByRole("combobox") as HTMLSelectElement[]).filter(
     (select) => Array.from(select.options).map((option) => option.value).join(",") === "10,25,50,100",
   )
+  const activeTabIndex = screen.getAllByRole("tab").findIndex((tab) => tab.getAttribute("aria-selected") === "true")
+  return pageSizeSelects[activeTabIndex] ?? pageSizeSelects[0]
+}
+
+function clickNextPage(pageStatus: string) {
+  const status = screen.getByText(pageStatus)
+  const controls = status.parentElement
+  if (!controls) throw new Error(`Missing pagination controls for ${pageStatus}`)
+  const buttons = within(controls).getAllByRole("button")
+  fireEvent.click(buttons[1]!)
 }
 
 describe("SalariesSection table controls (owner items 6 and 7)", () => {
@@ -472,53 +473,34 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     expect(within(screen.getByRole("table")).queryByText("عامل 01")).toBeNull()
   })
 
-  it("keeps each tab's page, search and page size when the operator switches tabs", () => {
-    // The workers fixture carries its own name token so each tab's search is
-    // recognisably its own, and both tabs span more than one page.
-    const workers = makeWorkers(40, "MONTHLY").map((row, index) => ({
-      ...row,
-      employeeName: `صانع ${String(index + 1).padStart(2, "0")}`,
-    }))
-
+  it("resets shared pagination on tab changes", () => {
     render(
       <SalariesSection
         onEditSalary={vi.fn()}
         projects={[]}
         recentPayments={makePayments(23)}
-        workers={workers}
+        workers={makeWorkers(40, "MONTHLY")}
       />,
     )
 
-    // History tab: its own search, page 2 of 3 and the default page size.
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "عامل" } })
-    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    clickNextPage("1 / 3")
     expect(screen.getByText("2 / 3")).toBeTruthy()
-    expect(screen.getByText("11-20 من 23")).toBeTruthy()
 
-    // Workers tab: a different search, a different page size, page 2 of 2.
-    fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "صانع" } })
+    fireEvent.click(screen.getByRole("tab", { name: "\u0627\u0644\u0639\u0627\u0645\u0644\u0648\u0646\u0020\u0627\u0644\u062c\u0627\u0647\u0632\u0648\u0646\u0020\u0644\u062a\u0633\u062c\u064a\u0644\u0020\u062f\u0641\u0639\u0629" }))
+    expect(screen.getByText("1 / 4")).toBeTruthy()
+    expect(screen.getByText("1-10 \u0645\u0646 40")).toBeTruthy()
+    clickNextPage("1 / 4")
+    expect(screen.getByText("2 / 4")).toBeTruthy()
+
     fireEvent.change(getPageSizeSelect()!, { target: { value: "25" } })
-    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("1 / 2")).toBeTruthy()
+    clickNextPage("1 / 2")
     expect(screen.getByText("2 / 2")).toBeTruthy()
-    expect(screen.getByText("26-40 من 40")).toBeTruthy()
 
-    const expectVisibleState = (page: string, range: string, query: string, pageSize: string) => {
-      expect(screen.getByText(page)).toBeTruthy()
-      expect(screen.getByText(range)).toBeTruthy()
-      expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe(query)
-      expect(getPageSizeSelect()?.value).toBe(pageSize)
-    }
-
-    // Each visit must restore that tab's OWN state, never the other tab's, and
-    // a second round trip proves the state was retained rather than recomputed.
-    for (let roundTrip = 0; roundTrip < 2; roundTrip += 1) {
-      fireEvent.click(screen.getByRole("tab", { name: "آخر دفعات الرواتب" }))
-      expectVisibleState("2 / 3", "11-20 من 23", "عامل", "10")
-
-      fireEvent.click(screen.getByRole("tab", { name: "العاملون الجاهزون لتسجيل دفعة" }))
-      expectVisibleState("2 / 2", "26-40 من 40", "صانع", "25")
-    }
+    fireEvent.click(screen.getByRole("tab", { name: "\u0622\u062e\u0631\u0020\u062f\u0641\u0639\u0627\u062a\u0020\u0627\u0644\u0631\u0648\u0627\u062a\u0628" }))
+    expect(screen.getByText("1 / 1")).toBeTruthy()
+    expect(screen.getByText("1-23 \u0645\u0646 23")).toBeTruthy()
+    expect(getPageSizeSelect()?.value).toBe("25")
   }, 15000) // Instrumented coverage runs this multi-render test past the 5s default; the assertions are the guard.
 
   it("shows a no-results message instead of dead controls when a filter matches nothing", () => {
@@ -621,7 +603,7 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     expect((screen.getByRole("button", { name: "التالي" }) as HTMLButtonElement).disabled).toBe(true)
   })
 
-  it("opens approval after a same-month payment without proposing a numeric payment", () => {
+  it("allows approval after a same-month payment without proposing a payment amount", () => {
     const paidThisMonth = {
       ...makeWorkers(1, "MONTHLY")[0]!,
       lastPaymentDate: "2026-03-20T00:00:00.000Z",
@@ -632,8 +614,10 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
       employeeName: paidThisMonth.employeeName,
     }
 
+    const onAddPayment = vi.fn()
     render(
       <SalariesSection
+        onAddPayment={onAddPayment}
         onEditSalary={vi.fn()}
         projects={[]}
         recentPayments={[payment]}
@@ -647,9 +631,8 @@ describe("SalariesSection table controls (owner items 6 and 7)", () => {
     expect(payButton.hasAttribute("disabled")).toBe(false)
 
     fireEvent.click(payButton)
-    // Historical cash payment does not fill or block the new earnings approval.
-    const dialog = screen.getByRole("dialog")
-    expect((within(dialog).getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري") as HTMLInputElement).value).toBe("")
+    // The full-page route receives identity only, not the historical cash amount.
+    expect(onAddPayment).toHaveBeenCalledWith(paidThisMonth.employeeId, paidThisMonth.employeeName)
   })
 
   it("does not render a remaining or paid-vs-salary balance (owner item 6, decision C)", () => {

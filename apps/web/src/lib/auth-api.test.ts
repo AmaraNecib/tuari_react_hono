@@ -1,10 +1,9 @@
 // @vitest-environment jsdom
-// @vitest-environment-options { "url": "http://tauri.localhost/" }
+// @vitest-environment-options { "url": "http://localhost:1420/" }
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const fetchMock = vi.fn<typeof fetch>()
-const isDesktopRuntimeMock = vi.fn(() => true)
 const desktopApiFetchMock = vi.fn<(...args: Parameters<typeof fetch>) => Promise<Response>>()
 const desktopBridgeChangePasswordMock = vi.fn<(...args: [Record<string, unknown>]) => Promise<void>>()
 const desktopBridgeSignInWithPhoneNumberMock = vi.fn<(...args: [Record<string, unknown>]) => Promise<void>>()
@@ -15,10 +14,6 @@ vi.mock("./desktop-api-bridge", () => ({
   desktopBridgeChangePassword: desktopBridgeChangePasswordMock,
   desktopBridgeSignInWithPhoneNumber: desktopBridgeSignInWithPhoneNumberMock,
   desktopBridgeSignOutSession: desktopBridgeSignOutSessionMock,
-}))
-
-vi.mock("./desktop-auth-session", () => ({
-  isDesktopRuntime: isDesktopRuntimeMock,
 }))
 
 vi.mock("./runtime-config", () => ({
@@ -33,8 +28,7 @@ describe("changeCurrentPassword", () => {
     desktopBridgeChangePasswordMock.mockReset()
     desktopBridgeSignInWithPhoneNumberMock.mockReset()
     desktopBridgeSignOutSessionMock.mockReset()
-    isDesktopRuntimeMock.mockReset()
-    isDesktopRuntimeMock.mockReturnValue(true)
+    vi.stubGlobal("isTauri", true)
     vi.stubGlobal("fetch", fetchMock)
   })
 
@@ -90,8 +84,7 @@ describe("signInDesktopWithPhoneNumber", () => {
   beforeEach(() => {
     fetchMock.mockReset()
     desktopBridgeSignInWithPhoneNumberMock.mockReset()
-    isDesktopRuntimeMock.mockReset()
-    isDesktopRuntimeMock.mockReturnValue(true)
+    vi.stubGlobal("isTauri", true)
     vi.stubGlobal("fetch", fetchMock)
   })
 
@@ -117,6 +110,24 @@ describe("signInDesktopWithPhoneNumber", () => {
       password: "password123",
       rememberMe: true,
     })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("propagates invalid credentials from the native sign-in bridge", async () => {
+    desktopBridgeSignInWithPhoneNumberMock.mockRejectedValue(
+      new Error("Invalid phone number or password"),
+    )
+
+    const { signInDesktopWithPhoneNumber } = await import("./auth-api")
+
+    await expect(
+      signInDesktopWithPhoneNumber({
+        phoneNumber: "0612345678",
+        password: "wrong-password",
+        rememberMe: true,
+      }),
+    ).rejects.toThrow("Invalid phone number or password")
+    expect(desktopBridgeSignInWithPhoneNumberMock).toHaveBeenCalledTimes(1)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })
@@ -211,8 +222,7 @@ describe("extractAuthErrorMessage", () => {
 describe("signOutDesktopSession", () => {
   beforeEach(() => {
     desktopBridgeSignOutSessionMock.mockReset()
-    isDesktopRuntimeMock.mockReset()
-    isDesktopRuntimeMock.mockReturnValue(true)
+    vi.stubGlobal("isTauri", true)
   })
 
   it("delegates desktop sign-out to the native bridge", async () => {

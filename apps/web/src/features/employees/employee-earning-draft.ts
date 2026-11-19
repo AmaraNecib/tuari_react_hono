@@ -30,11 +30,19 @@ export function finalizeEmployeeEarningDraft(draft: EmployeeEarningDraft, newReq
   const totalPath = ["totalAmountText"]
   let totalAmount: string | null = null
   let unallocatedAmount: string | null = null
-  try { totalAmount = wireMoney(draft.totalAmountText) } catch { issues.push({ path: totalPath, message: "workforce.validation.earning.positiveTotal" }) }
-  try { unallocatedAmount = wireMoney(draft.unallocatedAmountText) } catch { issues.push({ path: ["unallocatedAmountText"], message: "workforce.validation.earning.conservation" }) }
+  try { totalAmount = wireMoney(draft.totalAmountText) } catch {
+    issues.push({
+      path: totalPath,
+      message: draft.totalAmountText.trim() ? "workforce.validation.earning.positiveTotal" : "workforce.validation.earning.totalRequired",
+    })
+  }
+  if (totalAmount !== null) {
+    try { unallocatedAmount = wireMoney(draft.unallocatedAmountText) } catch { issues.push({ path: ["unallocatedAmountText"], message: "workforce.validation.earning.conservation" }) }
+  }
   const segments: EmployeeEarningApprovalInput["segments"] = []
   let allocatedMinor = 0n
   for (const row of draft.rows) {
+    if (!row.projectId.trim()) issues.push({ path: ["rows", row.id, "projectId"], message: "workforce.validation.earning.projectRequired" })
     const days = /^\d+$/.test(row.daysText.trim()) ? Number(row.daysText.trim()) : NaN
     if (!Number.isSafeInteger(days) || days <= 0) issues.push({ path: ["rows", row.id, "daysText"], message: "workforce.validation.earning.daysPositive" })
     let amount: string | null = null
@@ -43,7 +51,12 @@ export function finalizeEmployeeEarningDraft(draft: EmployeeEarningDraft, newReq
       const minor = BigInt(parseLocalizedMoneyInput(row.amountText).toMinorUnits())
       if (minor < 0n) issues.push({ path: ["rows", row.id, "amountText"], message: "workforce.validation.earning.positiveTotal" })
       else allocatedMinor += minor
-    } catch { issues.push({ path: ["rows", row.id, "amountText"], message: "workforce.validation.earning.amountPrecision" }) }
+    } catch {
+      issues.push({
+        path: ["rows", row.id, "amountText"],
+        message: row.amountText.trim() ? "workforce.validation.earning.amountPrecision" : "workforce.validation.earning.amountRequired",
+      })
+    }
     if (amount !== null && Number.isSafeInteger(days) && days > 0) segments.push({ id: row.id, projectId: row.projectId, days, amount })
   }
   if (totalAmount !== null && unallocatedAmount !== null) {

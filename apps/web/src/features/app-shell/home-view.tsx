@@ -27,6 +27,8 @@ import {
   useUpdateAccountSettingsMutation,
 } from "./workspace-mutations"
 import { useCompositeWorkspaceQuery, useSystemLogQuery } from "./workspace-queries"
+import type { EmployeeEarningReturnTo } from "@/router/navigation"
+import type { SalariesRouteSearch } from "./salaries-route-search"
 import type { HomeViewPage } from "./home-view-types"
 import { TableQueryState } from "@/features/shared/table-primitives"
 import { ErrorBoundary } from "@/components/error-boundary"
@@ -77,6 +79,10 @@ export function HomeView({
   paginationCursor,
   paginationLimit,
   paginationPrevCursors,
+  earningApproval = false,
+  returnTo,
+  salariesSearch,
+  onSalariesSearchChange,
 }: {
   detailTab?: string
   page?: HomeViewPage
@@ -88,6 +94,10 @@ export function HomeView({
   paginationCursor?: string
   paginationLimit?: number
   paginationPrevCursors?: string
+  earningApproval?: boolean
+  returnTo?: EmployeeEarningReturnTo
+  salariesSearch?: SalariesRouteSearch
+  onSalariesSearchChange?: (patch: Partial<Pick<SalariesRouteSearch, "tab" | "page" | "pageSize">>) => void
 }) {
   const { t } = useTranslation()
   const navigation = useHomeViewNavigation()
@@ -187,7 +197,7 @@ export function HomeView({
   // workspace is guaranteed to exist when derived is non-null.
   const ws = workspace!
 
-  const contentBoundaryKey = [page, detailTab, counterpartyId, employeeId, invoiceId, projectId, warehouseId]
+  const contentBoundaryKey = [page, detailTab, counterpartyId, employeeId, invoiceId, projectId, warehouseId, earningApproval, returnTo]
     .filter(Boolean)
     .join(":")
 
@@ -219,6 +229,10 @@ export function HomeView({
             copy={copy}
             derived={derived}
             detailTab={detailTab}
+            earningApproval={earningApproval}
+            returnTo={returnTo}
+            salariesSearch={salariesSearch}
+            onSalariesSearchChange={onSalariesSearchChange}
             invoiceId={invoiceId}
             page={page}
             paginationCursor={paginationCursor}

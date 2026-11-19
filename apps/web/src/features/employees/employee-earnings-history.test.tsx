@@ -85,8 +85,12 @@ describe("EmployeeEarningsHistory", () => {
     expect(entries[1]?.textContent).toMatch(/37,?500/)
     expect(within(entries[2]!).getByText("مشروع ألف")).toBeTruthy()
     expect(entries[2]?.textContent).toMatch(/15,?000/)
-    expect(within(row).getByText("المبلغ غير الموزع بالدينار الجزائري")).toBeTruthy()
+    expect(within(table).getByRole("columnheader", { name: "دون مشروع" })).toBeTruthy()
+    expect(within(row).queryByText("دون مشروع")).toBeNull()
+    expect(within(row).queryByText("المبلغ غير الموزع بالدينار الجزائري")).toBeNull()
     expect(within(row).queryByText(/50,?000/)).toBeNull()
+    expect(screen.queryByText("ما الذي يسجله هذا السجل؟")).toBeNull()
+    expect(screen.queryByText("يعرض السجل الأجور المكتسبة المعتمدة، ولا يثبت دفعًا نقديًا.")).toBeNull()
     expect(mocks.earningsList).toHaveBeenCalledTimes(1)
   })
 
