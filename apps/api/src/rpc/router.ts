@@ -1,6 +1,6 @@
-import { implement } from "@orpc/server";
+import { implement, ORPCError } from "@orpc/server";
 
-import { appContract } from "@tuari/contracts";
+import { appContract, employeePayrollOutputSchema, payrollCashRecordSchema, payrollOffsetRecordSchema, payrollRepaymentRecordSchema } from "@tuari/contracts";
 
 import { createAlgeriaTimestamp } from "../modules/company/company-time";
 import type { AuthBootstrapService } from "../modules/auth/bootstrap.service";
@@ -92,8 +92,13 @@ export function createRouter(
     }),
   };
 
+  const payrollUnavailable = () => { throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Exact payroll composition is not configured" }); };
   const allHandlers = {
     ...baseHandlers,
+    employeePayrollGet: os.employeePayrollGet.handler(async params => employeePayrollOutputSchema.parse(await m.queryAuth(async () => payrollUnavailable())(params))),
+    employeePayrollCashRecord: os.employeePayrollCashRecord.handler(async params => payrollCashRecordSchema.parse(await m.mutationAudit(() => payrollUnavailable(), error => error)(params))),
+    employeePayrollAdvanceRepay: os.employeePayrollAdvanceRepay.handler(async params => payrollRepaymentRecordSchema.parse(await m.mutationAudit(() => payrollUnavailable(), error => error)(params))),
+    employeePayrollAdvanceOffset: os.employeePayrollAdvanceOffset.handler(async params => payrollOffsetRecordSchema.parse(await m.mutationAudit(() => payrollUnavailable(), error => error)(params))),
     ...createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.roleModule, dependencies.databaseKeyManager, dependencies.databaseKeyPersister),
     ...createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
     ...createOperationsHandlers(os, m, dependencies.operationsService),

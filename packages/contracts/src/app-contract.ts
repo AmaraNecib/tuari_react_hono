@@ -4,6 +4,7 @@ import { healthCheckSchema } from "./core"
 import { workspaceSnapshotSchema } from "./workspace"
 import { authContract } from "./auth-contract"
 import { workforceContract } from "./workforce-contract"
+import { payrollContract } from "./payroll-contract"
 import { operationsContract } from "./operations-contract"
 import { inventoryContract } from "./inventory-contract"
 import { debtsContract } from "./debts-contract"
@@ -22,6 +23,7 @@ export const appContract = {
   workspaceSnapshot: oc.output(workspaceSnapshotSchema),
   ...authContract,
   ...workforceContract,
+  ...payrollContract,
   ...operationsContract,
   ...inventoryContract,
   ...debtsContract,

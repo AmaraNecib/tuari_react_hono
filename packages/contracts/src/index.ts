@@ -6,6 +6,8 @@ export * from "./inventory-exact-contract";
 export * from "./core";
 export * from "./auth";
 export * from "./workforce";
+export * from "./payroll";
+export * from "./payroll-contract";
 export * from "./salary-days";
 export * from "./round-to-decimals";
 export * from "./projects";
