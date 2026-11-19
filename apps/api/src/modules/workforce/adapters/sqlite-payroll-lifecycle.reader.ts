@@ -12,6 +12,12 @@ import type { PayrollLifecycle, PayrollOpeningReview, PayrollOpeningReviewProvid
 const LIMIT = 10000;
 const ZERO = Money.parse("0.00");
 type LedgerSource = { readonly kind: "WAGE" | "ADVANCE"; readonly id: string; readonly employeeId: string; readonly currency: string; readonly amount: string; readonly account: ExactDebtAccount; readonly original: ExactDebtEntry };
+type LedgerEntry = ReturnType<ExactFinanceService["detail"]>["entries"][number];
+type LedgerView = {
+  readonly entries: Map<string, LedgerEntry>;
+  readonly corrected: Set<string>;
+  readonly children: Map<string, LedgerEntry[]>;
+};
 
 function report(values: readonly string[]): string {
   return sumMoneyHistory(values.map(value => Money.parse(value, "DZD")));
@@ -44,7 +50,7 @@ export class SqlitePayrollLifecycleReader {
   }
 
   getEmployeePayroll(employeeId: string): PayrollLifecycle {
-    if (!employeeId || employeeId.trim() !== employeeId) throw new TypeError("Invalid employee identity");
+    if (typeof employeeId !== "string" || !employeeId || employeeId.length > 128 || employeeId.trim() !== employeeId) throw new TypeError("Invalid employee identity");
     const earnings = new SqliteEmployeeEarningRepository(this.db, this.lock);
     return this.cash.withTransaction(() => this.readInTransaction(employeeId, earnings));
   }
@@ -62,11 +68,12 @@ export class SqlitePayrollLifecycleReader {
     let openingReview: PayrollOpeningReview | null = null;
     if (this.opening) {
       openingReview = this.opening.getReview(employeeId);
-      if (openingReview !== null && (!Array.isArray(openingReview.sources) || openingReview.state !== "REVIEWED")) throw new TypeError("Opening provider returned invalid review metadata");
+      if (openingReview !== null && (!Array.isArray(openingReview.sources) || !["UNREVIEWED", "REVIEWED"].includes(openingReview.state) || openingReview.employeeId !== employeeId || (openingReview.state === "UNREVIEWED" && openingReview.sources.length !== 0))) throw new TypeError("Opening provider returned invalid review metadata");
       const returnedCost = openingReview === null ? 0 : 1 + openingReview.sources.length;
       if (returnedCost !== openingCost) throw new RangeError("Opening provider row count does not match returned review and sources");
     }
 
+    const reviewedOpening = openingReview?.state === "REVIEWED";
     const earningById = new Map(earnings.map(earning => [earning.id, earning]));
     if (earningById.size !== earnings.length) throw new TypeError("Duplicate employee earning identity");
     const openingById = new Map((openingReview?.sources ?? []).map(source => [`${source.kind}:${source.sourceId}`, source]));
@@ -74,10 +81,23 @@ export class SqlitePayrollLifecycleReader {
 
     const wageSources = new Map<string, LedgerSource>();
     const advanceSources = new Map<string, LedgerSource>();
-    const details = new Map<string, ReturnType<ExactFinanceService["detail"]>>();
-    const detailFor = (accountId: string) => {
+    const details = new Map<string, LedgerView>();
+    const detailFor = (accountId: string): LedgerView => {
       let detail = details.get(accountId);
-      if (!detail) { detail = this.finance.detail(accountId); details.set(accountId, detail); }
+      if (!detail) {
+        const rows = this.finance.detail(accountId).entries;
+        detail = { entries: new Map(rows.map(row => [row.id, row])), corrected: new Set(), children: new Map() };
+        for (const row of rows) {
+          if (row.status !== "LIVE") continue;
+          if (row.correctionOfEntryId) detail.corrected.add(row.correctionOfEntryId);
+          if (row.targetEntryId) {
+            const children = detail.children.get(row.targetEntryId) ?? [];
+            children.push(row);
+            detail.children.set(row.targetEntryId, children);
+          }
+        }
+        details.set(accountId, detail);
+      }
       return detail;
     };
     for (const earning of earnings) {
@@ -148,18 +168,18 @@ export class SqlitePayrollLifecycleReader {
     const advancesGiven = cash.flatMap(row => row.advance ? [row.advance.amount] : []);
     const advancesRecovered = repayments.map(row => row.amount);
     const advancesOffset = offsets.map(row => row.amount);
-    const wageOwed = postedEarnings.map(row => row.remaining);
-    const advanceOwed = advances.map(row => row.remaining);
-    const openingWages = openingReview ? report(openingBalances.filter(row => row.kind === "WAGE").map(row => row.remaining)) : null;
-    const openingAdvances = openingReview ? report(openingBalances.filter(row => row.kind === "ADVANCE").map(row => row.remaining)) : null;
+    const wageOwed = [...postedEarnings.map(row => row.remaining), ...openingBalances.filter(row => row.kind === "WAGE").map(row => row.remaining)];
+    const advanceOwed = [...advances.map(row => row.remaining), ...openingBalances.filter(row => row.kind === "ADVANCE").map(row => row.remaining)];
+    const openingWages = reviewedOpening ? report(openingBalances.filter(row => row.kind === "WAGE").map(row => row.remaining)) : null;
+    const openingAdvances = reviewedOpening ? report(openingBalances.filter(row => row.kind === "ADVANCE").map(row => row.remaining)) : null;
 
     return {
       employeeId, currency: "DZD", earnings: postedEarnings, cash, repayments, offsets, advances,
-      opening: { review: openingReview ? "REVIEWED" : "UNREVIEWED", reminder: !openingReview, wages: openingWages, advances: openingAdvances },
+      opening: { review: reviewedOpening ? "REVIEWED" : "UNREVIEWED", reminder: !reviewedOpening, wages: openingWages, advances: openingAdvances },
       summary: {
         approvedEarnings: report(earnings.map(row => row.totalAmount)), wageCashPaid: report(wagesCash), wagesOffset: report(wagesOffset), wagesOwed: report(wageOwed),
         advancesGiven: report(advancesGiven), advancesCashRecovered: report(advancesRecovered), advancesOffset: report(advancesOffset), advancesOwed: report(advanceOwed),
-        unallocatedEarnings: report(earnings.map(row => row.unallocatedAmount)), currentAppTotalsExcludeUnknownOpening: !openingReview,
+        unallocatedEarnings: report(earnings.map(row => row.unallocatedAmount)), currentAppTotalsExcludeUnknownOpening: !reviewedOpening,
       },
     };
   }
@@ -190,7 +210,7 @@ export class SqlitePayrollLifecycleReader {
     if (!account || !original || account.partyType !== "INTERNAL_WORKER" || account.workerId !== employeeId || account.currency !== "DZD" || account.direction !== expectedDirection
       || original.debtAccountId !== account.id || original.currency !== "DZD" || original.status !== "LIVE" || original.targetEntryId || original.correctionOfEntryId
       || original.producerType !== "PAYROLL_OPENING" || original.producerId !== source.sourceId || Money.parse(original.signedAmountDzd).compare(Money.parse(source.amount)) !== 0
-      || Money.parse(source.amount).compare(ZERO) <= 0 || (source.kind === "ADVANCE" && original.entryType !== "ADVANCE")) throw new TypeError("Opening source ledger linkage mismatch");
+      || Money.parse(source.amount).compare(ZERO) <= 0) throw new TypeError("Opening source ledger linkage mismatch");
   }
 
   private validateCashSources(cash: readonly PayrollCashRecord[], earnings: Map<string, unknown>, openings: Map<string, PayrollOpeningSource>, wages: Map<string, LedgerSource>): void {
@@ -223,11 +243,11 @@ export class SqlitePayrollLifecycleReader {
     }
   }
 
-  private validateLedgerMovements(source: LedgerSource, detail: ReturnType<ExactFinanceService["detail"]>, expected: Map<string, { amount: string; type: "PAYMENT" | "SETTLEMENT" }>): string {
-    const original = detail.entries.find(row => row.id === source.original.id);
+  private validateLedgerMovements(source: LedgerSource, detail: LedgerView, expected: Map<string, { amount: string; type: "PAYMENT" | "SETTLEMENT" }>): string {
+    const original = detail.entries.get(source.original.id);
     if (!original || original.status !== "LIVE" || original.targetEntryId || original.correctionOfEntryId || Money.parse(original.signedAmountDzd).compare(Money.parse(source.amount)) !== 0) throw new TypeError("Payroll original no longer matches its source amount");
-    if (detail.entries.some(row => row.status === "LIVE" && row.correctionOfEntryId === source.original.id)) throw new TypeError("Payroll original has an unattributed correction");
-    const children = detail.entries.filter(row => row.status === "LIVE" && row.targetEntryId === source.original.id);
+    if (detail.corrected.has(source.original.id)) throw new TypeError("Payroll original has an unattributed correction");
+    const children = detail.children.get(source.original.id) ?? [];
     if (children.some(row => row.entryType !== "PAYMENT" && row.entryType !== "SETTLEMENT")) throw new TypeError("Payroll original has an unattributed ledger movement");
     const actual = children;
     const seen = new Set<string>();

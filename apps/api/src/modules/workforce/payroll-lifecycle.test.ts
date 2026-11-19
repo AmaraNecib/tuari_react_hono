@@ -59,12 +59,16 @@ describe.each([["plain", ""], ["keyed", "558-lifecycle-key"]] as const)("payroll
     const provider: PayrollOpeningReviewProvider = {
       transactionIdentity: f.finance.transactionIdentity,
       countRows: () => 1,
-      getReview: () => { expect(f.db.inTransaction).toBe(true); return { state: "REVIEWED", sources: [] }; },
+      getReview: () => { expect(f.db.inTransaction).toBe(true); return { state: "REVIEWED", employeeId: f.employeeId, sources: [] }; },
     };
     expect(f.reader(provider).getEmployeePayroll(f.employeeId).opening).toEqual({ review: "REVIEWED", reminder: false, wages: "0.00", advances: "0.00" });
+    const unreviewed: PayrollOpeningReviewProvider = { ...provider, getReview: () => ({ state: "UNREVIEWED", employeeId: f.employeeId, sources: [] }) };
+    expect(f.reader(unreviewed).getEmployeePayroll(f.employeeId).opening).toEqual({ review: "UNREVIEWED", reminder: true, wages: null, advances: null });
+    const wrongEmployee: PayrollOpeningReviewProvider = { ...provider, getReview: () => ({ state: "REVIEWED", employeeId: randomUUID(), sources: [] }) };
+    expect(() => f.reader(wrongEmployee).getEmployeePayroll(f.employeeId)).toThrow(/review metadata/);
   });
 
-  it("includes only reviewed opening originals linked to the same worker and exact amount", () => {
+  it.each(["ADJUSTMENT", "ADVANCE"] as const)("includes reviewed opening totals with %s advance originals", entryType => {
     const f = fixture(key);
     const sourceId = "opening-wage-source";
     const producer = f.finance.forProducer({ type: "PAYROLL_OPENING", id: sourceId });
@@ -74,17 +78,54 @@ describe.each([["plain", ""], ["keyed", "558-lifecycle-key"]] as const)("payroll
     const advanceSourceId = "opening-advance-source";
     const advanceProducer = f.finance.forProducer({ type: "PAYROLL_OPENING", id: advanceSourceId });
     const advanceAccount = advanceProducer.createAccount({ requestId: "opening-advance-account", partyType: "INTERNAL_WORKER", workerId: f.employeeId, direction: "RECEIVABLE", currency: "DZD" });
-    const advanceOriginal = advanceProducer.postEntry({ requestId: "opening-advance-original", debtAccountId: advanceAccount.id, entryType: "ADVANCE", signedAmountDzd: "700.00", currency: "DZD" });
+    const advanceOriginal = advanceProducer.postEntry({ requestId: "opening-advance-original", debtAccountId: advanceAccount.id, entryType, signedAmountDzd: "700.00", currency: "DZD" });
     const advanceSource: PayrollOpeningSource = { kind: "ADVANCE", sourceId: advanceSourceId, employeeId: f.employeeId, currency: "DZD", amount: "700.00", debtAccountId: advanceAccount.id, debtEntryId: advanceOriginal.id };
     const payment = producer.recordPayment({ requestId: "opening-cash", debtEntryId: original.id, amountDzd: "500.00", currency: "DZD", paymentMethod: "CASH" });
     f.cash.saveCash({ id: randomUUID(), employeeId: f.employeeId, currency: "DZD", amount: "500.00", paymentDate: paidAt, ...f.audit, createdAt: now,
       wageAllocations: [{ id: randomUUID(), source: { kind: "OPENING", id: sourceId }, amount: "500.00", debtAccountId: account.id, debtEntryId: original.id, paymentEntryId: payment.id }], advance: null });
-    const provider: PayrollOpeningReviewProvider = { transactionIdentity: f.finance.transactionIdentity, countRows: () => 3, getReview: () => ({ state: "REVIEWED", sources: [source, advanceSource] }) };
-    expect(f.reader(provider).getEmployeePayroll(f.employeeId).opening).toEqual({ review: "REVIEWED", reminder: false, wages: "400.00", advances: "700.00" });
+    const provider: PayrollOpeningReviewProvider = { transactionIdentity: f.finance.transactionIdentity, countRows: () => 3, getReview: () => ({ state: "REVIEWED", employeeId: f.employeeId, sources: [source, advanceSource] }) };
+    const result = f.reader(provider).getEmployeePayroll(f.employeeId);
+    expect(result.opening).toEqual({ review: "REVIEWED", reminder: false, wages: "400.00", advances: "700.00" });
+    expect(result.summary).toMatchObject({ approvedEarnings: "0.00", wageCashPaid: "500.00", wagesOwed: "400.00", advancesGiven: "0.00", advancesOwed: "700.00", currentAppTotalsExcludeUnknownOpening: false });
     const underreported: PayrollOpeningReviewProvider = { ...provider, countRows: () => 2 };
     expect(() => f.reader(underreported).getEmployeePayroll(f.employeeId)).toThrow(/row count does not match/i);
-    const mismatched: PayrollOpeningReviewProvider = { ...provider, getReview: () => ({ state: "REVIEWED", sources: [{ ...source, amount: "901.00" }, advanceSource] }) };
+    const mismatched: PayrollOpeningReviewProvider = { ...provider, getReview: () => ({ state: "REVIEWED", employeeId: f.employeeId, sources: [{ ...source, amount: "901.00" }, advanceSource] }) };
     expect(() => f.reader(mismatched).getEmployeePayroll(f.employeeId)).toThrow(/opening source ledger linkage mismatch/i);
+  });
+
+  it("includes 5000 opening wages plus 35000 approved less 30000 cash as 10000 owed", () => {
+    const f = fixture(key); const earning = f.earning("35000.00");
+    const sourceId = randomUUID(); const opening = f.finance.forProducer({ type: "PAYROLL_OPENING", id: sourceId });
+    const account = opening.createAccount({ requestId: randomUUID(), partyType: "INTERNAL_WORKER", workerId: f.employeeId, direction: "PAYABLE", currency: "DZD" });
+    const original = opening.postEntry({ requestId: randomUUID(), debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: "5000.00", currency: "DZD" });
+    f.service.recordCash({ ...f.audit, requestId: "current-pay", employeeId: f.employeeId, amount: "30000.00", paymentDate: paidAt, wages: [{ earningId: earning.id, amount: "30000.00" }] });
+    const provider: PayrollOpeningReviewProvider = { transactionIdentity: f.finance.transactionIdentity, countRows: () => 2,
+      getReview: () => ({ state: "REVIEWED", employeeId: f.employeeId, sources: [{ kind: "WAGE", sourceId, employeeId: f.employeeId, currency: "DZD", amount: "5000.00", debtAccountId: account.id, debtEntryId: original.id }] }) };
+    const result = f.reader(provider).getEmployeePayroll(f.employeeId);
+    expect(result.summary).toMatchObject({ approvedEarnings: "35000.00", wageCashPaid: "30000.00", wagesOwed: "10000.00", advancesOwed: "0.00" });
+    expect(result.opening.wages).toBe("5000.00");
+    expect(f.cost()).toEqual(["35000.00"]);
+  });
+
+  it("keeps unallocated earnings distinct from outstanding wages", () => {
+    const f = fixture(key);
+    const earning = f.earnings.create({ requestId: randomUUID(), employeeId: f.employeeId, currencyCode: "DZD", periodStart: "2026-11-01T00:00:00.000Z", periodEnd: "2026-12-01T00:00:00.000Z", totalAmount: "35000.00", unallocatedAmount: "10000.00", referenceSalary: null,
+      segments: [{ id: randomUUID(), projectId: f.projectId, days: 15, amount: "25000.00" }] }, "unallocated-approved-intent", now, f.audit);
+    f.service.recordCash({ ...f.audit, requestId: "unallocated-wage-pay", employeeId: f.employeeId, amount: "15000.00", paymentDate: paidAt, wages: [{ earningId: earning.id, amount: "15000.00" }] });
+    const result = f.reader().getEmployeePayroll(f.employeeId);
+    expect(result.summary).toMatchObject({ approvedEarnings: "35000.00", wageCashPaid: "15000.00", wagesOwed: "20000.00", unallocatedEarnings: "10000.00" });
+    expect(f.cost()).toEqual(["25000.00"]);
+  });
+
+  it.each(["payment", "settlement", "correction"])("refuses an unattributed %s rather than inferring a payroll cash history", kind => {
+    const f = fixture(key); const earning = f.earning("1000.00");
+    const original = f.service.registerEarning({ ...f.audit, requestId: "register-source", earningId: earning.id })!;
+    const producer = f.finance.forProducer({ type: "PAYROLL_EARNINGS", id: earning.id });
+    if (kind === "payment") producer.recordPayment({ requestId: randomUUID(), debtEntryId: original.id, amountDzd: "100.00", currency: "DZD" });
+    else if (kind === "settlement") producer.recordSettlement({ requestId: randomUUID(), debtEntryId: original.id, amountDzd: "100.00", currency: "DZD" });
+    else producer.correctEntry({ requestId: randomUUID(), entryId: original.id, amountDzd: "900.00", reason: "Unattributed correction probe", currency: "DZD" });
+    expect(() => f.reader().getEmployeePayroll(f.employeeId)).toThrow(/unattributed/i);
+    expect(f.cash.listCash(f.employeeId)).toEqual([]);
   });
 
   it("uses wide exact report totals for multiple maximum-sized approved earnings", () => {
@@ -94,6 +135,31 @@ describe.each([["plain", ""], ["keyed", "558-lifecycle-key"]] as const)("payroll
     const result = f.reader().getEmployeePayroll(f.employeeId);
     expect(result.summary.approvedEarnings).toBe("184467440737095516.14");
     expect(result.summary.wagesOwed).toBe("184467440737095516.14");
+  });
+
+  it("includes reviewed opening balances in wide exact totals without new ledger writes", () => {
+    const f = fixture(key); f.earning("92233720368547758.07");
+    const sourceId = randomUUID(); const producer = f.finance.forProducer({ type: "PAYROLL_OPENING", id: sourceId });
+    const account = producer.createAccount({ requestId: randomUUID(), partyType: "INTERNAL_WORKER", workerId: f.employeeId, direction: "PAYABLE", currency: "DZD" });
+    const original = producer.postEntry({ requestId: randomUUID(), debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: "92233720368547758.07", currency: "DZD" });
+    const provider: PayrollOpeningReviewProvider = { transactionIdentity: f.finance.transactionIdentity, countRows: () => 2,
+      getReview: () => ({ state: "REVIEWED", employeeId: f.employeeId, sources: [{ kind: "WAGE", sourceId, employeeId: f.employeeId, currency: "DZD", amount: "92233720368547758.07", debtAccountId: account.id, debtEntryId: original.id }] }) };
+    const result = f.reader(provider).getEmployeePayroll(f.employeeId);
+    expect(result.summary.wagesOwed).toBe("184467440737095516.14");
+    expect(result.opening.wages).toBe("92233720368547758.07");
+    expect(result.earnings[0]?.registration).toBe("PENDING_REGISTRATION");
+    expect(f.finance.listEntries(account.id)).toHaveLength(1);
+  });
+
+  it("rejects cash allocated to a fabricated earning even if its ledger producer label matches", () => {
+    const f = fixture(key); const sourceId = randomUUID();
+    const producer = f.finance.forProducer({ type: "PAYROLL_EARNINGS", id: sourceId });
+    const account = producer.createAccount({ requestId: randomUUID(), partyType: "INTERNAL_WORKER", workerId: f.employeeId, direction: "PAYABLE", currency: "DZD" });
+    const original = producer.postEntry({ requestId: randomUUID(), debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: "1000.00", currency: "DZD" });
+    const payment = producer.recordPayment({ requestId: randomUUID(), debtEntryId: original.id, amountDzd: "100.00", currency: "DZD" });
+    f.cash.saveCash({ id: randomUUID(), employeeId: f.employeeId, currency: "DZD", amount: "100.00", paymentDate: paidAt, ...f.audit, createdAt: now, advance: null,
+      wageAllocations: [{ id: randomUUID(), source: { kind: "EARNING", id: sourceId }, amount: "100.00", debtAccountId: account.id, debtEntryId: original.id, paymentEntryId: payment.id }] });
+    expect(() => f.reader().getEmployeePayroll(f.employeeId)).toThrow(/source does not exist/);
   });
 
   it("rejects the combined selected-row budget before opening-provider hydration", () => {
@@ -106,6 +172,22 @@ describe.each([["plain", ""], ["keyed", "558-lifecycle-key"]] as const)("payroll
       getReview: () => { throw new Error("provider hydrated before aggregate budget check"); },
     };
     expect(() => f.reader(provider).getEmployeePayroll(f.employeeId)).toThrow(/materialization limit/i);
+  });
+
+  it("budgets cash children, both financial directions and unrelated ledger rows before hydration", () => {
+    const f = fixture(key); const earning = f.earning("35000.00");
+    const cash = f.service.recordCash({ ...f.audit, requestId: "wage", employeeId: f.employeeId, amount: "25000.00", paymentDate: paidAt, wages: [{ earningId: earning.id, amount: "25000.00" }] });
+    const advance = f.service.recordCash({ ...f.audit, requestId: "advance", employeeId: f.employeeId, amount: "5000.00", paymentDate: paidAt, wages: [], advanceAmount: "5000.00" });
+    f.service.offsetAdvance({ ...f.audit, requestId: "offset", employeeId: f.employeeId, amount: "2000.00", settlementDate: paidAt, wageSource: { kind: "EARNING", id: earning.id }, advanceSource: { kind: "ADVANCE", id: advance.advance!.id } });
+    f.service.repayAdvance({ ...f.audit, requestId: "repay", employeeId: f.employeeId, advanceId: advance.advance!.id, amount: "1000.00", paymentDate: paidAt });
+    f.finance.postEntry({ requestId: "unrelated", debtAccountId: cash.wageAllocations[0]!.debtAccountId, entryType: "ADJUSTMENT", signedAmountDzd: "1.00", currency: "DZD" });
+    // 1 earning + 1 segment + 2 cash + 1 allocation + 1 advance + 1
+    // repayment + 1 offset + 2 accounts + 7 ledger entries = 17 rows.
+    const provider: PayrollOpeningReviewProvider = { transactionIdentity: f.finance.transactionIdentity, countRows: () => 9984,
+      getReview: () => { throw new Error("opening hydration reached"); } };
+    expect(() => f.reader(provider).getEmployeePayroll(f.employeeId)).toThrow(/materialization limit/);
+    expect(() => f.reader({ ...provider, countRows: () => 9983 }).getEmployeePayroll(f.employeeId)).toThrow("opening hydration reached");
+    expect(f.reader().getEmployeePayroll(f.employeeId).summary).toMatchObject({ wagesOwed: "8000.00", advancesOwed: "2000.00" });
   });
 
   it("refuses missing employees, foreign database/FIFO participants, and source-ledger drift", () => {

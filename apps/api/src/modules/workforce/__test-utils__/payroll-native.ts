@@ -54,5 +54,5 @@ export function payrollFixture(key: string) {
     return earnings.create({ requestId: randomUUID(), employeeId: workerId, currencyCode: "DZD", periodStart: "2026-11-01T00:00:00.000Z", periodEnd: "2026-12-01T00:00:00.000Z", totalAmount: total, unallocatedAmount: "0.00", referenceSalary: { period: "MONTHLY", amount: "30000.00" }, segments: [{ id: randomUUID(), projectId, days: 30, amount: total }] }, "approved-intent", now, audit);
   }
   const cost = () => new SqliteProjectCostRepository(db).listProjectSalarySplits(projectId).map(row => row.amount);
-  return { db, path, lock, financeRepository, finance, cash, sources, service, audit, employeeId, employee, earning, earnings, cost };
+  return { db, path, lock, financeRepository, finance, cash, sources, service, audit, employeeId, projectId, employee, earning, earnings, cost };
 }

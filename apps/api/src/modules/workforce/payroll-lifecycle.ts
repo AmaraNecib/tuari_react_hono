@@ -13,7 +13,8 @@ export type PayrollOpeningSource = {
 };
 
 export type PayrollOpeningReview = {
-  readonly state: "REVIEWED";
+  readonly employeeId: string;
+  readonly state: "UNREVIEWED" | "REVIEWED";
   readonly sources: readonly PayrollOpeningSource[];
 };
 
