@@ -5,7 +5,7 @@ import { runSyncTransaction, type FifoLock } from "../../../infrastructure/datab
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import { SqliteExactFinanceRepository } from "../../company/adapters/sqlite-exact-finance.repository";
 import type { PayrollCashRecord, PayrollCashRepository, PayrollSettlementRecord } from "../payroll-cash.repository";
-import { payrollAdvanceLink, payrollAllocationLink, payrollSettlementLink } from "./payroll-cash-schema";
+import { payrollAdvanceLink, payrollAllocationLink, payrollSettlementLink, payrollCashSchemaStatements } from "./payroll-cash-schema";
 
 const LIMIT = 10000;
 const id = z.string().trim().min(1).max(128);
@@ -42,6 +42,16 @@ export class SqlitePayrollCashRepository implements PayrollCashRepository {
     this.withTransaction(() => {
       // Validate the real prepared ledger, not merely a marker or synthetic tables.
       new SqliteExactFinanceRepository(db, lock);
+      if (db.pragma("foreign_keys", { simple: true }) !== 1) throw new TypeError("Payroll cash foreign keys must be enabled");
+      // This isolated schema has one canonical version. Check definitions, not
+      // just names, because writes rely on its keys, checks and trigger bodies.
+      const normalize = (sql: string) => sql.replace(/\s+/g, " ").trim();
+      for (const statement of payrollCashSchemaStatements) {
+        const object = /^CREATE (TABLE|INDEX|TRIGGER) (\w+)/.exec(statement);
+        if (!object) throw new TypeError("Unsupported payroll cash schema statement");
+        const installed = db.prepare("SELECT sql FROM sqlite_master WHERE type=? AND name=?").get(object[1]!.toLowerCase(), object[2]!) as { sql: string | null } | undefined;
+        if (!installed?.sql || normalize(installed.sql) !== normalize(statement)) throw new TypeError(`Incompatible prepared payroll cash schema: ${object[2]}`);
+      }
       for (const [table, columns] of Object.entries(expected)) {
         const actual = db.pragma(`table_info(${table})`) as { name: string; type: string }[];
         for (const [type, names] of [["TEXT", columns.text], ["INTEGER", columns.integer]] as const) {

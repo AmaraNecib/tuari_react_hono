@@ -16,14 +16,14 @@ const postingDate = "2026-11-19T10:00:00.000Z";
 const cashDate = "2026-11-18T09:00:00.000Z";
 const close: (() => void)[] = [];
 afterEach(() => { for (const cleanup of close.splice(0)) cleanup(); });
-function fixture(key: string) {
+function fixture(key: string, payrollStatements: readonly string[] = payrollCashSchemaStatements) {
   const path = join(mkdtempSync(join(tmpdir(), "tuari-558-cash-")), "fixture.sqlite");
   const db = createDatabaseConnection(path, key);
   close.push(() => { if (db.open) db.close(); });
   db.exec("CREATE TABLE employee(id TEXT PRIMARY KEY); CREATE TABLE external_counterparty(id TEXT PRIMARY KEY); CREATE TABLE invoice(id TEXT PRIMARY KEY)");
   const employeeId = randomUUID();
   db.prepare("INSERT INTO employee VALUES (?)").run(employeeId);
-  for (const sql of [...exactDebtSchemaStatements, ...payrollCashSchemaStatements]) db.exec(sql);
+  for (const sql of [...exactDebtSchemaStatements, ...payrollStatements]) db.exec(sql);
   const lock = createFifoLock();
   const finance = new ExactFinanceService(new SqliteExactFinanceRepository(db, lock), { id: randomUUID, now: () => postingDate });
   const repository = new SqlitePayrollCashRepository(db, lock);
@@ -111,7 +111,40 @@ describe.each([["plain", ""], ["keyed", "558-native-key"]])("payroll cash storag
     f.db.exec("ALTER TABLE employee_salary_cash ADD COLUMN wrong_amount REAL");
     // The active exact amount column must itself have the correct physical type.
     f.db.exec("ALTER TABLE employee_salary_cash RENAME COLUMN amount_minor TO old_amount_minor; ALTER TABLE employee_salary_cash ADD COLUMN amount_minor REAL");
-    expect(() => new SqlitePayrollCashRepository(f.db, f.lock)).toThrow(/column/);
+    expect(() => new SqlitePayrollCashRepository(f.db, f.lock)).toThrow(/schema|column/);
+  });
+
+  it("refuses missing or weakened integrity schema even when all column types match", () => {
+    for (const statements of [
+      payrollCashSchemaStatements.filter(sql => !sql.startsWith("CREATE TRIGGER employee_salary_payment_allocation_link_insert")),
+      payrollCashSchemaStatements.map(sql => sql.startsWith("CREATE TABLE employee_salary_payment_allocation") ? sql.replace("payment_entry_id TEXT NOT NULL UNIQUE", "payment_entry_id TEXT NOT NULL") : sql),
+      payrollCashSchemaStatements.map(sql => sql.startsWith("CREATE TABLE employee_salary_cash") ? sql.replace("CHECK(currency='DZD')", "") : sql),
+      payrollCashSchemaStatements.map(sql => sql.startsWith("CREATE TRIGGER employee_salary_cash_immutable_update") ? "CREATE TRIGGER employee_salary_cash_immutable_update BEFORE UPDATE ON employee_salary_cash WHEN 0 BEGIN SELECT RAISE(ABORT,'disabled'); END" : sql),
+    ]) expect(() => fixture(key, statements)).toThrow(/schema/);
+    const f = fixture(key);
+    f.db.pragma("foreign_keys=OFF");
+    expect(() => new SqlitePayrollCashRepository(f.db, f.lock)).toThrow(/foreign keys/);
+  });
+
+  it("rejects a voided advance original during cash hydration", () => {
+    const f = fixture(key); const advance = f.source("5000.00", "0.00", true);
+    const cash: PayrollCashRecord = { id: randomUUID(), employeeId: f.employeeId, currency: "DZD", amount: "5000.00", paymentDate: cashDate, ...f.audit, wageAllocations: [], advance: { id: advance.sourceId, amount: "5000.00", debtAccountId: advance.account.id, debtEntryId: advance.original.id } };
+    f.repository.saveCash(cash);
+    advance.scoped.voidEntry({ requestId: randomUUID(), entryId: advance.original.id, voidReason: "Advance cancelled" });
+    expect(() => f.repository.getCash(cash.id)).toThrow("Payroll cash source link mismatch");
+    expect(() => f.repository.listCash(f.employeeId)).toThrow("Payroll cash source link mismatch");
+  });
+
+  it("rejects a voided advance repayment during direct and collection hydration", () => {
+    const f = fixture(key); const advance = f.source("5000.00", "0.00", true);
+    f.repository.saveCash({ id: randomUUID(), employeeId: f.employeeId, currency: "DZD", amount: "5000.00", paymentDate: cashDate, ...f.audit, wageAllocations: [], advance: { id: advance.sourceId, amount: "5000.00", debtAccountId: advance.account.id, debtEntryId: advance.original.id } });
+    const payment = advance.scoped.recordPayment({ requestId: randomUUID(), debtEntryId: advance.original.id, amountDzd: "2000.00", currency: "DZD" });
+    const settlement = { id: randomUUID(), employeeId: f.employeeId, currency: "DZD" as const, amount: "2000.00", paymentDate: cashDate, ...f.audit, source: { kind: "ADVANCE" as const, id: advance.sourceId }, debtAccountId: advance.account.id, debtEntryId: advance.original.id, paymentEntryId: payment.id };
+    f.repository.saveSettlement(settlement);
+    advance.scoped.voidEntry({ requestId: randomUUID(), entryId: payment.id, voidReason: "Cash repayment reversed" });
+    expect(() => f.repository.getSettlement(settlement.id)).toThrow("Payroll cash source link mismatch");
+    expect(() => f.repository.listSettlements(f.employeeId)).toThrow("Payroll cash source link mismatch");
+    expect(f.finance.remaining(advance.original.id)).toBe("5000.00");
   });
 
   it("rejects changed live ledger links on read rather than returning fabricated cash", () => {
@@ -188,6 +221,44 @@ describe.each([["plain", ""], ["keyed", "558-native-key"]])("payroll cash storag
     expect(f.repository.getCash(cash.id)).toBeNull();
     f.repository.saveCash(cash);
   });
+
+  it.each(["allocations", "advances"] as const)("accepts exactly 10000 combined rows and counts %s before overflow hydration", kind => {
+    const f = fixture(key);
+    const isAdvance = kind === "advances";
+    const source = f.source(isAdvance ? "0.01" : "50.00", isAdvance ? "0.00" : "0.01", isAdvance);
+    const seed = isAdvance ? source.original : source.payment!;
+    // Bulk fixture uses real ledger columns and constraints, avoiding quadratic
+    // command setup. It records distinct postings with independently known cents.
+    const columns = f.db.pragma("table_info(debt_entry)") as { name: string }[];
+    const replacements = new Set(["id", "posting_sequence", "balance_after_minor", ...(isAdvance ? ["producer_id"] : [])]);
+    const clone = f.db.prepare(`INSERT INTO debt_entry SELECT ${columns.map(column => replacements.has(column.name) ? "?" : column.name).join(",")} FROM debt_entry WHERE id=?`);
+    const firstCashId = "budget-cash-0";
+    f.db.transaction(() => {
+      for (let index = 0; index < 5000; index++) {
+        const sourceId = isAdvance && index > 0 ? `budget-advance-${index}` : source.sourceId;
+        const entryId = index === 0 ? seed.id : `budget-entry-${index}`;
+        if (index > 0) {
+          const values = columns.filter(column => replacements.has(column.name)).map(column => {
+            if (column.name === "id") return entryId;
+            if (column.name === "posting_sequence") return index + (isAdvance ? 1 : 2);
+            if (column.name === "producer_id") return sourceId;
+            return BigInt(isAdvance ? index + 1 : 4999 - index);
+          });
+          clone.run(...values, seed.id);
+        }
+        f.repository.saveCash({ id: `budget-cash-${index}`, employeeId: f.employeeId, currency: "DZD", amount: "0.01", paymentDate: cashDate, ...f.audit,
+          wageAllocations: isAdvance ? [] : [{ id: "row", source: { kind: "EARNING", id: sourceId }, amount: "0.01", debtAccountId: source.account.id, debtEntryId: source.original.id, paymentEntryId: entryId }],
+          advance: isAdvance ? { id: sourceId, amount: "0.01", debtAccountId: source.account.id, debtEntryId: entryId } : null });
+      }
+      f.db.prepare("UPDATE debt_account SET current_balance_minor=?,status=? WHERE id=?").run(isAdvance ? 5000n : 0n, isAdvance ? "OPEN" : "SETTLED", source.account.id);
+    }).immediate();
+    const rows = f.repository.listCash(f.employeeId);
+    expect(rows).toHaveLength(5000);
+    expect(rows.find(row => row.id === firstCashId)?.amount).toBe("0.01");
+    expect(f.finance.getAccount(source.account.id).currentBalance).toBe(isAdvance ? "50.00" : "0.00");
+    f.db.prepare("INSERT INTO employee_salary_cash VALUES (?,?,?,?,?,?,?,?,?)").run("budget-overflow", f.employeeId, "DZD", 1n, "bad-date", null, null, null, "bad-date");
+    expect(() => f.repository.listCash(f.employeeId)).toThrow("Payroll cash materialization limit exceeded");
+  }, 30000);
 
   it("checks the combined row budget before hydrating malformed cash headers", () => {
     const f = fixture(key);
