@@ -14,7 +14,13 @@ The captured Nightly 44607296640 failure report records a fresh destination abse
 
 The chosen seam is one small process adapter: `runPortableProofProcess(scriptPath, { runtimeDir, nodeExe })`. It invokes the existing complete proof CLI in a child and resolves only on its `close` event with exit status zero. Errors, nonzero status and signal termination reject publication. No timeout truncates the proof's existing health and backup budgets. The packaging process never loads the candidate native addon. It retains rename diagnostics, retry behavior, root entries, Shell identity and ZIP selection unchanged.
 
-The lifecycle test checks a distinct proof PID and requires the adapter's close-completion log before candidate publication/archive. Its fixture runs the CLI child and holds it at a barrier until the test releases it. This proves process separation and close ordering, not Windows native-handle ownership. On this Linux worker, Windows Restart Manager and Explorer Shell behavior cannot be proven; the existing Windows tests remain required in CI.
+The lifecycle test checks a distinct proof PID and requires the adapter's close-completion log before candidate publication/archive. Its fixture runs the CLI child and holds it at a barrier until the test releases it. This proves process separation and close ordering, not Windows native-handle ownership. The isolated worker lacked installed native dependencies, so its positive real-runtime proof remained pending. Parent verification below closes that specific local gap; Windows CI and the actual Nightly artifact checks remain required.
+
+## Parent integration proof
+
+The parent Windows checkout passed 47 packaging/encryption cases with no skips. Added all-platform adapter tests distinguish `exit` from `close`, reject nonzero status, signal termination and spawn failure. Test fixture cleanup now terminates the exact owned packaging process tree and verifies its proof descendant is gone before removing fixture files. This is needed because the lifecycle change adds a genuine descendant, not another direct child.
+
+Full proof through the unchanged CLI against an actual copied API runtime passed locally in 13.903 seconds. It checked positive encryption/readback, wrong/no/plaintext key rejection, live API health and encrypted daily backup, then logged child PID 26036 closed before candidate publication. ZIP creation succeeded and the actual Windows Shell checker saw Tuari.exe/bin. The desktop executable in this packaging fixture is a placeholder, so this proof is not a new desktop launch. Existing native artifact smoke remains mandatory remotely.
 
 ## Verification boundaries
 
