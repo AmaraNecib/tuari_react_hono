@@ -6,6 +6,8 @@ import { copyValidatedTree } from "./script-security-utils.mjs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { EventEmitter } from "node:events";
+import { runPortableProofProcess } from "./portable-proof-process.mjs";
 import { fileURLToPath } from "node:url";
 import { renamePortableCandidate } from "./portable-rename.mjs";
 import { createPortableRenameDiagnostics, reportPortableRenameDiagnosticFailure } from "./portable-rename-diagnostics.mjs";
@@ -14,7 +16,27 @@ const scriptsRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const ownedChildren = new WeakMap();
 
-function registerChild(t, child) {
+function assertProofStopped(pid) {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if (error.code === "ESRCH") return;
+    throw error;
+  }
+  if (process.platform === "linux") {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const state = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[0];
+      if (state === "Z") return; // Exited, awaiting reaping; no files remain open.
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+  }
+  assert.fail(`Owned proof process ${pid} is still running`);
+}
+
+function registerChild(t, child, { tree = false } = {}) {
   const children = ownedChildren.get(t) ?? new Set();
   ownedChildren.set(t, children);
   let closed = false;
@@ -26,7 +48,16 @@ function registerChild(t, child) {
     });
   });
   const stop = async () => {
-    if (!closed && child.pid) child.kill("SIGKILL");
+    if (!closed && child.pid) {
+      if (tree && process.platform === "win32") {
+        const kill = spawnSync(path.join(process.env.SystemRoot, "System32", "taskkill.exe"), ["/PID", String(child.pid), "/T", "/F"], { encoding: "utf8", timeout: 5000 });
+        if (kill.error) throw kill.error;
+      } else if (tree) {
+        process.kill(-child.pid, "SIGKILL");
+      } else {
+        child.kill("SIGKILL");
+      }
+    }
     let timer;
     try {
       await Promise.race([
@@ -120,6 +151,7 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false, d
   writeFileSync(path.join(portable, "Tuari-portable", "previous.txt"), "previous folder");
   writeFileSync(path.join(portable, "Tuari-portable.zip"), "previous zip");
   copyFileSync(path.join(scriptsRoot, "build-portable.mjs"), path.join(scripts, "build-portable.mjs"));
+  copyFileSync(path.join(scriptsRoot, "portable-proof-process.mjs"), path.join(scripts, "portable-proof-process.mjs"));
   copyFileSync(path.join(scriptsRoot, "portable-rename.mjs"), path.join(scripts, "portable-rename.mjs"));
   copyFileSync(path.join(scriptsRoot, "portable-rename-diagnostics.mjs"), path.join(scripts, "portable-rename-diagnostics.mjs"));
   copyFileSync(path.join(scriptsRoot, "portable-rename-diagnostics.ps1"), path.join(scripts, "portable-rename-diagnostics.ps1"));
@@ -143,19 +175,24 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false, d
       import fs from 'node:fs';
       import path from 'node:path';
       export { parseArgs } from ${JSON.stringify(new URL("./sqlcipher-encryption-proof.mjs", import.meta.url).href)};
-      export async function runProof(options) {
+      import { pathToFileURL } from 'node:url';
+      async function main() {
+        const args = process.argv.slice(2);
+        const runtimeDir = args[args.indexOf('--runtime') + 1];
+        const nodeExe = args[args.indexOf('--node') + 1];
         const candidate = ${JSON.stringify(path.join(portable, ".tmp-Tuari-portable"))};
-        assert.equal(options.runtimeDir, path.join(candidate, 'bin', 'api-runtime'));
-        assert.equal(options.nodeExe, path.join(candidate, 'bin', 'node.exe'));
-        assert.equal(fs.readFileSync(path.join(options.runtimeDir, 'dist', 'index.cjs'), 'utf8'), '// synthetic loader');
+        assert.equal(runtimeDir, path.join(candidate, 'bin', 'api-runtime'));
+        assert.equal(nodeExe, path.join(candidate, 'bin', 'node.exe'));
+        assert.equal(fs.readFileSync(path.join(runtimeDir, 'dist', 'index.cjs'), 'utf8'), '// synthetic loader');
         assert.equal(fs.readFileSync(path.join(${JSON.stringify(portable)}, 'Tuari-portable.zip'), 'utf8'), 'previous zip');
-        fs.writeFileSync(${JSON.stringify(path.join(root, "proof-called"))}, 'called');
+        fs.writeFileSync(${JSON.stringify(path.join(root, "proof-called"))}, String(process.pid));
         ${proofBarrier ? `
-          fs.writeFileSync(${JSON.stringify(path.join(root, "proof-ready"))}, options.runtimeDir);
+          fs.writeFileSync(${JSON.stringify(path.join(root, "proof-ready"))}, runtimeDir);
           while (!fs.existsSync(${JSON.stringify(path.join(root, "proof-continue"))})) await new Promise(resolve => setTimeout(resolve, 10));
         ` : "await new Promise(resolve => setTimeout(resolve, 10));"}
         ${reject ? "throw new Error('synthetic plaintext runtime rejection');" : "return { results: ['synthetic proof success'] };"}
       }
+      if (import.meta.url === pathToFileURL(process.argv[1]).href) main().then(() => {}, error => { console.error(error); process.exitCode = 1; });
     `);
   }
   return {
@@ -170,8 +207,9 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false, d
       const child = spawn(process.execPath, [path.join(scripts, "build-portable.mjs")], {
         env: { ...process.env, NODE_OPTIONS: "", ...(diagnosticsDir ? { TUARI_PORTABLE_DIAGNOSTICS_DIR: diagnosticsDir } : {}) },
         stdio: ["ignore", "pipe", "pipe"],
+        detached: process.platform !== "win32",
       });
-      const owned = registerChild(t, child);
+      const owned = registerChild(t, child, { tree: true });
       let output = "";
       const waitFor = async (pattern) => {
         const deadline = Date.now() + 10_000;
@@ -185,6 +223,44 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false, d
     },
   };
 }
+
+test("portable proof waits for close rather than exit and rejects abnormal termination", async () => {
+  const child = new EventEmitter();
+  child.pid = 123;
+  let settled = false;
+  const proof = runPortableProofProcess("proof.mjs", { runtimeDir: "runtime", nodeExe: "node" }, { spawnProcess: () => child });
+  proof.then(() => { settled = true; });
+  child.emit("exit", 0, null);
+  await Promise.resolve();
+  assert.equal(settled, false, "exit alone does not prove stdio and process resources closed");
+  child.emit("close", 0, null);
+  assert.deepEqual(await proof, { pid: 123, status: 0 });
+  for (const [status, signal, expected] of [[1, null, /status 1/], [null, "SIGTERM", /signal SIGTERM/]]) {
+    const failed = new EventEmitter();
+    const result = runPortableProofProcess("proof.mjs", { runtimeDir: "runtime", nodeExe: "node" }, { spawnProcess: () => failed });
+    failed.emit("close", status, signal);
+    await assert.rejects(result, expected);
+  }
+  await assert.rejects(runPortableProofProcess("proof.mjs", { runtimeDir: "runtime", nodeExe: "node" }, { spawnProcess: () => { throw new Error("spawn denied"); } }), /spawn denied/);
+});
+
+test("portable:only closes a separate proof process before publishing the verified candidate", { skip: process.platform !== "win32" }, async (t) => {
+  const f = fixture(t, { proofBarrier: true });
+  const run = f.start();
+  const readyPath = path.join(f.root, "proof-ready");
+  const deadline = Date.now() + 10_000;
+  while (!existsSync(readyPath) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.ok(existsSync(readyPath), "proof must run in its own process before publication");
+  const proofPid = Number(readFileSync(path.join(f.root, "proof-called"), "utf8"));
+  assert.notEqual(proofPid, run.child.pid, "native proof process must not be the packaging process");
+  writeFileSync(path.join(f.root, "proof-continue"), "continue");
+  const result = await run.done;
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, new RegExp(`\\[portable-proof\\] completed pid=${proofPid} status=0; process closed before candidate publication`));
+  assert.ok(result.output.indexOf("process closed before candidate publication") < result.output.indexOf("Portable folder ready"));
+  assert.ok(existsSync(path.join(f.root, "archive-called")));
+  assert.ok(existsSync(path.join(f.portable, "Tuari-portable")));
+});
 
 test("portable:only rejects failed encryption proof before replacing outputs or archiving", (t) => {
   const f = fixture(t, { reject: true });
@@ -333,9 +409,11 @@ test("failed setup stops a blocked build before deleting its fixture", async () 
     const deadline = Date.now() + 10_000;
     while (!existsSync(path.join(f.root, "proof-ready")) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
     assert.ok(existsSync(path.join(f.root, "proof-ready")), "build must actually be blocked in proof before cleanup");
+    const proofPid = Number(readFileSync(path.join(f.root, "proof-called"), "utf8"));
     // Run failure hooks without writing proof-continue, as a failed lock setup does.
     for (const hook of hooks) await hook();
     assert.ok(run.child.exitCode !== null || run.child.signalCode !== null);
+    assertProofStopped(proofPid);
     assert.ok(!existsSync(f.root), "fixture removed only after the owned child closes");
   } finally {
     await stopOwnedChildren(scope);

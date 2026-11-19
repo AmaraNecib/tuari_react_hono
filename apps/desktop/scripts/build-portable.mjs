@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { copyValidatedTree, resolveTrustedTarPath, validateReleaseBinEntries } from "./script-security-utils.mjs";
-import { parseArgs, runProof } from "./sqlcipher-encryption-proof.mjs";
+import { runPortableProofProcess } from "./portable-proof-process.mjs";
 import { renamePortableCandidate } from "./portable-rename.mjs";
 import { createPortableRenameDiagnostics, reportPortableRenameDiagnosticFailure } from "./portable-rename-diagnostics.mjs";
 
@@ -50,10 +50,11 @@ if (existsSync(resourcesDir)) {
 // Prove the exact copied runtime, including its loader, before publishing it.
 // A stale --allow-plaintext build must not replace a previously valid artifact.
 const renameDiagnostics = createPortableRenameDiagnostics(tempPortableDir, finalPortableDir);
-await runProof(parseArgs([
-  "--runtime", path.resolve(tempPortableDir, "bin", "api-runtime"),
-  "--node", path.resolve(tempPortableDir, "bin", "node.exe"),
-]));
+const proof = await runPortableProofProcess(path.resolve(__dirname, "sqlcipher-encryption-proof.mjs"), {
+  runtimeDir: path.resolve(tempPortableDir, "bin", "api-runtime"),
+  nodeExe: path.resolve(tempPortableDir, "bin", "node.exe"),
+});
+console.log(`[portable-proof] completed pid=${proof.pid} status=${proof.status}; process closed before candidate publication`);
 
 try {
   rmSync(portableDir, { recursive: true, force: true });

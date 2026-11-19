@@ -357,6 +357,9 @@ jobs:
       - name: Install dependencies
         if: needs.detect.outputs.encryption == 'true'
         run: pnpm install --frozen-lockfile
+      - name: Test Windows portable proof lifecycle
+        if: needs.detect.outputs.encryption == 'true'
+        run: node --test --test-name-pattern="closes a separate proof process before publishing" apps/desktop/scripts/build-portable.test.mjs
       - name: Build shared contracts
         if: needs.detect.outputs.encryption == 'true'
         run: pnpm --filter @tuari/contracts build
