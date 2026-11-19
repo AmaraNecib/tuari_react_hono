@@ -1,0 +1,11 @@
+# Windows Shell ZIP file identity
+
+Base19547cd613d6ab80821fe4b805c20b9a447877d7. Branchfix/shell-zip-file-identity. SourceD:/worktrees/tuari_react_hono/t3-412838f5-c2c7983838174217. Owner asked to fix the newly introduced Shell gate, not bypass it. TierHigh-assurance release verification. Modefocused-local/CI-final-enforced, strict no-bypass ruleset26837184. Owner selected light parent inspection plus Greptile instead of three local reviewer sessions for this lane.
+
+Nightly44601359751 packaged successfully but failed the Shell check because the displayed root names were Tuari,bin. FolderItem.Name is a display label that can omit registered file extensions. The checker incorrectly treated that UI preference as file identity. This regression came from the new owner-facing compatibility gate. The ZIP creation fix removing dotroot paths remains necessary and unchanged.
+
+Read actual root entry identity from FolderItem.Path and take its filename. Keep the nonempty Shell namespace and required Tuari.exe/bin/resources checks. Do not accept a display label alone, stop checking extensions, or replace actual Shell enumeration with central-directory extraction. No owner registry preferences are modified.
+
+A small shared PowerShell function is the identity adapter used by the checker and direct tests. Tests model hidden extension and localized display labels while keeping real filesystem paths. A deceptive Tuari.exe display label with actual Tuari.txt path must not match. Empty input remains empty. Existing production-packager test still enumerates the real ZIP through Shell COM.
+
+Parent focused tests45passed0failed0skipped in27.031s; workflowtests12passed0skipped0.145s. The corrected checker sawTuari.exe/bin through actualShellCOM on the already-produced realAPIruntime ZIP. That archive's desktopfixtureexe is a placeholder; this is archivevisibility proof, not new nativeapp proof. Existing native smoke remains mandatory in Nightly. No Node/version/dependencies/crypto/packager/retry changes. Exacthistoricalrunner UIsetting not captured, but actual log displaysTuari and newpath-basedcontract avoids preference dependence. Parent inspected filenameprojection, empty handling and negative false-label coverage. Hosted current-headCI/Greptile5/5 will gate normal merge and newNightly; only downloadedpublishedZIP Shellcheck completes ownerbugproof.
