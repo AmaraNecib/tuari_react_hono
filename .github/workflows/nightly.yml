@@ -280,7 +280,7 @@ jobs:
           $stagedEvidence = Join-Path $evidenceDir "selected-zips"
           New-Item -ItemType Directory -Force -Path $sourceEvidence, $stagedEvidence | Out-Null
           $captured = @()
-          foreach ($file in @(Get-ChildItem -LiteralPath $sourceDir -Filter "*-portable.zip" -File -ErrorAction SilentlyContinue)) {
+          foreach ($file in @(Get-ChildItem -LiteralPath $sourceDir -Filter "Tuari-portable*.zip" -File -ErrorAction SilentlyContinue)) {
             $destination = Join-Path $sourceEvidence $file.Name
             Copy-Item -LiteralPath $file.FullName -Destination $destination
             $captured += [pscustomobject]@{ role = "producer"; path = $destination; sizeBytes = (Get-Item -LiteralPath $destination).Length; sha256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() }

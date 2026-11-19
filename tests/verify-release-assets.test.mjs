@@ -85,6 +85,9 @@ test('verify-release-assets exits with non-zero when portable zip does not conta
   const zipPath = join(artifactsDir, 'tuari-0.5.0-stable-portable.zip');
   await createZip(zipPath, emptyDir, ['README.txt']);
 
+  const staleDir = join(artifactsDir, '.verify-tmp');
+  await mkdir(staleDir);
+  await writeFile(join(staleDir, 'Tuari.exe'), 'stale app must not satisfy this ZIP');
   const diagnosticsDir = join(tmp, 'diagnostics');
   const result = runScript('verify-release-assets.mjs', ['--artifacts', artifactsDir, '--diagnostics-dir', diagnosticsDir]);
   assert.notEqual(result.exitCode, 0, 'should exit with non-zero when Tuari.exe is missing');

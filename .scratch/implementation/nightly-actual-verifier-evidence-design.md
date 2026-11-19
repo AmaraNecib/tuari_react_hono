@@ -23,6 +23,8 @@ The Nightly caller supplies a dedicated runner-temp diagnostics path. On job fai
 
 Exercise the real CLI and real system ZIP listing/extraction. Use throwaway Ed25519 keys for the existing signature path. Cover a valid ZIP, missing executable, invalid/empty ZIP, persistent diagnostic records on extraction failure, and argument-safe paths. The local Windows run exercises the actual PowerShell helper and empty-ZIP failure behavior, including the nonterminating-error guard. Workflow tests pin diagnostics wiring, failure-only bounded artifact capture, pinned upload action, retention, and unchanged smoke/publish ordering. Run focused Node tests, actionlint if installed, PowerShell syntax checks if an installed parser is available, and `git diff --check`. No full build, browser run, or hosted run.
 
+Parent integration uses a unique extraction directory for each CLI execution. A stale `.verify-tmp/Tuari.exe` fixture must not satisfy an archive missing the executable. The producer evidence filter includes both `Tuari-portable.zip` and the existing `Tuari-portable-new.zip` fallback. Parent focused execution passed 18 tests with no skips in 7.54 seconds; actionlint, Node syntax and whitespace checks passed. These changes prevent misleading verification and preserve evidence; they do not identify the original missing-file cause.
+
 ## Architecture
 
 The verifier CLI is the caller-facing seam. Optional diagnostics add evidence without changing existing Beta/Release calls. The PowerShell helper is the Windows extraction adapter; its parameters carry paths without embedding them in a script string. The archive listing remains an independent observation, never a substitute for extraction. `architecture: no seam moved`.

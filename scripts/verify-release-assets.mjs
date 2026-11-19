@@ -8,7 +8,7 @@
 // Exit code 0 = all checks pass
 // Exit code 1 = any check fails
 
-import { access, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { constants, mkdirSync, rmSync } from 'node:fs';
 import { resolve, basename, dirname } from 'node:path';
 import { createHash, createPublicKey, verify } from 'node:crypto';
@@ -85,7 +85,7 @@ async function verifyPortableZip(artifactsDir) {
   if (!zipFile) throw new Error('No portable zip file found (expected *-portable.zip)');
 
   console.log(`  Found portable zip: ${basename(zipFile)}`);
-  const tmpDir = resolve(artifactsDir, '.verify-tmp');
+  const tmpDir = await mkdtemp(resolve(artifactsDir, '.verify-tmp-'));
   const isWin = process.platform === 'win32';
   const listCommand = isWin
     ? resolve(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
