@@ -16,12 +16,14 @@ function fixture(t, { reject = false, realProof = false } = {}) {
   const scripts = path.join(root, "scripts");
   const release = path.join(root, "src-tauri", "target", "release");
   const portable = path.join(release, "bundle", "portable");
-  const runtime = path.join(release, "bin", "api-runtime");
+  // build-sidecar stages Tauri bundle resources outside target/release.
+  const bin = path.join(root, "src-tauri", "bin");
+  const runtime = path.join(bin, "api-runtime");
   mkdirSync(scripts, { recursive: true });
   mkdirSync(path.join(runtime, "dist"), { recursive: true });
   mkdirSync(path.join(portable, "Tuari-portable"), { recursive: true });
   writeFileSync(path.join(release, "app.exe"), "synthetic app");
-  copyFileSync(process.execPath, path.join(release, "bin", "node.exe"));
+  copyFileSync(process.execPath, path.join(bin, "node.exe"));
   writeFileSync(path.join(runtime, "dist", "index.cjs"), "// synthetic loader");
   writeFileSync(path.join(portable, "Tuari-portable", "previous.txt"), "previous folder");
   writeFileSync(path.join(portable, "Tuari-portable.zip"), "previous zip");
