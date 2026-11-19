@@ -8,6 +8,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { renamePortableCandidate } from "./portable-rename.mjs";
+import { createPortableRenameDiagnostics, reportPortableRenameDiagnosticFailure } from "./portable-rename-diagnostics.mjs";
 
 const scriptsRoot = path.dirname(fileURLToPath(import.meta.url));
 
@@ -96,7 +97,7 @@ async function startDirectoryLock(t, directory, { startupTimeoutMs = 10_000 } = 
   };
 }
 
-function fixture(t, { reject = false, realProof = false, proofBarrier = false } = {}) {
+function fixture(t, { reject = false, realProof = false, proofBarrier = false, diagnostics = false } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "tuari-portable-test-"));
   t.after(async () => {
     await stopOwnedChildren(t);
@@ -120,6 +121,9 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false } 
   writeFileSync(path.join(portable, "Tuari-portable.zip"), "previous zip");
   copyFileSync(path.join(scriptsRoot, "build-portable.mjs"), path.join(scripts, "build-portable.mjs"));
   copyFileSync(path.join(scriptsRoot, "portable-rename.mjs"), path.join(scripts, "portable-rename.mjs"));
+  copyFileSync(path.join(scriptsRoot, "portable-rename-diagnostics.mjs"), path.join(scripts, "portable-rename-diagnostics.mjs"));
+  copyFileSync(path.join(scriptsRoot, "portable-rename-diagnostics.ps1"), path.join(scripts, "portable-rename-diagnostics.ps1"));
+  const diagnosticsDir = diagnostics ? path.join(root, "portable-lock-diagnostics") : undefined;
   writeFileSync(path.join(scripts, "script-security-utils.mjs"), `
     import fs from 'node:fs';
     import { resolveTrustedTarPath as resolveTar } from ${JSON.stringify(new URL("./script-security-utils.mjs", import.meta.url).href)};
@@ -155,16 +159,16 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false } 
     `);
   }
   return {
-    root, portable, runtime,
+    root, portable, runtime, diagnosticsDir,
     run() {
       return spawnSync(process.execPath, [path.join(scripts, "build-portable.mjs")], {
         encoding: "utf8", timeout: 60_000,
-        env: { ...process.env, NODE_OPTIONS: "" },
+        env: { ...process.env, NODE_OPTIONS: "", ...(diagnosticsDir ? { TUARI_PORTABLE_DIAGNOSTICS_DIR: diagnosticsDir } : {}) },
       });
     },
     start() {
       const child = spawn(process.execPath, [path.join(scripts, "build-portable.mjs")], {
-        env: { ...process.env, NODE_OPTIONS: "" },
+        env: { ...process.env, NODE_OPTIONS: "", ...(diagnosticsDir ? { TUARI_PORTABLE_DIAGNOSTICS_DIR: diagnosticsDir } : {}) },
         stdio: ["ignore", "pipe", "pipe"],
       });
       const owned = registerChild(t, child);
@@ -248,8 +252,8 @@ test("portable:only retries the production candidate rename after a held Win32 d
   assert.equal(readFileSync(path.join(f.portable, "Tuari-portable.zip")).subarray(0, 2).toString(), "PK");
 });
 
-test("portable:only keeps the previous archive when a held Win32 directory handle exhausts rename retries", { skip: process.platform !== "win32" }, async (t) => {
-  const f = fixture(t, { proofBarrier: true });
+test("portable:only records the real failed rename and keeps the previous archive under a held Win32 directory handle", { skip: process.platform !== "win32" }, async (t) => {
+  const f = fixture(t, { proofBarrier: true, diagnostics: true });
   const run = f.start();
   const readyPath = path.join(f.root, "proof-ready");
   const deadline = Date.now() + 10_000;
@@ -267,6 +271,19 @@ test("portable:only keeps the previous archive when a held Win32 directory handl
   assert.ok(!existsSync(path.join(f.root, "archive-called")));
   assert.equal(readFileSync(path.join(f.portable, "Tuari-portable.zip"), "utf8"), "previous zip");
   assert.ok(existsSync(path.join(f.portable, ".tmp-Tuari-portable")), "failed candidate must remain for diagnosis");
+  const reportPath = path.join(f.diagnosticsDir, "portable-rename-failure.json");
+  const report = JSON.parse(readFileSync(reportPath, "utf8"));
+  assert.equal(report.event, "portable-candidate-rename-failed");
+  assert.equal(report.process.pid, run.child.pid);
+  assert.equal(report.source, path.join(f.portable, ".tmp-Tuari-portable"));
+  assert.equal(report.destination, path.join(f.portable, "Tuari-portable"));
+  assert.match(report.nativeError.code, /^(EPERM|EBUSY|EACCES)$/);
+  assert.equal(report.nativeError.syscall, "rename");
+  assert.equal(report.beforeProof.paths.find(item => item.path === report.source).exists, true);
+  assert.equal(report.afterProofBeforeRename.paths.find(item => item.path === report.destination).exists, false);
+  assert.ok(["no-owners-reported", "partial", "probe-error", "queried"].includes(report.immediateFailureSnapshot.restartManager.status));
+  assert.match(JSON.stringify(report.immediateFailureSnapshot.restartManager.limitations), /does not prove no directory handle/);
+  assert.ok(report.immediateFailureSnapshot.restartManager.directoryResourcesNotQueried.includes(report.source));
 });
 
 for (const code of ["EACCES", "EBUSY", "EPERM"]) {
@@ -338,6 +355,16 @@ test("lock startup timeout cleans both children before deleting fixture files", 
   }
 });
 
+test("a failed diagnostic write cannot replace the primary native rename exception", () => {
+  const primary = Object.assign(new Error("EPERM rename source -> destination"), { code: "EPERM" });
+  const logs = [];
+  assert.doesNotThrow(() => reportPortableRenameDiagnosticFailure(primary, {
+    recordFailure() { throw new Error("diagnostic probe denied"); },
+  }, line => logs.push(line)));
+  assert.equal(primary.code, "EPERM");
+  assert.match(logs[0], /diagnostic probe denied; primary rename error preserved/);
+});
+
 test("portable candidate rename retries only recognized transient Windows errors", async () => {
   let moves = 0;
   let pauses = 0;
@@ -394,6 +421,73 @@ test("portable candidate rename reproduces a real Win32 directory-handle lock", 
   await renamePortableCandidate(source, destination, { log: line => console.log(`[win32-directory-lock] green ${line}`) });
   assert.ok(existsSync(destination), "rename must succeed after the exact owned lock process closes its handle");
   console.log(`[win32-directory-lock] green=success at=${new Date().toISOString()} destinationExists=true`);
+});
+
+test("Restart Manager reports its honest result for a known owned packaged-file lock", { skip: process.platform !== "win32" }, async (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "tuari-rm-file-lock-"));
+  t.after(async () => {
+    await stopOwnedChildren(t);
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+  const candidate = path.join(root, "candidate");
+  const final = path.join(root, "published");
+  const executable = path.join(candidate, "Tuari.exe");
+  const diagnosticsDir = path.join(root, "diagnostics");
+  mkdirSync(candidate);
+  writeFileSync(executable, "fixture executable");
+  const prebuild = path.join(candidate, "bin", "api-runtime", "node_modules", "better-sqlite3-multiple-ciphers", "prebuilds", "win32-x64.node");
+  mkdirSync(path.dirname(prebuild), { recursive: true });
+  writeFileSync(prebuild, "synthetic prebuild resource, not loaded");
+  const lockScript = path.join(root, "file-lock.ps1");
+  writeFileSync(lockScript, `
+    Add-Type -TypeDefinition @'
+    using System;
+    using System.Runtime.InteropServices;
+    public static class FileLockFixture {
+      [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+      public static extern IntPtr CreateFile(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+      [DllImport("kernel32.dll", SetLastError = true)]
+      public static extern bool CloseHandle(IntPtr handle);
+    }
+'@
+    $handle = [FileLockFixture]::CreateFile($args[0], 0x80000000, 0x3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero)
+    if ($handle -eq [IntPtr]::new(-1)) { throw "CreateFile failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())" }
+    Write-Output "LOCKED pid=$PID path=$($args[0]) shareDelete=false"
+    [Console]::In.ReadLine() | Out-Null
+    [void][FileLockFixture]::CloseHandle($handle)
+  `);
+  const child = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", lockScript, executable], { stdio: ["pipe", "pipe", "pipe"] });
+  const owned = registerChild(t, child);
+  let output = "";
+  child.stdout.on("data", chunk => { output += chunk.toString(); });
+  child.stderr.on("data", chunk => { output += chunk.toString(); });
+  const deadline = Date.now() + 10_000;
+  while (!output.includes("LOCKED") && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.match(output, /LOCKED pid=(\d+)/, `file holder did not start: ${output}`);
+  const holderPid = Number(output.match(/LOCKED pid=(\d+)/)[1]);
+
+  const diagnostics = createPortableRenameDiagnostics(candidate, final, { directory: diagnosticsDir });
+  diagnostics.updateFinal(final);
+  diagnostics.beforeRename();
+  const error = Object.assign(new Error(`EPERM: rename '${candidate}' -> '${final}'`), {
+    code: "EPERM", errno: -4048, syscall: "rename", path: candidate, dest: final,
+  });
+  const reportPath = diagnostics.recordFailure(error);
+  assert.ok(reportPath);
+  const report = JSON.parse(readFileSync(reportPath, "utf8"));
+  assert.equal(report.process.sourceSha?.length, 40);
+  const manager = report.immediateFailureSnapshot.restartManager;
+  assert.ok(["queried", "no-owners-reported"].includes(manager.status), JSON.stringify(manager));
+  assert.deepEqual(manager.errors, []);
+  if (manager.owners.some(owner => owner.pid === holderPid)) {
+    assert.ok(manager.owners.some(owner => owner.pid === holderPid && owner.resource === executable));
+  } else {
+    assert.ok(manager.limitations.some(limit => limit.includes("empty file-owner list does not prove")));
+  }
+  assert.ok(report.immediateFailureSnapshot.resources.some(resource => resource.path === prebuild && resource.exists), "selected native prebuild file is captured, not an imaginary directory");
+  assert.ok(report.immediateFailureSnapshot.resources.some(resource => resource.path === executable && resource.exists), "the exact locked file was registered as a resource");
+  child.stdin.end("release\n");
+  await owned.stop();
 });
 
 test("portable:only runs the real proof and rejects a legacy runtime missing encrypted dependencies", (t) => {
