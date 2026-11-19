@@ -11,6 +11,7 @@ export class SqlitePayrollSourceRepository implements PayrollSourceRepository {
     if (finance.transactionIdentity.connection !== db || finance.transactionIdentity.lock !== lock) throw new TypeError("Payroll sources require finance's connection and shared FIFO");
   }
   withTransaction<T>(work: () => T): T {
+    if (work.constructor.name === "AsyncFunction") throw new TypeError("Payroll source transaction callback must be synchronous");
     return runSyncTransaction(this.lock, this.db, () => {
       const result = work();
       if (result && typeof (result as { then?: unknown }).then === "function") throw new TypeError("Payroll source transaction callback must be synchronous");
@@ -24,6 +25,7 @@ export class SqlitePayrollSourceRepository implements PayrollSourceRepository {
       const total = prepareMoneyRead(this.db, "SELECT total_minor AS minor_units FROM employee_earning WHERE id=?").get(id);
       if (!total) throw new TypeError("Required approved earning amount is missing");
       const amount = total.toWire();
+      if (total.compare(Money.parse("0")) < 0) throw new TypeError("Invalid approved earning amount");
       const originals = this.db.prepare("SELECT id,debt_account_id AS debtAccountId FROM debt_entry WHERE producer_type='PAYROLL_EARNINGS' AND producer_id=? AND target_entry_id IS NULL AND correction_of_entry_id IS NULL ORDER BY posting_sequence LIMIT 2").all(id) as { id: string; debtAccountId: string }[];
       if (originals.length > 1) throw new TypeError("Duplicate payroll earning originals");
       if (row.currency !== "DZD") throw new TypeError("Unsupported payroll earning currency");
@@ -39,15 +41,17 @@ export class SqlitePayrollSourceRepository implements PayrollSourceRepository {
     });
   }
   getAdvance(id: string): PayrollAdvanceSource | null {
-    const cash = this.db.prepare("SELECT employee_id AS employeeId,currency FROM employee_salary_cash WHERE id=(SELECT cash_id FROM employee_salary_advance WHERE id=?)").get(id) as { employeeId: string; currency: string } | undefined;
-    const link = this.db.prepare("SELECT debt_account_id AS debtAccountId,debt_entry_id AS debtEntryId FROM employee_salary_advance WHERE id=?").get(id) as { debtAccountId: string; debtEntryId: string } | undefined;
-    if (!link || !cash) return null;
-    const account = this.finance.getAccount(link.debtAccountId);
-    const original = this.finance.getEntry(link.debtEntryId);
-    const amountRow = prepareMoneyRead(this.db, "SELECT amount_minor AS minor_units FROM employee_salary_advance WHERE id=?").get(id);
-    if (!amountRow) throw new TypeError("Required payroll advance amount is missing");
-    const amount = amountRow.toWire();
-    if (!account || !original || original.status !== "LIVE" || original.entryType !== "ADVANCE" || original.producerType !== "PAYROLL_ADVANCE" || original.producerId !== id || original.debtAccountId !== account.id || original.currency !== cash.currency || Money.parse(original.signedAmountDzd).compare(Money.parse(amount)) !== 0 || account.partyType !== "INTERNAL_WORKER" || account.workerId !== cash.employeeId || account.direction !== "RECEIVABLE" || account.currency !== cash.currency) throw new TypeError("Payroll advance original linkage mismatch");
-    return { id, employeeId: cash.employeeId, currency: cash.currency, amount, account, original };
+    return this.withTransaction(() => {
+      const cash = this.db.prepare("SELECT employee_id AS employeeId,currency FROM employee_salary_cash WHERE id=(SELECT cash_id FROM employee_salary_advance WHERE id=?)").get(id) as { employeeId: string; currency: string } | undefined;
+      const link = this.db.prepare("SELECT debt_account_id AS debtAccountId,debt_entry_id AS debtEntryId FROM employee_salary_advance WHERE id=?").get(id) as { debtAccountId: string; debtEntryId: string } | undefined;
+      if (!link || !cash) return null;
+      const account = this.finance.getAccount(link.debtAccountId);
+      const original = this.finance.getEntry(link.debtEntryId);
+      const amountRow = prepareMoneyRead(this.db, "SELECT amount_minor AS minor_units FROM employee_salary_advance WHERE id=?").get(id);
+      if (!amountRow) throw new TypeError("Required payroll advance amount is missing");
+      const amount = amountRow.toWire();
+      if (!account || !original || original.status !== "LIVE" || original.entryType !== "ADVANCE" || original.targetEntryId || original.correctionOfEntryId || Money.parse(original.signedAmountDzd).compare(Money.parse("0")) <= 0 || original.producerType !== "PAYROLL_ADVANCE" || original.producerId !== id || original.debtAccountId !== account.id || original.currency !== cash.currency || Money.parse(original.signedAmountDzd).compare(Money.parse(amount)) !== 0 || account.partyType !== "INTERNAL_WORKER" || account.workerId !== cash.employeeId || account.direction !== "RECEIVABLE" || account.currency !== cash.currency) throw new TypeError("Payroll advance original linkage mismatch");
+      return { id, employeeId: cash.employeeId, currency: cash.currency, amount, account, original };
+    });
   }
 }

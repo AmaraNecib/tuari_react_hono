@@ -287,7 +287,7 @@ describe.each([["plain", ""], ["keyed", "558-native-key"]])("payroll cash storag
     expect(() => f.payroll.recordCash({ ...audit, requestId: "too-much", employeeId: f.employeeId, amount: "40000.00", paymentDate: cashDate, wages: [{ earningId, amount: "40000.00" }] })).toThrow();
     const record = f.payroll.recordCash({ ...audit, requestId: "with-advance", employeeId: f.employeeId, amount: "40000.00", paymentDate: cashDate, wages: [{ earningId, amount: "35000.00" }], advanceAmount: "5000.00" });
     expect(record.advance?.amount).toBe("5000.00");
-    const repayment = f.payroll.repayAdvance({ ...audit, requestId: "repay", advanceId: record.advance!.id, amount: "2000.00", paymentDate: cashDate });
+    const repayment = f.payroll.repayAdvance({ ...audit, requestId: "repay", employeeId: f.employeeId, advanceId: record.advance!.id, amount: "2000.00", paymentDate: cashDate });
     expect(repayment?.amount).toBe("2000.00");
     expect(f.finance.remaining(record.advance!.debtEntryId)).toBe("3000.00");
     expect(f.repository.getAdvance(record.advance!.id)?.advance.id).toBe(record.advance!.id);
