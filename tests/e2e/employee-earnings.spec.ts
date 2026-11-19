@@ -189,7 +189,7 @@ test("employee earnings approval keeps exact references, retries one committed r
   // authenticated API response. The exact frozen request is then retried.
   shouldDropResponse = true
   await approvalForm.getByRole("button", { name: "اعتماد الأجر" }).click()
-  await expect(approvalForm.getByRole("status")).toBeVisible()
+  await expect(page.getByRole("status").filter({ hasText: "هناك اعتماد معلّق محفوظ." })).toBeVisible()
   await expect(approvalForm.getByRole("button", { name: "إعادة محاولة الاعتماد نفسه" })).toBeEnabled()
   await approvalForm.getByRole("button", { name: "إعادة محاولة الاعتماد نفسه" }).click()
   await expect(page.getByRole("heading", { name: "سجل الأجور المعتمدة" })).toBeVisible({ timeout: 15_000 })
