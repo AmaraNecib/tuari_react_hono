@@ -53,7 +53,7 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { assertSqlcipherPrebuild } from "../../apps/desktop/scripts/script-security-utils.mjs";
+import { assertSqlcipherPrebuildInSubprocess } from "./sqlcipher-prebuild-subprocess.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
@@ -605,7 +605,7 @@ async function main() {
   check("bundled SQLite native binding is present", () => {
     const plain = path.join(sidecarDir, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node");
     assert(existsSync(plain), `missing plain SQLite binding at ${plain}`);
-    const encrypted = assertSqlcipherPrebuild(
+    const encrypted = assertSqlcipherPrebuildInSubprocess(
       path.join(sidecarDir, "node_modules", "better-sqlite3-multiple-ciphers"),
     );
     return `${describeFile(plain)}; encrypted prebuild loaded: ${describeFile(encrypted)}`;
