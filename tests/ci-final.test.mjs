@@ -49,6 +49,10 @@ test('Windows CI executes Shell identity regressions when its files change', () 
   assert.doesNotMatch(job, /continue-on-error/);
 });
 
+test('Nightly-only edits activate the Windows ZIP workflow replay', () => {
+  assert.equal(selectCiScope(['.github/workflows/nightly.yml']).encryption, 'true');
+});
+
 test('Windows CI runs the actual portable proof publication lifecycle', () => {
   const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
   const job = ci.split('\n  prove-encryption:')[1].split('\n  audit:')[0];

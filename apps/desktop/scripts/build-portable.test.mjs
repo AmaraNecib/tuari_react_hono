@@ -301,6 +301,19 @@ test("portable:only creates a Windows Explorer-visible ZIP with root app, runtim
   const shellCheck = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.resolve(scriptsRoot, "../../../scripts/smoke/check-portable-zip-shell.ps1"), archive], { encoding: "utf8" });
   assert.equal(shellCheck.status, 0, shellCheck.stdout + shellCheck.stderr);
   assert.match(shellCheck.stdout, /Windows Shell ZIP entries .*Tuari\.exe.*bin.*resources/);
+  const workflow = readFileSync(path.resolve(scriptsRoot, "../../../.github/workflows/nightly.yml"), "utf8");
+  const shellStep = workflow.split("      - name: Check portable ZIP in Windows Shell")[1].split("      #")[0];
+  const body = shellStep.split("        run: |\n")[1].split("\n").map(line => line.startsWith("          ") ? line.slice(10) : line).join("\n");
+  const replay = path.join(f.root, "shell-step.ps1");
+  const output = path.join(f.root, "github-output.txt");
+  writeFileSync(replay, "$global:LASTEXITCODE = $null\n" + body.replace('"apps/desktop/src-tauri/target/release/bundle/portable"', `'${f.portable.replaceAll("'", "''")}'`));
+  const replayResult = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", replay], {
+    cwd: path.resolve(scriptsRoot, "../../.."), encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: output }, timeout: 10_000,
+  });
+  assert.equal(replayResult.status, 0, replayResult.stdout + replayResult.stderr);
+  const outputLine = readFileSync(output, "utf8").replace(/^\uFEFF/, "").trim();
+  assert.ok(outputLine.startsWith("path="), "actual workflow step must export its checked archive without a native exit code");
+  assert.equal(realpathSync.native(outputLine.slice(5)), realpathSync.native(archive), "exported path must identify the exact checked ZIP across Windows path aliases");
   assert.equal(readFileSync(path.join(f.portable, "Tuari-portable", "bin", "api-runtime", "dist", "index.cjs"), "utf8"), "// synthetic loader");
   assert.ok(!existsSync(path.join(f.portable, ".tmp-Tuari-portable")));
 });
