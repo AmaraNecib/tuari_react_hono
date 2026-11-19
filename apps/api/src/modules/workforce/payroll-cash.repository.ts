@@ -23,6 +23,7 @@ export type PayrollSettlementRecord = PayrollCashAudit & {
 /** Immutable provenance only. Finance owns balances and whole-command replay. */
 export interface PayrollCashRepository extends ExactTransactionParticipant {
   getCash(id: string): PayrollCashRecord | null;
+  getAdvance(id: string): (PayrollCashRecord & { readonly advance: PayrollCashAdvance }) | null;
   listCash(employeeId: string): PayrollCashRecord[];
   saveCash(record: PayrollCashRecord): void;
   getSettlement(id: string): PayrollSettlementRecord | null;

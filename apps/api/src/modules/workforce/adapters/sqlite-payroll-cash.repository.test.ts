@@ -5,12 +5,15 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDatabaseConnection } from "../../../infrastructure/database/factory";
 import { createFifoLock } from "../../../infrastructure/database/fifo-lock";
+import { schemaStatements } from "../../../infrastructure/database/schema-definitions";
 import { exactDebtSchemaStatements } from "../../company/adapters/exact-finance-schema";
 import { SqliteExactFinanceRepository } from "../../company/adapters/sqlite-exact-finance.repository";
 import { ExactFinanceService } from "../../company/exact-finance.service";
 import type { PayrollCashRecord } from "../payroll-cash.repository";
 import { payrollCashSchemaStatements } from "./payroll-cash-schema";
 import { SqlitePayrollCashRepository } from "./sqlite-payroll-cash.repository";
+import { SqlitePayrollSourceRepository } from "./sqlite-payroll-source.repository";
+import { PayrollService } from "../payroll.service";
 
 const postingDate = "2026-11-19T10:00:00.000Z";
 const cashDate = "2026-11-18T09:00:00.000Z";
@@ -21,6 +24,9 @@ function fixture(key: string, payrollStatements: readonly string[] = payrollCash
   const db = createDatabaseConnection(path, key);
   close.push(() => { if (db.open) db.close(); });
   db.exec("CREATE TABLE employee(id TEXT PRIMARY KEY); CREATE TABLE external_counterparty(id TEXT PRIMARY KEY); CREATE TABLE invoice(id TEXT PRIMARY KEY)");
+  const earningDdl = schemaStatements.find(statement => statement.includes('CREATE TABLE IF NOT EXISTS "employee_earning" ('));
+  if (!earningDdl) throw new Error("Current employee_earning DDL is missing");
+  db.exec(earningDdl);
   const employeeId = randomUUID();
   db.prepare("INSERT INTO employee VALUES (?)").run(employeeId);
   for (const sql of [...exactDebtSchemaStatements, ...payrollStatements]) db.exec(sql);
@@ -41,7 +47,10 @@ function fixture(key: string, payrollStatements: readonly string[] = payrollCash
     return { id: randomUUID(), employeeId, currency: "DZD", amount, paymentDate: cashDate, ...audit,
       wageAllocations: [{ id: "row-1", source: { kind: "EARNING", id: wage.sourceId }, amount, debtAccountId: wage.account.id, debtEntryId: wage.original.id, paymentEntryId: wage.payment!.id }], advance: null };
   }
-  return { db, path, repository, finance, lock, employeeId, source, cash, audit };
+  const sources = new SqlitePayrollSourceRepository(db, lock, new SqliteExactFinanceRepository(db, lock));
+  const payroll = new PayrollService(finance, repository, sources, { id: randomUUID, now: () => postingDate });
+  function earning(id: string, totalMinor: number) { db.prepare(`INSERT INTO employee_earning(id,employee_id,request_id,request_hash,period_start,period_end,currency_code,total_minor,unallocated_minor,reference_salary_period,reference_salary_units,approved_at,actor_user_id,transaction_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, employeeId, `request-${id}`, "hash", "2026-11-01T00:00:00.000Z", "2026-12-01T00:00:00.000Z", "DZD", totalMinor, 0, null, null, postingDate, null, null, postingDate); }
+  return { db, path, repository, finance, lock, employeeId, source, cash, audit, sources, payroll, earning };
 }
 
 describe.each([["plain", ""], ["keyed", "558-native-key"]])("payroll cash storage %s", (_driver, key) => {
@@ -259,6 +268,30 @@ describe.each([["plain", ""], ["keyed", "558-native-key"]])("payroll cash storag
     f.db.prepare("INSERT INTO employee_salary_cash VALUES (?,?,?,?,?,?,?,?,?)").run("budget-overflow", f.employeeId, "DZD", 1n, "bad-date", null, null, null, "bad-date");
     expect(() => f.repository.listCash(f.employeeId)).toThrow("Payroll cash materialization limit exceeded");
   }, 30000);
+
+  it("registers only the current approved amount and leaves 10000 after 25000 cash", () => {
+    const f = fixture(key); const earningId = randomUUID(); f.earning(earningId, 3_500_000);
+    const audit = { actorUserId: f.audit.actorUserId, actorLabel: f.audit.actorLabel, transactionId: f.audit.transactionId };
+    const original = f.payroll.registerEarning({ ...audit, requestId: "register-earning", earningId });
+    expect(original?.signedAmountDzd).toBe("35000.00");
+    const record = f.payroll.recordCash({ ...audit, requestId: "cash-earning", employeeId: f.employeeId, amount: "25000.00", paymentDate: cashDate, wages: [{ earningId, amount: "25000.00" }] });
+    expect(record.wageAllocations[0]?.amount).toBe("25000.00");
+    expect(f.finance.remaining(original!.id)).toBe("10000.00");
+    expect(f.db.prepare("SELECT total_minor FROM employee_earning WHERE id=?").get(earningId)).toEqual({ total_minor: 3_500_000 });
+    expect(f.payroll.registerEarning({ ...audit, requestId: "register-earning", earningId })).toEqual(original);
+  });
+
+  it("requires an explicit advance for cash above approved wages and repays it separately", () => {
+    const f = fixture(key); const earningId = randomUUID(); f.earning(earningId, 3_500_000);
+    const audit = { actorUserId: f.audit.actorUserId, actorLabel: f.audit.actorLabel, transactionId: f.audit.transactionId };
+    expect(() => f.payroll.recordCash({ ...audit, requestId: "too-much", employeeId: f.employeeId, amount: "40000.00", paymentDate: cashDate, wages: [{ earningId, amount: "40000.00" }] })).toThrow();
+    const record = f.payroll.recordCash({ ...audit, requestId: "with-advance", employeeId: f.employeeId, amount: "40000.00", paymentDate: cashDate, wages: [{ earningId, amount: "35000.00" }], advanceAmount: "5000.00" });
+    expect(record.advance?.amount).toBe("5000.00");
+    const repayment = f.payroll.repayAdvance({ ...audit, requestId: "repay", advanceId: record.advance!.id, amount: "2000.00", paymentDate: cashDate });
+    expect(repayment?.amount).toBe("2000.00");
+    expect(f.finance.remaining(record.advance!.debtEntryId)).toBe("3000.00");
+    expect(f.repository.getAdvance(record.advance!.id)?.advance.id).toBe(record.advance!.id);
+  });
 
   it("checks the combined row budget before hydrating malformed cash headers", () => {
     const f = fixture(key);

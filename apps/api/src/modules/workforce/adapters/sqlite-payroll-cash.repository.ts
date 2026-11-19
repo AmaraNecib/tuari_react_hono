@@ -97,6 +97,15 @@ export class SqlitePayrollCashRepository implements PayrollCashRepository {
       return result;
     });
   }
+  getAdvance(advanceId: string): (PayrollCashRecord & { advance: NonNullable<PayrollCashRecord["advance"]> }) | null {
+    return this.withTransaction(() => {
+      const row = this.db.prepare("SELECT cash_id AS cashId FROM employee_salary_advance WHERE id=?").get(advanceId) as { cashId: string } | undefined;
+      if (!row) return null;
+      const cash = this.getCash(row.cashId);
+      if (!cash?.advance || cash.advance.id !== advanceId) throw new TypeError("Payroll advance source link mismatch");
+      return { ...cash, advance: cash.advance };
+    });
+  }
   listCash(employeeId: string): PayrollCashRecord[] {
     return this.withTransaction(() => {
       this.checkBudget("SELECT id FROM employee_salary_cash WHERE employee_id=? UNION ALL SELECT a.id FROM employee_salary_payment_allocation a JOIN employee_salary_cash c ON c.id=a.cash_id WHERE c.employee_id=? UNION ALL SELECT a.id FROM employee_salary_advance a JOIN employee_salary_cash c ON c.id=a.cash_id WHERE c.employee_id=?", employeeId, employeeId, employeeId);
