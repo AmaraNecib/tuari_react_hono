@@ -197,6 +197,13 @@ test('Nightly checks the produced portable ZIP through Windows Shell before sign
   assert.match(step, /Tuari-portable\*\.zip/);
   assert.match(step, /Sort-Object LastWriteTimeUtc -Descending/);
   assert.match(step, /\$LASTEXITCODE/);
+  assert.match(step, /id: portable/);
+  assert.match(step, /path=\$\(\$portableZip\.FullName\).*GITHUB_OUTPUT/);
+  const manifest = nightly.split('      - name: Compute checksum and create update manifest')[1].split('      # ── Smoke test')[0];
+  assert.match(manifest, /\$portableZipPath = "\$\{\{ steps\.portable\.outputs\.path \}\}"/);
+  assert.match(manifest, /Get-FileHash -Path \$portableZipPath/);
+  assert.match(manifest, /Copy-Item -LiteralPath \$portableZipPath/);
+  assert.doesNotMatch(manifest, /\$portableZip\s*=\s*Get-ChildItem/);
 });
 
 test('Nightly preserves only failed portable verifier evidence without weakening release gates', async () => {

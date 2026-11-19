@@ -120,12 +120,14 @@ jobs:
         run: pnpm --filter @tuari/desktop portable:only
 
       - name: Check portable ZIP in Windows Shell
+        id: portable
         shell: pwsh
         run: |
           $portableZip = Get-ChildItem -LiteralPath "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "Tuari-portable*.zip" | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
           if (-not $portableZip) { throw "No portable ZIP found for Windows Shell check" }
           & "scripts/smoke/check-portable-zip-shell.ps1" -ZipPath $portableZip.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "path=$($portableZip.FullName)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       # ── Generate signing keys (if no secrets configured) ──
 
@@ -171,11 +173,10 @@ jobs:
           Write-Host "Nightly version from patched config: $version"
 
           # Paths to artifacts
-          $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1
-          if (-not $portableZip) {
-            throw "No portable zip found!"
+          $portableZipPath = "${{ steps.portable.outputs.path }}"
+          if (-not $portableZipPath -or -not (Test-Path -LiteralPath $portableZipPath -PathType Leaf)) {
+            throw "The Shell-verified portable ZIP is unavailable"
           }
-          $portableZipPath = $portableZip.FullName
 
           # Compute SHA-256
           $hash = (Get-FileHash -Path $portableZipPath -Algorithm SHA256).Hash.ToLower()
@@ -225,12 +226,9 @@ jobs:
           Copy-Item -Path $signedOutput -Destination $artifactsDir
 
           # Also stage the portable zip and installer for the smoke test
-          $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1
-          if ($portableZip) {
-            $portableName = "tuari-$version-nightly-portable.zip"
-            Copy-Item -Path $portableZip.FullName -Destination (Join-Path $artifactsDir $portableName)
-            Write-Host "Staged portable zip: $portableName"
-          }
+          $portableName = "tuari-$version-nightly-portable.zip"
+          Copy-Item -LiteralPath $portableZipPath -Destination (Join-Path $artifactsDir $portableName)
+          Write-Host "Staged Shell-verified portable zip: $portableName"
           $installer = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
           if ($installer) {
             $installerName = "tuari-$version-nightly-setup.exe"
