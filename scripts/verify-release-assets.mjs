@@ -8,12 +8,13 @@
 // Exit code 0 = all checks pass
 // Exit code 1 = any check fails
 
-import { access, mkdtemp, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { constants, mkdirSync, rmSync } from 'node:fs';
 import { resolve, basename, dirname } from 'node:path';
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { extractAndCollectExecutables } from './collect-extracted-executables.mjs';
 
 const args = process.argv.slice(2);
 
@@ -113,12 +114,20 @@ async function verifyPortableZip(artifactsDir) {
   const diagnosticsPath = resolvedDiagnosticsDir
     ? resolve(resolvedDiagnosticsDir, 'portable-verification.json')
     : undefined;
-  const saveDiagnostics = async () => {
+  const diagnosticErrors = [];
+  const saveDiagnostics = async (stage) => {
     if (!diagnosticsPath) return;
-    mkdirSync(resolvedDiagnosticsDir, { recursive: true });
-    await writeFile(diagnosticsPath, `${JSON.stringify(resultRecord, null, 2)}\n`, 'utf8');
+    try {
+      mkdirSync(resolvedDiagnosticsDir, { recursive: true });
+      await writeFile(diagnosticsPath, `${JSON.stringify(resultRecord, null, 2)}\n`, 'utf8');
+    } catch (err) {
+      const message = `Diagnostic write failed during ${stage}: ${err.message}`;
+      diagnosticErrors.push(message);
+      console.error(`  ${message}`);
+    }
   };
 
+  let verificationError;
   try {
     const zipBytes = await readFile(zipFile);
     resultRecord.zip.sizeBytes = zipBytes.length;
@@ -128,42 +137,40 @@ async function verifyPortableZip(artifactsDir) {
     resultRecord.archiveListing.stdout = listResult.stdout ?? '';
     resultRecord.archiveListing.stderr = listResult.stderr ?? listResult.error?.message ?? '';
     resultRecord.archiveListing.entryNames = (listResult.stdout ?? '').split(/\r?\n/).filter(Boolean);
-    await saveDiagnostics();
+    await saveDiagnostics('archive listing');
 
     mkdirSync(tmpDir, { recursive: true });
-    const extractionResult = spawnSync(extractCommand, extractArgs, { encoding: 'utf8', windowsHide: true });
+    const { extraction: extractionResult, executables } = await extractAndCollectExecutables(
+      () => spawnSync(extractCommand, extractArgs, { encoding: 'utf8', windowsHide: true }),
+      tmpDir,
+    );
     resultRecord.extraction.exitCode = extractionResult.status;
     resultRecord.extraction.stdout = extractionResult.stdout ?? '';
     resultRecord.extraction.stderr = extractionResult.stderr ?? extractionResult.error?.message ?? '';
+    resultRecord.extractedExecutables = executables;
 
     if (extractionResult.status !== 0) {
-      await saveDiagnostics();
+      await saveDiagnostics('failed extraction');
       const nativeFailure = extractionResult.error?.message ?? resultRecord.extraction.stderr.trim();
       throw new Error(`Cannot extract zip: ${extractCommand} exited with code ${extractionResult.status}${nativeFailure ? `. ${nativeFailure}` : ''}`);
     }
 
-    async function collectExecutables(dir, relative = '') {
-      const entries = await readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = resolve(dir, entry.name);
-        const relativePath = relative ? `${relative}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
-          await collectExecutables(fullPath, relativePath);
-        } else if (entry.name.toLowerCase().endsWith('.exe')) {
-          const { size } = await stat(fullPath);
-          resultRecord.extractedExecutables.push({ path: relativePath, sizeBytes: size });
-        }
-      }
-    }
-
-    await collectExecutables(tmpDir);
-    await saveDiagnostics();
+    await saveDiagnostics('extraction inventory');
     if (!resultRecord.extractedExecutables.some(({ path }) => path.split('/').at(-1).toLowerCase() === 'tuari.exe')) {
       throw new Error('Portable zip extraction succeeded, but the extracted tree does not contain Tuari.exe');
     }
+  } catch (err) {
+    verificationError = err;
   } finally {
-    await saveDiagnostics();
-    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    await saveDiagnostics('final record');
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch (err) {
+      console.error(`  Extraction cleanup failed: ${err.message}`);
+    }
+  }
+
+  if (verificationError) throw verificationError;
+  if (diagnosticErrors.length > 0) {
+    throw new Error(`Portable ZIP verification passed, but diagnostics could not be written: ${diagnosticErrors[0]}`);
   }
 }
 

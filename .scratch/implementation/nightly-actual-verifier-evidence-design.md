@@ -34,3 +34,14 @@ The verifier CLI is the caller-facing seam. Optional diagnostics add evidence wi
 - `.agents/wisdom/process/pass-powershell-scripts-by-file-across-bash.md`: keep PowerShell in a file, pass absolute paths as arguments, and stop on errors.
 - `.agents/wisdom/testing/phantom-test-failures-after-dependency-bumps-stale-node-modules-per-checkout-worktree.md`: no dependency changes are in scope; test the supplied installed toolchain as-is.
 - `.agents/wisdom/desktop/legacy-migration-preserves-mtime-so-a-file-existence-check-proves-nothing.md`: preserve the real extracted-file check; a ZIP entry or file existence elsewhere is not launch proof.
+
+## PR565 diagnostic correction
+
+- Base: `f9e1c86a4a7e833e5bc3e3b3c27aaaa8cbbe3461`.
+- Worktree: `D:/worktrees/tuari_react_hono/t3-cfb13dce-4d6bf6fd40267ae4`.
+- Mode: `focused-local / CI-final-enforced`, ruleset `26837184`, app `15368`, no bypass. Parent owns current-head CI, hosted review and merge gates. No publication or child/reviewer work in this lane.
+- Keep the actual ZIP extraction and executable check unchanged. A diagnostic write failure is logged separately. It cannot replace an extraction or validation error, and the temporary extraction directory is removed in `finally`. If verification passes but requested diagnostics cannot be written, the portable ZIP check fails rather than reporting complete evidence.
+- On extraction failure, collect the executable inventory before writing diagnostics and cleanup. Inventory errors remain secondary to the extractor error. The internal inventory helper accepts an extractor callback; its regression writes `Tuari.exe` and returns a failed result. This isolates the partial-output state without adding a production CLI override. The CLI regression separately exercises a real invalid ZIP through the platform extractor and confirms error precedence and cleanup. It does not claim that every Windows corrupt-later-entry case leaves partial output.
+- The module interface changed only to isolate extraction plus inventory. The actual Windows `Expand-Archive` adapter and unique `mkdtemp` directory remain in `verify-release-assets.mjs`. `architecture: one internal test seam added; no CLI or verification contract changed`.
+- Applied wisdom: `.agents/wisdom/process/pass-powershell-scripts-by-file-across-bash.md`; PowerShell remains a file-based command with arguments. `.agents/wisdom/desktop/legacy-migration-preserves-mtime-so-a-file-existence-check-proves-nothing.md`; inventory comes from the extracted temporary tree, not archive names or stale files.
+- Nightly run `44520207731` root cause remains unknown. This correction fixes evidence handling, not the archive failure.
