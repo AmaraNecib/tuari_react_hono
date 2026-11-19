@@ -453,28 +453,31 @@ describe("HomeView workspace shell", () => {
     expect(within(legacyHistory).getByText("لا توجد ملاحظات.")).toBeTruthy()
   })
 
-  it("opens earnings approval instead of the removed cash-payment form", async () => {
+  it("routes earnings approval to its dedicated page instead of the removed cash-payment form", async () => {
     renderWorkspace("employee-details", { sessionUser: demoUser, detailTab: "finance", employeeId: "employee-worker-1" })
 
     fireEvent.click((await screen.findAllByRole("button", { name: "اعتماد الأجر" }))[0]!)
 
-    const dialog = screen.getByRole("dialog")
-    expect(within(dialog).getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري")).toBeTruthy()
-    expect(within(dialog).getByLabelText("المبلغ غير الموزع بالدينار الجزائري")).toBeTruthy()
-    expect(within(dialog).queryByLabelText("ملاحظات")).toBeNull()
-    expect(within(dialog).queryByRole("button", { name: "حفظ دفعة الراتب" })).toBeNull()
+    expect(mocks.navigateMock).toHaveBeenCalledWith(expect.objectContaining({
+      to: "/employees/$employeeId/earnings/new",
+      params: { employeeId: "employee-worker-1" },
+      search: { returnTo: "employee-finance" },
+    }))
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(approveEmployeeEarningMutate).not.toHaveBeenCalled()
     expect(mocks.createSalaryPaymentMutate).not.toHaveBeenCalled()
   })
 
-  it("does not write an empty earnings approval", async () => {
+  it("does not write when opening a blank earnings approval", async () => {
     renderWorkspace("employee-details", { sessionUser: demoUser, detailTab: "finance", employeeId: "employee-worker-1" })
 
     fireEvent.click((await screen.findAllByRole("button", { name: "اعتماد الأجر" }))[0]!)
-    const dialog = screen.getByRole("dialog")
-    expect((within(dialog).getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري") as HTMLInputElement).value).toBe("")
-    fireEvent.click(within(dialog).getByRole("button", { name: "اعتماد الأجر" }))
 
-    expect(within(dialog).getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري").getAttribute("aria-invalid")).toBe("true")
+    expect(mocks.navigateMock).toHaveBeenCalledWith(expect.objectContaining({
+      to: "/employees/$employeeId/earnings/new",
+      params: { employeeId: "employee-worker-1" },
+      search: { returnTo: "employee-finance" },
+    }))
     expect(approveEmployeeEarningMutate).not.toHaveBeenCalled()
     expect(mocks.createSalaryPaymentMutate).not.toHaveBeenCalled()
   })
