@@ -716,9 +716,11 @@ async function main() {
     sidecarPids.length > 0,
     sidecarPids.length > 0
       ? `pid(s) ${sidecarPids.join(", ")}`
-      : appExitCode !== null
-        ? `Tuari.exe exited with code ${appExitCode} before the sidecar appeared`
-        : `no node.exe running ${path.join(extractDir, "bin", "api-runtime", "dist", "index.cjs")} within ${options.timeoutMs} ms`,
+      : sidecarEnvError
+        ? `process probe failed: ${sidecarEnvError}`
+        : appExitCode !== null
+          ? `Tuari.exe exited with code ${appExitCode} before the sidecar appeared`
+          : `no matching node.exe running ${path.join(extractDir, "bin", "api-runtime", "dist", "index.cjs")} within ${options.timeoutMs} ms`,
   );
 
   if (sidecarPids.length > 0) {
@@ -773,7 +775,9 @@ async function main() {
       "sidecar env is observable",
       false,
       sidecarPids.length === 0
-        ? "the sidecar never started, so there is no environment block to read"
+        ? sidecarEnvError
+          ? `the process probe failed, so sidecar state is unknown: ${sidecarEnvError}`
+          : "no matching sidecar process was found, so there is no environment block to read"
         : `could not read the child environment block: ${sidecarEnvError}. This check needs a same-user, non-elevated process read (Windows) or /proc (POSIX).`,
     );
   }
@@ -838,7 +842,11 @@ async function main() {
       return `TUARI_LICENSE_STATUS=${status}, TUARI_LICENSE_EDITION=${edition}`;
     }
     if (sidecarPids.length === 0) {
-      throw new Error("the sidecar never started, so the license handoff never happened");
+      throw new Error(
+        sidecarEnvError
+          ? `the process probe failed, so license handoff state is unknown: ${sidecarEnvError}`
+          : "no matching sidecar process was found, so the license handoff could not be observed",
+      );
     }
     return "inferred trial (env not readable; fresh data dir, no license.lic, Rust maps Grace to \"trial\")";
   });

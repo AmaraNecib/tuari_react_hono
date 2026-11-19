@@ -263,6 +263,10 @@ jobs:
             --version "${{ steps.manifest.outputs.version }}" `
             --channel nightly
 
+      - name: Test Windows sidecar process probe
+        shell: pwsh
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/smoke/windows-sidecar-probe.test.ps1
+
       - name: Run installer smoke test
         shell: pwsh
         run: |

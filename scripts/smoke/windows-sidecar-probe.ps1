@@ -21,22 +21,46 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+Add-Type -TypeDefinition @'
+using System.Runtime.InteropServices;
+using System.Text;
+public static class TuariWindowsPaths
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern uint GetShortPathName(string longPath, StringBuilder shortPath, uint bufferLength);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern uint GetLongPathName(string shortPath, StringBuilder longPath, uint bufferLength);
+}
+'@
+
 function Get-SidecarProcesses {
   param([string]$Root)
-  # Command lines can carry either separator (Rust passes backslashes, but a
-  # node-launched probe may pass forward slashes), so compare on a normalized
-  # form with one separator.
-  $rootLower = $Root.ToLowerInvariant().Replace('\', '/')
+  # Windows can expose a long path in one caller and its 8.3 alias in another.
+  # Compare both spellings while retaining the full runtime-entry markers.
+  $pathForms = @($Root)
+  $shortPath = New-Object System.Text.StringBuilder 32768
+  $shortLength = [TuariWindowsPaths]::GetShortPathName($Root, $shortPath, [uint32]$shortPath.Capacity)
+  if ($shortLength -eq 0) {
+    throw "GetShortPathName failed for '$Root' (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
+  }
+  $pathForms += $shortPath.ToString()
+  $longPath = New-Object System.Text.StringBuilder 32768
+  $longLength = [TuariWindowsPaths]::GetLongPathName($Root, $longPath, [uint32]$longPath.Capacity)
+  if ($longLength -eq 0) {
+    throw "GetLongPathName failed for '$Root' (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
+  }
+  $pathForms += $longPath.ToString()
+  $rootForms = @($pathForms | ForEach-Object { $_.ToLowerInvariant().Replace('\', '/') } | Select-Object -Unique)
+  $entryForms = @($rootForms | ForEach-Object { "$_/bin/api-runtime/dist/index.cjs" })
   $result = @()
-  $candidates = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue
+  $candidates = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction Stop
   foreach ($candidate in $candidates) {
     $commandLine = [string]$candidate.CommandLine
     if ([string]::IsNullOrEmpty($commandLine)) { continue }
     $lower = $commandLine.ToLowerInvariant().Replace('\', '/')
-    # Same identity contract as the Rust shell: our child always runs
-    # `<root>/bin/api-runtime/dist/index.cjs`, so require the extract dir plus
-    # both layout markers. A pid-by-port guess would match unrelated servers.
-    if ($lower.Contains($rootLower) -and $lower.Contains('api-runtime') -and $lower.Contains('index.cjs')) {
+    # Match the exact runtime entry under this extract root, accepting its
+    # long or 8.3 spelling. Keep both layout markers; never infer identity by port.
+    if (($entryForms | Where-Object { $lower.Contains($_) }).Count -gt 0 -and $lower.Contains('api-runtime') -and $lower.Contains('index.cjs')) {
       $result += [pscustomobject]@{
         pid            = [int]$candidate.ProcessId
         commandLine    = $commandLine
