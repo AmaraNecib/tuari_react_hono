@@ -54,6 +54,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { assertSqlcipherPrebuildInSubprocess } from "./sqlcipher-prebuild-subprocess.mjs";
+import { resetOwnedExtraction } from "./reset-owned-extraction.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
@@ -549,9 +550,7 @@ async function main() {
   if (resetReusedExtractDir) {
     // Every path below is joined onto extractDir, so nothing outside the
     // directory the operator named is ever touched.
-    for (const name of ["Tuari.exe", "bin", "data"]) {
-      rmSync(path.join(extractDir, name), { recursive: true, force: true });
-    }
+    resetOwnedExtraction(extractDir);
     console.log(`  [note] --force: reset the previous extraction in ${extractDir}`);
   }
 

@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync, execSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { extractAndCollectExecutables } from '../scripts/collect-extracted-executables.mjs';
+import { resetOwnedExtraction } from '../scripts/smoke/reset-owned-extraction.mjs';
 
 const scriptDir = fileURLToPath(new URL('../scripts', import.meta.url));
 const extractionScript = join(scriptDir, 'extract-zip.ps1');
@@ -53,6 +54,45 @@ async function createZip(zipPath, sourceDir, filenames) {
     );
   }
 }
+
+test('smoke reset refuses unowned directories and preserves unrelated files', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'smoke-reset-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'Tuari.exe'), 'original');
+  assert.throws(() => resetOwnedExtraction(root), /ownership marker/);
+  assert.equal(await readFile(join(root, 'Tuari.exe'), 'utf8'), 'original');
+  await writeFile(join(root, '.tuari-smoke-extract'), 'owned');
+  await writeFile(join(root, 'keep.txt'), 'unrelated');
+  resetOwnedExtraction(root);
+  assert.equal(await readFile(join(root, 'keep.txt'), 'utf8'), 'unrelated');
+  assert.ok((await readdir(root)).includes('.tuari-smoke-extract'));
+});
+
+test('Windows smoke force-reset permits repeated archive extraction with resources', async (t) => {
+  if (process.platform !== 'win32') { t.skip('Real Windows extractor regression'); return; }
+  const root = await mkdtemp(join(tmpdir(), 'smoke-rerun-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const source = join(root, 'source');
+  const destination = join(root, 'owned');
+  await mkdir(join(source, 'resources'), { recursive: true });
+  await mkdir(destination);
+  await writeFile(join(source, 'Tuari.exe'), 'synthetic app');
+  await writeFile(join(source, 'resources', 'asset.txt'), 'resource payload');
+  const zip = join(root, 'portable.zip');
+  await createZip(zip, source, ['Tuari.exe', 'resources']);
+  await writeFile(join(destination, '.tuari-smoke-extract'), 'owned');
+  await writeFile(join(destination, 'keep.txt'), 'unrelated');
+  const extract = () => spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', extractionScript, zip, destination], { encoding: 'utf8' });
+  const first = extract();
+  assert.equal(first.status, 0, first.stderr);
+  assert.equal(await readFile(join(destination, 'resources', 'asset.txt'), 'utf8'), 'resource payload');
+  resetOwnedExtraction(destination);
+  assert.ok(!(await readdir(destination)).includes('resources'));
+  const second = extract();
+  assert.equal(second.status, 0, second.stderr);
+  assert.equal(await readFile(join(destination, 'resources', 'asset.txt'), 'utf8'), 'resource payload');
+  assert.equal(await readFile(join(destination, 'keep.txt'), 'utf8'), 'unrelated');
+});
 
 // ─── Tests ────────────────────────────────────────────────────────
 

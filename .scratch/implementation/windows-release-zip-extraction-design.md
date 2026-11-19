@@ -23,6 +23,10 @@ The local `Expand-Archive` invocation against the retained ZIP exited 0, so the 
 
 Focused proof covers valid extraction and `Tuari.exe` presence/hash, malformed and empty ZIP rejection, missing executable rejection, quote/bracket paths, native diagnostics and signature verification. The production installer-smoke extraction path shares the adapter, but launching the app stays with the parent because its preflight port is `4318` and the worktree may share the machine.
 
+## Hosted rerun correction
+
+Greptile identified that strict extraction cannot overwrite resources left by `--extract-dir --force`. The reset helper now removes the supported owned outputs `Tuari.exe`, `bin`, `data` and `resources`, only when the smoke ownership marker exists. It retains unrelated files and the marker. A real Windows regression extracts an archive with resources, resets it, then extracts the same archive successfully again. An unowned-directory regression proves refusal without deleting the executable. Parent focused proof passed 26 cases without failures or skips in 8.74 seconds. Existing native portable launch proof is unchanged by this reset-only delta.
+
 ## Direct callers and exclusions
 
 - `scripts/verify-release-assets.mjs` invokes the adapter for portable ZIP verification.
