@@ -168,13 +168,14 @@ test('inventory failure does not replace the extractor failure', async () => {
   const extractionDir = join(tmp, 'extracted');
   const nativeFailure = { status: 1, stderr: 'original extraction failure' };
 
-  const { extraction, executables } = await extractAndCollectExecutables(() => {
+  const { extraction, executables, inventoryError } = await extractAndCollectExecutables(() => {
     rmSync(extractionDir, { recursive: true, force: true });
     return nativeFailure;
   }, extractionDir);
 
   assert.equal(extraction, nativeFailure);
   assert.deepEqual(executables, []);
+  assert.match(inventoryError.message, /ENOENT/);
 });
 
 test('verify-release-assets exits with non-zero when update package is missing', async () => {

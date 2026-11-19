@@ -140,7 +140,7 @@ async function verifyPortableZip(artifactsDir) {
     await saveDiagnostics('archive listing');
 
     mkdirSync(tmpDir, { recursive: true });
-    const { extraction: extractionResult, executables } = await extractAndCollectExecutables(
+    const { extraction: extractionResult, executables, inventoryError } = await extractAndCollectExecutables(
       () => spawnSync(extractCommand, extractArgs, { encoding: 'utf8', windowsHide: true }),
       tmpDir,
     );
@@ -148,6 +148,7 @@ async function verifyPortableZip(artifactsDir) {
     resultRecord.extraction.stdout = extractionResult.stdout ?? '';
     resultRecord.extraction.stderr = extractionResult.stderr ?? extractionResult.error?.message ?? '';
     resultRecord.extractedExecutables = executables;
+    if (inventoryError) console.error(`  Extraction inventory failed: ${inventoryError.message}`);
 
     if (extractionResult.status !== 0) {
       await saveDiagnostics('failed extraction');

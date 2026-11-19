@@ -18,10 +18,12 @@ async function collectExecutables(dir, inventory, relative = '') {
 export async function extractAndCollectExecutables(extract, directory) {
   const extraction = extract();
   const executables = [];
+  let inventoryError;
   try {
     await collectExecutables(directory, executables);
   } catch (err) {
     if (extraction.status === 0) throw err;
+    inventoryError = err;
   }
-  return { extraction, executables };
+  return { extraction, executables, inventoryError };
 }
