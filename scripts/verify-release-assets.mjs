@@ -94,7 +94,7 @@ async function verifyPortableZip(artifactsDir) {
   const listArgs = isWin ? ['-tf', zipFile] : ['-Z1', zipFile];
   const extractCommand = isWin ? 'powershell.exe' : 'unzip';
   const extractArgs = isWin
-    ? ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', resolve(dirname(fileURLToPath(import.meta.url)), 'verify-portable-zip.ps1'), zipFile, tmpDir]
+    ? ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', resolve(dirname(fileURLToPath(import.meta.url)), 'extract-zip.ps1'), zipFile, tmpDir]
     : ['-o', zipFile, '-d', tmpDir];
   const resultRecord = {
     zip: {

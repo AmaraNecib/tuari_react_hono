@@ -61,6 +61,7 @@ const TAURI_CONF_PATH = path.join(REPO_ROOT, "apps", "desktop", "src-tauri", "ta
 const RUST_LIB_PATH = path.join(REPO_ROOT, "apps", "desktop", "src-tauri", "src", "lib.rs");
 const BUNDLE_ROOT = path.join(REPO_ROOT, "apps", "desktop", "src-tauri", "target", "release", "bundle");
 const SIDECAR_PROBE_PS1 = path.join(SCRIPT_DIR, "windows-sidecar-probe.ps1");
+const ZIP_EXTRACTOR_PS1 = path.join(REPO_ROOT, "scripts", "extract-zip.ps1");
 
 const REQUIRED_TABLES = ["user", "session", "account", "app_bootstrap_state", "employee"];
 const EXTRACT_MARKER = ".tuari-smoke-extract";
@@ -354,13 +355,12 @@ function readApiPortFromRust() {
 function extractZip(zipPath, destination) {
   mkdirSync(destination, { recursive: true });
   if (process.platform === "win32") {
-    const script = `Expand-Archive -LiteralPath '${zipPath.replace(/'/g, "''")}' -DestinationPath '${destination.replace(/'/g, "''")}' -Force`;
     const result = spawnSync(
-      "powershell",
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
-      { encoding: "utf8" },
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ZIP_EXTRACTOR_PS1, zipPath, destination],
+      { encoding: "utf8", windowsHide: true },
     );
-    assert(result.status === 0, `Expand-Archive failed: ${result.stderr || result.status}`);
+    assert(result.status === 0, `ZIP extraction failed: ${result.stderr || result.error?.message || result.status}`);
     return;
   }
 

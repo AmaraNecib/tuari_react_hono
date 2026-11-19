@@ -13,6 +13,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { extractAndCollectExecutables } from '../scripts/collect-extracted-executables.mjs';
 
 const scriptDir = fileURLToPath(new URL('../scripts', import.meta.url));
+const extractionScript = join(scriptDir, 'extract-zip.ps1');
 
 function runScript(script, args) {
   const fullPath = join(scriptDir, script);
@@ -54,6 +55,64 @@ async function createZip(zipPath, sourceDir, filenames) {
 }
 
 // ─── Tests ────────────────────────────────────────────────────────
+
+test('Windows PowerShell models the unsupported three-argument bool extraction API', (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('Windows PowerShell and System.IO.Compression are required');
+    return;
+  }
+
+  const script = [
+    'Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop',
+    '$supported = [System.IO.Compression.ZipFile].GetMethods() | Where-Object { $_.Name -eq "ExtractToDirectory" -and $_.GetParameters().Count -eq 3 -and $_.GetParameters()[2].ParameterType -eq [bool] }',
+    'if ($supported) { throw "This runtime unexpectedly has the bool overload" }',
+    '[System.IO.Compression.ZipFile]::ExtractToDirectory("unused.zip", "unused-destination", $true)',
+  ].join('; ');
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.notEqual(result.status, 0, 'the three-argument bool call must fail on this runtime');
+  assert.match(`${result.stdout}\n${result.stderr}`, /Cannot (?:find an overload|convert argument).*ExtractToDirectory/is);
+});
+
+test('Windows extraction helper extracts a ZIP through the supported two-argument .NET API', async (t) => {
+  if (process.platform !== 'win32') {
+    t.skip('Windows PowerShell and System.IO.Compression are required');
+    return;
+  }
+
+  const tmp = await mkdtemp(join(tmpdir(), 'verify-extraction-'));
+  const sourceDir = join(tmp, 'source');
+  const destination = join(tmp, "destination '[safe]'");
+  const basicArchive = join(tmp, 'portable.zip');
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(destination, { recursive: true });
+  await writeFile(join(sourceDir, 'Tuari.exe'), 'actual executable bytes');
+  await createZip(basicArchive, sourceDir, ['Tuari.exe']);
+  const archive = join(tmp, "archive '[literal]'.zip");
+  await rename(basicArchive, archive);
+
+  const result = spawnSync('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+    extractionScript, archive, destination,
+  ], { encoding: 'utf8', windowsHide: true });
+
+  assert.equal(result.error, undefined, result.error?.message);
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(await readFile(join(destination, 'Tuari.exe'), 'utf8'), 'actual executable bytes');
+});
+
+test('Windows verifier and installer smoke share the PowerShell extraction adapter', async () => {
+  const verifier = await readFile(join(scriptDir, 'verify-release-assets.mjs'), 'utf8');
+  const smoke = await readFile(join(scriptDir, 'smoke', 'installer-smoke.mjs'), 'utf8');
+  assert.match(verifier, /extract-zip\.ps1/);
+  assert.match(smoke, /extract-zip\.ps1/);
+  assert.doesNotMatch(verifier, /Expand-Archive/);
+  assert.doesNotMatch(smoke, /Expand-Archive/);
+});
 
 test('verify-release-assets exits with non-zero when --artifacts is missing', () => {
   const result = runScript('verify-release-assets.mjs', []);
