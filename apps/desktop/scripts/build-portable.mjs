@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -16,6 +16,7 @@ const basePortableName = "Tuari-portable";
 const portableDir = path.resolve(portableRoot, basePortableName);
 const tempPortableDir = path.resolve(portableRoot, ".tmp-Tuari-portable");
 const zipPath = path.resolve(portableRoot, `${basePortableName}.zip`);
+const portableRootEntries = ["Tuari.exe", "bin", "resources"];
 
 const appExePath = path.resolve(releaseRoot, "app.exe");
 const binDir = path.resolve(desktopRoot, "src-tauri", "bin");
@@ -64,9 +65,15 @@ await renamePortableCandidate(tempPortableDir, finalPortableDir);
 rmSync(finalZipPath, { force: true });
 
 const tarExecutable = resolveTrustedTarPath();
+const archiveEntries = portableRootEntries.filter((name) => existsSync(path.resolve(finalPortableDir, name)));
+const actualRootEntries = readdirSync(finalPortableDir).sort();
+if (actualRootEntries.join("\0") !== [...archiveEntries].sort().join("\0")) {
+  throw new Error(`Portable root contains unexpected entries: ${actualRootEntries.join(", ")}`);
+}
+
 const zipResult = spawnSync(
   tarExecutable,
-  ["-a", "-c", "-f", finalZipPath, "-C", finalPortableDir, "."],
+  ["-a", "-c", "-f", finalZipPath, "-C", finalPortableDir, "--", ...archiveEntries],
   {
     stdio: "inherit",
     shell: false,

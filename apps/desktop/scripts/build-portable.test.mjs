@@ -111,6 +111,8 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false } 
   mkdirSync(scripts, { recursive: true });
   mkdirSync(path.join(runtime, "dist"), { recursive: true });
   mkdirSync(path.join(portable, "Tuari-portable"), { recursive: true });
+  mkdirSync(path.join(release, "resources"), { recursive: true });
+  writeFileSync(path.join(release, "resources", "required.dat"), "required resource");
   writeFileSync(path.join(release, "app.exe"), "synthetic app");
   copyFileSync(process.execPath, path.join(bin, "node.exe"));
   writeFileSync(path.join(runtime, "dist", "index.cjs"), "// synthetic loader");
@@ -192,14 +194,33 @@ test("portable:only rejects failed encryption proof before replacing outputs or 
   assert.equal(readFileSync(path.join(f.portable, "Tuari-portable", "previous.txt"), "utf8"), "previous folder");
 });
 
-test("portable:only publishes and archives only after the copied candidate passes proof", { skip: process.platform !== "win32" }, (t) => {
+test("portable:only creates a Windows Explorer-visible ZIP with root app, runtime and resources", { skip: process.platform !== "win32" }, (t) => {
   const f = fixture(t);
   const result = f.run();
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.ok(existsSync(path.join(f.root, "proof-called")));
   assert.ok(existsSync(path.join(f.root, "archive-called")));
-  assert.equal(readFileSync(path.join(f.portable, "Tuari-portable.zip")).subarray(0, 2).toString(), "PK");
+  const archive = path.join(f.portable, "Tuari-portable.zip");
+  assert.equal(readFileSync(archive).subarray(0, 2).toString(), "PK");
+  const trustedTar = path.join(process.env.SystemRoot ?? process.env.windir, "System32", "tar.exe");
+  const entries = spawnSync(trustedTar, ["-tf", archive], { encoding: "utf8" });
+  assert.equal(entries.status, 0, entries.stderr);
+  const names = entries.stdout.trim().split(/\r?\n/);
+  assert.ok(names.includes("Tuari.exe"), `root executable missing from ZIP: ${names.join(", ")}`);
+  assert.ok(names.includes("bin/node.exe"), `runtime missing from ZIP: ${names.join(", ")}`);
+  assert.ok(names.includes("resources/required.dat"), `resource missing from ZIP: ${names.join(", ")}`);
+  assert.ok(names.every(name => !name.startsWith("./") && !name.includes("\\")), `ZIP paths must be relative and use forward slashes: ${names.join(", ")}`);
+  const extracted = path.join(f.root, "extracted");
+  mkdirSync(extracted);
+  const extraction = spawnSync(trustedTar, ["-xf", archive, "-C", extracted], { encoding: "utf8" });
+  assert.equal(extraction.status, 0, extraction.stderr);
+  assert.equal(readFileSync(path.join(extracted, "Tuari.exe"), "utf8"), "synthetic app");
+  assert.equal(readFileSync(path.join(extracted, "bin", "api-runtime", "dist", "index.cjs"), "utf8"), "// synthetic loader");
+  assert.equal(readFileSync(path.join(extracted, "resources", "required.dat"), "utf8"), "required resource");
+  const shellCheck = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.resolve(scriptsRoot, "../../../scripts/smoke/check-portable-zip-shell.ps1"), archive], { encoding: "utf8" });
+  assert.equal(shellCheck.status, 0, shellCheck.stdout + shellCheck.stderr);
+  assert.match(shellCheck.stdout, /Windows Shell ZIP entries .*Tuari\.exe.*bin.*resources/);
   assert.equal(readFileSync(path.join(f.portable, "Tuari-portable", "bin", "api-runtime", "dist", "index.cjs"), "utf8"), "// synthetic loader");
   assert.ok(!existsSync(path.join(f.portable, ".tmp-Tuari-portable")));
 });

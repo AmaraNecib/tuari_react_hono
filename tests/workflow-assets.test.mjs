@@ -182,6 +182,30 @@ test('publish workflows run the installer smoke test after packaging and before 
   }
 });
 
+test('Nightly checks the produced portable ZIP through Windows Shell before signing or publication', async () => {
+  const nightly = await readRepoFile('.github/workflows/nightly.yml');
+  const lines = nightly.split('\n');
+  const stepIndex = lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes('Check portable ZIP in Windows Shell'));
+  assert.ok(stepIndex >= 0, 'nightly must run the Windows Shell archive check');
+  const indent = lines[stepIndex].match(/^\s*/)[0];
+  const next = lines.findIndex((line, index) => index > stepIndex && line.startsWith(`${indent}- name:`));
+  const step = lines.slice(stepIndex, next === -1 ? lines.length : next).join('\n');
+  const packageIndex = lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes('Create portable package'));
+  const signingIndex = lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes('Generate or resolve signing keys'));
+  assert.ok(packageIndex < stepIndex && stepIndex < signingIndex, 'Shell check must inspect the produced ZIP before signing');
+  assert.match(step, /scripts\/smoke\/check-portable-zip-shell\.ps1/);
+  assert.match(step, /Tuari-portable\*\.zip/);
+  assert.match(step, /Sort-Object LastWriteTimeUtc -Descending/);
+  assert.match(step, /\$LASTEXITCODE/);
+  assert.match(step, /id: portable/);
+  assert.match(step, /path=\$\(\$portableZip\.FullName\).*GITHUB_OUTPUT/);
+  const manifest = nightly.split('      - name: Compute checksum and create update manifest')[1].split('      # ── Smoke test')[0];
+  assert.match(manifest, /\$portableZipPath = "\$\{\{ steps\.portable\.outputs\.path \}\}"/);
+  assert.match(manifest, /Get-FileHash -Path \$portableZipPath/);
+  assert.match(manifest, /Copy-Item -LiteralPath \$portableZipPath/);
+  assert.doesNotMatch(manifest, /\$portableZip\s*=\s*Get-ChildItem/);
+});
+
 test('Nightly preserves only failed portable verifier evidence without weakening release gates', async () => {
   const nightly = await readRepoFile('.github/workflows/nightly.yml');
   const lines = nightly.split('\n');
