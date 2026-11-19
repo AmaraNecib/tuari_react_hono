@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { StrictMode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -69,6 +69,37 @@ describe("earned-wage approval composer", () => {
 
     fireEvent.submit(document.querySelector("form")!)
     expect(document.activeElement).toBe(screen.getByLabelText("earnings.project 1"))
+  })
+
+  it.each(["employee", "inactive"] as const)("ignores late no-write errors after the form becomes %s and preserves a newer request", async change => {
+    let rejectSave!: (reason: unknown) => void
+    const deferred = new Promise((_, reject) => { rejectSave = reject })
+    mutateAsync.mockReturnValueOnce(deferred)
+    const view = render(<EmployeeEarningApprovalForm {...props} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "100" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }))
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    const key = Object.keys(localStorage).find(key => localStorage.getItem(key)?.includes(mutateAsync.mock.calls[0]![0].requestId))!
+    const replacement = JSON.parse(localStorage.getItem(key)!)
+    replacement.payload.requestId = "11111111-1111-4111-8111-111111111111"
+    localStorage.setItem(key, JSON.stringify(replacement))
+
+    view.rerender(<EmployeeEarningApprovalForm {...props} employeeId={change === "employee" ? "employee-2" : props.employeeId} active={change !== "inactive"} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "777" } })
+    await act(async () => {
+      rejectSave(Object.assign(new Error("stale validation error"), {
+        code: "NOT_FOUND", fieldErrors: [{ field: "periodStart", message: "stale period error" }],
+      }))
+      await deferred.catch(() => undefined)
+    })
+    await waitFor(() => {
+      expect(JSON.parse(localStorage.getItem(key)!).payload.requestId).toBe(replacement.payload.requestId)
+      expect(screen.queryByText("stale period error")).toBeNull()
+      expect(screen.queryByText("stale validation error")).toBeNull()
+      expect((screen.getByLabelText("earnings.total") as HTMLInputElement).value).toBe("777")
+    })
+    expect(props.onComplete).not.toHaveBeenCalled()
   })
 
   it("completes a mounted save once through StrictMode effect replay", async () => {

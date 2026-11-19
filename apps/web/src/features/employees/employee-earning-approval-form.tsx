@@ -268,6 +268,8 @@ export function EmployeeEarningApprovalForm({
       return
     }
     const submittedLifecycleGeneration = lifecycleGeneration.current
+    const isCurrentSubmission = () => mountedRef.current && activeRef.current
+      && identityKeyRef.current === identityKey && lifecycleGeneration.current === submittedLifecycleGeneration
     let hadPriorPending = pending !== null
     let payload = pending?.payload
     let mutationStarted = false
@@ -297,7 +299,7 @@ export function EmployeeEarningApprovalForm({
       mutationSucceeded = true
       const storedPending = loadPendingEmployeeEarning(identity, window.localStorage)
       if (!storedPending.ok) {
-        if (mountedRef.current && activeRef.current && identityKeyRef.current === identityKey) {
+        if (isCurrentSubmission()) {
           setStorageError(true)
           setError(t("earnings.storageUnavailable"))
         }
@@ -306,7 +308,7 @@ export function EmployeeEarningApprovalForm({
       if (storedPending.pending?.payload.requestId === payload.requestId) {
         removePendingEmployeeEarning(identity, window.localStorage)
       }
-      if (!mountedRef.current || !activeRef.current || identityKeyRef.current !== identityKey || lifecycleGeneration.current !== submittedLifecycleGeneration) return
+      if (!isCurrentSubmission()) return
       setPending(null)
       setTotal("")
       setRows([])
@@ -314,6 +316,7 @@ export function EmployeeEarningApprovalForm({
       onComplete()
     } catch (cause) {
       if (mutationSucceeded || !mutationStarted) {
+        if (!isCurrentSubmission()) return
         setStorageError(true)
         setError(t("earnings.storageUnavailable"))
         return
@@ -326,15 +329,21 @@ export function EmployeeEarningApprovalForm({
       const isProvenNoWrite = !hadPriorPending && (code === "VALIDATION" || code === "NOT_FOUND" || wireValidation)
       if (isProvenNoWrite) {
         try {
-          removePendingEmployeeEarning(identity, window.localStorage)
-          setPending(null)
+          const storedPending = loadPendingEmployeeEarning(identity, window.localStorage)
+          if (!storedPending.ok) throw new Error("pending storage unavailable")
+          if (storedPending.pending?.payload.requestId === payload?.requestId) {
+            removePendingEmployeeEarning(identity, window.localStorage)
+          }
+          if (isCurrentSubmission()) setPending(null)
         } catch {
+          if (!isCurrentSubmission()) return
           setStorageError(true)
           setError(t("earnings.storageUnavailable"))
           setIssues(normalizedIssues)
           return
         }
       }
+      if (!isCurrentSubmission()) return
       setIssues(normalizedIssues)
       if (normalizedIssues.length) setInvalidSaveCount(count => count + 1)
       setError(normalizedIssues.length ? "" : cause instanceof Error ? cause.message : t("earnings.submitError"))
