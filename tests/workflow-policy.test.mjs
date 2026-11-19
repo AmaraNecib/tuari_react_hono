@@ -64,8 +64,22 @@ test('portable trace preserves packaging exit and stops only its started recordi
   assert.match(script, /-start FileIO -start Minifilter -start Handle -filemode/);
   assert.match(script, /\$record\.packagingExitCode = \$LASTEXITCODE/);
   assert.match(script, /finally\s*\{\s*if \(\$traceOwned\)/);
-  assert.doesNotMatch(script, /& \$wpr -cancel|CommandLine|Get-ChildItem.*-Recurse/);
+  assert.doesNotMatch(script, /& \$wpr -cancel|CommandLine/);
+  assert.match(script, /\$inspectionRoot = Join-Path \(\[System\.IO\.Path\]::GetTempPath\(\)\)/);
+  assert.match(script, /Get-ChildItem -LiteralPath \$mode\.root -Recurse -File/);
+  assert.doesNotMatch(script, /Copy-Item|Compress-Archive/);
   assert.match(script, /exit \$exitCode/);
+});
+
+test('portable diagnostics distinguish archive contents from both extraction modes', () => {
+  const script = read('scripts/smoke/trace-portable-packaging.ps1');
+  for (const evidence of ['zip-central-directory.json', 'producer-exe.json', 'tar-result.json', 'expand-original.stderr.log', 'expand-strict.stderr.log']) {
+    assert.ok(script.includes(evidence), evidence);
+  }
+  assert.match(script, /ZipFile\]::OpenRead\(\$portableZip\)/);
+  assert.match(script, /if \(\$record\.artifact\.tuariExeEntries\.Count -eq 0\)\s*\{\s*\$record\.inspectionExitCode = 1/);
+  assert.match(script, /elseif \(-not \$extractedExe\.original -or -not \$extractedExe\.strict\)\s*\{\s*\$record\.inspectionExitCode = 1/);
+  assert.match(script, /if \(\$record\.inspectionExitCode -ne 0 -and \$exitCode -eq 0\) \{ \$exitCode = 1 \}/);
 });
 
 test('Greptile is the scored gate without an extra local confidence step', () => {

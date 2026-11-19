@@ -140,7 +140,17 @@ function Save-PortableInspection {
   }
   $record.originalExpandExitCode = $originalProcess.ExitCode
   $record.strictExpandExitCode = $strictProcess.ExitCode
-  $record.outcome = if ($record.inspectionExitCode -ne 0) { 'inspection command failed; packaging result recorded separately' } elseif ($record.artifact.tuariExeEntries.Count -eq 0) { 'packaging completed; Tuari.exe absent from ZIP central directory; cause unknown' } elseif ($originalProcess.ExitCode -ne 0 -or $strictProcess.ExitCode -ne 0) { 'packaging completed; extraction process failed; compare original and strict stderr, cause unknown' } elseif (-not $extractedExe.original -or -not $extractedExe.strict) { 'ZIP central directory contains Tuari.exe but extraction output does not; cause unknown' } else { 'packaging completed; ZIP entry and extraction observations recorded; no release verdict' }
+  if ($record.artifact.tuariExeEntries.Count -eq 0) {
+    $record.inspectionExitCode = 1
+    $record.outcome = 'Tuari.exe absent from ZIP central directory; cause unknown'
+  } elseif (-not $extractedExe.original -or -not $extractedExe.strict) {
+    $record.inspectionExitCode = 1
+    $record.outcome = 'ZIP contains Tuari.exe but extraction output does not; inspect stderr and security events'
+  } elseif ($record.inspectionExitCode -ne 0) {
+    $record.outcome = 'inspection command failed; packaging result recorded separately'
+  } else {
+    $record.outcome = 'ZIP entry and both extraction checks passed; failure not reproduced'
+  }
 }
 try {
   $wpr = (Get-Command wpr.exe -ErrorAction Stop).Source
@@ -173,6 +183,17 @@ try {
   try { Save-Snapshot 'after' } catch {
     $_ | Out-String | Set-Content -LiteralPath (Join-Path $OutputDirectory 'snapshot-error.log')
     if ($exitCode -eq 0) { $exitCode = 1 }
+  }
+  try {
+    Get-WinEvent -FilterHashtable @{
+      LogName = 'Microsoft-Windows-Windows Defender/Operational'
+      Id = @(1116, 1117)
+      StartTime = [DateTime]::Parse($record.startedUtc)
+    } -MaxEvents 10 -ErrorAction Stop |
+      Select-Object Id, TimeCreated, Message |
+      ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $OutputDirectory 'defender-events.json')
+  } catch {
+    $_.Exception.Message | Set-Content -LiteralPath (Join-Path $OutputDirectory 'defender-events-unavailable.log')
   }
   $record.endedUtc = [DateTime]::UtcNow.ToString('o')
   $record.exitCode = $exitCode
