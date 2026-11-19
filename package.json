@@ -7,7 +7,7 @@
     "check:web-hygiene": "node --test ./tests/web-hygiene.test.mjs",
     "check:i18n-keys": "node --test ./tests/i18n-keys.test.mjs",
     "check:repo-hygiene": "node --test ./tests/repo-hygiene.test.mjs",
-    "check:workflow-assets": "node --test ./tests/workflow-assets.test.mjs",
+    "check:workflow-assets": "node --test ./tests/workflow-assets.test.mjs ./tests/nightly-tag-build-identity.test.mjs",
     "check:update-metadata": "node --test ./tests/update-channel-metadata.test.mjs",
     "check:license-signer": "node --test ./tests/generate-license.test.mjs",
     "check:e2e-selection": "node --test ./tests/e2e-selection.test.mjs",

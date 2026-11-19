@@ -38,7 +38,7 @@ test('branch workflow doc and PR templates stay aligned', async () => {
   const agentTemplate = await readRepoFile('.github/PULL_REQUEST_TEMPLATE/agent-branch.md');
   const integrationTemplate = await readRepoFile('.github/PULL_REQUEST_TEMPLATE/integration-branch.md');
 
-  assert.equal(packageJson.scripts['check:workflow-assets'], 'node --test ./tests/workflow-assets.test.mjs');
+  assert.equal(packageJson.scripts['check:workflow-assets'], 'node --test ./tests/workflow-assets.test.mjs ./tests/nightly-tag-build-identity.test.mjs');
   assert.match(packageJson.scripts.lint, /check:workflow-assets/);
   assert.match(readme, /docs\/branch-workflow\.md/);
   assert.match(readme, /plans\/tuari-multi-agent-delivery-plan\.md/);
