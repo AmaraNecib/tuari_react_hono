@@ -8,11 +8,12 @@
 // Exit code 0 = all checks pass
 // Exit code 1 = any check fails
 
-import { access, readFile, readdir } from 'node:fs/promises';
-import { constants } from 'node:fs';
-import { resolve, extname, basename } from 'node:path';
-import { createPublicKey, verify } from 'node:crypto';
+import { access, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { constants, mkdirSync, rmSync } from 'node:fs';
+import { resolve, basename, dirname } from 'node:path';
+import { createHash, createPublicKey, verify } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const args = process.argv.slice(2);
 
@@ -27,6 +28,7 @@ Options:
   --public-key <path>   Path to Ed25519 public key PEM file (default: auto-detect)
   --version <ver>       Release version (e.g., 0.5.0)
   --channel <channel>   Release channel (e.g., stable, nightly, beta)
+  --diagnostics-dir <dir> Directory for portable ZIP verification diagnostics
   --help                Show this help
 
 Checks:
@@ -46,6 +48,8 @@ const artifactsDir = getArg('--artifacts');
 const publicKeyPath = getArg('--public-key');
 const version = getArg('--version');
 const channel = getArg('--channel');
+const diagnosticsDir = getArg('--diagnostics-dir');
+const resolvedDiagnosticsDir = diagnosticsDir ? resolve(diagnosticsDir) : undefined;
 
 if (!artifactsDir) {
   console.error('Error: --artifacts is required');
@@ -77,73 +81,89 @@ async function findFile(dir, pattern) {
 }
 
 async function verifyPortableZip(artifactsDir) {
-  // Find the portable zip
   const zipFile = await findFile(artifactsDir, /portable\.zip$/i);
-  if (!zipFile) {
-    throw new Error('No portable zip file found (expected *-portable.zip)');
-  }
+  if (!zipFile) throw new Error('No portable zip file found (expected *-portable.zip)');
 
   console.log(`  Found portable zip: ${basename(zipFile)}`);
-
-  // Extract the zip to a temp dir and check for Tuari.exe
   const tmpDir = resolve(artifactsDir, '.verify-tmp');
-  const { rmSync, mkdirSync } = await import('node:fs');
-
-  // Clean up any previous temp
-  try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-  mkdirSync(tmpDir, { recursive: true });
-
-  // Extract the zip
   const isWin = process.platform === 'win32';
-  let extractOk = false;
+  const listCommand = isWin
+    ? resolve(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
+    : 'unzip';
+  const listArgs = isWin ? ['-tf', zipFile] : ['-Z1', zipFile];
+  const extractCommand = isWin ? 'powershell.exe' : 'unzip';
+  const extractArgs = isWin
+    ? ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', resolve(dirname(fileURLToPath(import.meta.url)), 'verify-portable-zip.ps1'), zipFile, tmpDir]
+    : ['-o', zipFile, '-d', tmpDir];
+  const resultRecord = {
+    zip: {
+      path: zipFile,
+      sizeBytes: null,
+      sha256: null,
+    },
+    source: {
+      sha: process.env.GITHUB_SHA ?? null,
+      runId: process.env.GITHUB_RUN_ID ?? null,
+      runAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+    },
+    archiveListing: { command: listCommand, args: listArgs, exitCode: null, stdout: '', stderr: '', entryNames: [] },
+    extraction: { command: extractCommand, args: extractArgs, exitCode: null, stdout: '', stderr: '' },
+    extractedExecutables: [],
+  };
+  const diagnosticsPath = resolvedDiagnosticsDir
+    ? resolve(resolvedDiagnosticsDir, 'portable-verification.json')
+    : undefined;
+  const saveDiagnostics = async () => {
+    if (!diagnosticsPath) return;
+    mkdirSync(resolvedDiagnosticsDir, { recursive: true });
+    await writeFile(diagnosticsPath, `${JSON.stringify(resultRecord, null, 2)}\n`, 'utf8');
+  };
 
-  if (isWin) {
-    // On Windows, use PowerShell Expand-Archive (tar chokes on C: paths)
-    const extractResult = spawnSync(
-      'powershell', [
-        '-NoProfile',
-        '-Command',
-        `Expand-Archive -Path '${zipFile}' -DestinationPath '${tmpDir}' -Force`
-      ],
-      { encoding: 'utf8' }
-    );
-    extractOk = extractResult.status === 0;
-    if (!extractOk) {
-      throw new Error(`Cannot extract zip: PowerShell Expand-Archive exited with code ${extractResult.status}. ${extractResult.stderr}`);
-    }
-  } else {
-    // On Unix, use unzip (GNU tar does not understand ZIP format)
-    const extractResult = spawnSync('unzip', ['-o', zipFile, '-d', tmpDir], {
-      encoding: 'utf8',
-    });
-    extractOk = extractResult.status === 0;
-    if (!extractOk) {
-      throw new Error(`Cannot extract zip: unzip exited with code ${extractResult.status}. ${extractResult.stderr}`);
-    }
-  }
+  try {
+    const zipBytes = await readFile(zipFile);
+    resultRecord.zip.sizeBytes = zipBytes.length;
+    resultRecord.zip.sha256 = createHash('sha256').update(zipBytes).digest('hex');
+    const listResult = spawnSync(listCommand, listArgs, { encoding: 'utf8', windowsHide: true });
+    resultRecord.archiveListing.exitCode = listResult.status;
+    resultRecord.archiveListing.stdout = listResult.stdout ?? '';
+    resultRecord.archiveListing.stderr = listResult.stderr ?? listResult.error?.message ?? '';
+    resultRecord.archiveListing.entryNames = (listResult.stdout ?? '').split(/\r?\n/).filter(Boolean);
+    await saveDiagnostics();
 
-  // Check for Tuari.exe in the extracted contents
-  let exeFound = false;
-  async function findExe(dir) {
-    const entries = await readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = resolve(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (await findExe(fullPath)) return true;
-      } else if (entry.name.toLowerCase() === 'tuari.exe') {
-        return true;
+    mkdirSync(tmpDir, { recursive: true });
+    const extractionResult = spawnSync(extractCommand, extractArgs, { encoding: 'utf8', windowsHide: true });
+    resultRecord.extraction.exitCode = extractionResult.status;
+    resultRecord.extraction.stdout = extractionResult.stdout ?? '';
+    resultRecord.extraction.stderr = extractionResult.stderr ?? extractionResult.error?.message ?? '';
+
+    if (extractionResult.status !== 0) {
+      await saveDiagnostics();
+      const nativeFailure = extractionResult.error?.message ?? resultRecord.extraction.stderr.trim();
+      throw new Error(`Cannot extract zip: ${extractCommand} exited with code ${extractionResult.status}${nativeFailure ? `. ${nativeFailure}` : ''}`);
+    }
+
+    async function collectExecutables(dir, relative = '') {
+      const entries = await readdir(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = resolve(dir, entry.name);
+        const relativePath = relative ? `${relative}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          await collectExecutables(fullPath, relativePath);
+        } else if (entry.name.toLowerCase().endsWith('.exe')) {
+          const { size } = await stat(fullPath);
+          resultRecord.extractedExecutables.push({ path: relativePath, sizeBytes: size });
+        }
       }
     }
-    return false;
-  }
 
-  exeFound = await findExe(tmpDir);
-
-  // Clean up
-  try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-
-  if (!exeFound) {
-    throw new Error('Portable zip does not contain Tuari.exe');
+    await collectExecutables(tmpDir);
+    await saveDiagnostics();
+    if (!resultRecord.extractedExecutables.some(({ path }) => path.split('/').at(-1).toLowerCase() === 'tuari.exe')) {
+      throw new Error('Portable zip extraction succeeded, but the extracted tree does not contain Tuari.exe');
+    }
+  } finally {
+    await saveDiagnostics();
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   }
 }
 

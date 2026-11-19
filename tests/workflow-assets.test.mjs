@@ -182,6 +182,43 @@ test('publish workflows run the installer smoke test after packaging and before 
   }
 });
 
+test('Nightly preserves only failed portable verifier evidence without weakening release gates', async () => {
+  const nightly = await readRepoFile('.github/workflows/nightly.yml');
+  const lines = nightly.split('\n');
+  const stepStart = (needle) => lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes(needle));
+  const stepAt = (index) => {
+    const indent = lines[index].match(/^\s*/)[0];
+    const next = lines.findIndex((line, lineIndex) => lineIndex > index && line.startsWith(`${indent}- name:`));
+    return lines.slice(index, next === -1 ? lines.length : next).join('\n');
+  };
+  const verifierIndex = stepStart('Smoke test nightly artifacts');
+  const captureIndex = stepStart('Capture failed portable verifier evidence');
+  const uploadIndex = stepStart('Upload failed portable verifier evidence');
+  const installerIndex = stepStart('Run installer smoke test');
+  const releaseUploadIndex = stepStart('Upload to nightly release');
+  assert.ok(verifierIndex >= 0 && captureIndex > verifierIndex);
+  assert.ok(uploadIndex > captureIndex && installerIndex > uploadIndex);
+  assert.ok(releaseUploadIndex > installerIndex);
+
+  const verifier = stepAt(verifierIndex);
+  assert.match(verifier, /id: verify/);
+  assert.match(verifier, /--diagnostics-dir/);
+  const capture = stepAt(captureIndex);
+  assert.match(capture, /if: failure\(\) && steps\.verify\.outcome == 'failure'/);
+  assert.match(capture, /bundle\/portable/);
+  assert.match(capture, /\*-portable\.zip/);
+  assert.match(capture, /nightly-verifier-diagnostics/);
+  assert.match(capture, /GITHUB_SHA/);
+  assert.match(capture, /Get-FileHash/);
+  assert.doesNotMatch(capture, /signing-key\.pem|verification-key\.pem|Get-ChildItem\s+-Path\s+\$env:RUNNER_TEMP/);
+
+  const upload = stepAt(uploadIndex);
+  assert.match(upload, /if: failure\(\) && steps\.verify\.outcome == 'failure'/);
+  assert.match(upload, /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  assert.match(upload, /retention-days: 3/);
+  assert.match(upload, /if-no-files-found: error/);
+});
+
 test('the gated release workflow owns publication', async () => {
   // A tag push runs release.yml (with the smoke gate) and release-metadata.yml
   // at the same time. If metadata publishes the release, a tag can go public
