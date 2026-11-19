@@ -209,6 +209,23 @@ export class ExactFinanceService {
       return this.append(account, { entryType: "PAYMENT", signedAmountDzd: amount.negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), paymentMethod: input.paymentMethod, note: input.note }, audit);
     });
   }
+  /** Trusted producers may settle part of one original without recording cash. */
+  recordSettlement(raw: Omit<PayExactDebtEntry, "paymentMethod"> & ExactDebtAudit): ExactDebtEntry {
+    if (!this.producer) throw new ExactDebtError("Original settlement requires a producer", "CONFLICT");
+    const { actorUserId, actorLabel, transactionId, ...domain } = raw;
+    const input = payExactDebtEntrySchema.omit({ paymentMethod: true }).strict().parse(domain);
+    const audit = this.audit({ actorUserId, actorLabel, transactionId });
+    return this.command("settle-original", { ...input, ...audit }, input, () => {
+      const target = this.obligation(input.debtEntryId);
+      this.assertOwner(target);
+      const account = this.getAccount(target.debtAccountId);
+      this.assertCurrency(account, input.currency);
+      const amount = Money.parse(input.amountDzd, input.currency);
+      const remaining = this.remainingFrom(target, this.listEntries(account.id));
+      if (remaining.compare(zero()) <= 0 || amount.compare(remaining) > 0) throw new ExactDebtError("Settlement exceeds remaining obligation");
+      return this.append(account, { entryType: "SETTLEMENT", signedAmountDzd: amount.negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), note: input.note }, audit);
+    });
+  }
   correctEntry(raw: CorrectExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
     const input = correctExactDebtEntrySchema.parse(raw);
     const audit = this.audit(raw);
