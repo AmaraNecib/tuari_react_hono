@@ -15,9 +15,8 @@ if ($names.Count -eq 0) {
   throw "Windows Shell reports an empty portable ZIP: $resolvedPath"
 }
 $requiredNames = @("Tuari.exe", "bin")
-$archiveFolder = Split-Path -Parent $resolvedPath
-$portableFolder = Get-ChildItem -LiteralPath $archiveFolder -Directory | Where-Object { $_.Name -like "Tuari-portable*" } | Select-Object -First 1
-if ($portableFolder -and (Test-Path -LiteralPath (Join-Path $portableFolder.FullName "resources") -PathType Container)) {
+$portableFolder = Join-Path (Split-Path -Parent $resolvedPath) ([IO.Path]::GetFileNameWithoutExtension($resolvedPath))
+if (Test-Path -LiteralPath (Join-Path $portableFolder "resources") -PathType Container) {
   $requiredNames += "resources"
 }
 foreach ($required in $requiredNames) {

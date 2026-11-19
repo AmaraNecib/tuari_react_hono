@@ -195,6 +195,7 @@ test('Nightly checks the produced portable ZIP through Windows Shell before sign
   assert.ok(packageIndex < stepIndex && stepIndex < signingIndex, 'Shell check must inspect the produced ZIP before signing');
   assert.match(step, /scripts\/smoke\/check-portable-zip-shell\.ps1/);
   assert.match(step, /Tuari-portable\*\.zip/);
+  assert.match(step, /Sort-Object LastWriteTimeUtc -Descending/);
   assert.match(step, /\$LASTEXITCODE/);
 });
 

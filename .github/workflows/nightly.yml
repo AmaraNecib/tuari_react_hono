@@ -122,7 +122,7 @@ jobs:
       - name: Check portable ZIP in Windows Shell
         shell: pwsh
         run: |
-          $portableZip = Get-ChildItem -LiteralPath "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "Tuari-portable*.zip" | Select-Object -First 1
+          $portableZip = Get-ChildItem -LiteralPath "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "Tuari-portable*.zip" | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
           if (-not $portableZip) { throw "No portable ZIP found for Windows Shell check" }
           & "scripts/smoke/check-portable-zip-shell.ps1" -ZipPath $portableZip.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
