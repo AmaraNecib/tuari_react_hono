@@ -45,6 +45,18 @@ using System.Text;
 using System.Runtime.InteropServices;
 
 public static class TuariRestartManager {
+  public static DateTime FileTimeUtc(System.Runtime.InteropServices.ComTypes.FILETIME value) {
+    long high = unchecked((uint)value.dwHighDateTime);
+    long low = unchecked((uint)value.dwLowDateTime);
+    long fileTime = (high << 32) | low;
+    return DateTime.FromFileTimeUtc(fileTime);
+  }
+  public static RM_PROCESS_INFO[] ReturnedEntries(RM_PROCESS_INFO[] allocated, uint returnedCount) {
+    int length = (int)Math.Min((ulong)returnedCount, (ulong)allocated.Length);
+    var returned = new RM_PROCESS_INFO[length];
+    Array.Copy(allocated, returned, length);
+    return returned;
+  }
   [StructLayout(LayoutKind.Sequential)]
   public struct RM_UNIQUE_PROCESS {
     public int dwProcessId;
@@ -107,9 +119,8 @@ public static class TuariRestartManager {
           $result.restartManager.errors += "RmGetList($resource) returned $listCode"
           continue
         }
-        foreach ($app in $apps) {
-          $start = ([long][uint32]$app.Process.ProcessStartTime.dwHighDateTime -shl 32) -bor [long][uint32]$app.Process.ProcessStartTime.dwLowDateTime
-          $startTime = [DateTime]::FromFileTimeUtc($start).ToString('o')
+        foreach ($app in [TuariRestartManager]::ReturnedEntries($apps, $count)) {
+          $startTime = [TuariRestartManager]::FileTimeUtc($app.Process.ProcessStartTime).ToString('o')
           $process = Get-Process -Id $app.Process.dwProcessId -ErrorAction SilentlyContinue
           $result.restartManager.owners += [ordered]@{
             pid = $app.Process.dwProcessId

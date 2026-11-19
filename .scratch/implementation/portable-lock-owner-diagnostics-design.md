@@ -1,37 +1,25 @@
-# Portable rename failure diagnostics
+# Portable rename diagnostics corrections
 
 ## Scope and authority
 
-This worker owns focused diagnostics for the nightly `portable:only` rename failure. The parent owns publication, PRs, merges, workflow dispatch and scheduling. No package, tool, version, Node, SEA, signing or license changes are authorized. Do not bypass packaging, encryption, Shell or native smoke gates.
+This lane fixes the three hosted findings on PR #569. The isolated worktree is `D:/worktrees/tuari_react_hono/t3-e6947dc5-203f09f5eb6d202d`, based on `8be50658891315f8697f73c17e635bca80647706`. Verification mode is `focused-local / CI-final-enforced`; strict ruleset `26837184` requires current-head `CI acceptance` from app 15368 without bypass. The parent selected light inspection and Greptile instead of three local review sessions for this lane. Publication and hosted gates remain parent-owned.
 
-The available isolated checkout is `D:/worktrees/tuari_react_hono/t3-e134bdd6-f2b80749f3dc76ad`. It is clean at `433af8a685295a85d9a24857877b48d4836862f8`, equal to `origin/develop` and the supplied base. The local branch label is `fix/portable-rename-diagnostics`; the same commit is also referenced by `diagnose/portable-rename-lock-owner`. Verification mode is `focused-local / CI-final-enforced`, as supplied by the parent. Review tier is high assurance because this change affects CI packaging and artifact retention. The parent permits this focused instrumentation, not local review sessions.
+Only portable rename diagnostics and their tests change. Packaging's primary exit code, rename retry delays, process handling through Restart Manager, artifact upload scope, and unrelated signing, licensing, encryption, smoke and merge policy remain unchanged. No package, runtime, version or privilege changes are allowed.
 
-## Failure and unknown
+## Findings and changes
 
-Nightly run `44579443928` passed its full encryption proof, then failed the real `Create portable package` step before ZIP creation. Node 22.23.4 reported native `EPERM` on all four candidate-directory rename attempts after waits of 100, 250 and 500 ms. The source was `.tmp-Tuari-portable`; destination was `Tuari-portable`. The exact holder is unknown. A loaded native DLL alone is not evidence of a directory lock. Do not lengthen the retry schedule or claim a production fix.
+1. Restart Manager's `FILETIME` halves are signed in the COM struct. Reinterpret each half with `unchecked((uint)...)` before combining the bits. The expected-result test uses FILETIME `0x01D5C03680000000`, whose independently specified UTC value is `2020-01-01T00:00:38.5548288Z`; its low half is negative as a signed integer.
+2. The second `RmGetList` call may return fewer owners than the allocated array length. Project only the first returned `$count` entries. The regression test allocates three default entries and projects a returned count of zero; no PID 0 entry may escape.
+3. Run each WPR diagnostic subprocess with a 15-second deadline. On timeout, terminate only the exact subprocess started by this wrapper and wait up to five more seconds. Log timeout/failure and proceed to packaging. A timed-out WPR start may already have begun a recording; record that state as uncertain and do not issue a stop. A successful start owns its per-instance trace, which the wrapper stops through a separate bounded WPR subprocess.
 
-The older DLL-only probe used an existing destination and was invalid. Its corrected test showed that loading the native DLL alone can still permit directory rename. The exact failed ZIP remains preserved in the parent tree. Mixed-path and ZIP-entry defects are already fixed.
+The wrapper calls packaging after any WPR status/start failure. It returns the packaging exit code unchanged, so later failure upload handling remains available. The diagnostic helper accepts internal arguments; no production CLI override exposes a different package command or WPR target.
 
-## Diagnostic design
+## Test seams and proof
 
-Instrument the existing packaging process, not a surrogate. Keep packaging order and outcomes unchanged. Record snapshots immediately before the encryption proof and immediately before the final candidate rename. If that rename fails, capture its timestamp, PID, source SHA, candidate/final presence and attributes, and the untouched Node error fields including source and destination. Probe a fixed, small resource list with Windows Restart Manager: candidate directory, `Tuari.exe`, `bin/node.exe`, and known packaged native bindings. Record each returned PID, process start time, application name and matching resource. Include this process if Restart Manager reports it. Never stop, restart or kill a process.
+`portable-diagnostic-process.ps1` owns the bounded process wait and kill of its exact `Start-Process` child. The capture script's callable function permits a test-only scriptblock runner after dot-sourcing; normal invocation still uses the fixed `pnpm --filter @tuari/desktop portable:only` command. Tests cover an owned stalled PowerShell fixture, start timeout uncertainty, nonzero diagnostic start, successful start/stop, package exit preservation, and continuation into later evidence handling.
 
-Restart Manager may miss a directory-only handle. Report an empty result as "no Restart Manager owners reported", not "no locks". Any API or process inspection error is separate evidence. A bounded PowerShell wrapper starts the built-in WPR `FileIO` and `Handle` profiles before the actual packaging command under a unique instance name. It stops only the instance it started. If WPR cannot start, packaging continues and the wrapper records why. This machine exposes both profiles, but I did not start a recording because local privileged recording is not required. On a packaging failure, retain the ETL with scoped JSON and logs; on success no diagnostic artifact is uploaded.
+The Restart Manager helper provides the real FILETIME conversion and returned-count projection used by the production loop. The expected UTC timestamp is a fixed contract value, not computed through that conversion. Tests do not start WPR recording on the owner's machine.
 
-Diagnostics are best-effort. They must never replace the primary rename exception or alter the package exit code. Persist only scoped diagnostic JSON, logs and ETL under the runner temp diagnostic directory. Do not capture arbitrary command lines, environment blocks, keys, credentials, runtime files, ZIPs, databases or general temp contents. Existing later ZIP-failure retention remains unchanged. Upload the scoped directory only when the packaging step fails, using the pinned artifact action and three-day retention.
+## Remaining limitations
 
-## Test plan and bounds
-
-Use the real Win32 no-share-delete directory handle with an absent destination. Prove the baseline rename succeeds, the owned holder causes the native rename failure, and rename succeeds after that exact child releases the handle. The owned directory fixture produced a native failure. Registering its directory path with Restart Manager returned Win32 error 5, so the helper now classifies directories and leaves them out of the file-resource probe. A separate owned file-handle fixture also produced no Restart Manager owner, so the report keeps that negative result instead of naming the fixture PID. The helper records directory paths it did not query and the API limitation. Test failure evidence and preservation of the original error when probes or writes fail. Validate PowerShell parsing, WPR profile syntax, workflow policy/assets and actionlint. Run focused script tests only. Do not run the full suite, full build, browser tests or native app smoke: the failure precedes ZIP creation and native launch.
-
-## Domain and seam
-
-The packaging script is the module that proves and publishes the candidate. The final rename is the failure seam. A diagnostic adapter observes that same in-process failure without changing the rename interface or retry policy. The deletion test is simple: if the diagnostic adapter is removed, the package output and failure remain identical; only the evidence disappears. The module earns its place by recording facts from this exact call, with no new package API.
-
-## Parent integration
-
-Parent inspection corrected the selected native resource to the actual `prebuilds/win32-x64.node` file, not a nonexistent `prebuilds/win32-x64` directory. The owned-file test permits either an actual reported owner or an honest empty result; it does not hardcode this laptop's empty result as the contract. Parent proof passed 44 packaging/encryption cases with no skips and 12 workflow cases. Actionlint and whitespace checks passed. Diagnostics remain optional and cannot mask the original rename exception. No retry or packaging acceptance policy changed.
-
-## Remaining risks
-
-Restart Manager may not report directory handles, WPR may be unavailable or blocked by runner policy, and this local machine cannot reproduce the original hosted holder. A successful local packaging run is not a reproduction. Only a future failed hosted package run with scoped evidence can identify a holder or provide a useful WPR trace. No hosted artifact is available to this worker.
+The hosted persistent rename owner remains unknown. Empty Restart Manager results do not establish that no process holds the directory. This lane does not test a live WPR recording or identify whether a timed-out WPR start left one active. A future failed hosted packaging run must provide scoped evidence before the owner can identify the persistent holder.
