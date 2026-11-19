@@ -8,11 +8,13 @@
 // Exit code 0 = all checks pass
 // Exit code 1 = any check fails
 
-import { access, readFile, readdir } from 'node:fs/promises';
-import { constants } from 'node:fs';
-import { resolve, extname, basename } from 'node:path';
-import { createPublicKey, verify } from 'node:crypto';
+import { access, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import { constants, mkdirSync, rmSync } from 'node:fs';
+import { resolve, basename, dirname } from 'node:path';
+import { createHash, createPublicKey, verify } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { extractAndCollectExecutables } from './collect-extracted-executables.mjs';
 
 const args = process.argv.slice(2);
 
@@ -27,6 +29,7 @@ Options:
   --public-key <path>   Path to Ed25519 public key PEM file (default: auto-detect)
   --version <ver>       Release version (e.g., 0.5.0)
   --channel <channel>   Release channel (e.g., stable, nightly, beta)
+  --diagnostics-dir <dir> Directory for portable ZIP verification diagnostics
   --help                Show this help
 
 Checks:
@@ -46,6 +49,8 @@ const artifactsDir = getArg('--artifacts');
 const publicKeyPath = getArg('--public-key');
 const version = getArg('--version');
 const channel = getArg('--channel');
+const diagnosticsDir = getArg('--diagnostics-dir');
+const resolvedDiagnosticsDir = diagnosticsDir ? resolve(diagnosticsDir) : undefined;
 
 if (!artifactsDir) {
   console.error('Error: --artifacts is required');
@@ -77,73 +82,96 @@ async function findFile(dir, pattern) {
 }
 
 async function verifyPortableZip(artifactsDir) {
-  // Find the portable zip
   const zipFile = await findFile(artifactsDir, /portable\.zip$/i);
-  if (!zipFile) {
-    throw new Error('No portable zip file found (expected *-portable.zip)');
-  }
+  if (!zipFile) throw new Error('No portable zip file found (expected *-portable.zip)');
 
   console.log(`  Found portable zip: ${basename(zipFile)}`);
-
-  // Extract the zip to a temp dir and check for Tuari.exe
-  const tmpDir = resolve(artifactsDir, '.verify-tmp');
-  const { rmSync, mkdirSync } = await import('node:fs');
-
-  // Clean up any previous temp
-  try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-  mkdirSync(tmpDir, { recursive: true });
-
-  // Extract the zip
+  const tmpDir = await mkdtemp(resolve(artifactsDir, '.verify-tmp-'));
   const isWin = process.platform === 'win32';
-  let extractOk = false;
+  const listCommand = isWin
+    ? resolve(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
+    : 'unzip';
+  const listArgs = isWin ? ['-tf', zipFile] : ['-Z1', zipFile];
+  const extractCommand = isWin ? 'powershell.exe' : 'unzip';
+  const extractArgs = isWin
+    ? ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', resolve(dirname(fileURLToPath(import.meta.url)), 'verify-portable-zip.ps1'), zipFile, tmpDir]
+    : ['-o', zipFile, '-d', tmpDir];
+  const resultRecord = {
+    zip: {
+      path: zipFile,
+      sizeBytes: null,
+      sha256: null,
+    },
+    source: {
+      sha: process.env.GITHUB_SHA ?? null,
+      runId: process.env.GITHUB_RUN_ID ?? null,
+      runAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
+    },
+    archiveListing: { command: listCommand, args: listArgs, exitCode: null, stdout: '', stderr: '', entryNames: [] },
+    extraction: { command: extractCommand, args: extractArgs, exitCode: null, stdout: '', stderr: '' },
+    extractedExecutables: [],
+  };
+  const diagnosticsPath = resolvedDiagnosticsDir
+    ? resolve(resolvedDiagnosticsDir, 'portable-verification.json')
+    : undefined;
+  const diagnosticErrors = [];
+  const saveDiagnostics = async (stage) => {
+    if (!diagnosticsPath) return;
+    try {
+      mkdirSync(resolvedDiagnosticsDir, { recursive: true });
+      await writeFile(diagnosticsPath, `${JSON.stringify(resultRecord, null, 2)}\n`, 'utf8');
+    } catch (err) {
+      const message = `Diagnostic write failed during ${stage}: ${err.message}`;
+      diagnosticErrors.push(message);
+      console.error(`  ${message}`);
+    }
+  };
 
-  if (isWin) {
-    // On Windows, use PowerShell Expand-Archive (tar chokes on C: paths)
-    const extractResult = spawnSync(
-      'powershell', [
-        '-NoProfile',
-        '-Command',
-        `Expand-Archive -Path '${zipFile}' -DestinationPath '${tmpDir}' -Force`
-      ],
-      { encoding: 'utf8' }
+  let verificationError;
+  try {
+    const zipBytes = await readFile(zipFile);
+    resultRecord.zip.sizeBytes = zipBytes.length;
+    resultRecord.zip.sha256 = createHash('sha256').update(zipBytes).digest('hex');
+    const listResult = spawnSync(listCommand, listArgs, { encoding: 'utf8', windowsHide: true });
+    resultRecord.archiveListing.exitCode = listResult.status;
+    resultRecord.archiveListing.stdout = listResult.stdout ?? '';
+    resultRecord.archiveListing.stderr = listResult.stderr ?? listResult.error?.message ?? '';
+    resultRecord.archiveListing.entryNames = (listResult.stdout ?? '').split(/\r?\n/).filter(Boolean);
+    await saveDiagnostics('archive listing');
+
+    mkdirSync(tmpDir, { recursive: true });
+    const { extraction: extractionResult, executables, inventoryError } = await extractAndCollectExecutables(
+      () => spawnSync(extractCommand, extractArgs, { encoding: 'utf8', windowsHide: true }),
+      tmpDir,
     );
-    extractOk = extractResult.status === 0;
-    if (!extractOk) {
-      throw new Error(`Cannot extract zip: PowerShell Expand-Archive exited with code ${extractResult.status}. ${extractResult.stderr}`);
+    resultRecord.extraction.exitCode = extractionResult.status;
+    resultRecord.extraction.stdout = extractionResult.stdout ?? '';
+    resultRecord.extraction.stderr = extractionResult.stderr ?? extractionResult.error?.message ?? '';
+    resultRecord.extractedExecutables = executables;
+    if (inventoryError) console.error(`  Extraction inventory failed: ${inventoryError.message}`);
+
+    if (extractionResult.status !== 0) {
+      await saveDiagnostics('failed extraction');
+      const nativeFailure = extractionResult.error?.message ?? resultRecord.extraction.stderr.trim();
+      throw new Error(`Cannot extract zip: ${extractCommand} exited with code ${extractionResult.status}${nativeFailure ? `. ${nativeFailure}` : ''}`);
     }
-  } else {
-    // On Unix, use unzip (GNU tar does not understand ZIP format)
-    const extractResult = spawnSync('unzip', ['-o', zipFile, '-d', tmpDir], {
-      encoding: 'utf8',
-    });
-    extractOk = extractResult.status === 0;
-    if (!extractOk) {
-      throw new Error(`Cannot extract zip: unzip exited with code ${extractResult.status}. ${extractResult.stderr}`);
+
+    await saveDiagnostics('extraction inventory');
+    if (!resultRecord.extractedExecutables.some(({ path }) => path.split('/').at(-1).toLowerCase() === 'tuari.exe')) {
+      throw new Error('Portable zip extraction succeeded, but the extracted tree does not contain Tuari.exe');
+    }
+  } catch (err) {
+    verificationError = err;
+  } finally {
+    await saveDiagnostics('final record');
+    try { rmSync(tmpDir, { recursive: true, force: true }); } catch (err) {
+      console.error(`  Extraction cleanup failed: ${err.message}`);
     }
   }
 
-  // Check for Tuari.exe in the extracted contents
-  let exeFound = false;
-  async function findExe(dir) {
-    const entries = await readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const fullPath = resolve(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (await findExe(fullPath)) return true;
-      } else if (entry.name.toLowerCase() === 'tuari.exe') {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  exeFound = await findExe(tmpDir);
-
-  // Clean up
-  try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
-
-  if (!exeFound) {
-    throw new Error('Portable zip does not contain Tuari.exe');
+  if (verificationError) throw verificationError;
+  if (diagnosticErrors.length > 0) {
+    throw new Error(`Portable ZIP verification passed, but diagnostics could not be written: ${diagnosticErrors[0]}`);
   }
 }
 

@@ -4,12 +4,13 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, mkdir, readFile } from 'node:fs/promises';
+import { mkdtemp, writeFile, mkdir, readFile, rename, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync, execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { extractAndCollectExecutables } from '../scripts/collect-extracted-executables.mjs';
 
 const scriptDir = fileURLToPath(new URL('../scripts', import.meta.url));
 
@@ -85,9 +86,96 @@ test('verify-release-assets exits with non-zero when portable zip does not conta
   const zipPath = join(artifactsDir, 'tuari-0.5.0-stable-portable.zip');
   await createZip(zipPath, emptyDir, ['README.txt']);
 
-  const result = runScript('verify-release-assets.mjs', ['--artifacts', artifactsDir]);
+  const staleDir = join(artifactsDir, '.verify-tmp');
+  await mkdir(staleDir);
+  await writeFile(join(staleDir, 'Tuari.exe'), 'stale app must not satisfy this ZIP');
+  const diagnosticsDir = join(tmp, 'diagnostics');
+  const result = runScript('verify-release-assets.mjs', ['--artifacts', artifactsDir, '--diagnostics-dir', diagnosticsDir]);
   assert.notEqual(result.exitCode, 0, 'should exit with non-zero when Tuari.exe is missing');
   assert.match(result.stderr, /Tuari\.exe/i, 'should mention missing Tuari.exe');
+  const diagnostics = JSON.parse(await readFile(join(diagnosticsDir, 'portable-verification.json'), 'utf8'));
+  assert.equal(diagnostics.zip.sizeBytes > 0, true);
+  assert.match(diagnostics.zip.sha256, /^[a-f0-9]{64}$/);
+  assert.equal(diagnostics.archiveListing.exitCode, 0);
+  assert.deepEqual(diagnostics.archiveListing.entryNames, ['README.txt']);
+  assert.equal(typeof diagnostics.archiveListing.stdout, 'string');
+  assert.equal(typeof diagnostics.archiveListing.stderr, 'string');
+  assert.equal(diagnostics.extraction.exitCode, 0);
+  assert.equal(typeof diagnostics.extraction.stdout, 'string');
+  assert.equal(typeof diagnostics.extraction.stderr, 'string');
+  assert.deepEqual(diagnostics.extractedExecutables, []);
+});
+
+test('verify-release-assets preserves native extraction failure diagnostics for an empty ZIP', async () => {
+  const tmp = await mkdtemp(join(tmpdir(), 'verify-empty-zip-'));
+  const artifactsDir = join(tmp, 'artifacts');
+  const diagnosticsDir = join(tmp, 'diagnostics');
+  await mkdir(artifactsDir, { recursive: true });
+  await writeFile(join(artifactsDir, 'tuari-empty-portable.zip'), Buffer.alloc(0));
+
+  const result = runScript('verify-release-assets.mjs', [
+    '--artifacts', artifactsDir,
+    '--diagnostics-dir', diagnosticsDir,
+  ]);
+  assert.notEqual(result.exitCode, 0, 'empty ZIP must fail the actual extraction check');
+  assert.doesNotMatch(result.stderr, /does not contain Tuari\.exe/i, 'native extraction failure must not be reported as a missing executable');
+
+  const diagnostics = JSON.parse(await readFile(join(diagnosticsDir, 'portable-verification.json'), 'utf8'));
+  assert.equal(diagnostics.zip.sizeBytes, 0);
+  assert.equal(typeof diagnostics.archiveListing.exitCode, 'number');
+  assert.equal(diagnostics.extraction.exitCode === 0, false);
+  assert.equal(typeof diagnostics.extraction.stdout, 'string');
+  assert.equal(typeof diagnostics.extraction.stderr, 'string');
+});
+
+test('verify-release-assets keeps extraction failure and cleans up when diagnostics cannot be written', async () => {
+  const tmp = await mkdtemp(join(tmpdir(), 'verify-diagnostics-error-'));
+  const artifactsDir = join(tmp, 'artifacts');
+  const diagnosticsPath = join(tmp, 'diagnostics-is-a-file');
+  await mkdir(artifactsDir, { recursive: true });
+  await writeFile(join(artifactsDir, 'tuari-invalid-portable.zip'), Buffer.from('not a ZIP archive'));
+  await writeFile(diagnosticsPath, 'block diagnostics directory creation');
+
+  const result = runScript('verify-release-assets.mjs', [
+    '--artifacts', artifactsDir,
+    '--diagnostics-dir', diagnosticsPath,
+  ]);
+
+  assert.notEqual(result.exitCode, 0);
+  assert.match(result.stderr, /Cannot extract zip/i, 'native extraction failure must remain the primary error');
+  assert.match(result.stderr, /diagnostic/i, 'diagnostic write failure must be reported separately');
+  assert.doesNotMatch(result.stderr, /does not contain Tuari\.exe/i);
+  assert.deepEqual((await readdir(artifactsDir)).filter((name) => name.startsWith('.verify-tmp-')), []);
+});
+
+test('extraction inventory captures an executable written before the extractor fails', async () => {
+  const tmp = await mkdtemp(join(tmpdir(), 'verify-partial-extraction-'));
+  const extractionDir = join(tmp, 'extracted');
+  const nativeFailure = { status: 1, stdout: '', stderr: 'later archive entry failed' };
+
+  const { extraction, executables } = await extractAndCollectExecutables(() => {
+    mkdirSync(extractionDir, { recursive: true });
+    writeFileSync(join(extractionDir, 'Tuari.exe'), 'app written before failure');
+    return nativeFailure;
+  }, extractionDir);
+
+  assert.equal(extraction, nativeFailure);
+  assert.deepEqual(executables, [{ path: 'Tuari.exe', sizeBytes: 26 }]);
+});
+
+test('inventory failure does not replace the extractor failure', async () => {
+  const tmp = await mkdtemp(join(tmpdir(), 'verify-inventory-error-'));
+  const extractionDir = join(tmp, 'extracted');
+  const nativeFailure = { status: 1, stderr: 'original extraction failure' };
+
+  const { extraction, executables, inventoryError } = await extractAndCollectExecutables(() => {
+    rmSync(extractionDir, { recursive: true, force: true });
+    return nativeFailure;
+  }, extractionDir);
+
+  assert.equal(extraction, nativeFailure);
+  assert.deepEqual(executables, []);
+  assert.match(inventoryError.message, /ENOENT/);
 });
 
 test('verify-release-assets exits with non-zero when update package is missing', async () => {
@@ -165,14 +253,37 @@ test('verify-release-assets passes with valid artifacts', async () => {
   const pubKeyPath = join(tmp, 'verify-pubkey.pem');
   await writeFile(pubKeyPath, publicKey.export({ type: 'spki', format: 'pem' }));
 
+  const quotedArtifactsDir = join(tmp, "artifacts 'quoted'");
+  await rename(artifactsDir, quotedArtifactsDir);
+  const diagnosticsDir = join(tmp, "diagnostics 'quoted'");
   const result = runScript('verify-release-assets.mjs', [
-    '--artifacts', artifactsDir,
+    '--artifacts', quotedArtifactsDir,
+    '--diagnostics-dir', diagnosticsDir,
     '--public-key', pubKeyPath,
     '--version', '0.5.0',
     '--channel', 'stable',
   ]);
   assert.equal(result.exitCode, 0, 'should exit with zero when artifacts are valid');
   assert.match(result.stdout, /PASS/i, 'should indicate pass');
+  const diagnostics = JSON.parse(await readFile(join(diagnosticsDir, 'portable-verification.json'), 'utf8'));
+  assert.equal(diagnostics.extraction.exitCode, 0);
+  assert.ok(diagnostics.zip.path.includes("artifacts 'quoted'"));
+  assert.ok(diagnostics.archiveListing.entryNames.some((name) => name.toLowerCase() === 'tuari.exe'));
+  assert.ok(diagnostics.extractedExecutables.some(({ path }) => path.toLowerCase() === 'tuari.exe'));
+
+  const blockedDiagnostics = join(tmp, 'diagnostics-blocked');
+  await writeFile(blockedDiagnostics, 'not a directory');
+  const missingEvidence = runScript('verify-release-assets.mjs', [
+    '--artifacts', quotedArtifactsDir,
+    '--diagnostics-dir', blockedDiagnostics,
+    '--public-key', pubKeyPath,
+    '--version', '0.5.0',
+    '--channel', 'stable',
+  ]);
+  assert.notEqual(missingEvidence.exitCode, 0, 'valid artifacts must not pass when requested diagnostics cannot be saved');
+  assert.match(missingEvidence.stdout, /Update package signature: VALID/);
+  assert.match(missingEvidence.stderr, /diagnostic write failed/i);
+  assert.deepEqual((await readdir(quotedArtifactsDir)).filter((name) => name.startsWith('.verify-tmp-')), []);
 });
 
 test('verify-release-assets rejects tampered update package', async () => {
