@@ -202,7 +202,8 @@ test('Nightly checks the produced portable ZIP through Windows Shell before sign
   assert.match(step, /scripts\/smoke\/check-portable-zip-shell\.ps1/);
   assert.match(step, /Tuari-portable\*\.zip/);
   assert.match(step, /Sort-Object LastWriteTimeUtc -Descending/);
-  assert.match(step, /\$LASTEXITCODE/);
+  assert.doesNotMatch(step, /\$LASTEXITCODE/);
+  assert.match(step, /\$ErrorActionPreference = 'Stop'/);
   assert.match(step, /id: portable/);
   assert.match(step, /path=\$\(\$portableZip\.FullName\).*GITHUB_OUTPUT/);
   const manifest = nightly.split('      - name: Compute checksum and create update manifest')[1].split('      # ── Smoke test')[0];
