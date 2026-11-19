@@ -100,6 +100,7 @@ describe("inert foundation inventory", () => {
       "apps/api/src/modules/project-cost/project-cost.service.ts",
       "apps/api/src/modules/workforce/adapters/sqlite-employee-earning.repository.ts",
       "apps/web/src/components/ui/currency-amount-input.tsx",
+      "apps/web/src/features/employees/employee-earning-allocation.ts",
       "apps/web/src/features/employees/employee-edit-page.tsx",
       "apps/web/src/features/inventory/inventory-exact-movement-form.tsx",
       "apps/web/src/features/inventory/inventory-exact-page.tsx",
