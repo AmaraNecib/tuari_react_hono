@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { StrictMode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const { mutateAsync, sessionUser } = vi.hoisted(() => ({ mutateAsync: vi.fn(), sessionUser: { id: "user-1" } }))
@@ -50,6 +51,38 @@ describe("earned-wage approval composer", () => {
     expect(screen.getByLabelText("earnings.total").getAttribute("aria-describedby")).toBeTruthy()
     expect((screen.getByLabelText("earnings.total") as HTMLInputElement).validationMessage).toBe("")
     expect(document.activeElement).toBe(screen.getByLabelText("earnings.total"))
+  })
+
+  it("keeps total input focused while correcting validation errors and refocuses on each failed save", () => {
+    render(<EmployeeEarningApprovalForm {...props} />)
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    const total = screen.getByLabelText("earnings.total")
+
+    fireEvent.submit(document.querySelector("form")!)
+    expect(document.activeElement).toBe(total)
+
+    for (const value of ["1", "12", "123", "1234"]) {
+      fireEvent.change(total, { target: { value } })
+      expect(document.activeElement).toBe(total)
+      expect(screen.getByLabelText("earnings.project 1").getAttribute("aria-invalid")).toBe("true")
+    }
+
+    fireEvent.submit(document.querySelector("form")!)
+    expect(document.activeElement).toBe(screen.getByLabelText("earnings.project 1"))
+  })
+
+  it("completes a mounted save once through StrictMode effect replay", async () => {
+    mutateAsync.mockResolvedValue({})
+    render(<StrictMode><EmployeeEarningApprovalForm {...props} /></StrictMode>)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "100" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "100" } })
+
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(props.onComplete).toHaveBeenCalledTimes(1))
+    expect(mutateAsync).toHaveBeenCalledTimes(1)
   })
 
   it("derives the remainder and requires acknowledgement before approval", async () => {
@@ -268,6 +301,44 @@ describe("earned-wage approval composer", () => {
     expect(mutateAsync.mock.calls[2]![0]).toEqual(submitted)
   })
 
+  it("does not let a completed save from an unmounted employee form navigate over a new draft", async () => {
+    let resolveSave!: (value: unknown) => void
+    mutateAsync.mockImplementation(() => new Promise(resolve => { resolveSave = resolve }))
+    const oldOnComplete = vi.fn()
+    const oldView = render(<EmployeeEarningApprovalForm {...props} employeeId="employee-old" onComplete={oldOnComplete} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "100" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-a" } })
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "100" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
+    const oldRequestId = mutateAsync.mock.calls[0]![0].requestId
+    const oldStorageKey = localStorage.key(0)!
+    expect(localStorage.getItem(oldStorageKey)).toContain(oldRequestId)
+    localStorage.setItem("new-form-storage-marker", "preserve")
+
+    oldView.rerender(<EmployeeEarningApprovalForm {...props} employeeId="employee-old" active={false} onComplete={oldOnComplete} />)
+    oldView.unmount()
+    const newOnComplete = vi.fn()
+    render(<EmployeeEarningApprovalForm {...props} employeeId="employee-new" onComplete={newOnComplete} />)
+    fireEvent.change(screen.getByLabelText("earnings.total"), { target: { value: "250" } })
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+    fireEvent.change(screen.getByLabelText("earnings.project 1"), { target: { value: "project-b" } })
+    fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "2" } })
+    fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "125" } })
+
+    resolveSave({})
+    await waitFor(() => expect(localStorage.getItem(oldStorageKey)).toBeNull())
+    expect(localStorage.getItem("new-form-storage-marker")).toBe("preserve")
+    expect(oldOnComplete).not.toHaveBeenCalled()
+    expect(newOnComplete).not.toHaveBeenCalled()
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).value).toBe("250")
+    expect((screen.getByLabelText("earnings.project 1") as HTMLSelectElement).value).toBe("project-b")
+    expect((screen.getByLabelText("earnings.days 1") as HTMLInputElement).value).toBe("2")
+    expect((screen.getByLabelText("earnings.amount 1") as HTMLInputElement).value).toBe("125")
+  })
+
   it("unlocks a first proven no-write rejection and marks the rejected row field", async () => {
     mutateAsync.mockRejectedValueOnce(Object.assign(new Error("project does not exist"), {
       code: "NOT_FOUND",
@@ -295,6 +366,7 @@ describe("earned-wage approval composer", () => {
     expect(projectFields[1]!.getAttribute("aria-invalid")).toBeNull()
     const startDate = screen.getByLabelText("earnings.periodStart")
     expect(startDate.getAttribute("aria-invalid")).toBe("true")
+    expect(document.activeElement).toBe(startDate)
     expect(screen.getByText("period start is invalid").id).toBe(startDate.getAttribute("aria-describedby"))
     expect(screen.getByText("project does not exist").id).toBe(projectFields[2]!.getAttribute("aria-describedby"))
     expect(screen.queryByText("earnings.pendingApproval")).toBeNull()

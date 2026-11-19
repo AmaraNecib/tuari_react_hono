@@ -118,13 +118,29 @@ export function EmployeeEarningApprovalForm({
   const [error, setError] = useState("")
   const [helpOpen, setHelpOpen] = useState(false)
   const [issues, setIssues] = useState<Array<{ path: (string | number)[]; message: string }>>([])
+  const [invalidSaveCount, setInvalidSaveCount] = useState(0)
   const frozen = pending !== null
   const previousIdentity = useRef<string | null>(null)
+  const identityKey = identity ? JSON.stringify([identity.userId, identity.workspaceId, identity.employeeId]) : null
+  const identityKeyRef = useRef(identityKey)
+  identityKeyRef.current = identityKey
+  const activeRef = useRef(active)
+  activeRef.current = active
+  const lifecycleGeneration = useRef(0)
+  const previousActive = useRef(active)
+  if (previousActive.current && !active) lifecycleGeneration.current += 1
+  previousActive.current = active
+  const mountedRef = useRef(false)
 
   useEffect(() => {
-    if (!issues.length) return
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
+  useEffect(() => {
+    if (!invalidSaveCount) return
     formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
-  }, [issues])
+  }, [invalidSaveCount])
 
   useEffect(() => {
     if (!active) return
@@ -251,6 +267,7 @@ export function EmployeeEarningApprovalForm({
       formRef.current?.querySelector<HTMLElement>('[aria-required="true"][type="checkbox"]')?.focus()
       return
     }
+    const submittedLifecycleGeneration = lifecycleGeneration.current
     let hadPriorPending = pending !== null
     let payload = pending?.payload
     let mutationStarted = false
@@ -268,6 +285,7 @@ export function EmployeeEarningApprovalForm({
           if (!result.ok) {
             if (result.issue) { setStorageError(true); setError(t("earnings.storageUnavailable")); return }
             setIssues(result.issues.map(issue => ({ path: issue.path, message: t(issue.message) })))
+            setInvalidSaveCount(count => count + 1)
             return
           }
           payload = result.payload
@@ -277,7 +295,18 @@ export function EmployeeEarningApprovalForm({
       mutationStarted = true
       await mutation.mutateAsync(payload)
       mutationSucceeded = true
-      removePendingEmployeeEarning(identity, window.localStorage)
+      const storedPending = loadPendingEmployeeEarning(identity, window.localStorage)
+      if (!storedPending.ok) {
+        if (mountedRef.current && activeRef.current && identityKeyRef.current === identityKey) {
+          setStorageError(true)
+          setError(t("earnings.storageUnavailable"))
+        }
+        return
+      }
+      if (storedPending.pending?.payload.requestId === payload.requestId) {
+        removePendingEmployeeEarning(identity, window.localStorage)
+      }
+      if (!mountedRef.current || !activeRef.current || identityKeyRef.current !== identityKey || lifecycleGeneration.current !== submittedLifecycleGeneration) return
       setPending(null)
       setTotal("")
       setRows([])
@@ -307,6 +336,7 @@ export function EmployeeEarningApprovalForm({
         }
       }
       setIssues(normalizedIssues)
+      if (normalizedIssues.length) setInvalidSaveCount(count => count + 1)
       setError(normalizedIssues.length ? "" : cause instanceof Error ? cause.message : t("earnings.submitError"))
     }
   }
