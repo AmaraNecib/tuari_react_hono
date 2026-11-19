@@ -1,4 +1,5 @@
-/** The paired attribution is checked on insert and again during hydration. */
+/** Insert and hydration require real current sources. Opening kinds remain
+ * reserved in the shape but fail closed until a reviewed provider is integrated. */
 export const payrollOffsetLink = `EXISTS (
   SELECT 1 FROM debt_entry wage_original
   JOIN debt_account wage_account ON wage_account.id=candidate.wage_debt_account_id
@@ -19,13 +20,17 @@ export const payrollOffsetLink = `EXISTS (
     AND wage_original.currency=candidate.currency AND advance_original.currency=candidate.currency
     AND wage_original.producer_type=CASE candidate.wage_source_kind WHEN 'EARNING' THEN 'PAYROLL_EARNINGS' ELSE 'PAYROLL_OPENING' END
     AND wage_original.producer_id=candidate.wage_source_id
+    AND candidate.wage_source_kind='EARNING'
+    AND EXISTS (SELECT 1 FROM employee_earning earning WHERE earning.id=candidate.wage_source_id
+      AND earning.employee_id=candidate.employee_id AND earning.currency_code=candidate.currency
+      AND earning.total_minor=wage_original.signed_amount_minor)
     AND advance_original.producer_type=CASE candidate.advance_source_kind WHEN 'ADVANCE' THEN 'PAYROLL_ADVANCE' ELSE 'PAYROLL_OPENING' END
     AND advance_original.producer_id=candidate.advance_source_id
-    AND (candidate.advance_source_kind='OPENING_ADVANCE' OR (advance_original.entry_type='ADVANCE' AND EXISTS (
-      SELECT 1 FROM employee_salary_advance advance JOIN employee_salary_cash cash ON cash.id=advance.cash_id
+    AND candidate.advance_source_kind='ADVANCE' AND advance_original.entry_type='ADVANCE'
+    AND EXISTS (SELECT 1 FROM employee_salary_advance advance JOIN employee_salary_cash cash ON cash.id=advance.cash_id
       WHERE advance.id=candidate.advance_source_id AND advance.debt_entry_id=advance_original.id
         AND advance.debt_account_id=advance_account.id AND advance.amount_minor=advance_original.signed_amount_minor
-        AND cash.employee_id=candidate.employee_id AND cash.currency=candidate.currency)))
+        AND cash.employee_id=candidate.employee_id AND cash.currency=candidate.currency)
     AND wage_settlement.debt_account_id=wage_account.id AND advance_settlement.debt_account_id=advance_account.id
     AND wage_settlement.target_entry_id=wage_original.id AND advance_settlement.target_entry_id=advance_original.id
     AND wage_settlement.correction_of_entry_id IS NULL AND advance_settlement.correction_of_entry_id IS NULL

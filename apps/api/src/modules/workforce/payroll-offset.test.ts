@@ -20,7 +20,7 @@ function fixture(key: string, wage = "10000.00", advance = "5000.00") {
   const advanceCash = service.recordCash({ ...f.audit, requestId: "advance-cash", employeeId: f.employeeId, amount: advance, paymentDate: paidAt, wages: [], advanceAmount: advance });
   const input = { ...f.audit, requestId: "offset", employeeId: f.employeeId, amount: "2000.00", settlementDate: paidAt,
     wageSource: { kind: "EARNING" as const, id: earning.id }, advanceSource: { kind: "ADVANCE" as const, id: advanceCash.advance!.id } };
-  return { ...f, service, offsets, earning, advanceCash, input };
+  return { ...f, service, offsets, earning, advanceCash, input, createEarning: f.earning };
 }
 
 describe.each([["plain", ""], ["keyed", "558-offset-public-key"]])("explicit wage offset %s", (_driver, key) => {
@@ -151,6 +151,43 @@ describe.each([["plain", ""], ["keyed", "558-offset-public-key"]])("explicit wag
     expect(f.finance.remaining(otherCash.advance!.debtEntryId)).toBe("5000.00");
     expect(f.finance.remaining(f.advanceCash.advance!.debtEntryId)).toBe("5000.00");
     expect(f.offsets.listOffsets(f.employeeId)).toEqual([]);
+  });
+
+  it.each(["missing", "worker", "amount", "opening"])("refuses direct storage attribution to a %s earning source", fault => {
+    const f = fixture(key);
+    const sourceId = fault === "missing" || fault === "opening" ? randomUUID() : f.createEarning(fault === "amount" ? "9000.00" : "10000.00", fault === "worker" ? f.employee() : f.employeeId).id;
+    const wages = f.finance.forProducer({ type: fault === "opening" ? "PAYROLL_OPENING" : "PAYROLL_EARNINGS", id: sourceId });
+    const account = wages.createAccount({ requestId: randomUUID(), partyType: "INTERNAL_WORKER", workerId: f.employeeId, direction: "PAYABLE", currency: "DZD" });
+    const original = wages.postEntry({ requestId: randomUUID(), debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: "10000.00", currency: "DZD" });
+    const wageEntry = wages.recordSettlement({ requestId: randomUUID(), debtEntryId: original.id, amountDzd: "2000.00", currency: "DZD" });
+    const advances = f.finance.forProducer({ type: "PAYROLL_ADVANCE", id: f.advanceCash.advance!.id });
+    const advanceEntry = advances.recordSettlement({ requestId: randomUUID(), debtEntryId: f.advanceCash.advance!.debtEntryId, amountDzd: "2000.00", currency: "DZD" });
+    expect(() => f.offsets.saveOffset({ id: randomUUID(), employeeId: f.employeeId, currency: "DZD", amount: "2000.00", settlementDate: paidAt, ...f.audit, createdAt: now,
+      wageSource: { kind: fault === "opening" ? "OPENING" : "EARNING", id: sourceId }, advanceSource: { kind: "ADVANCE", id: f.advanceCash.advance!.id },
+      wage: { debtAccountId: account.id, debtEntryId: original.id, settlementEntryId: wageEntry.id },
+      advance: { debtAccountId: f.advanceCash.advance!.debtAccountId, debtEntryId: f.advanceCash.advance!.debtEntryId, settlementEntryId: advanceEntry.id } })).toThrow("Payroll offset source link mismatch");
+    expect(f.offsets.listOffsets(f.employeeId)).toEqual([]);
+  });
+
+  it("refuses direct attribution to an opening advance without a reviewed source provider", () => {
+    const f = fixture(key);
+    const wageOriginal = f.service.registerEarning({ ...f.audit, requestId: "real-wage", earningId: f.earning.id })!;
+    const wageEntry = f.finance.forProducer({ type: "PAYROLL_EARNINGS", id: f.earning.id }).recordSettlement({ requestId: randomUUID(), debtEntryId: wageOriginal.id, amountDzd: "2000.00", currency: "DZD" });
+    const openingId = randomUUID(); const opening = f.finance.forProducer({ type: "PAYROLL_OPENING", id: openingId });
+    const original = opening.postEntry({ requestId: randomUUID(), debtAccountId: f.advanceCash.advance!.debtAccountId, entryType: "ADJUSTMENT", signedAmountDzd: "5000.00", currency: "DZD" });
+    const advanceEntry = opening.recordSettlement({ requestId: randomUUID(), debtEntryId: original.id, amountDzd: "2000.00", currency: "DZD" });
+    expect(() => f.offsets.saveOffset({ id: randomUUID(), employeeId: f.employeeId, currency: "DZD", amount: "2000.00", settlementDate: paidAt, ...f.audit, createdAt: now,
+      wageSource: { kind: "EARNING", id: f.earning.id }, advanceSource: { kind: "OPENING_ADVANCE", id: openingId },
+      wage: { debtAccountId: wageOriginal.debtAccountId, debtEntryId: wageOriginal.id, settlementEntryId: wageEntry.id },
+      advance: { debtAccountId: original.debtAccountId, debtEntryId: original.id, settlementEntryId: advanceEntry.id } })).toThrow("Payroll offset source link mismatch");
+    expect(f.offsets.listOffsets(f.employeeId)).toEqual([]);
+  });
+
+  it("refuses an existing offset after its approved earning source is corrupted", () => {
+    const f = fixture(key); const result = f.service.offsetAdvance(f.input);
+    f.db.prepare("UPDATE employee_earning SET total_minor=? WHERE id=?").run(900000n, f.earning.id);
+    expect(() => f.offsets.getOffset(result.id)).toThrow("Payroll offset source link mismatch");
+    expect(() => f.offsets.listOffsets(f.employeeId)).toThrow("Payroll offset source link mismatch");
   });
 
   it("refuses offsets larger than wages even if the advance has enough remaining", () => {
