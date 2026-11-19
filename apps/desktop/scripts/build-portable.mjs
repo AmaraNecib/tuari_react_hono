@@ -17,13 +17,13 @@ const tempPortableDir = path.resolve(portableRoot, ".tmp-Tuari-portable");
 const zipPath = path.resolve(portableRoot, `${basePortableName}.zip`);
 
 const appExePath = path.resolve(releaseRoot, "app.exe");
-const binDir = path.resolve(releaseRoot, "bin");
+const binDir = path.resolve(desktopRoot, "src-tauri", "bin");
 if (!existsSync(appExePath)) {
   throw new Error("Missing release app.exe. Run the desktop build first.");
 }
 
 if (!existsSync(binDir)) {
-  throw new Error("Missing release bin directory. Run the desktop build first.");
+  throw new Error("Missing staged sidecar bin directory. Run sidecar:build before packaging.");
 }
 
 let finalPortableDir = portableDir;
