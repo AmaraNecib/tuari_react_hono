@@ -3,6 +3,7 @@ param(
   [string] $ZipPath
 )
 
+. (Join-Path $PSScriptRoot 'portable-shell-entry-names.ps1')
 $resolvedPath = (Resolve-Path -LiteralPath $ZipPath).Path
 $shell = New-Object -ComObject Shell.Application
 $archive = $shell.Namespace($resolvedPath)
@@ -10,7 +11,7 @@ if ($null -eq $archive) {
   throw "Windows Shell could not open portable ZIP: $resolvedPath"
 }
 
-$names = @($archive.Items() | ForEach-Object { $_.Name })
+$names = @(Get-PortableShellEntryNames -Items @($archive.Items()))
 if ($names.Count -eq 0) {
   throw "Windows Shell reports an empty portable ZIP: $resolvedPath"
 }

@@ -229,6 +229,14 @@ test("portable:only creates a Windows Explorer-visible ZIP with root app, runtim
   assert.ok(!existsSync(path.join(f.portable, ".tmp-Tuari-portable")));
 });
 
+test("Windows Shell identity ignores hidden extensions and display labels", { skip: process.platform !== "win32" }, () => {
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path.resolve(scriptsRoot, "../../../scripts/smoke/portable-shell-entry-names.test.ps1")], { encoding: "utf8", timeout: 10_000 });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /PASS hidden-extension/);
+  assert.match(result.stdout, /PASS executable display label cannot disguise/);
+});
+
 test("portable:only retries the production candidate rename after a held Win32 directory handle releases", { skip: process.platform !== "win32" }, async (t) => {
   const f = fixture(t, { proofBarrier: true });
   const run = f.start();
