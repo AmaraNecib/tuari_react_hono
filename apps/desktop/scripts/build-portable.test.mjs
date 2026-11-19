@@ -120,6 +120,7 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false, d
   writeFileSync(path.join(portable, "Tuari-portable", "previous.txt"), "previous folder");
   writeFileSync(path.join(portable, "Tuari-portable.zip"), "previous zip");
   copyFileSync(path.join(scriptsRoot, "build-portable.mjs"), path.join(scripts, "build-portable.mjs"));
+  copyFileSync(path.join(scriptsRoot, "portable-proof-process.mjs"), path.join(scripts, "portable-proof-process.mjs"));
   copyFileSync(path.join(scriptsRoot, "portable-rename.mjs"), path.join(scripts, "portable-rename.mjs"));
   copyFileSync(path.join(scriptsRoot, "portable-rename-diagnostics.mjs"), path.join(scripts, "portable-rename-diagnostics.mjs"));
   copyFileSync(path.join(scriptsRoot, "portable-rename-diagnostics.ps1"), path.join(scripts, "portable-rename-diagnostics.ps1"));
@@ -143,19 +144,24 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false, d
       import fs from 'node:fs';
       import path from 'node:path';
       export { parseArgs } from ${JSON.stringify(new URL("./sqlcipher-encryption-proof.mjs", import.meta.url).href)};
-      export async function runProof(options) {
+      import { pathToFileURL } from 'node:url';
+      async function main() {
+        const args = process.argv.slice(2);
+        const runtimeDir = args[args.indexOf('--runtime') + 1];
+        const nodeExe = args[args.indexOf('--node') + 1];
         const candidate = ${JSON.stringify(path.join(portable, ".tmp-Tuari-portable"))};
-        assert.equal(options.runtimeDir, path.join(candidate, 'bin', 'api-runtime'));
-        assert.equal(options.nodeExe, path.join(candidate, 'bin', 'node.exe'));
-        assert.equal(fs.readFileSync(path.join(options.runtimeDir, 'dist', 'index.cjs'), 'utf8'), '// synthetic loader');
+        assert.equal(runtimeDir, path.join(candidate, 'bin', 'api-runtime'));
+        assert.equal(nodeExe, path.join(candidate, 'bin', 'node.exe'));
+        assert.equal(fs.readFileSync(path.join(runtimeDir, 'dist', 'index.cjs'), 'utf8'), '// synthetic loader');
         assert.equal(fs.readFileSync(path.join(${JSON.stringify(portable)}, 'Tuari-portable.zip'), 'utf8'), 'previous zip');
-        fs.writeFileSync(${JSON.stringify(path.join(root, "proof-called"))}, 'called');
+        fs.writeFileSync(${JSON.stringify(path.join(root, "proof-called"))}, String(process.pid));
         ${proofBarrier ? `
-          fs.writeFileSync(${JSON.stringify(path.join(root, "proof-ready"))}, options.runtimeDir);
+          fs.writeFileSync(${JSON.stringify(path.join(root, "proof-ready"))}, runtimeDir);
           while (!fs.existsSync(${JSON.stringify(path.join(root, "proof-continue"))})) await new Promise(resolve => setTimeout(resolve, 10));
         ` : "await new Promise(resolve => setTimeout(resolve, 10));"}
         ${reject ? "throw new Error('synthetic plaintext runtime rejection');" : "return { results: ['synthetic proof success'] };"}
       }
+      if (import.meta.url === pathToFileURL(process.argv[1]).href) main().then(() => {}, error => { console.error(error); process.exitCode = 1; });
     `);
   }
   return {
@@ -185,6 +191,24 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false, d
     },
   };
 }
+
+test("portable:only closes a separate proof process before publishing the verified candidate", async (t) => {
+  const f = fixture(t, { proofBarrier: true });
+  const run = f.start();
+  const readyPath = path.join(f.root, "proof-ready");
+  const deadline = Date.now() + 10_000;
+  while (!existsSync(readyPath) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.ok(existsSync(readyPath), "proof must run in its own process before publication");
+  const proofPid = Number(readFileSync(path.join(f.root, "proof-called"), "utf8"));
+  assert.notEqual(proofPid, run.child.pid, "native proof process must not be the packaging process");
+  writeFileSync(path.join(f.root, "proof-continue"), "continue");
+  const result = await run.done;
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, new RegExp(`\\[portable-proof\\] completed pid=${proofPid} status=0; process closed before candidate publication`));
+  assert.ok(result.output.indexOf("process closed before candidate publication") < result.output.indexOf("Portable folder ready"));
+  assert.ok(existsSync(path.join(f.root, "archive-called")));
+  assert.ok(existsSync(path.join(f.portable, "Tuari-portable")));
+});
 
 test("portable:only rejects failed encryption proof before replacing outputs or archiving", (t) => {
   const f = fixture(t, { reject: true });
