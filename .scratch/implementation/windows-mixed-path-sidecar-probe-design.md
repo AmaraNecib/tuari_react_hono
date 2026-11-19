@@ -27,6 +27,10 @@ The changed module has one caller, `installer-smoke.mjs`, which keeps passing th
 - Applied the Windows process-identity requirement from the task: process IDs remain owned by the fixture, cleanup only targets those IDs, and every fixture is stopped and awaited in `finally` before directory removal.
 - The existing Tauri `resource_dir()` prefix lesson is unrelated. This change normalizes prefixes only for comparison and does not change launch behavior.
 
+## Hosted test correction
+
+The initial parent-root negative case could pass because its expected script did not exist. Create an unused parent entry before probing, and make every test probe reject any nonempty `envError` before evaluating matches. This proves parent-root rejection reaches process comparison and prevents setup or environment-read failures from masquerading as negative identity results. The parent reran all Windows fixtures successfully after this test-only correction. Production canonicalization and prior actual native portable launch proof are unchanged.
+
 ## Verification boundary
 
 Focused Windows proof only. No full build, browser run, release-asset smoke, hosted check, review or publication was run. The parent must still validate the native artifact smoke and current-head CI / Greptile gates before merge.

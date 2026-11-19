@@ -30,7 +30,11 @@ function Get-ShortPath([string]$Path) {
 function Invoke-Probe([string]$ExpectedRoot) {
   $json = & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $probePath -ExtractDir $ExpectedRoot
   if ($LASTEXITCODE -ne 0) { throw "Probe process exited with code $LASTEXITCODE for '$ExpectedRoot'" }
-  $json | ConvertFrom-Json
+  $result = $json | ConvertFrom-Json
+  if (-not [string]::IsNullOrEmpty([string]$result.envError)) {
+    throw "Probe failed for '$ExpectedRoot': $($result.envError)"
+  }
+  return $result
 }
 
 function Assert-OwnedFixture([int]$FixturePid, [string]$ExpectedRoot, [string]$Label) {
@@ -44,6 +48,11 @@ function Assert-OwnedFixture([int]$FixturePid, [string]$ExpectedRoot, [string]$L
 try {
   New-Item -ItemType Directory -Path (Split-Path $entry) -Force | Out-Null
   Set-Content -LiteralPath $entry -Value 'setInterval(() => {}, 1000);' -Encoding ascii
+  # The negative parent-root probe must reach process comparison, not fail
+  # canonicalization because its expected entry does not exist.
+  $unusedParentEntry = Join-Path $container 'bin\api-runtime\dist\index.cjs'
+  New-Item -ItemType Directory -Path (Split-Path $unusedParentEntry) -Force | Out-Null
+  Set-Content -LiteralPath $unusedParentEntry -Value '// unused parent entry, never launched' -Encoding ascii
 
   $parentShort = Get-ShortPath $container
   $childShort = Get-ShortPath $root
