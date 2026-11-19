@@ -224,7 +224,7 @@ test("portable proof waits for close rather than exit and rejects abnormal termi
   await assert.rejects(runPortableProofProcess("proof.mjs", { runtimeDir: "runtime", nodeExe: "node" }, { spawnProcess: () => { throw new Error("spawn denied"); } }), /spawn denied/);
 });
 
-test("portable:only closes a separate proof process before publishing the verified candidate", async (t) => {
+test("portable:only closes a separate proof process before publishing the verified candidate", { skip: process.platform !== "win32" }, async (t) => {
   const f = fixture(t, { proofBarrier: true });
   const run = f.start();
   const readyPath = path.join(f.root, "proof-ready");

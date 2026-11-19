@@ -22,6 +22,10 @@ The parent Windows checkout passed 47 packaging/encryption cases with no skips. 
 
 Full proof through the unchanged CLI against an actual copied API runtime passed locally in 13.903 seconds. It checked positive encryption/readback, wrong/no/plaintext key rejection, live API health and encrypted daily backup, then logged child PID 26036 closed before candidate publication. ZIP creation succeeded and the actual Windows Shell checker saw Tuari.exe/bin. The desktop executable in this packaging fixture is a placeholder, so this proof is not a new desktop launch. Existing native artifact smoke remains mandatory remotely.
 
+## Hosted platform correction
+
+Ubuntu lint exposed that the new full publication test reached the Windows-only archiver. Limit that integration case to Windows, while the adapter close-versus-exit and failure tests remain cross-platform. The selected Windows proof CI job now explicitly runs the real publication lifecycle case after installation. Parent focused lifecycle cases passed 2/2 and CI-wiring tests passed 10/10; actionlint passed. This corrects test execution placement, not the proof contract or packaging behavior.
+
 ## Verification boundaries
 
 The historical 2fbecc5c rename red was invalid because its destination already existed. Do not cite it as evidence. A correct absent-destination rename can succeed on the developer laptop even when a DLL is mapped. The new test asserts lifecycle, not an assumed rename failure.

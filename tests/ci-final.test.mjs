@@ -49,6 +49,12 @@ test('Windows CI executes Shell identity regressions when its files change', () 
   assert.doesNotMatch(job, /continue-on-error/);
 });
 
+test('Windows CI runs the actual portable proof publication lifecycle', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const job = ci.split('\n  prove-encryption:')[1].split('\n  audit:')[0];
+  assert.match(job, /name: Test Windows portable proof lifecycle\s*\n\s*if: needs\.detect\.outputs\.encryption == 'true'\s*\n\s*run: node --test --test-name-pattern="closes a separate proof process before publishing" apps\/desktop\/scripts\/build-portable\.test\.mjs/);
+});
+
 test('aggregate permits only successful checks and selector-proven skips', () => {
   assert.deepEqual(acceptanceErrors(success()), []);
   const scope = selectCiScope([], { full: true });
