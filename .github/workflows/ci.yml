@@ -343,6 +343,10 @@ jobs:
         if: needs.detect.outputs.encryption == 'true'
         with:
           persist-credentials: false
+      - name: Test Windows Shell ZIP file identity
+        if: needs.detect.outputs.encryption == 'true'
+        shell: powershell
+        run: ./scripts/smoke/portable-shell-entry-names.test.ps1
       - uses: pnpm/action-setup@v4
         if: needs.detect.outputs.encryption == 'true'
       - uses: actions/setup-node@v4
