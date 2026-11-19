@@ -158,7 +158,7 @@ export function EmployeeDetailsPage({
       editLabel={t("detailPages.employee.edit")}
       title={employee.name}
       action={
-        isWorker && employee.status === "ACTIVE" ? (
+        employee.status === "ACTIVE" ? (
           <Button size="lg" onClick={() => onApproveEarning?.(employee.id)}>
             {t("earnings.approve")}
           </Button>
@@ -246,7 +246,7 @@ export function EmployeeDetailsPage({
                   {t("detailPages.employee.financeSectionDescription")}
                 </p>
               </div>
-              {isWorker && employee.status === "ACTIVE" ? (
+              {employee.status === "ACTIVE" ? (
                 <Button size="lg" onClick={() => onApproveEarning?.(employee.id)}>
                   {t("earnings.approve")}
                 </Button>

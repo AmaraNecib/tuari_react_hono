@@ -113,6 +113,20 @@ describe("EmployeeDetailsPage earnings entry", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
+  it("offers approval from an active manager profile without adding a worker-only debt tab", () => {
+    const onApproveEarning = vi.fn()
+    renderDetails(worker({ isWorker: false, roleKey: "project_manager", role: "مدير مشروع" }), [], onApproveEarning)
+
+    const actions = screen.getAllByRole("button", { name: "اعتماد الأجر" })
+    expect(actions).toHaveLength(2)
+    fireEvent.click(actions[0]!)
+    fireEvent.click(actions[1]!)
+    expect(onApproveEarning).toHaveBeenCalledTimes(2)
+    expect(onApproveEarning).toHaveBeenLastCalledWith("worker-1")
+    expect(screen.getAllByRole("tab")).toHaveLength(3)
+    expect(screen.queryByRole("tab", { name: "الديون" })).toBeNull()
+  })
+
   it("keeps a legal zero reference distinct from a missing reference and shows monthly precision", () => {
     renderDetails(worker({ salaryReference: { period: "WEEKLY", amount: "1250.50" } }))
     const weeklySalaryCard = screen.getByText("الأجر الحالي").closest("article")!

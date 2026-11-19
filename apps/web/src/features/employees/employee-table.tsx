@@ -136,7 +136,7 @@ export function EmployeeTable({
                   </td>
                   <td className="px-4 py-4 text-start">
                     <AppShellActionGroup>
-                      {row.isWorker && row.status === "ACTIVE" ? (
+                      {row.status === "ACTIVE" ? (
                         <Button
                           size="xs"
                           onClick={() => onApproveEarning(row)}

@@ -35,6 +35,8 @@ export const ar = {
       acknowledgementRequired: "أكّد أن المبلغ المتبقي سيبقى غير موزع قبل الاعتماد.",
       suggestRemainingAcrossProjects: "اقتراح توزيع المتبقي حسب أيام العمل",
       suggestDailyReferenceAmount: "استخدام الأجر اليومي للبند {{number}}",
+      dailySuggestionPreview: "المقترح من الأجر اليومي:",
+      useSuggestion: "استخدام المقترح",
       dailyReferenceAmount: "يحسب الاقتراح الأجر اليومي الدقيق مضروبًا في أيام العمل المدخلة؛ ويمكنك تعديل المبلغ المقترح.",
       referenceSalary: "مرجع الأجر الحالي",
       approvalPaymentClarification: "يسجل هذا الاعتماد الأجر المكتسب فقط، ولا يثبت دفعًا نقديًا.",

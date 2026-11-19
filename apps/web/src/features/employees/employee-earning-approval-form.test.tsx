@@ -68,6 +68,10 @@ describe("earned-wage approval composer", () => {
     fireEvent.click(screen.getByRole("button", { name: "earnings.suggestDailyReferenceAmount" }))
 
     expect((screen.getByLabelText("earnings.amount 1") as HTMLInputElement).value).toBe("12500.00")
+    const suggestionAction = screen.getByRole("button", { name: "earnings.suggestDailyReferenceAmount" }) as HTMLButtonElement
+    expect(suggestionAction.disabled).toBe(true)
+    expect(screen.getByLabelText("earnings.amount 1").closest("label")?.contains(suggestionAction)).toBe(false)
+    expect(screen.getByRole("button", { name: "earnings.removeProjectRow" }).textContent).toBe("common.delete")
   })
 
   it("suggests exact values only for blank rows and leaves manual amounts untouched", async () => {

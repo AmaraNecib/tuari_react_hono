@@ -54,6 +54,15 @@ describe("EmployeeTable earned-wage approval entry point", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
+  it("offers approval to an active manager consistently with the salary list and approval page", () => {
+    const onApproveEarning = vi.fn()
+    const manager = { ...row, isWorker: false, roleKey: "project_manager", role: "مدير مشروع" }
+    renderTable(manager, onApproveEarning)
+
+    fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
+    expect(onApproveEarning).toHaveBeenCalledWith(manager)
+  })
+
   it("does not offer approval to inactive employees", () => {
     renderTable({ ...row, status: "INACTIVE" })
 
