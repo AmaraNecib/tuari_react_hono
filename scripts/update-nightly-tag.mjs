@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 
 const apiRoot = 'repos';
 
@@ -8,11 +9,12 @@ function fail(message) {
   process.exitCode = 1;
 }
 
-function ghApi(args) {
-  const result = spawnSync('gh', ['api', '--include', ...args], {
+function ghApi(args, execute) {
+  const result = execute('gh', ['api', '--include', ...args], {
     encoding: 'utf8',
     windowsHide: true,
-    shell: process.platform === 'win32',
+    shell: false,
+    timeout: 30_000,
   });
   if (result.error) throw new Error(`could not run gh api: ${result.error.message}`);
   const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
@@ -32,7 +34,7 @@ function ghApi(args) {
 }
 
 function requireSuccess(response, operation) {
-  if (response.exitCode !== 0 || response.status < 200 || response.status >= 300) {
+  if (response.exitCode !== 0 || !Number.isInteger(response.status) || response.status < 200 || response.status >= 300) {
     throw new Error(`${operation} returned HTTP ${response.status ?? 'unknown'}: ${response.output.trim()}`);
   }
 }
@@ -48,9 +50,14 @@ function expectedRefSha(response, context) {
   return object.sha.toLowerCase();
 }
 
-function updateNightlyTag({ repository, sourceSha }) {
+export function updateNightlyTag({ repository, sourceSha }, { execute = spawnSync } = {}) {
+  if (!/^[0-9a-f]{40}$/i.test(sourceSha ?? '')) throw new Error('source SHA must be a full commit SHA');
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '')) throw new Error('Invalid repository');
+  sourceSha = sourceSha.toLowerCase();
+  const request = args => ghApi(args, execute);
   const endpoint = `${apiRoot}/${repository}/git/ref/tags/nightly`;
-  const get = ghApi([endpoint]);
+  const writeEndpoint = `${apiRoot}/${repository}/git/refs/tags/nightly`;
+  const get = request([endpoint]);
   let existing;
   if (get.status === 404) {
     if (get.exitCode === 0) throw new Error('GitHub returned HTTP 404 with a successful gh exit status');
@@ -62,17 +69,17 @@ function updateNightlyTag({ repository, sourceSha }) {
   if (existing !== sourceSha) {
     let write;
     if (existing === undefined) {
-      write = ghApi([
+      write = request([
         '--method', 'POST', `${apiRoot}/${repository}/git/refs`,
         '-f', 'ref=refs/tags/nightly', '-f', `sha=${sourceSha}`,
       ]);
       requireSuccess(write, 'Creating refs/tags/nightly');
     } else {
-      write = ghApi([
-        '--method', 'PATCH', endpoint,
+      write = request([
+        '--method', 'PATCH', writeEndpoint,
         '-f', `sha=${sourceSha}`, '-F', 'force=false',
       ]);
-      if (write.exitCode !== 0 || write.status < 200 || write.status >= 300) {
+      if (write.exitCode !== 0 || !Number.isInteger(write.status) || write.status < 200 || write.status >= 300) {
         const detail = write.status === 422
           ? 'GitHub rejected a non-fast-forward nightly tag update; the tag has diverged. No force update was attempted.'
           : `Updating refs/tags/nightly returned HTTP ${write.status ?? 'unknown'}: ${write.output.trim()}`;
@@ -81,7 +88,7 @@ function updateNightlyTag({ repository, sourceSha }) {
     }
   }
 
-  const readback = ghApi([endpoint]);
+  const readback = request([endpoint]);
   requireSuccess(readback, 'Verifying refs/tags/nightly readback');
   const actualSha = expectedRefSha(readback, 'Nightly tag readback');
   if (actualSha !== sourceSha) {
@@ -102,8 +109,10 @@ function main() {
   updateNightlyTag({ repository, sourceSha });
 }
 
-try {
-  main();
-} catch (error) {
-  fail(error instanceof Error ? error.message : String(error));
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    main();
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
 }
