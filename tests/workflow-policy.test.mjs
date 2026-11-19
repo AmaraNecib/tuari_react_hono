@@ -43,6 +43,31 @@ test('always-running lint gates include the copied encrypted runtime after insta
   assert.match(read('tests/sidecar-encryption.test.mjs'), /assert\.ok\(!process\.env\.CI/);
 });
 
+test('Nightly diagnostics cannot execute the release job or use release credentials', () => {
+  const nightly = read('.github/workflows/nightly.yml');
+  const diagnostic = nightly.split('\n  portable-diagnostics:')[1].split('\n  nightly:')[0];
+  assert.match(nightly, /diagnostic_only:[\s\S]*?type: boolean[\s\S]*?default: false/);
+  assert.match(diagnostic, /if: github\.event_name == 'workflow_dispatch' && inputs\.diagnostic_only == true/);
+  assert.match(nightly.split('\n  nightly:')[1], /if: github\.event_name != 'workflow_dispatch' \|\| inputs\.diagnostic_only != true/);
+  assert.match(diagnostic, /permissions:\s*\n\s*contents: read/);
+  assert.match(diagnostic, /persist-credentials: false\s*\n\s*ref: \$\{\{ github\.sha \}\}/);
+  assert.doesNotMatch(diagnostic, /secrets\.|GH_TOKEN|gh release|sign-update|version\.outputs|contents: write/);
+  assert.match(diagnostic, /if: always\(\)[\s\S]*actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  assert.match(diagnostic, /path: \$\{\{ runner\.temp \}\}\/portable-diagnostics\//);
+  assert.match(diagnostic, /retention-days: 3/);
+  assert.match(nightly, /group: \$\{\{ inputs\.diagnostic_only && 'nightly-diagnostics' \|\| 'nightly' \}\}/);
+});
+
+test('portable trace preserves packaging exit and stops only its started recording', () => {
+  const script = read('scripts/smoke/trace-portable-packaging.ps1');
+  assert.match(script, /if \(Test-Path -LiteralPath \$OutputDirectory\).*Refusing to overwrite/);
+  assert.match(script, /-start FileIO -start Minifilter -start Handle -filemode/);
+  assert.match(script, /\$record\.packagingExitCode = \$LASTEXITCODE/);
+  assert.match(script, /finally\s*\{\s*if \(\$traceOwned\)/);
+  assert.doesNotMatch(script, /& \$wpr -cancel|CommandLine|Get-ChildItem.*-Recurse/);
+  assert.match(script, /exit \$exitCode/);
+});
+
 test('Greptile is the scored gate without an extra local confidence step', () => {
   assert.match(read('docs/engineering-workflow.md'), /Greptile is the scored review gate/);
   assert.match(read('docs/engineering-workflow.md'), /No local score or separate confidence/);

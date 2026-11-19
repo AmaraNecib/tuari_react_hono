@@ -8,17 +8,72 @@ on:
   schedule:
     - cron: '0 0 * * *'   # daily at midnight UTC
   workflow_dispatch:
+    inputs:
+      diagnostic_only:
+        description: "Capture portable packaging diagnostics without publishing a release"
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
-  group: nightly
+  group: ${{ inputs.diagnostic_only && 'nightly-diagnostics' || 'nightly' }}
   cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  portable-diagnostics:
+    name: Portable packaging diagnostics (no release)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_only == true
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout exact diagnostic revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/desktop/src-tauri"
+      - name: Install pnpm dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build shared contracts
+        run: pnpm --filter @tuari/contracts build
+      - name: Build desktop app for diagnostics
+        run: pnpm --filter @tuari/desktop build
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ""
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+      - name: Trace one portable packaging attempt
+        shell: pwsh
+        timeout-minutes: 5
+        run: ./scripts/smoke/trace-portable-packaging.ps1 -OutputDirectory "${{ runner.temp }}/portable-diagnostics"
+      - name: Upload diagnostic evidence only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: portable-diagnostics-${{ github.run_id }}
+          path: ${{ runner.temp }}/portable-diagnostics/
+          if-no-files-found: warn
+          retention-days: 3
+
   nightly:
     name: Nightly Build
+    if: github.event_name != 'workflow_dispatch' || inputs.diagnostic_only != true
     runs-on: windows-latest
     environment: nightly
     permissions:
