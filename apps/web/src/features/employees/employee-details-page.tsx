@@ -3,8 +3,7 @@ import { AppDate } from "@/components/app-date"
 import { Button } from "@/components/ui/button"
 import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
 import { CurrencyRun, MoneyValue } from "@/features/shared/money-value"
-import { formatExactMoney } from "@/features/shared/exact-money-display"
-import { parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
+import { formatSalaryReferenceAmount } from "@/features/shared/exact-salary-reference-display"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry, SalaryProjectAssignmentWindow } from "@tuari/contracts"
@@ -34,20 +33,6 @@ type EmployeeWorkHistoryRow = {
   typeLabel: string
   periodLabel: ReactNode
   statusLabel: string
-}
-
-function formatSalaryReferenceAmount(
-  reference: NonNullable<EmployeeTableRow["salaryReference"]>,
-  grouped: boolean,
-): string {
-  if (reference.period !== "DAILY") {
-    return formatExactMoney(reference.amount, { grouped }).text
-  }
-
-  const formatted = parseLocalizedUnitPriceInput(reference.amount).format()
-  if (!grouped) return formatted
-  const [whole = "", fraction] = formatted.split(".")
-  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${fraction ? `.${fraction}` : ""}`
 }
 
 function getSalaryDifferenceMeta(expectedAmountDzd: number, actualAmountDzd: number) {

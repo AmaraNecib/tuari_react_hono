@@ -30,6 +30,28 @@ describe("earned-wage approval composer", () => {
     props.onComplete.mockReset()
   })
 
+  it("runs localized validation on save instead of browser-native required messages", async () => {
+    render(<EmployeeEarningApprovalForm {...props} />)
+    const form = document.querySelector("form")!
+    expect(form.noValidate).toBe(true)
+    expect(screen.getByLabelText("earnings.total").getAttribute("aria-required")).toBe("true")
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).required).toBe(false)
+    expect(screen.queryByText("workforce.validation.earning.positiveTotal")).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "earnings.addProjectRow" }))
+
+    fireEvent.submit(form)
+
+    expect(mutateAsync).not.toHaveBeenCalled()
+    expect(screen.getByText("workforce.validation.earning.totalRequired")).toBeTruthy()
+    expect(screen.getByText("workforce.validation.earning.projectRequired")).toBeTruthy()
+    expect(screen.getByText("workforce.validation.earning.daysPositive")).toBeTruthy()
+    expect(screen.getByText("workforce.validation.earning.amountRequired")).toBeTruthy()
+    expect(screen.queryByText("Please fill out this field.")).toBeNull()
+    expect(screen.getByLabelText("earnings.total").getAttribute("aria-describedby")).toBeTruthy()
+    expect((screen.getByLabelText("earnings.total") as HTMLInputElement).validationMessage).toBe("")
+    expect(document.activeElement).toBe(screen.getByLabelText("earnings.total"))
+  })
+
   it("derives the remainder and requires acknowledgement before approval", async () => {
     mutateAsync.mockResolvedValue({})
     render(<EmployeeEarningApprovalForm {...props} salaryReference={{ period: "DAILY", amount: "4500.1234" }} />)
@@ -43,13 +65,15 @@ describe("earned-wage approval composer", () => {
 
     const remainder = screen.getByRole("status", { name: "earnings.unallocated" })
     expect(remainder.tagName).toBe("OUTPUT")
-    expect(remainder.textContent).toContain("400.00")
+    expect(remainder.textContent).toBe("400")
     const acknowledgement = screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }) as HTMLInputElement
-    expect(acknowledgement.required).toBe(true)
+    expect(acknowledgement.getAttribute("aria-required")).toBe("true")
+    expect(acknowledgement.required).toBe(false)
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     expect(mutateAsync).not.toHaveBeenCalled()
 
     fireEvent.click(acknowledgement)
+    expect(screen.queryByText("earnings.acknowledgementRequired")).toBeNull()
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1))
     expect(mutateAsync.mock.calls[0]![0]).toMatchObject({
@@ -58,6 +82,32 @@ describe("earned-wage approval composer", () => {
       referenceSalary: { period: "DAILY", amount: "4500.1234" },
       segments: [{ projectId: "project-a", days: 1, amount: "600.00" }],
     })
+  })
+
+  it("formats the read-only daily salary reference without rounding its four meaningful places", () => {
+    render(<EmployeeEarningApprovalForm {...props} salaryReference={{ period: "DAILY", amount: "2500.1234" }} />)
+    expect(screen.getByText(/2,500\.1234/)).toBeTruthy()
+  })
+
+  it("opens approval help on hover, click, and keyboard, and dismisses it with Escape", async () => {
+    render(<EmployeeEarningApprovalForm {...props} />)
+    const help = screen.getByRole("button", { name: "earnings.approvalHelp" })
+    expect(screen.queryByText("earnings.approvalPaymentClarification")).toBeNull()
+    fireEvent.mouseOver(help)
+    expect(await screen.findByText("earnings.approvalPaymentClarification")).toBeTruthy()
+    fireEvent.keyDown(help, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByText("earnings.approvalPaymentClarification")).toBeNull())
+    help.focus()
+    expect(document.activeElement).toBe(help)
+    fireEvent.keyDown(help, { key: "Enter" })
+    fireEvent.click(help)
+    expect(await screen.findByText("earnings.approvalPaymentClarification")).toBeTruthy()
+    fireEvent.keyDown(help, { key: "Escape" })
+    await waitFor(() => expect(screen.queryByText("earnings.approvalPaymentClarification")).toBeNull())
+    fireEvent.click(help)
+    expect(await screen.findByText("earnings.approvalPaymentClarification")).toBeTruthy()
+    fireEvent.click(document.body)
+    await waitFor(() => expect(screen.queryByText("earnings.approvalPaymentClarification")).toBeNull())
   })
 
   it("suggests an exact daily-reference amount for positive row days without changing the reference", () => {
@@ -263,25 +313,25 @@ describe("earned-wage approval composer", () => {
     fireEvent.change(screen.getByLabelText("earnings.days 1"), { target: { value: "1" } })
     fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "500" } })
 
-    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("500.00")
+    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("500")
     const acknowledgement = screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }) as HTMLInputElement
     fireEvent.click(acknowledgement)
     expect(acknowledgement.checked).toBe(true)
     fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1000" } })
     expect(screen.queryByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ })).toBeNull()
-    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("0.00")
+    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("0")
 
     fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "500" } })
     expect((screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }) as HTMLInputElement).checked).toBe(false)
     fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "1001" } })
-    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("-1.00")
+    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("-1")
     fireEvent.click(screen.getByRole("button", { name: "earnings.approve" }))
     expect(screen.getByText("workforce.validation.earning.positiveTotal")).toBeTruthy()
     expect(mutateAsync).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "999" } })
     expect(screen.queryByText("workforce.validation.earning.positiveTotal")).toBeNull()
-    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("1.00")
+    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("1")
   })
 
   it("unlocks a first registered wire-validation rejection for correction", async () => {
@@ -318,8 +368,9 @@ describe("earned-wage approval composer", () => {
     expect(mutateAsync).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByLabelText("earnings.amount 1"), { target: { value: "500" } })
-    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("500.00")
-    expect((screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }) as HTMLInputElement).required).toBe(true)
+    expect(screen.getByRole("status", { name: "earnings.unallocated" }).textContent).toContain("500")
+    expect((screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }) as HTMLInputElement).getAttribute("aria-required")).toBe("true")
+    expect((screen.getByRole("checkbox", { name: /earnings\.acknowledgeUnallocatedBefore/ }) as HTMLInputElement).required).toBe(false)
     expect(mutateAsync).not.toHaveBeenCalled()
   })
 })

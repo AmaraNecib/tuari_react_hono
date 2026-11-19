@@ -89,6 +89,8 @@ describe("EmployeeEarningsHistory", () => {
     expect(within(row).queryByText("دون مشروع")).toBeNull()
     expect(within(row).queryByText("المبلغ غير الموزع بالدينار الجزائري")).toBeNull()
     expect(within(row).queryByText(/50,?000/)).toBeNull()
+    expect(screen.queryByText("ما الذي يسجله هذا السجل؟")).toBeNull()
+    expect(screen.queryByText("يعرض السجل الأجور المكتسبة المعتمدة، ولا يثبت دفعًا نقديًا.")).toBeNull()
     expect(mocks.earningsList).toHaveBeenCalledTimes(1)
   })
 

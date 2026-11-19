@@ -13,6 +13,9 @@ export const ar = {
         },
         earning: {
           amountPrecision: "يجب أن يكون المبلغ قيمة عشرية دقيقة لا تتجاوز منزلتين.",
+          amountRequired: "أدخل مبلغ هذا البند.",
+          totalRequired: "أدخل إجمالي الأجر المعتمد.",
+          projectRequired: "اختر مشروعًا لهذا البند.",
           daysPositive: "يجب أن يكون عدد الأيام عددًا صحيحًا موجبًا.",
           periodOrder: "يجب أن تنتهي الفترة بعد بدايتها.",
           duplicateSegment: "يجب أن تكون معرّفات بنود الأجر فريدة.",

@@ -3,7 +3,7 @@
 ## Scope and evidence
 
 - Worktree: `D:/worktrees/tuari_react_hono/t3-d5a68276-97285353df356c66`
-- Follow-up base: `d1f987d61ed8aef2b6e729bfb755006a2a6d3750`
+- This implementation base: `3fbf92bd162c1e658fabfc4cfae39f5d82cf5853`
 - Verification mode: `focused-local / CI-final-enforced`. The active protection record does not establish hosted acceptance for this follow-up head. Run affected local proof only; CI remains the final acceptance gate.
 - Review tier: high assurance. Approval requests freeze exact amounts and ordered project rows when a response is uncertain. Salary navigation is a bounded separate commit within the same follow-up.
 - Existing unrelated dirty files: desktop Cargo manifest and two generated Tauri schemas; do not stage or modify them.
@@ -20,10 +20,13 @@ The existing draft finalizer and pending-storage modules remain the authorities 
 - Keep the approval total editable and do not infer it from `salaryReference`. Keep ordered project rows, stable row IDs, request IDs, UTC day boundaries, and immutable uncertain retries.
 - Offer a daily-reference suggestion only when the reference period is `DAILY` and the entered day count is a positive safe integer. Multiply exact unit-price units by days and round once using the existing exact-money contract. Do not infer weekly or monthly divisors. Preserve non-empty manual amounts and the salary reference; suggestions remain explicit.
 - Derive totals and the remainder in integer minor units. Do not clamp or hide a negative remainder. Clear a stale `positiveTotal` error when an edit makes the cross-field total valid, without clearing date, server, or other unrelated errors.
-- Keep the summary compact and right-aligned under short Arabic labels. Keep DZD visible in values, not repeated in labels. Use LTR direction only inside numeric `<bdi>` elements. Keep approval and earnings names explicit. In the history, put the concise approval-versus-payment distinction in a collapsed, keyboard-accessible disclosure beside the section, not in always-visible prose above the table. Keep form clarification at the moment of approval; do not repeat it in each row.
+- Keep the summary compact and right-aligned under short Arabic labels. Keep DZD visible in values, not repeated in labels. Use LTR direction only inside numeric `<bdi>` elements. Keep approval and earnings names explicit. Keep approval-versus-cash clarification in the approval form's floating help only. The earnings history has no explanatory block above the table.
 - Let the document scroll normally. Keep dates and the total near the top, project rows in a table, and primary actions available at the bottom without an internally scrolling modal.
 - Reassess the entrypoint and row layout after the owner's live feedback rather than repeat numeric fixes. Approval eligibility in all current employee and salaries entrypoints is active employee status, not the worker role. The fourth profile tab remains the existing worker-only debt view; it is not the approval entrypoint and this scope does not extend debt permissions.
 - A daily suggestion is a proposed project-row amount, not a replacement for the approval total. Put its exact amount and explicit apply action on a separate full-width helper line below the controls. Keep that line visible after applying, with the apply action disabled for any nonblank amount. The project, days, amount and concise accessible delete action keep their positions; a disappearing suggestion inside one input label must not shift the row.
+- Approval-form fields use `noValidate`, visible required stars and `aria-required`; the existing finalizer remains the save-time validation authority. Render localized field errors with `aria-describedby`, focus the first invalid control, and keep positive-remainder acknowledgement blocking. Do not set native `required`, which exposes browser-language validation.
+- Display-only salary references use exact unit-price formatting for DAILY values and exact money formatting for other periods. Omit insignificant zero decimals, preserve up to four meaningful daily decimals, and honor the grouping preference. Approval payloads and pending retry values remain unchanged.
+- Put the approval-versus-cash and daily-reference explanation in a small HelpCircle popover beside the employee/reference header. It opens on hover or button activation, supports keyboard focus and Escape, and does not take layout space.
 
 ## Salaries URL-state decisions
 
@@ -35,7 +38,7 @@ The existing draft finalizer and pending-storage modules remain the authorities 
 ## Verification and review
 
 - Architecture: the approval page owns route transitions while the existing form owns draft and retry state. `useSalaryRoutePagination` adapts URL-backed state without changing shared pagination behavior or domain contracts.
-- Focused tests cover full-page navigation and unavailable employee states, both approval entrypoints, daily and explicit total-weighted suggestions, manual/reference preservation, cross-field error clearing, and frozen retry recovery.
+- Focused tests cover full-page navigation and unavailable employee states, both approval entrypoints, daily and explicit total-weighted suggestions, manual/reference preservation, cross-field error clearing, frozen retry recovery, save-time field validation, exact display formatting, popover interactions and the removed history explanation.
 - Focused salary-route tests cover for direct/reloaded search state, invalid values and unrelated keys, tab/filter/page-size resets, pagination history/back-forward, and the no-clamp loading case.
 - Run affected tests, web ESLint, web typecheck, and `git diff --check`. Full suites and builds remain CI-final unless a concrete gap justifies a queued run.
 - Parent owns final interactive/browser verification and the required review lenses at the integrated head. Worker does not publish, open a PR, merge, use the owner's live app, or claim hosted acceptance.

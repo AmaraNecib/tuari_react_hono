@@ -34,10 +34,6 @@ export function EmployeeEarningsHistory({ employeeId, employeeNames, projectName
 
   return (
     <div className="space-y-4">
-      <details className="text-sm text-muted-foreground">
-        <summary className="w-fit cursor-pointer rounded-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t("earnings.historyPaymentClarificationLabel")}</summary>
-        <p className="mt-2 max-w-3xl leading-6">{t("earnings.historyPaymentClarification")}</p>
-      </details>
       <TableQueryState query={query} resource={t("earnings.historyResource")}>
         <AppShellTableFrame>
           <table className="min-w-full">

@@ -1,8 +1,7 @@
 import { AppDate } from "@/components/app-date"
 import { CurrencyRun } from "@/features/shared/money-value"
 import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
-import { formatExactMoney } from "@/features/shared/exact-money-display"
-import { parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
+import { formatSalaryReferenceAmount } from "@/features/shared/exact-salary-reference-display"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -39,20 +38,6 @@ export type SalariedWorkerRow = {
   salaryReference: { period: SalaryPeriodType; amount: string } | null
   lastPaymentDate: string | null
   projectAssignments: SalaryProjectAssignmentWindow[]
-}
-
-function formatSalaryReferenceAmount(
-  reference: NonNullable<SalariedWorkerRow["salaryReference"]>,
-  grouped: boolean,
-): string {
-  if (reference.period !== "DAILY") {
-    return formatExactMoney(reference.amount, { grouped }).text
-  }
-
-  const formatted = parseLocalizedUnitPriceInput(reference.amount).format()
-  if (!grouped) return formatted
-  const [whole = "", fraction] = formatted.split(".")
-  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${fraction ? `.${fraction}` : ""}`
 }
 
 /**

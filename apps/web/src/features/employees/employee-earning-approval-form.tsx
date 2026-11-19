@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
+import { HelpCircle } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -6,6 +7,10 @@ import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
 import { MoneyValue } from "@/features/shared/money-value"
+import { formatExactMoney } from "@/features/shared/exact-money-display"
+import { formatSalaryReferenceAmount } from "@/features/shared/exact-salary-reference-display"
+import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
+import { Popover, PopoverContent, PopoverDescription, PopoverTitle, PopoverTrigger } from "@/components/ui/popover"
 import { useApproveEmployeeEarningMutation } from "@/features/employees/employee-earnings-queries"
 import { calculateEarningAllocation, formatEarningMinorUnits, suggestBlankEarningRowAmounts, suggestDailyReferenceAmount } from "@/features/employees/employee-earning-allocation"
 import { useSessionQuery } from "@/features/session/use-session-query"
@@ -92,6 +97,8 @@ export function EmployeeEarningApprovalForm({
   onComplete,
 }: EmployeeEarningApprovalFormProps) {
   const { t } = useTranslation()
+  const useGrouping = useMoneyGrouping()
+  const formRef = useRef<HTMLFormElement>(null)
   const session = useSessionQuery()
   const userId = session.data?.user?.id ?? null
   const mutation = useApproveEmployeeEarningMutation()
@@ -109,9 +116,15 @@ export function EmployeeEarningApprovalForm({
   const [pending, setPending] = useState<PendingEmployeeEarning | null>(null)
   const [storageError, setStorageError] = useState(false)
   const [error, setError] = useState("")
+  const [helpOpen, setHelpOpen] = useState(false)
   const [issues, setIssues] = useState<Array<{ path: (string | number)[]; message: string }>>([])
   const frozen = pending !== null
   const previousIdentity = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!issues.length) return
+    formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus()
+  }, [issues])
 
   useEffect(() => {
     if (!active) return
@@ -167,15 +180,19 @@ export function EmployeeEarningApprovalForm({
     referenceSalary: salaryReference,
   }
 
+  const clearAcknowledgementError = () => setError(current => current === t("earnings.acknowledgementRequired") ? "" : current)
   const addRow = () => {
+    clearAcknowledgementError()
     setAcknowledgedRemainder(null)
     setRows(current => [...current, newRow()])
   }
   const updateRow = (id: string, patch: Partial<Omit<EmployeeEarningDraftRow, "id">>) => {
+    clearAcknowledgementError()
     setAcknowledgedRemainder(null)
     setRows(current => editEarningDraftRow({ ...draft, rows: current }, id, patch).rows)
   }
   const removeRow = (id: string) => {
+    clearAcknowledgementError()
     setAcknowledgedRemainder(null)
     setRows(current => current.filter(row => row.id !== id))
     const crossFieldMessages = [
@@ -198,7 +215,9 @@ export function EmployeeEarningApprovalForm({
       return suggestion ? { ...row, amountText: suggestion.amountText } : row
     }))
   }
-  const formattedMinor = (value: bigint | null) => value === null ? t("earnings.notAvailable") : formatEarningMinorUnits(value)
+  const formattedMinor = (value: bigint | null) => value === null
+    ? t("earnings.notAvailable")
+    : formatExactMoney(formatEarningMinorUnits(value), { aggregate: true, grouped: useGrouping }).text
   const issueAt = (path: (string | number)[]) => issues.find(issue => issue.path.length === path.length && issue.path.every((part, index) => part === path[index]))
   const issueId = (path: (string | number)[]) => `earning-field-error-${path.join("-")}`
   const controlPath = (path: (string | number)[]) => {
@@ -229,6 +248,7 @@ export function EmployeeEarningApprovalForm({
     if (storageError) { setError(t("earnings.storageUnavailable")); return }
     if (!pending && positiveRemainder && acknowledgedRemainder !== allocation.remainderMinor?.toString()) {
       setError(t("earnings.acknowledgementRequired"))
+      formRef.current?.querySelector<HTMLElement>('[aria-required="true"][type="checkbox"]')?.focus()
       return
     }
     let hadPriorPending = pending !== null
@@ -293,17 +313,22 @@ export function EmployeeEarningApprovalForm({
 
   const busy = mutation.isPending
   return <section className="space-y-5">
-    <header className="space-y-2">
+    <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {employeeName ? <p className="text-sm text-muted-foreground" dir="auto">{employeeName}</p> : null}
-      {salaryReference ? <p className="text-sm text-muted-foreground">{t("earnings.referenceSalary")}: <bdi dir="ltr">{salaryReference.amount} {t("detailPages.salary.currency")}</bdi></p> : null}
-      <details className="text-sm text-muted-foreground">
-        <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4">{t("earnings.approvalHelp")}</summary>
-        <p className="mt-2 max-w-3xl leading-6">{t("earnings.approvalPaymentClarification")}</p>
-        {salaryReference?.period === "DAILY" ? <p className="mt-2 max-w-3xl leading-6">{t("earnings.dailyReferenceAmount")}</p> : null}
-      </details>
+      {salaryReference ? <p className="text-sm text-muted-foreground">{t("earnings.referenceSalary")}: <bdi dir="ltr">{formatSalaryReferenceAmount(salaryReference, useGrouping)} {t("detailPages.salary.currency")}</bdi></p> : null}
+      <Popover open={helpOpen} onOpenChange={setHelpOpen}>
+        <PopoverTrigger openOnHover onMouseEnter={() => setHelpOpen(true)} render={<Button type="button" variant="ghost" size="icon" className="size-8" aria-label={t("earnings.approvalHelp")} />}>
+          <HelpCircle aria-hidden="true" className="size-4" />
+        </PopoverTrigger>
+        <PopoverContent dir="rtl" className="text-start">
+          <PopoverTitle>{t("earnings.approvalHelp")}</PopoverTitle>
+          <PopoverDescription className="leading-6">{t("earnings.approvalPaymentClarification")}</PopoverDescription>
+          {salaryReference?.period === "DAILY" ? <p className="leading-6 text-muted-foreground">{t("earnings.dailyReferenceAmount")}</p> : null}
+        </PopoverContent>
+      </Popover>
     </header>
     {pending ? <p role="status" className="rounded-xl border border-border/60 bg-surface-2 p-3 text-sm">{t("earnings.pendingApproval")}</p> : null}
-      <form className="space-y-5" onSubmit={event => { event.preventDefault(); void submit() }}>
+      <form ref={formRef} noValidate className="space-y-5" onSubmit={event => { event.preventDefault(); void submit() }}>
       <div className="space-y-5" aria-busy={busy}>
         <div className="grid gap-4 sm:grid-cols-2">
           {(["periodStart", "periodEnd"] as const).map(field => {
@@ -311,7 +336,7 @@ export function EmployeeEarningApprovalForm({
             const issue = issueAt(path)
             const value = field === "periodStart" ? periodStart : periodEnd
             const setValue = field === "periodStart" ? setPeriodStart : setPeriodEnd
-            return <label key={field} className="flex flex-col gap-2" aria-invalid={issue ? true : undefined} aria-describedby={issue ? issueId(path) : undefined}>
+            return <label key={field} className="flex flex-col gap-2">
               <span className="text-sm font-medium">{t(`earnings.${field}`)} <span aria-hidden="true" className="text-destructive">*</span></span>
               <DatePicker id={t(`earnings.${field}`)} aria-required="true" aria-invalid={issue ? true : undefined} aria-describedby={issue ? issueId(path) : undefined} value={value} onChange={next => { clearIssue(path); setValue(next) }} disabled={frozen || busy} />
               {issue ? <p id={issueId(path)} className="text-sm text-destructive">{issue.message}</p> : null}
@@ -319,7 +344,7 @@ export function EmployeeEarningApprovalForm({
           })}
           <label className="flex flex-col gap-2 sm:col-span-2">
             <span className="text-sm font-medium">{t("earnings.total")} <span aria-hidden="true" className="text-destructive">*</span></span>
-            <CurrencyInput aria-label={t("earnings.total")} required aria-required="true" aria-invalid={issueAt(["totalAmountText"]) ? true : undefined} aria-describedby={issueAt(["totalAmountText"]) ? issueId(["totalAmountText"]) : undefined} value={total} onChange={event => { clearIssue(["totalAmountText"]); setAcknowledgedRemainder(null); setTotal(event.target.value) }} disabled={frozen || busy} />
+            <CurrencyInput aria-label={t("earnings.total")} aria-required="true" aria-invalid={issueAt(["totalAmountText"]) ? true : undefined} aria-describedby={issueAt(["totalAmountText"]) ? issueId(["totalAmountText"]) : undefined} value={total} onChange={event => { clearAcknowledgementError(); clearIssue(["totalAmountText"]); setAcknowledgedRemainder(null); setTotal(event.target.value) }} disabled={frozen || busy} />
             {issueAt(["totalAmountText"]) ? <p id={issueId(["totalAmountText"])} className="text-sm text-destructive">{issueAt(["totalAmountText"])!.message}</p> : null}
           </label>
         </div>
@@ -334,9 +359,9 @@ export function EmployeeEarningApprovalForm({
             const amountIssue = issueAt(amountPath)
             const dailySuggestion = suggestDailyReferenceAmount(salaryReference, row.daysText)
             return <div key={row.id} className="grid gap-3 border-t border-border/60 pt-4 sm:grid-cols-[minmax(12rem,1fr)_minmax(6rem,0.45fr)_minmax(9rem,0.7fr)_auto] sm:items-start">
-              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.project")} <span aria-hidden="true" className="text-destructive">*</span></span><NativeSelect required aria-label={`${t("earnings.project")} ${index + 1}`} aria-invalid={projectIssue ? true : undefined} aria-describedby={projectIssue ? issueId(projectPath) : undefined} value={row.projectId} disabled={frozen || busy} onChange={event => { clearIssue(projectPath); updateRow(row.id, { projectId: event.target.value }) }}><option value="">{t("earnings.selectProject")}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</NativeSelect>{projectIssue ? <p id={issueId(projectPath)} className="text-sm text-destructive">{projectIssue.message}</p> : null}</label>
-              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.days")} <span aria-hidden="true" className="text-destructive">*</span></span><Input required aria-label={`${t("earnings.days")} ${index + 1}`} aria-invalid={daysIssue ? true : undefined} aria-describedby={daysIssue ? issueId(daysPath) : undefined} type="number" min={1} step={1} inputMode="numeric" dir="ltr" value={row.daysText} disabled={frozen || busy} onChange={event => { clearIssue(daysPath); updateRow(row.id, { daysText: event.target.value }) }} />{daysIssue ? <p id={issueId(daysPath)} className="text-sm text-destructive">{daysIssue.message}</p> : null}</label>
-              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.amount")} <span aria-hidden="true" className="text-destructive">*</span></span><CurrencyInput required aria-label={`${t("earnings.amount")} ${index + 1}`} aria-invalid={amountIssue ? true : undefined} aria-describedby={amountIssue ? issueId(amountPath) : undefined} value={row.amountText} disabled={frozen || busy} onChange={event => { clearIssue(amountPath); updateRow(row.id, { amountText: event.target.value }) }} />{amountIssue ? <p id={issueId(amountPath)} className="text-sm text-destructive">{amountIssue.message}</p> : null}</label>
+              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.project")} <span aria-hidden="true" className="text-destructive">*</span></span><NativeSelect aria-required="true" aria-label={`${t("earnings.project")} ${index + 1}`} aria-invalid={projectIssue ? true : undefined} aria-describedby={projectIssue ? issueId(projectPath) : undefined} value={row.projectId} disabled={frozen || busy} onChange={event => { clearIssue(projectPath); updateRow(row.id, { projectId: event.target.value }) }}><option value="">{t("earnings.selectProject")}</option>{projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</NativeSelect>{projectIssue ? <p id={issueId(projectPath)} className="text-sm text-destructive">{projectIssue.message}</p> : null}</label>
+              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.days")} <span aria-hidden="true" className="text-destructive">*</span></span><Input aria-required="true" aria-label={`${t("earnings.days")} ${index + 1}`} aria-invalid={daysIssue ? true : undefined} aria-describedby={daysIssue ? issueId(daysPath) : undefined} type="number" min={1} step={1} inputMode="numeric" dir="ltr" value={row.daysText} disabled={frozen || busy} onChange={event => { clearIssue(daysPath); updateRow(row.id, { daysText: event.target.value }) }} />{daysIssue ? <p id={issueId(daysPath)} className="text-sm text-destructive">{daysIssue.message}</p> : null}</label>
+              <label className="flex flex-col gap-1"><span className="text-xs font-medium text-muted-foreground">{t("earnings.amount")} <span aria-hidden="true" className="text-destructive">*</span></span><CurrencyInput aria-required="true" aria-label={`${t("earnings.amount")} ${index + 1}`} aria-invalid={amountIssue ? true : undefined} aria-describedby={amountIssue ? issueId(amountPath) : undefined} value={row.amountText} disabled={frozen || busy} onChange={event => { clearIssue(amountPath); updateRow(row.id, { amountText: event.target.value }) }} />{amountIssue ? <p id={issueId(amountPath)} className="text-sm text-destructive">{amountIssue.message}</p> : null}</label>
               <Button type="button" size="sm" variant="ghost" className="h-10 sm:mt-5" aria-label={t("earnings.removeProjectRow", { number: index + 1 })} onClick={() => removeRow(row.id)} disabled={frozen || busy}>{t("common.delete")}</Button>
               {dailySuggestion !== null ? <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-muted-foreground sm:col-span-4">
                 <span>{t("earnings.dailySuggestionPreview")} <MoneyValue exact value={dailySuggestion} currencyLabel={t("detailPages.salary.currency")} /></span>
@@ -358,13 +383,13 @@ export function EmployeeEarningApprovalForm({
             </div>)}
           </dl>
           {positiveRemainder && !frozen ? <label className="flex items-start gap-3 border-t border-border/60 pt-3 text-sm leading-6">
-            <Input type="checkbox" required aria-required="true" className="mt-1 size-4 shrink-0" checked={acknowledgedRemainder === allocation.remainderMinor?.toString()} onChange={event => setAcknowledgedRemainder(event.target.checked ? allocation.remainderMinor?.toString() ?? null : null)} />
+            <Input type="checkbox" aria-required="true" aria-describedby={error === t("earnings.acknowledgementRequired") ? "earning-submit-error" : undefined} className="mt-1 size-4 shrink-0" checked={acknowledgedRemainder === allocation.remainderMinor?.toString()} onChange={event => { clearAcknowledgementError(); setAcknowledgedRemainder(event.target.checked ? allocation.remainderMinor?.toString() ?? null : null) }} />
             <span>{t("earnings.acknowledgeUnallocatedBefore")} <bdi dir="ltr">{formattedMinor(allocation.remainderMinor)} {t("detailPages.salary.currency")}</bdi> {t("earnings.acknowledgeUnallocatedAfter")} <span aria-hidden="true" className="text-destructive">*</span></span>
           </label> : null}
         </section>
         {globalIssues.length ? <div role="alert" className="space-y-1 text-sm text-destructive">{globalIssues.map((issue, index) => <p key={`${issue.path.join(".")}-${index}`}>{issue.message}</p>)}</div> : null}
         {storageError ? <p role="alert" className="text-sm text-destructive">{t("earnings.storageUnavailable")}</p> : null}
-        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        {error ? <p id={error === t("earnings.acknowledgementRequired") ? "earning-submit-error" : undefined} role="alert" className="text-sm text-destructive">{error}</p> : null}
       </div>
       <div className="sticky bottom-2 z-10 -mx-2 flex justify-end gap-2 rounded-xl border border-border/70 bg-background/95 p-3 shadow-lg backdrop-blur">
         <Button type="button" variant="outline" onClick={onCancel}>{t("common.cancel")}</Button>
