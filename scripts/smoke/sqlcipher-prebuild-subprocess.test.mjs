@@ -37,6 +37,9 @@ test("native validation exits before the caller deletes its copied prebuild", as
 
   const installedPackage = locateSqlcipherPackage();
   if (!installedPackage) {
+    if (process.env.CI) {
+      assert.fail("better-sqlite3-multiple-ciphers must be installed for the CI native cleanup regression.");
+    }
     t.skip("better-sqlite3-multiple-ciphers is not installed in this checkout.");
     return;
   }
