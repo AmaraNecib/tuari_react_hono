@@ -26,6 +26,10 @@ Full proof through the unchanged CLI against an actual copied API runtime passed
 
 Ubuntu lint exposed that the new full publication test reached the Windows-only archiver. Limit that integration case to Windows, while the adapter close-versus-exit and failure tests remain cross-platform. The selected Windows proof CI job now explicitly runs the real publication lifecycle case after installation. Parent focused lifecycle cases passed 2/2 and CI-wiring tests passed 10/10; actionlint passed. This corrects test execution placement, not the proof contract or packaging behavior.
 
+## Terminated descendant identity
+
+The cleanup regression now checks that the proof descendant is no longer running. On Linux, a zombie state means the process exited and released resources but awaits reaping; an existing PID alone is not proof of a live process. Missing PID, missing proc entry and zombie state satisfy termination; other inspection failures and live processes still fail. Parent four affected lifecycle/cleanup cases passed on Windows. Linux behavior remains a current-head CI proof boundary, not a locally executed Linux claim.
+
 ## Verification boundaries
 
 The historical 2fbecc5c rename red was invalid because its destination already existed. Do not cite it as evidence. A correct absent-destination rename can succeed on the developer laptop even when a DLL is mapped. The new test asserts lifecycle, not an assumed rename failure.

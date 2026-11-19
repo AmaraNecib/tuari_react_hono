@@ -16,6 +16,26 @@ const scriptsRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const ownedChildren = new WeakMap();
 
+function assertProofStopped(pid) {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if (error.code === "ESRCH") return;
+    throw error;
+  }
+  if (process.platform === "linux") {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const state = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[0];
+      if (state === "Z") return; // Exited, awaiting reaping; no files remain open.
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+  }
+  assert.fail(`Owned proof process ${pid} is still running`);
+}
+
 function registerChild(t, child, { tree = false } = {}) {
   const children = ownedChildren.get(t) ?? new Set();
   ownedChildren.set(t, children);
@@ -393,7 +413,7 @@ test("failed setup stops a blocked build before deleting its fixture", async () 
     // Run failure hooks without writing proof-continue, as a failed lock setup does.
     for (const hook of hooks) await hook();
     assert.ok(run.child.exitCode !== null || run.child.signalCode !== null);
-    assert.throws(() => process.kill(proofPid, 0), { code: "ESRCH" }, "owned proof descendant must not survive failed setup");
+    assertProofStopped(proofPid);
     assert.ok(!existsSync(f.root), "fixture removed only after the owned child closes");
   } finally {
     await stopOwnedChildren(scope);
