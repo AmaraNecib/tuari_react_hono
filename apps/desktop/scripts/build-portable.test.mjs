@@ -311,7 +311,9 @@ test("portable:only creates a Windows Explorer-visible ZIP with root app, runtim
     cwd: path.resolve(scriptsRoot, "../../.."), encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: output }, timeout: 10_000,
   });
   assert.equal(replayResult.status, 0, replayResult.stdout + replayResult.stderr);
-  assert.equal(readFileSync(output, "utf8").replace(/^\uFEFF/, "").trim(), `path=${archive}`, "actual workflow step must export the checked archive even without a native exit code");
+  const outputLine = readFileSync(output, "utf8").replace(/^\uFEFF/, "").trim();
+  assert.ok(outputLine.startsWith("path="), "actual workflow step must export its checked archive without a native exit code");
+  assert.equal(realpathSync.native(outputLine.slice(5)), realpathSync.native(archive), "exported path must identify the exact checked ZIP across Windows path aliases");
   assert.equal(readFileSync(path.join(f.portable, "Tuari-portable", "bin", "api-runtime", "dist", "index.cjs"), "utf8"), "// synthetic loader");
   assert.ok(!existsSync(path.join(f.portable, ".tmp-Tuari-portable")));
 });
