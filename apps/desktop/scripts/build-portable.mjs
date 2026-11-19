@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { copyValidatedTree, resolveTrustedTarPath, validateReleaseBinEntries } from "./script-security-utils.mjs";
 import { parseArgs, runProof } from "./sqlcipher-encryption-proof.mjs";
 import { renamePortableCandidate } from "./portable-rename.mjs";
+import { createPortableRenameDiagnostics, reportPortableRenameDiagnosticFailure } from "./portable-rename-diagnostics.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -48,6 +49,7 @@ if (existsSync(resourcesDir)) {
 
 // Prove the exact copied runtime, including its loader, before publishing it.
 // A stale --allow-plaintext build must not replace a previously valid artifact.
+const renameDiagnostics = createPortableRenameDiagnostics(tempPortableDir, finalPortableDir);
 await runProof(parseArgs([
   "--runtime", path.resolve(tempPortableDir, "bin", "api-runtime"),
   "--node", path.resolve(tempPortableDir, "bin", "node.exe"),
@@ -61,7 +63,14 @@ try {
   rmSync(finalPortableDir, { recursive: true, force: true });
 }
 
-await renamePortableCandidate(tempPortableDir, finalPortableDir);
+renameDiagnostics?.updateFinal(finalPortableDir);
+renameDiagnostics?.beforeRename();
+try {
+  await renamePortableCandidate(tempPortableDir, finalPortableDir);
+} catch (error) {
+  reportPortableRenameDiagnosticFailure(error, renameDiagnostics);
+  throw error;
+}
 rmSync(finalZipPath, { force: true });
 
 const tarExecutable = resolveTrustedTarPath();

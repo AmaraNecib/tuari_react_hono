@@ -117,7 +117,26 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
       - name: Create portable package
-        run: pnpm --filter @tuari/desktop portable:only
+        id: portable_package
+        shell: pwsh
+        run: |
+          & "scripts/packaging/portable-packaging-capture.ps1" -DiagnosticsDirectory (Join-Path $env:RUNNER_TEMP "portable-lock-diagnostics")
+          exit $LASTEXITCODE
+
+      - name: Upload portable rename diagnostics
+        if: ${{ failure() && steps.portable_package.outcome == 'failure' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nightly-portable-rename-diagnostics
+          path: |
+            ${{ runner.temp }}/portable-lock-diagnostics/portable-rename-failure.json
+            ${{ runner.temp }}/portable-lock-diagnostics/portable-rename.etl
+            ${{ runner.temp }}/portable-lock-diagnostics/wpr-status.log
+            ${{ runner.temp }}/portable-lock-diagnostics/wpr-start.log
+            ${{ runner.temp }}/portable-lock-diagnostics/wpr-stop.log
+            ${{ runner.temp }}/portable-lock-diagnostics/diagnostic-errors.log
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Check portable ZIP in Windows Shell
         id: portable

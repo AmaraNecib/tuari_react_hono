@@ -151,8 +151,14 @@ test('publish workflows run the installer smoke test after packaging and before 
 
     // It must run after packaging (no rebuild) and before the release upload,
     // or a non-starting installer can still be published.
-    const packageStep = stepContaining('portable:only');
+    const packageStep = channel === 'nightly'
+      ? stepStart('Create portable package')
+      : stepContaining('portable:only');
     assert.ok(packageStep !== -1, `${name} should build the portable package`);
+    const packageCommand = channel === 'nightly'
+      ? await readRepoFile('scripts/packaging/portable-packaging-capture.ps1')
+      : stepAt(packageStep);
+    assert.match(packageCommand, /portable:only/, `${name} must invoke the real portable package command`);
     assert.ok(
       packageStep < smokeStep,
       `${name} must run the installer smoke test after packaging`,
@@ -204,6 +210,34 @@ test('Nightly checks the produced portable ZIP through Windows Shell before sign
   assert.match(manifest, /Get-FileHash -Path \$portableZipPath/);
   assert.match(manifest, /Copy-Item -LiteralPath \$portableZipPath/);
   assert.doesNotMatch(manifest, /\$portableZip\s*=\s*Get-ChildItem/);
+});
+
+test('Nightly captures only scoped portable rename diagnostics after package failure', async () => {
+  const nightly = await readRepoFile('.github/workflows/nightly.yml');
+  const lines = nightly.split('\n');
+  const stepStart = (needle) => lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes(needle));
+  const stepAt = (index) => {
+    const indent = lines[index].match(/^\s*/)[0];
+    const next = lines.findIndex((line, lineIndex) => lineIndex > index && line.startsWith(`${indent}- name:`));
+    return lines.slice(index, next === -1 ? lines.length : next).join('\n');
+  };
+  const packageIndex = stepStart('Create portable package');
+  const uploadIndex = stepStart('Upload portable rename diagnostics');
+  const shellCheckIndex = stepStart('Check portable ZIP in Windows Shell');
+  assert.ok(packageIndex >= 0 && uploadIndex > packageIndex && shellCheckIndex > uploadIndex);
+
+  const packageStep = stepAt(packageIndex);
+  assert.match(packageStep, /portable-packaging-capture\.ps1/);
+  assert.match(packageStep, /exit \$LASTEXITCODE/);
+  const upload = stepAt(uploadIndex);
+  assert.match(upload, /failure\(\) && steps\.portable_package\.outcome == 'failure'/);
+  assert.match(upload, /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  assert.match(upload, /retention-days: 3/);
+  assert.match(upload, /portable-rename-failure\.json/);
+  assert.match(upload, /portable-rename\.etl/);
+  assert.doesNotMatch(upload, /Tuari-portable\.zip|api-runtime|signing-key|APP_DB_PATH/);
+  assert.match(nightly, /- name: Check portable ZIP in Windows Shell/);
+  assert.match(nightly, /- name: Run installer smoke test/);
 });
 
 test('Nightly preserves only failed portable verifier evidence without weakening release gates', async () => {
