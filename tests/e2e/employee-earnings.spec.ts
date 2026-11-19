@@ -129,10 +129,19 @@ test("employee earnings approval keeps exact references, retries one committed r
   // independently specified in UTC, with the period end inclusive.
   const expectedPeriodStart = "2026-05-31T23:00:00.000Z"
   const expectedPeriodEnd = "2026-06-25T22:59:59.999Z"
-  await approvalForm.getByLabel("بداية فترة العمل").click()
-  await page.locator(`[data-day="${periodStart}"] button`).click()
-  await approvalForm.getByLabel("نهاية فترة العمل").click()
-  await page.locator(`[data-day="${periodEnd}"] button`).click()
+  const selectPeriodDay = async (label: string, day: string) => {
+    const trigger = approvalForm.getByLabel(label)
+    await trigger.click()
+    await expect(trigger).toHaveAttribute("aria-expanded", "true")
+    const calendarId = await trigger.getAttribute("aria-controls")
+    if (!calendarId) throw new Error(`Date picker ${label} has no controlled calendar`)
+    const calendar = page.locator(`[id="${calendarId}"]`)
+    await expect(calendar).toBeVisible()
+    await calendar.locator(`[data-day="${day}"] button`).click()
+    await expect(trigger).toHaveAttribute("aria-expanded", "false")
+  }
+  await selectPeriodDay("بداية فترة العمل", periodStart)
+  await selectPeriodDay("نهاية فترة العمل", periodEnd)
   await approvalForm.getByLabel("إجمالي الأجر المعتمد").fill("62500")
   await approvalForm.getByRole("button", { name: "إضافة بند مشروع" }).click()
   await approvalForm.getByRole("button", { name: "إضافة بند مشروع" }).click()
