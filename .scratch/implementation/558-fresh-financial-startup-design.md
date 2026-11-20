@@ -25,6 +25,10 @@ Initial test attempt failed due an invalid earning request UUID and was correcte
 
 The normal application contract adds `financial` with `debts`, `invoices`, `inventory` and `expenses`, reusing the existing exact contracts without Number adapters or monetary shape coercion. `FinancialClient` is the shared typed client for production page wiring. The parent owns this public seam and root/router composition; the schema lane does not edit contracts. Existing payroll method names remain unchanged. Legacy monetary handlers must cease to construct numeric writers on the activated graph; stale numeric calls must fail closed rather than reach a parallel ledger. Unrelated metadata and identity operations remain available.
 
+## Fresh identity finalization
+
+`ensureFreshApplicationIdentity` reuses phone-only auth compatibility, employee auth-link index and current role/permission seeds in one executor transaction, without executing legacy money migrations or creating monetary tables. It is inert until the selected fresh initializer calls it. Focused native tests pin stable role/permission identities on repeated finalization and rollback of all seed/DDL effects on a permission-insert failure. The existing legacy initializer is unchanged.
+
 ## Scope resolution in progress
 
 A read-only Luna child maps actual normal-root financial writers/readers, prepared exact services and existing public wire contracts. It writes ignored findings only. The parent owns the startup integration test and final composition. Implementation lanes will be bounded to disjoint files only after those interface gaps are pinned. Do not infer that the absence of old data eliminates writer/reader compatibility work.
