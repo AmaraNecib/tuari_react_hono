@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { InventoryInvoiceAttachment } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
@@ -14,24 +14,43 @@ export function usePurchaseAttachmentDraft() {
   const [files, setFiles] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const [needsReload, setNeedsReload] = useState(false)
+  const [batchVersion, setBatchVersion] = useState(0)
+  const busy = useRef(false)
   const validation = validateInvoiceAttachmentFiles(files, {
     tooMany: max => t("inventory.invoiceCreate.attachmentTooMany", { max }),
     tooLarge: (fileName, maxMb) => t("inventory.invoiceCreate.attachmentTooLarge", { fileName, maxMb }),
     totalTooLarge: maxMb => t("inventory.invoiceCreate.attachmentTotalTooLarge", { maxMb }),
     unsupportedType: fileName => t("inventory.invoiceCreate.attachmentUnsupportedType", { fileName }),
   })
-  async function upload(id: string) {
-    if (validation) throw new Error(validation)
+  async function upload(id: string, reload?: () => Promise<unknown>) {
+    if (busy.current) return
+    if (!needsReload && validation) throw new Error(validation)
+    busy.current = true
     setPending(true); setError(null)
-    try { if (files.length) await uploadInvoiceAttachments(id, files) }
-    catch (cause) { setError(cause instanceof Error ? cause.message : t("inventory.invoiceCreate.attachmentsUploadFailed")); throw cause }
-    finally { setPending(false) }
+    const batch = files
+    try {
+      if (!needsReload) {
+        if (batch.length) await uploadInvoiceAttachments(id, batch)
+        setFiles(current => current === batch ? [] : current)
+        setBatchVersion(current => current + 1)
+        if (reload) setNeedsReload(true)
+      }
+      if (reload) await reload()
+      setNeedsReload(false)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : t("inventory.invoiceCreate.attachmentsUploadFailed"))
+      throw cause
+    } finally { busy.current = false; setPending(false) }
   }
-  return { files, setFiles, error: validation ?? error, pending, upload, valid: !validation }
+  function selectFiles(next: File[]) {
+    if (!busy.current && !needsReload) { setFiles(next); setError(null) }
+  }
+  return { files, setFiles: selectFiles, batchVersion, needsReload, error: validation ?? error, pending, upload, valid: !validation }
 }
 
 export function PurchaseAttachmentFiles({ draft, disabled = false }: { draft: ReturnType<typeof usePurchaseAttachmentDraft>; disabled?: boolean }) {
-  return <div className="space-y-2"><label className="block space-y-2">ملفات الفاتورة<Input type="file" multiple accept={INVOICE_ATTACHMENT_ACCEPT} disabled={disabled || draft.pending} onChange={event => draft.setFiles(Array.from(event.target.files ?? []))} /></label>{draft.error && <p role="alert">{draft.error}</p>}</div>
+  return <div className="space-y-2"><label className="block space-y-2">ملفات الفاتورة<Input key={draft.batchVersion} type="file" multiple accept={INVOICE_ATTACHMENT_ACCEPT} disabled={disabled || draft.pending || draft.needsReload} onChange={event => draft.setFiles(Array.from(event.target.files ?? []))} /></label>{draft.error && <p role="alert">{draft.error}</p>}</div>
 }
 
 export function ExactPurchaseAttachments({ groupId, attachments, reload }: { groupId: string; attachments: InventoryInvoiceAttachment[]; reload(): Promise<unknown> }) {
@@ -47,6 +66,6 @@ export function ExactPurchaseAttachments({ groupId, attachments, reload }: { gro
     {attachments.map(file => isDesktopRuntime() ? <Button key={file.id} variant="outline" onClick={() => void download(file)}>{file.originalName}</Button> : <a key={file.id} className="block underline" href={resolveApiUrl(`/api/inventory/attachments/${file.id}`)} target="_blank" rel="noreferrer">{file.originalName}</a>)}
     {downloadError && <p role="alert">{downloadError}</p>}
     <PurchaseAttachmentFiles draft={draft} />
-    <Button disabled={draft.pending || !draft.files.length || !draft.valid} onClick={() => void draft.upload(groupId).then(async () => { await reload(); draft.setFiles([]) }).catch(() => {})}>{draft.error ? t("inventory.invoiceCreate.retryAttachments") : t("common.save")}</Button>
+    <Button disabled={draft.pending || !draft.needsReload && (!draft.files.length || !draft.valid)} onClick={() => void draft.upload(groupId, reload).catch(() => {})}>{draft.needsReload && !draft.pending ? t("common.retry") : draft.error ? t("inventory.invoiceCreate.retryAttachments") : t("common.save")}</Button>
   </section>
 }

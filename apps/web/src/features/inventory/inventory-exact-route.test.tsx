@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@/i18n"
 import { i18n } from "@/i18n"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, expect, it, vi } from "vitest"
 import { exactInventoryDetailSchema, inventoryItemDefinitionSchema, type ExactInventoryClient } from "@tuari/contracts"
@@ -18,7 +18,21 @@ const date = "2026-11-10T00:00:00.000Z"
 const group = { id: "purchase-group", invoiceNumber: "PUR-7", supplierName: null, invoiceDate: date, warehouseId: "warehouse", projectId: null, externalCounterpartyId: null, grossTotalDzd: "1.00", paidAmountDzd: "1.00", remainingDebtDzd: "0.00", debtAccountId: null, debtEntryId: null, currency: "DZD", note: null, createdAt: date, updatedAt: date }
 const detail = () => exactInventoryDetailSchema.parse({ group, entries: [], attachments: [], movements: [], consumableBalances: [] })
 const file = { id: "attachment", invoiceGroupId: group.id, originalName: "invoice.pdf", mimeType: "application/pdf", byteSize: 1, storageKey: "invoice.pdf", relativePath: "invoice.pdf", downloadUrl: "/api/inventory/attachments/attachment", sha256: null, createdAt: date }
+const material = inventoryItemDefinitionSchema.parse({ id: "material", name: "Material", itemType: "CONSUMABLE", unit: "m", isActive: true, description: null, createdAt: date, updatedAt: date })
 const clients: QueryClient[] = []
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (cause: Error) => void
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
+  return { promise, resolve, reject }
+}
+const selectedReceipt = () => new File(["receipt"], "a.pdf", { type: "application/pdf" })
+const fileInput = () => screen.getByLabelText("ملفات الفاتورة") as HTMLInputElement
+const saveButton = () => screen.getByRole("button", { name: "حفظ" }) as HTMLButtonElement
+async function openPurchase(number: string) {
+  fireEvent.click(screen.getByRole("button", { name: `تفاصيل ${number}` }))
+  await screen.findByRole("heading", { name: `تفاصيل ${number}` })
+}
 afterEach(() => { cleanup(); clients.splice(0).forEach(query => query.clear()); vi.clearAllMocks(); mocks.desktop = false })
 function mount(page: "invoice-details" | "invoice-create" | "invoices" = "invoice-details") {
   const query = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(query)
@@ -27,7 +41,7 @@ function mount(page: "invoice-details" | "invoice-create" | "invoices" = "invoic
   return render(<QueryClientProvider client={query}><HomeViewPageDetailContent {...props} /></QueryClientProvider>)
 }
 function setup() {
-  Object.assign(mocks.inventory, { listInvoices: vi.fn().mockResolvedValue([group]), getInvoice: vi.fn().mockResolvedValue(detail()), definitions: vi.fn().mockResolvedValue([inventoryItemDefinitionSchema.parse({ id: "material", name: "Material", itemType: "CONSUMABLE", unit: "m", isActive: true, description: null, createdAt: date, updatedAt: date })]), listOutbounds: vi.fn().mockResolvedValue([]), locationContents: vi.fn().mockResolvedValue({ assets: [], consumables: [] }), createInvoice: vi.fn().mockResolvedValue(detail()) } satisfies Partial<Record<keyof ExactInventoryClient, unknown>>)
+  Object.assign(mocks.inventory, { listInvoices: vi.fn().mockResolvedValue([group]), getInvoice: vi.fn().mockResolvedValue(detail()), definitions: vi.fn().mockResolvedValue([material]), listOutbounds: vi.fn().mockResolvedValue([]), locationContents: vi.fn().mockResolvedValue({ assets: [], consumables: [] }), createInvoice: vi.fn().mockResolvedValue(detail()) } satisfies Partial<Record<keyof ExactInventoryClient, unknown>>)
 }
 it("mounts search purchase IDs on the inventory detail source, never generic invoices, and lists/downloads after remount", async () => {
   setup(); mocks.inventory.getInvoice!.mockResolvedValue({ ...detail(), attachments: [file] })
@@ -73,4 +87,121 @@ it("uploads from mounted detail, retries against the same group, and refetches i
   expect(await screen.findByRole("link", { name: "invoice.pdf" })).toBeTruthy()
   expect(mocks.upload).toHaveBeenNthCalledWith(2, group.id, [selectedFile])
   expect(mocks.inventory.getInvoice!.mock.calls.length).toBeGreaterThan(1)
+})
+
+it.each([false, true])("isolates selected receipt and failed retry when switching to cached B (failed=%s)", async failed => {
+  setup()
+  const b = { ...group, id: "purchase-b", invoiceNumber: "PUR-B" }
+  mocks.inventory.listInvoices!.mockResolvedValue([group, b])
+  mocks.inventory.getInvoice!.mockImplementation(({ id }) => Promise.resolve({ ...detail(), group: id === b.id ? b : group }))
+  mocks.upload.mockRejectedValue(new Error("A upload failed"))
+  mount("invoices")
+  await screen.findByRole("button", { name: "تفاصيل PUR-B" })
+  await openPurchase("PUR-B")
+  await openPurchase("PUR-7")
+  fireEvent.change(fileInput(), { target: { files: [selectedReceipt()] } })
+  if (failed) {
+    fireEvent.click(saveButton())
+    await screen.findByText("A upload failed")
+  }
+  await openPurchase("PUR-B")
+  expect(fileInput().files?.length).toBe(0)
+  expect(screen.queryByText("A upload failed")).toBeNull()
+  expect(saveButton().disabled).toBe(true)
+  fireEvent.click(saveButton())
+  expect(mocks.upload).toHaveBeenCalledTimes(failed ? 1 : 0)
+})
+it("keeps Save and replacement guarded through authoritative reload", async () => {
+  setup(); mocks.upload.mockResolvedValue([])
+  const reload = deferred<ReturnType<typeof detail>>()
+  mocks.inventory.getInvoice!.mockResolvedValueOnce(detail()).mockReturnValueOnce(reload.promise)
+  mount()
+  await screen.findByRole("heading", { name: "تفاصيل PUR-7" })
+  const original = selectedReceipt()
+  fireEvent.change(fileInput(), { target: { files: [original] } })
+  const save = saveButton()
+  fireEvent.click(save)
+  await waitFor(() => expect(mocks.inventory.getInvoice).toHaveBeenCalledTimes(2))
+  expect(fileInput().disabled).toBe(true)
+  expect(save.disabled).toBe(true)
+  fireEvent.click(save)
+  expect(mocks.upload).toHaveBeenCalledTimes(1)
+  await act(async () => reload.resolve({ ...detail(), attachments: [file] }))
+  expect(await screen.findByRole("link", { name: "invoice.pdf" })).toBeTruthy()
+  await waitFor(() => expect(fileInput().disabled).toBe(false))
+  expect(saveButton().disabled).toBe(true)
+  const next = new File(["next"], "next.pdf", { type: "application/pdf" })
+  fireEvent.change(fileInput(), { target: { files: [next] } })
+  mocks.inventory.getInvoice!.mockResolvedValue({ ...detail(), attachments: [file] })
+  fireEvent.click(saveButton())
+  await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(2))
+  expect(mocks.upload).toHaveBeenLastCalledWith(group.id, [next])
+})
+it("recovers a failed reconciliation by refetch only, without hiding the editor or reuploading", async () => {
+  setup(); mocks.upload.mockResolvedValue([])
+  mocks.inventory.getInvoice!.mockResolvedValueOnce(detail()).mockRejectedValueOnce(new Error("reload failed"))
+  mount()
+  await screen.findByRole("heading", { name: "تفاصيل PUR-7" })
+  fireEvent.change(fileInput(), { target: { files: [selectedReceipt()] } })
+  fireEvent.click(saveButton())
+  await waitFor(() => expect(mocks.inventory.getInvoice).toHaveBeenCalledTimes(2))
+  await screen.findByRole("alert")
+  expect(fileInput().disabled).toBe(true)
+  const retry = screen.getByRole("button", { name: i18n.t("common.retry") })
+  const reload = deferred<ReturnType<typeof detail>>()
+  mocks.inventory.getInvoice!.mockReturnValueOnce(reload.promise)
+  fireEvent.click(retry)
+  await waitFor(() => expect(mocks.inventory.getInvoice).toHaveBeenCalledTimes(3))
+  expect((retry as HTMLButtonElement).disabled).toBe(true)
+  fireEvent.click(retry)
+  expect(mocks.inventory.getInvoice).toHaveBeenCalledTimes(3)
+  await act(async () => reload.resolve({ ...detail(), attachments: [file] }))
+  expect(await screen.findByRole("link", { name: "invoice.pdf" })).toBeTruthy()
+  expect(mocks.upload).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(fileInput().disabled).toBe(false))
+})
+it("retains initial create intent through definitions failure and retry with a valid initial item", async () => {
+  setup()
+  const definitions = [material]
+  const request = deferred<typeof definitions>()
+  mocks.inventory.definitions!.mockReturnValueOnce(request.promise).mockResolvedValueOnce(definitions)
+  mount("invoice-create")
+  expect(screen.queryByRole("dialog")).toBeNull()
+  await act(async () => request.reject(new Error("definitions failed")))
+  const alert = await screen.findByRole("alert")
+  expect(alert.textContent).toContain(i18n.t("tableQuery.failed", { resource: i18n.t("inventory.itemDefinitions.title") }))
+  fireEvent.click(within(alert).getByRole("button", { name: i18n.t("common.retry") }))
+  const dialog = await screen.findByRole("dialog")
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "سعر الوحدة" }), { target: { value: "1" } })
+  expect((within(dialog).getByRole("button", { name: "حفظ الفاتورة والمخزون" }) as HTMLButtonElement).disabled).toBe(false)
+  expect(mocks.inventory.definitions).toHaveBeenCalledTimes(2)
+})
+
+it("keeps an in-flight A completion from clearing or reloading cached B", async () => {
+  setup()
+  const b = { ...group, id: "purchase-b", invoiceNumber: "PUR-B" }
+  mocks.inventory.listInvoices!.mockResolvedValue([group, b])
+  mocks.inventory.getInvoice!.mockImplementation(({ id }) => Promise.resolve({ ...detail(), group: id === b.id ? b : group }))
+  const upload = deferred<unknown[]>()
+  mocks.upload.mockReturnValueOnce(upload.promise).mockResolvedValue([])
+  mount("invoices")
+  await screen.findByRole("button", { name: "تفاصيل PUR-B" })
+  await openPurchase("PUR-B")
+  await openPurchase("PUR-7")
+  const aFile = selectedReceipt()
+  fireEvent.change(fileInput(), { target: { files: [aFile] } })
+  fireEvent.click(saveButton())
+  await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1))
+  await openPurchase("PUR-B")
+  const bFile = new File(["B"], "b.pdf", { type: "application/pdf" })
+  fireEvent.change(fileInput(), { target: { files: [bFile] } })
+  const bReads = mocks.inventory.getInvoice!.mock.calls.filter(([input]) => input.id === b.id).length
+  await act(async () => upload.resolve([]))
+  expect(fileInput().files?.[0]).toBe(bFile)
+  expect(saveButton().disabled).toBe(false)
+  expect(mocks.inventory.getInvoice!.mock.calls.filter(([input]) => input.id === b.id)).toHaveLength(bReads)
+  fireEvent.click(saveButton())
+  await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(2))
+  expect(mocks.upload).toHaveBeenNthCalledWith(1, group.id, [aFile])
+  expect(mocks.upload).toHaveBeenNthCalledWith(2, b.id, [bFile])
 })
