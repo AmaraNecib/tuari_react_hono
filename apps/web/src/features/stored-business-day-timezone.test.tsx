@@ -36,9 +36,14 @@ const transferItem = {
   from: { type: "WAREHOUSE" as const, id: "warehouse-1", name: "مستودع" },
   to: { type: "PROJECT" as const, id: "project-1", name: "مشروع" },
   counterparty: null,
-  items: [{ id: "line-1", name: "سلعة", quantity: 2, type: "CONSUMABLE" as const }],
-  totalAmount: 1200,
+  items: [{ id: "line-1", name: "سلعة", quantity: 2, type: "CONSUMABLE" as const, priceSource: null }],
+  totalAmountDzd: "1200.00",
+  paidAmountDzd: "1200.00",
+  remainingDebtDzd: "0.00",
+  currency: "DZD" as const,
+  paymentStatus: "PAID" as const,
   status: "COMPLETED" as const,
+  note: null,
 }
 
 const { transferHistoryQuery, locationTransferHistoryQuery, outboundTransfersQuery, invoiceGroupsQuery } =
@@ -124,6 +129,19 @@ describe("stored business day renders in Africa/Algiers (#473)", () => {
     render(<TransferHistoryPage />)
     expect(screen.getByText(ALGERIA_DAY_SHORT)).toBeTruthy()
     expect(screen.queryByText(UTC_DAY_SHORT)).toBeNull()
+  })
+
+  it("TransferHistoryPage shows loading and error states instead of an empty-history claim", () => {
+    transferHistoryQuery.mockReturnValue({ data: undefined, isPending: true, isError: false, isFetching: true, error: null, refetch: vi.fn() })
+    const loading = render(<TransferHistoryPage />)
+    expect(screen.getByRole("status")).toBeTruthy()
+    expect(screen.queryByText("0 نتيجة")).toBeNull()
+    loading.unmount()
+    transferHistoryQuery.mockReturnValue({ data: undefined, isPending: false, isError: true, isFetching: false, error: new Error("History unavailable"), refetch: vi.fn() })
+    render(<TransferHistoryPage />)
+    expect(screen.getByRole("alert")).toBeTruthy()
+    expect(screen.queryByText("0 نتيجة")).toBeNull()
+    expect(screen.queryByText("لا توجد تحويلات")).toBeNull()
   })
 
   it("LocationTransferHistory renders the transfer on its Algeria day", () => {

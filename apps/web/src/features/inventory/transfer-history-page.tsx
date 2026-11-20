@@ -3,6 +3,7 @@
  * Shows internal transfers, sales, gifts, and returns.
  */
 import { CurrencyRun } from "@/features/shared/money-value"
+import { Money, sumMoneyHistory } from "@tuari/contracts"
 import { TableQueryState } from "@/features/shared/table-primitives"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -15,13 +16,16 @@ import { AppDate } from "@/components/app-date"
 import { useTransferHistoryQuery, type TransferHistoryFilters, type TransferHistoryItem } from "./transfer-history-hooks"
 
 /** formatCurrency - helper function. */
-function formatCurrency(amount: number): string {
-  return amount.toLocaleString("ar-DZ")
+function formatCurrency(amount: string): string {
+  const [whole = "0", fraction = "00"] = Money.parse(amount).toWire().split(".")
+  const grouped = whole.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",")
+  return `${grouped}.${fraction}`
 }
 
 /** getTransferTypeLabel - helper function. */
 function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
   const labels: Record<string, string> = {
+    PURCHASE: "شراء",
     INTERNAL: "تحويل داخلي",
     SALE: "بيع",
     GIFT: "هدية",
@@ -33,6 +37,7 @@ function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
 /** getTransferTypeColor - helper function. */
 function getTransferTypeColor(type: TransferHistoryItem["type"]): string {
   const colors: Record<string, string> = {
+    PURCHASE: "bg-ink/10 text-ink",
     INTERNAL: "bg-ink/10 text-ink",
     SALE: "bg-good/10 text-good",
     GIFT: "bg-primary/10 text-primary",
@@ -81,7 +86,8 @@ export function TransferHistoryPage() {
   const totalTransfers = transfers.length
   const totalSales = transfers.filter((t) => t.type === "SALE").length
   const totalInternal = transfers.filter((t) => t.type === "INTERNAL").length
-  const totalValue = transfers.reduce((sum, t) => sum + (t.totalAmount ?? 0), 0)
+  const totalValue = sumMoneyHistory(transfers.flatMap(t => t.totalAmountDzd ? [Money.parse(t.totalAmountDzd)] : []))
+  const summaryValue = <T,>(value: T) => transfersQuery.isPending && !transfersQuery.data ? "…" : transfersQuery.isError && !transfersQuery.data ? "—" : value
 
   return (
     <div className="space-y-6">
@@ -101,19 +107,19 @@ export function TransferHistoryPage() {
           stats={[
             {
               label: t("inventory.transferHistory.totalTransfers"),
-              value: totalTransfers,
+              value: summaryValue(totalTransfers),
             },
             {
               label: t("inventory.transferHistory.totalSales"),
-              value: totalSales,
+              value: summaryValue(totalSales),
             },
             {
               label: t("inventory.transferHistory.totalInternal"),
-              value: totalInternal,
+              value: summaryValue(totalInternal),
             },
             {
               label: t("inventory.transferHistory.totalValue"),
-              value: <CurrencyRun amount={formatCurrency(totalValue)} currencyLabel="دج" />,
+              value: summaryValue(<CurrencyRun amount={formatCurrency(totalValue)} currencyLabel="دج" />),
             },
           ]}
         />
@@ -164,6 +170,7 @@ export function TransferHistoryPage() {
                 onChange={(e) => updateFilter("transferType", e.target.value === "ALL" ? undefined : e.target.value)}
               >
                 <option value="ALL">{t("inventory.transferHistory.allTypes")}</option>
+                <option value="PURCHASE">شراء</option>
                 <option value="INTERNAL">{t("inventory.transferHistory.internal")}</option>
                 <option value="SALE">{t("inventory.transfer.typeSale")}</option>
                 <option value="GIFT">{t("inventory.transfer.typeGift")}</option>
@@ -191,7 +198,7 @@ export function TransferHistoryPage() {
                 {t("inventory.transferHistory.clearFilters")}
               </Button>
               <span className="text-sm text-ink-4">
-                {totalTransfers} نتيجة
+                {summaryValue(totalTransfers)} نتيجة
               </span>
             </div>
           </div>
@@ -285,23 +292,23 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
       )}
 
       {/* Payment Info (for sales) */}
-      {transfer.type === "SALE" && transfer.totalAmount !== undefined && (
+      {(transfer.type === "SALE" || transfer.type === "RETURN" || transfer.type === "GIFT") && transfer.totalAmountDzd !== null && (
         <div className="flex items-center justify-between border-t border-line/50 pt-3">
           <div className="flex items-center gap-4">
             <div>
               <span className="text-xs text-ink-4">{t("inventory.transferHistory.total")}</span>
-              <span className="ms-2 font-medium tabular-nums"><CurrencyRun amount={formatCurrency(transfer.totalAmount)} currencyLabel="دج" /></span>
+              <span className="ms-2 font-medium tabular-nums"><CurrencyRun amount={formatCurrency(transfer.totalAmountDzd!)} currencyLabel="دج" /></span>
             </div>
-            {transfer.paidAmount !== undefined && transfer.paidAmount > 0 && (
+            {transfer.paidAmountDzd !== null && transfer.paidAmountDzd !== "0.00" && (
               <div>
                 <span className="text-xs text-ink-4">{t("inventory.transferHistory.paid")}</span>
-                <span className="ms-2 font-medium tabular-nums text-good"><CurrencyRun amount={formatCurrency(transfer.paidAmount)} currencyLabel="دج" /></span>
+                <span className="ms-2 font-medium tabular-nums text-good"><CurrencyRun amount={formatCurrency(transfer.paidAmountDzd!)} currencyLabel="دج" /></span>
               </div>
             )}
-            {transfer.remainingDebt !== undefined && transfer.remainingDebt > 0 && (
+            {transfer.remainingDebtDzd !== null && transfer.remainingDebtDzd !== "0.00" && (
               <div>
                 <span className="text-xs text-ink-4">{t("inventory.transferHistory.debt")}</span>
-                <span className="ms-2 font-medium tabular-nums text-warn"><CurrencyRun amount={formatCurrency(transfer.remainingDebt)} currencyLabel="دج" /></span>
+                <span className="ms-2 font-medium tabular-nums text-warn"><CurrencyRun amount={formatCurrency(transfer.remainingDebtDzd!)} currencyLabel="دج" /></span>
               </div>
             )}
           </div>

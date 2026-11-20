@@ -15,6 +15,7 @@ import { useLocationTransferHistoryQuery, type TransferHistoryItem } from "./tra
 /** getTransferTypeLabel - helper function. */
 function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
   const labels: Record<string, string> = {
+    PURCHASE: "شراء",
     INTERNAL: "تحويل داخلي",
     SALE: "بيع",
     GIFT: "هدية",
@@ -26,6 +27,7 @@ function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
 /** getTransferTypeColor - helper function. */
 function getTransferTypeColor(type: TransferHistoryItem["type"]): string {
   const colors: Record<string, string> = {
+    PURCHASE: "bg-ink/10 text-ink",
     INTERNAL: "bg-ink/10 text-ink",
     SALE: "bg-good/10 text-good",
     GIFT: "bg-primary/10 text-primary",
@@ -177,7 +179,7 @@ function LocationTransferItem({
       <div className="text-xs text-ink-4 text-start">
         {otherLocation ? (
           <span>
-            {otherLocation.type === "WAREHOUSE" ? "مستودع" : "مشروع"}: {otherLocation.id}
+            {otherLocation.type === "WAREHOUSE" ? "مستودع" : "مشروع"}: {otherLocation.name}
           </span>
         ) : counterparty ? (
           <span>{counterparty.name}</span>
@@ -185,9 +187,9 @@ function LocationTransferItem({
       </div>
 
       {/* Amount (for sales) */}
-      {transfer.totalAmount !== undefined && (
+      {transfer.totalAmountDzd !== null && (
         <span className="text-xs font-medium tabular-nums min-w-[80px] text-start">
-          <CurrencyRun amount={transfer.totalAmount.toLocaleString("ar-DZ")} currencyLabel="دج" />
+          <CurrencyRun amount={transfer.totalAmountDzd!} currencyLabel="دج" />
         </span>
       )}
     </div>

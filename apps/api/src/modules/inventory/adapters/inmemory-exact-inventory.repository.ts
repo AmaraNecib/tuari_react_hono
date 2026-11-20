@@ -27,6 +27,7 @@ export class InMemoryExactInventoryRepository implements ExactInventoryRepositor
   warehouseExists(id: string) { return this.references.warehouses.some(row => row.id === id); }
   projectExists(id: string) { return this.references.projects.some(row => row.id === id); }
   locationLabel(warehouseId: string | null, projectId: string | null) { return this.references.warehouses.find(row => row.id === warehouseId)?.name ?? this.references.projects.find(row => row.id === projectId)?.name ?? "Unlocated"; }
+  counterpartyLabel(id: string) { return id; }
   getGroup(id: string) { return structuredClone(this.groups.get(id) ?? null); }
   listGroups() { return structuredClone([...this.groups.values()]); }
   saveGroup(row: ExactInventoryInvoice) { this.groups.set(row.id, structuredClone(row)); }

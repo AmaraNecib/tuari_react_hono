@@ -83,6 +83,15 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
   listDefinitions() { return this.withTransaction(() => this.ids("inventory_item_definition").map(id => this.getDefinition(id)!)); }
   warehouseExists(id: string) { return this.lock.runSync(() => Boolean(this.db.prepare("SELECT id FROM warehouse WHERE id=?").get(id))); }
   projectExists(id: string) { return this.lock.runSync(() => Boolean(this.db.prepare("SELECT id FROM project WHERE id=?").get(id))); }
+  counterpartyLabel(id: string): string {
+    return this.lock.runSync(() => {
+      const columns = this.db.pragma("table_info(external_counterparty)") as { name: string }[];
+      const nameColumn = columns.some(row => row.name === "full_name") ? "full_name" : columns.some(row => row.name === "name") ? "name" : null;
+      if (!nameColumn) return id;
+      const row = this.db.prepare(`SELECT "${nameColumn}" AS name FROM external_counterparty WHERE id=?`).get(id) as { name: string } | undefined;
+      return row?.name ?? id;
+    });
+  }
   locationLabel(warehouseId: string | null, projectId: string | null): string {
     return this.lock.runSync(() => {
       const table = warehouseId ? "warehouse" : "project";

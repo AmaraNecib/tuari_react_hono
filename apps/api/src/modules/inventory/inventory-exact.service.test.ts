@@ -79,6 +79,23 @@ it.each(["memory", "plain", "keyed"] as const)("%s: loads each shared outbound d
   expect(remaining()).toEqual({ [first.id]: "50.00", [second.id]: "80.00", [returned.id]: "80.00", [gift.id]: "0.00" });
   expect(reads).toHaveBeenCalledTimes(2);
 });
+it("returns exact purchase, internal, and outbound history with bounded filters and pagination", () => {
+  const { inventory } = setup("memory");
+  inventory.createInvoiceGroup({ requestId: "history-purchase", warehouseId: "warehouse", createDebt: true, externalCounterpartyId: partyId,
+    paymentInputType: "AMOUNT", paidAmountDzd: "1.00", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 2, priceSource: { mode: "agreed-total", total: "9007199254740993.07", quantity: "2" } }] });
+  inventory.transferConsumable({ requestId: "history-move", inventoryEntryId: inventory.getLocationContents({ warehouseId: "warehouse" }).consumables[0]!.inventoryEntryId,
+    fromWarehouseId: "warehouse", toProjectId: "project", quantity: 1 });
+  const outbound = inventory.createOutboundTransfer({ requestId: "history-outbound", fromType: "PROJECT", fromId: "project", counterpartyId: partyId,
+    transferType: "RETURN", debtAmountDzd: "9007199254740993.07", firstPaymentAmountDzd: "0.07", items: [{ itemId: "material", quantity: 1 }] });
+  const history = inventory.transferHistory({});
+  expect(new Set(history.items.map(row => row.type))).toEqual(new Set(["RETURN", "INTERNAL", "PURCHASE"]));
+  expect(history.items.find(row => row.id === outbound.id)).toMatchObject({ type: "RETURN", totalAmountDzd: "9007199254740993.07", paidAmountDzd: "0.07", remainingDebtDzd: "9007199254740993.00", currency: "DZD", counterparty: { id: partyId } });
+  expect(history.items.find(row => row.type === "PURCHASE")!.items[0]!.priceSource).toMatchObject({ mode: "agreed-total", total: "9007199254740993.07" });
+  expect(inventory.transferHistory({ transferType: "INTERNAL", projectId: "project" }).total).toBe(1);
+  expect(inventory.transferHistory({ search: "Synthetic material" }).total).toBe(3);
+  expect(inventory.transferHistory({ offset: 1, limit: 1 }).items[0]).toEqual(history.items[1]);
+});
+
 it("rejects incomplete outbound ledger links rather than showing a false zero balance", () => {
   const { inventory, repo, finance } = setup("memory");
   inventory.createInvoiceGroup({ requestId: "broken-link-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 1, unitPriceDzd: "1.0000" }] });

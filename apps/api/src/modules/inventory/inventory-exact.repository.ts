@@ -10,6 +10,7 @@ export interface ExactInventoryRepository extends ExactTransactionParticipant {
   warehouseExists(id: string): boolean;
   projectExists(id: string): boolean;
   locationLabel(warehouseId: string | null, projectId: string | null): string;
+  counterpartyLabel(id: string): string;
   getGroup(id: string): ExactInventoryInvoice | null;
   listGroups(): ExactInventoryInvoice[];
   saveGroup(row: ExactInventoryInvoice): void;

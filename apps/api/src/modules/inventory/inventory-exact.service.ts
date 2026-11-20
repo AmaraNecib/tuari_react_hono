@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import {
   Money, UnitPrice, Quantity, ExactLine, finalizeLines, parseExactLine, sumMoney, sumMoneyHistory, sumExactLineHistory, sumMoneyReports,
-  exactInventoryInvoiceCreateSchema, exactInventoryPaymentSchema, exactInventoryOutboundPaymentSchema, exactInventoryAssetTransferSchema, exactInventoryChargeUpdateSchema, exactInventoryChargeVoidSchema, exactInventoryOutboundCreateSchema, exactInventoryConsumableTransferSchema,
+  exactInventoryInvoiceCreateSchema, exactInventoryPaymentSchema, exactInventoryOutboundPaymentSchema, exactInventoryAssetTransferSchema, exactInventoryChargeUpdateSchema, exactInventoryChargeVoidSchema, exactInventoryOutboundCreateSchema, exactInventoryConsumableTransferSchema, exactInventoryHistoryInputSchema,
   invoiceLineUsage, outboundPickUsage, matchesItemOfferFilter, resolveItemOffer,
   type ExactInventoryInvoiceInput, type ExactInventoryPayment, type ExactInventoryOutboundPayment, type ExactInventoryInvoice, type ExactInventoryAsset,
   type ExactInventoryAssetTransfer, type ExactInventoryChargeUpdate, type ExactInventoryChargeVoid, type ExactInventoryOutboundInput, type ExactInventoryOutbound, type ExactInventoryConsumableTransfer,
-  type InventoryMovement, type InventoryConsumableBalance,
+  type InventoryMovement, type InventoryConsumableBalance, type ExactInventoryHistoryInput, type ExactInventoryHistoryRow,
 } from "@tuari/contracts";
 import { ExactDebtError, ExactFinanceService, type ExactDebtAudit } from "../company/exact-finance.service";
 import { roundQuantity, subtractQuantity, addQuantity, quantityDifferenceMatches, QUANTITY_MIN } from "./inventory.helpers";
@@ -50,6 +50,77 @@ export class ExactInventoryService {
     if (projectId && !this.repo.projectExists(projectId)) throw new ExactDebtError("Project not found", "NOT_FOUND");
   }
   listDefinitions() { return this.repo.listDefinitions(); }
+  transferHistory(raw: ExactInventoryHistoryInput) {
+    const input = exactInventoryHistoryInputSchema.parse(raw);
+    return this.repo.withTransaction(() => {
+      const definitions = new Map(this.repo.listDefinitions().map(row => [row.id, row]));
+      const entries = new Map(this.repo.listEntries().map(row => [row.id, row]));
+      const location = (type: "WAREHOUSE" | "PROJECT" | null, id: string | null) => type && id
+        ? { type, id, name: this.repo.locationLabel(type === "WAREHOUSE" ? id : null, type === "PROJECT" ? id : null) } : null;
+      const rows: ExactInventoryHistoryRow[] = [];
+      const matches = (row: ExactInventoryHistoryRow) => {
+        const stamp = Date.parse(row.date);
+        if (input.dateFrom && stamp < Date.parse(input.dateFrom)) return false;
+        if (input.dateTo && stamp > Date.parse(input.dateTo + (input.dateTo.length === 10 ? "T23:59:59.999Z" : ""))) return false;
+        if (input.warehouseId && row.from?.id !== input.warehouseId && row.to?.id !== input.warehouseId) return false;
+        if (input.projectId && row.from?.id !== input.projectId && row.to?.id !== input.projectId) return false;
+        if (input.locationType && input.locationType !== "ALL" && row.from?.type !== input.locationType && row.to?.type !== input.locationType) return false;
+        if (input.transferType && input.transferType !== "ALL" && row.type !== input.transferType) return false;
+        if (input.search) {
+          const needle = input.search.toLocaleLowerCase();
+          const haystack = [row.id, row.note, row.counterparty?.name, row.from?.name, row.to?.name, ...row.items.map(item => item.name)].filter(Boolean).join(" ").toLocaleLowerCase();
+          if (!haystack.includes(needle)) return false;
+        }
+        return true;
+      };
+      for (const group of this.repo.listGroups()) {
+        const lines = this.repo.listEntries(group.id).map(entry => ({ id: entry.id, name: entry.itemName, quantity: entry.quantity, type: entry.itemType, priceSource: entry.priceSource }));
+        rows.push({ id: group.id, date: group.invoiceDate ?? group.createdAt, type: "PURCHASE", from: null,
+          to: location(group.warehouseId ? "WAREHOUSE" : group.projectId ? "PROJECT" : null, group.warehouseId ?? group.projectId),
+          counterparty: group.externalCounterpartyId ? { id: group.externalCounterpartyId, name: group.supplierName ?? this.repo.counterpartyLabel(group.externalCounterpartyId) } : null,
+          items: lines, totalAmountDzd: group.grossTotalDzd, paidAmountDzd: group.paidAmountDzd, remainingDebtDzd: group.remainingDebtDzd,
+          currency: group.currency, paymentStatus: group.remainingDebtDzd === "0.00" ? "PAID" : group.paidAmountDzd === "0.00" ? "UNPAID" : "PARTIAL", status: "COMPLETED", note: group.note });
+      }
+      for (const movement of this.repo.listMovements()) {
+        if (movement.movementType === "OUTBOUND_SALE" || movement.movementType === "PURCHASE") continue;
+        const entry = movement.inventoryEntryId ? entries.get(movement.inventoryEntryId) : undefined;
+        const fromType = movement.fromWarehouseId ? "WAREHOUSE" : movement.fromProjectId ? "PROJECT" : null;
+        const fromId = movement.fromWarehouseId ?? movement.fromProjectId ?? null;
+        const toType = movement.toWarehouseId ? "WAREHOUSE" : movement.toProjectId ? "PROJECT" : null;
+        const toId = movement.toWarehouseId ?? movement.toProjectId ?? null;
+        rows.push({ id: movement.id, date: movement.occurredAt, type: "INTERNAL",
+          from: location(fromType, fromId), to: location(toType, toId), counterparty: null,
+          items: [{ id: movement.assetUnitId ?? movement.inventoryEntryId ?? movement.id, name: movement.assetUnitId ? this.repo.getAsset(movement.assetUnitId)?.assetName ?? entry?.itemName ?? "" : definitions.get(entry?.itemDefinitionId ?? "")?.name ?? entry?.itemName ?? "", quantity: movement.quantity, type: movement.itemType, priceSource: null }],
+          totalAmountDzd: null, paidAmountDzd: null, remainingDebtDzd: null, currency: null, paymentStatus: "N/A", status: "COMPLETED", note: movement.note });
+      }
+      const debtEntries = new Map<string, Map<string, { signedAmountDzd: string; remainingDzd: string | null }>>();
+      for (const outbound of this.repo.listOutbounds()) {
+        const type = outbound.transferType;
+        const source = location(outbound.fromType, outbound.fromId);
+        let totalAmountDzd: string | null = null, paidAmountDzd: string | null = null, remainingDebtDzd: string | null = null;
+        if (outbound.debtEntryId && outbound.associatedDebtAccountId) {
+          let accountEntries = debtEntries.get(outbound.associatedDebtAccountId);
+          if (!accountEntries) {
+            accountEntries = new Map(this.finance.detail(outbound.associatedDebtAccountId).entries.map(row => [row.id, { signedAmountDzd: row.signedAmountDzd, remainingDzd: row.remainingDzd }]));
+            debtEntries.set(outbound.associatedDebtAccountId, accountEntries);
+          }
+          const original = accountEntries.get(outbound.debtEntryId);
+          if (!original || original.remainingDzd === null) throw new ExactDebtError("Live outbound obligation not found", "NOT_FOUND");
+          const signed = Money.parse(original.signedAmountDzd);
+          totalAmountDzd = (signed.compare(zero()) < 0 ? signed.negate() : signed).toWire();
+          remainingDebtDzd = original.remainingDzd;
+          paidAmountDzd = Money.parse(totalAmountDzd).subtract(Money.parse(remainingDebtDzd!)).toWire();
+        } else totalAmountDzd = paidAmountDzd = remainingDebtDzd = null;
+        rows.push({ id: outbound.id, date: outbound.transferDate, type, from: source, to: null,
+          counterparty: { id: outbound.counterpartyId, name: this.repo.counterpartyLabel(outbound.counterpartyId) },
+          items: outbound.items.map(item => ({ id: item.id, name: definitions.get(item.itemId)?.name ?? item.itemId, quantity: item.quantity, type: definitions.get(item.itemId)?.itemType ?? "CONSUMABLE", priceSource: item.priceSource })),
+          totalAmountDzd, paidAmountDzd, remainingDebtDzd, currency: outbound.currency,
+          paymentStatus: totalAmountDzd === null ? "N/A" : remainingDebtDzd === "0.00" ? "PAID" : paidAmountDzd === "0.00" ? "UNPAID" : "PARTIAL", status: outbound.status, note: outbound.notes });
+      }
+      const filtered = rows.filter(matches).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+      return { items: filtered.slice(input.offset, input.offset + input.limit), total: filtered.length, offset: input.offset, limit: input.limit };
+    });
+  }
   listInvoiceGroups() { return this.repo.listGroups(); }
   listOutboundTransfers() {
     return this.repo.withTransaction(() => {

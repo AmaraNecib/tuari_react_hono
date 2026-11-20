@@ -58,6 +58,8 @@ it.each(["", "526-public-rpc-key"])("purchase/transfer/charge/outbound input-to-
     const option = purchase.consumableBalances[0]!;
     const outbound = await client.createOutbound({ requestId: "sale", fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: "party", transferType: "SALE", debtAmountDzd: "0.30", firstPaymentAmountDzd: "0.10", items: [{ itemId: "material", optionId: option.id, quantity: 0.1, unitPriceDzd: "3.0000" }] });
     expect(outbound).toMatchObject({ actorUserId: user.id, actorLabel: user.name, currency: "DZD" });
+    const history = await client.transferHistory({ transferType: "SALE", warehouseId: "warehouse", limit: 10, offset: 0 });
+    expect(history.items).toMatchObject([{ id: outbound.id, type: "SALE", totalAmountDzd: "0.30", paidAmountDzd: "0.10", remainingDebtDzd: "0.20", currency: "DZD", from: { id: "warehouse", name: "Synthetic warehouse" }, items: [{ name: "Synthetic material", priceSource: { mode: "unit-price", price: "3.0000" } }] }]);
     expect(composition.services.finance.remaining(outbound.debtEntryId!)).toBe("0.20");
     expect((await client.getOutbound({ id: outbound.id })).items[0]).toMatchObject({ optionId: option.id, unitPriceDzd: "3.0000", priceSource: { mode: "unit-price", price: "3.0000", quantity: "0.1" } });
     const paymentInput = { requestId: "outbound-balance", transferId: outbound.id, amountDzd: "0.20" };

@@ -25,6 +25,7 @@ export function createExactInventoryRouter(service: ExactInventoryService, middl
   }
   return os.router({
     definitions: os.definitions.handler(middleware.queryAuth(async () => service.listDefinitions(), resolveError)),
+    transferHistory: os.transferHistory.handler(middleware.queryAuth(async ({ input }) => service.transferHistory(input), resolveError)),
     listInvoices: os.listInvoices.handler(middleware.queryAuth(async () => service.listInvoiceGroups(), resolveError)),
     getInvoice: os.getInvoice.handler(middleware.queryAuth(async ({ input }) => service.getInvoiceGroup(input.id), resolveError)),
     listOutbounds: os.listOutbounds.handler(middleware.queryAuth(async () => service.listOutboundTransfers(), resolveError)),
