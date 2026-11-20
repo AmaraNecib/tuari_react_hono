@@ -32,10 +32,13 @@ review or final rendering. Keep source frozen for independent readers.
 
 ## 3. Review once, then bound corrections
 
-Run `debate`, `test-audit`, `code-review` in that order, each in a distinct
-read-only session at the committed HEAD. This repository retains all three
-initial lenses. Give them the actual worktree, base/head, spec, direct callers
-and prior evidence, not an empty fresh checkout.
+Follow the review routing in `docs/engineering-workflow.md`. Until its bounded
+routine-review trial is reviewed and higher-priority three-lens instructions
+are aligned, run `debate`, `test-audit`, `code-review` in that order, each in a
+distinct read-only session at the committed HEAD. Eligible trial tasks may use
+one fresh combined reviewer only after adoption and instruction alignment.
+Give reviewers the actual worktree, base/head, spec, direct callers and prior
+evidence, not an empty fresh checkout.
 
 Record exact-tree executions and finding dispositions in ignored local reports.
 No local scored review or separate confidence-assessment step is required.

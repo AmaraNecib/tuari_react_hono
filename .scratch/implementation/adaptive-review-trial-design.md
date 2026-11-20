@@ -10,6 +10,14 @@ Eligibility is recorded before review outcomes, against the complete changed-fil
 
 Record reviewer and parent active and elapsed time, executions, unique confirmed defects, duplicates, false positives, later misses and observed cost. Unknown stays unknown. Compare only comparable historical evidence and disclose sample limits. Pause after consequential misclassification, escaped consequential defect or unusable evidence. Owner chooses adoption, revision or retirement; rollback restores prior routing for future work and preserves evidence and current-head checks.
 
+## Activation delta and approval
+
+The parent supplied owner authorization to implement the bounded trial after the owner said, "ok u can do that" to the described plan of up to eight new routine tasks, with tests, CI, hosted review and merge safeguards retained. This authorizes drafting and reviewing the policy, not publication, merge or bypass of higher-priority instructions.
+
+The patch replaces the inactive proposal with explicit routing conditions and updates the workflow pointers in `AGENTS.md`, `feature-implement` and `guard`. Those three-lens instructions remain binding until this patch is reviewed and the higher-priority instructions are aligned through their own review. Therefore this patch alone does not activate reduced review depth.
+
+The trial cap counts eligible cases escalated back to three lenses. It excludes prior/synthetic cases and cannot be filled with manufactured work. Selection, complete changed-file manifest and per-file disposition are recorded before outcomes. Eligible work gets one combined review covering standards, spec and applicable proof. Elevated risks and broad or conflicted documentation remain excluded. No local numeric score or change to elevated scheduling is introduced. Existing evidence, CI, hosted, protection, independence, finding-resolution, reliability and owner-only gates remain intact. Missing cost remains unknown.
+
 ## Scope and proof
 
 Base: `f94af99e1dee404e704d44c4d5d67d161a9a5efe`.
