@@ -95,6 +95,15 @@ describe("prepared exact payroll with real BetterAuth sessions", { timeout: 60_0
       expect((await ownerClient.employeesList()).items).toEqual([]);
       const unconfigured = createRouterClient(createRouter(authRoot), { context: ownerContext }) as AppClient;
       await expect(unconfigured.employeePayrollGet({ employeeId: payrollEmployeeId })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+      const absentRepayment = { requestId: "missing-capability-repayment", employeeId: payrollEmployeeId, advanceId: "not-yet-selected", amount: "1000.00", paymentDate: "2026-11-18T09:00:00.000Z" };
+      const absentOffset = { requestId: "missing-capability-offset", employeeId: payrollEmployeeId, wageSource: { kind: "EARNING" as const, id: "not-yet-selected" }, advanceSource: { kind: "ADVANCE" as const, id: "not-yet-selected" }, amount: "1000.00", settlementDate: "2026-11-18T09:00:00.000Z" };
+      const beforeUnavailable = f.db.prepare("SELECT total_changes() AS count").safeIntegers(true).get();
+      for (const [headers, code] of [[ownerHeaders, "SERVICE_UNAVAILABLE"], [new Headers(), "UNAUTHORIZED"], [nonownerHeaders, "UNAUTHORIZED"]] as const) {
+        const disabled = createRouterClient(createRouter(authRoot), { context: createRpcContext(headers, authRoot.sessionService) }) as AppClient;
+        await expect(disabled.employeePayrollAdvanceRepay(absentRepayment)).rejects.toMatchObject({ code });
+        await expect(disabled.employeePayrollAdvanceOffset(absentOffset)).rejects.toMatchObject({ code });
+      }
+      expect(f.db.prepare("SELECT total_changes() AS count").safeIntegers(true).get()).toEqual(beforeUnavailable);
       const anonymousClient = createRouterClient(router, { context: createRpcContext(new Headers(), authRoot.sessionService) }) as AppClient;
       const nonownerClient = createRouterClient(router, { context: createRpcContext(nonownerHeaders, authRoot.sessionService) }) as AppClient;
 
@@ -113,6 +122,22 @@ describe("prepared exact payroll with real BetterAuth sessions", { timeout: 60_0
       await expect(nonownerClient.employeePayrollCashRecord({ ...paymentInput, requestId: "nonowner-payroll-write" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
       await expect(ownerClient.employeePayrollCashRecord({ ...paymentInput, requestId: "forged-audit", actorUserId: "attacker" } as never)).rejects.toMatchObject({ code: "BAD_REQUEST" });
 
+      const advanceCash = await ownerClient.employeePayrollCashRecord({ requestId: "real-session-separate-advance", employeeId: payrollEmployeeId, amount: "5000.00", paymentDate: paymentInput.paymentDate, wages: [], advanceAmount: "5000.00" });
+      const repaymentInput = { requestId: "root-repayment", employeeId: payrollEmployeeId, advanceId: advanceCash.advance!.id, amount: "2000.00", paymentDate: paymentInput.paymentDate };
+      const offsetInput = { requestId: "root-offset", employeeId: payrollEmployeeId, wageSource: { kind: "EARNING" as const, id: earning.id }, advanceSource: { kind: "ADVANCE" as const, id: advanceCash.advance!.id }, amount: "1000.00", settlementDate: paymentInput.paymentDate };
+      for (const denied of [anonymousClient, nonownerClient]) {
+        await expect(denied.employeePayrollAdvanceRepay(repaymentInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+        await expect(denied.employeePayrollAdvanceOffset(offsetInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+      }
+      const repayment = await ownerClient.employeePayrollAdvanceRepay(repaymentInput);
+      expect(repayment).toMatchObject({ employeeId: payrollEmployeeId, amount: "2000.00", actorUserId: bootstrap.item.id, source: { kind: "ADVANCE", id: advanceCash.advance!.id } });
+      expect(await ownerClient.employeePayrollAdvanceRepay(repaymentInput)).toEqual(repayment);
+      const offset = await ownerClient.employeePayrollAdvanceOffset(offsetInput);
+      expect(offset).toMatchObject({ employeeId: payrollEmployeeId, amount: "1000.00", actorUserId: bootstrap.item.id, wageSource: offsetInput.wageSource, advanceSource: offsetInput.advanceSource });
+      expect(await ownerClient.employeePayrollAdvanceOffset(offsetInput)).toEqual(offset);
+      expect((await ownerClient.employeePayrollGet({ employeeId: payrollEmployeeId })).summary).toMatchObject({ wagesOwed: "9000.00", wageCashPaid: "25000.00", wagesOffset: "1000.00", advancesGiven: "5000.00", advancesCashRecovered: "2000.00", advancesOffset: "1000.00", advancesOwed: "2000.00" });
+      expect(f.cost()).toEqual(["35000.00"]);
+
       f.db.close();
       const reopenedDb = createDatabaseConnection(f.path, key || null);
       try {
@@ -126,7 +151,9 @@ describe("prepared exact payroll with real BetterAuth sessions", { timeout: 60_0
         } });
         const reopenedClient = createRouterClient(reopenedRouter, { context: createRpcContext(ownerHeaders, authRoot.sessionService) }) as AppClient;
         expect(await reopenedClient.employeePayrollCashRecord(paymentInput)).toEqual(payment);
-        expect((await reopenedClient.employeePayrollGet({ employeeId: payrollEmployeeId })).summary).toMatchObject({ wagesOwed: "10000.00", wageCashPaid: "25000.00" });
+        expect(await reopenedClient.employeePayrollAdvanceRepay(repaymentInput)).toEqual(repayment);
+        expect(await reopenedClient.employeePayrollAdvanceOffset(offsetInput)).toEqual(offset);
+        expect((await reopenedClient.employeePayrollGet({ employeeId: payrollEmployeeId })).summary).toMatchObject({ wagesOwed: "9000.00", wageCashPaid: "25000.00", wagesOffset: "1000.00", advancesGiven: "5000.00", advancesCashRecovered: "2000.00", advancesOffset: "1000.00", advancesOwed: "2000.00" });
         expect((await reopenedClient.employeePayrollGet({ employeeId: openingEmployeeId })).opening).toEqual({ review: "REVIEWED", reminder: false, wages: report, advances: report });
       } finally { reopenedDb.close(); }
     } finally { if (f.db.open) f.db.close(); }
