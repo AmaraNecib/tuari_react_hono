@@ -36,7 +36,7 @@ function expectExactInventory(actual: string[], expected: string[]): void {
   expect([...actual].sort()).toEqual([...expected].sort());
 }
 
-describe("inert foundation inventory", () => {
+describe("exact-money import inventory", () => {
   it("accounts once for every initialized monetary column, independently of the approved semantic map", () => {
     const source = read("apps/api/src/infrastructure/database/schema-definitions.ts");
     const { declarations, candidates } = initializedMoney(source);
@@ -72,7 +72,7 @@ describe("inert foundation inventory", () => {
       expected,
     )).toThrow();
   });
-  it("limits exact imports to inert storage, opt-in shared UI and isolated debt/expense/commerce consumers", () => {
+  it("allows only the owner-approved exact-money activation and its direct consumers", () => {
     const imports: string[] = [];
     for (const dir of ["apps/api/src", "apps/web/src", "packages/contracts/src"]) {
       for (const path of sources(join(root, dir))) {
@@ -96,8 +96,11 @@ describe("inert foundation inventory", () => {
       "apps/api/src/modules/inventory/inventory.service.ts",
       "apps/api/src/modules/invoice/adapters/sqlite-exact-invoice.repository.ts",
       "apps/api/src/modules/invoice/invoice-exact.service.ts",
+      "apps/api/src/modules/project-cost/adapters/sqlite-exact-project-cost.repository.ts",
       "apps/api/src/modules/project-cost/adapters/sqlite-project-cost.repository.ts",
       "apps/api/src/modules/project-cost/project-cost.service.ts",
+      "apps/api/src/modules/reports/exact-debt-report.ts",
+      "apps/api/src/modules/reports/exact-inventory-reports.ts",
       "apps/api/src/modules/workforce/adapters/sqlite-employee-earning.repository.ts",
       "apps/api/src/modules/workforce/adapters/sqlite-payroll-cash.repository.ts",
       "apps/api/src/modules/workforce/adapters/sqlite-payroll-lifecycle.reader.ts",
@@ -105,11 +108,17 @@ describe("inert foundation inventory", () => {
       "apps/api/src/modules/workforce/adapters/sqlite-payroll-source.repository.ts",
       "apps/api/src/modules/workforce/payroll.service.ts",
       "apps/web/src/components/ui/currency-amount-input.tsx",
+      "apps/web/src/features/app-shell/dashboard-section.tsx",
+      "apps/web/src/features/app-shell/home-view-signed-in-shell.tsx",
+      "apps/web/src/features/debts/debts-exact-page.tsx",
+      "apps/web/src/features/debts/debts-queries.ts",
       "apps/web/src/features/employees/employee-earning-allocation.ts",
       "apps/web/src/features/employees/employee-edit-page.tsx",
+      "apps/web/src/features/externals/externals-page.tsx",
       "apps/web/src/features/inventory/inventory-exact-movement-form.tsx",
       "apps/web/src/features/inventory/inventory-exact-page.tsx",
       "apps/web/src/features/inventory/inventory-exact-purchase-form.tsx",
+      "apps/web/src/features/inventory/transfer-history-page.tsx",
       "apps/web/src/features/invoices/invoices-exact-page.tsx",
       "apps/web/src/features/projects/project-cost-section.tsx",
       "apps/web/src/features/shared/exact-money-display.ts",
