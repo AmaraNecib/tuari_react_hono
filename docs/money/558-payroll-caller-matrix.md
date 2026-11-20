@@ -1,6 +1,6 @@
-# #558 isolated payroll monetary fields
+# #558 payroll monetary fields
 
-These fields belong to prepared exact-schema capability only. They are not imported by normal startup and do not change the initialized monetary inventory described in the #523/#543 matrix. The owner approved the paired wage/advance offset provenance after confirming full, partial, no-offset and independent cash repayment behavior.
+Normal startup selects the fresh exact application root in `apps/api/src/app/fresh-exact-dependencies.ts`. Its schema plan includes both `payrollCashSchemaStatements` and `payrollOffsetSchemaStatements`, so all five fields below are part of the initialized exact schema, not opt-in isolated tables. Startup refuses incompatible files rather than converting legacy financial data. The owner approved the paired wage/advance offset provenance after confirming full, partial, no-offset and independent cash repayment behavior.
 
 | Field | Storage | Classification and authority |
 | --- | --- | --- |
@@ -22,6 +22,6 @@ Every amount uses the accepted exact decimal-string wire form, checked reversal-
 
 ## Coverage boundary
 
-Native plain/keyed tests check this closed set of five physical amount fields and INTEGER types. Behavioral cases cover literal exact amounts, large cents, source linkage, partial/full/no offset, independent repayment, duplicate attribution, immutable history, canonical replay, paired rollback and reopening. The contracts inventory registers the new isolated consumers without weakening its initialized-field inventory or enabling production imports.
+Native plain/keyed repository tests check this closed set of five physical amount fields and INTEGER types. Behavioral cases cover literal exact amounts, large cents, source linkage, partial/full/no offset, independent repayment, duplicate attribution, immutable history, canonical replay, paired rollback and reopening. The cash repository WAL test uses a second native connection and worker barriers to check reservation before aggregate receipt/source reads, atomic failure rollback and single-receipt replay. The normal-startup integration test exercises the selected application composition; this matrix is not a substitute for its execution evidence.
 
-No public RPC/UI, opening source provider, whole-employee lifecycle, production schema conversion, activation, backup/restore or release acceptance is claimed by this matrix. Adding the offset table requires no change to configured application databases; preparation remains opt-in. Correction/reversal writers remain outside the initial offset implementation and cannot erase one leg silently.
+The selected root wires payroll commands and the employee payroll lifecycle reader through `createFinancialDependencies`. This matrix records storage and caller ownership, not CI acceptance or installed-shell proof. Current-head CI and installed-shell acceptance remain pending. Opening source providers, legacy financial schema conversion, backup/restore and release acceptance are not established here. Correction/reversal writers remain outside the initial offset implementation and cannot erase one leg silently.

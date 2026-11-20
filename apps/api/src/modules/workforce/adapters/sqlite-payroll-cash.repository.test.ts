@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { createRequire } from "node:module";
+import { Worker } from "node:worker_threads";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDatabaseConnection } from "../../../infrastructure/database/factory";
 import { createFifoLock } from "../../../infrastructure/database/fifo-lock";
 import { schemaStatements } from "../../../infrastructure/database/schema-definitions";
@@ -31,7 +33,8 @@ function fixture(key: string, payrollStatements: readonly string[] = payrollCash
   db.prepare("INSERT INTO employee VALUES (?)").run(employeeId);
   for (const sql of [...exactDebtSchemaStatements, ...payrollStatements]) db.exec(sql);
   const lock = createFifoLock();
-  const finance = new ExactFinanceService(new SqliteExactFinanceRepository(db, lock), { id: randomUUID, now: () => postingDate });
+  const ledger = new SqliteExactFinanceRepository(db, lock);
+  const finance = new ExactFinanceService(ledger, { id: randomUUID, now: () => postingDate });
   const repository = new SqlitePayrollCashRepository(db, lock);
   const audit = { actorUserId: randomUUID(), actorLabel: "Operator", transactionId: randomUUID(), createdAt: postingDate };
   function source(amount = "35000.00", paid = "25000.00", advance = false) {
@@ -50,10 +53,121 @@ function fixture(key: string, payrollStatements: readonly string[] = payrollCash
   const sources = new SqlitePayrollSourceRepository(db, lock, new SqliteExactFinanceRepository(db, lock));
   const payroll = new PayrollService(finance, repository, sources, { id: randomUUID, now: () => postingDate });
   function earning(id: string, totalMinor: number) { db.prepare(`INSERT INTO employee_earning(id,employee_id,request_id,request_hash,period_start,period_end,currency_code,total_minor,unallocated_minor,reference_salary_period,reference_salary_units,approved_at,actor_user_id,transaction_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, employeeId, `request-${id}`, "hash", "2026-11-01T00:00:00.000Z", "2026-12-01T00:00:00.000Z", "DZD", totalMinor, 0, null, null, postingDate, null, null, postingDate); }
-  return { db, path, repository, finance, lock, employeeId, source, cash, audit, sources, payroll, earning };
+  return { db, path, repository, finance, ledger, lock, employeeId, source, cash, audit, sources, payroll, earning };
+}
+
+// Shared-memory barriers let a second native connection run while the test's
+// synchronous transaction callback blocks the main event loop. Each attempt
+// finishes under SQLite's bounded busy timeout, before the callback continues.
+function walContender(path: string, key: string, employeeId: string) {
+  const state = new Int32Array(new SharedArrayBuffer(16));
+  const require = createRequire(import.meta.url);
+  const worker = new Worker(`
+    const { workerData } = require('node:worker_threads');
+    const state = new Int32Array(workerData.buffer);
+    const signal = (slot, value) => { Atomics.store(state, slot, value); Atomics.notify(state, slot); };
+    let db;
+    try {
+      const Database = require(workerData.driver);
+      db = new Database(workerData.path);
+      if (workerData.key) {
+        db.pragma("cipher = 'sqlcipher'"); db.pragma('legacy = 4');
+        db.pragma("key = '" + workerData.key.replace(/'/g, "''") + "'");
+      }
+      db.pragma('busy_timeout = 80');
+      if (db.pragma('journal_mode', { simple: true }) !== 'wal') throw new Error('Expected WAL');
+      signal(0, 1);
+      let previous = 0;
+      for (;;) {
+        while (Atomics.load(state, 1) === previous) Atomics.wait(state, 1, previous);
+        const command = Atomics.load(state, 1);
+        if (command === -1) break;
+        let result = 2;
+        try {
+          db.transaction(() => db.prepare('UPDATE employee SET id=id WHERE id=?').run(workerData.employeeId)).immediate();
+        } catch (error) { result = error.code === 'SQLITE_BUSY' ? 1 : -1; }
+        Atomics.store(state, 3, result);
+        previous = command; signal(2, command);
+      }
+    } catch { signal(0, -1); signal(2, -1); }
+    finally { if (db && db.open) db.close(); }
+  `, { eval: true, workerData: { path, key, employeeId, buffer: state.buffer,
+    driver: require.resolve(key ? "better-sqlite3-multiple-ciphers" : "better-sqlite3") } });
+  function wait(slot: number, target: number) {
+    const deadline = Date.now() + 10000;
+    while (Atomics.load(state, slot) !== target) {
+      const value = Atomics.load(state, slot);
+      if (value === -1 || Date.now() >= deadline) throw new Error(`WAL worker barrier failed at ${slot}: ${value}`);
+      Atomics.wait(state, slot, value, Math.max(1, deadline - Date.now()));
+    }
+  }
+  let sequence = 0;
+  return {
+    ready: () => wait(0, 1),
+    attempt: () => {
+      Atomics.store(state, 1, ++sequence); Atomics.notify(state, 1);
+      wait(2, sequence);
+      const result = Atomics.load(state, 3);
+      if (result === -1) throw new Error("Unexpected native contender failure");
+      return result === 1 ? "SQLITE_BUSY" : "committed";
+    },
+    stop: async () => { await worker.terminate(); },
+  };
 }
 
 describe.each([["plain", ""], ["keyed", "558-native-key"]])("payroll cash storage %s", (_driver, key) => {
+  it("reserves WAL before receipt and source reads, rolls back atomically and replays once", async () => {
+    const f = fixture(key);
+    const earningId = randomUUID(); f.earning(earningId, 3_500_000);
+    expect(f.db.pragma("journal_mode", { simple: true })).toBe("wal");
+    const contender = walContender(f.path, key, f.employeeId);
+    const receiptRead = f.ledger.getAggregateCommand.bind(f.ledger);
+    const sourceRead = f.sources.getEarning.bind(f.sources);
+    let receiptReads = 0; let sourceReads = 0;
+    vi.spyOn(f.ledger, "getAggregateCommand").mockImplementation(id => {
+      expect(f.db.inTransaction).toBe(true);
+      // This attempt precedes even the receipt SELECT. A nested finance
+      // immediate transaction is only a savepoint, not a reservation.
+      expect(contender.attempt()).toBe("SQLITE_BUSY");
+      const receipt = receiptRead(id); receiptReads++;
+      expect(contender.attempt()).toBe("SQLITE_BUSY");
+      return receipt;
+    });
+    vi.spyOn(f.sources, "getEarning").mockImplementation(id => {
+      const source = sourceRead(id); sourceReads++;
+      expect(source?.amount).toBe("35000.00");
+      expect(contender.attempt()).toBe("SQLITE_BUSY");
+      return source;
+    });
+    const input = { actorUserId: f.audit.actorUserId, actorLabel: f.audit.actorLabel, transactionId: f.audit.transactionId,
+      requestId: "wal-cash", employeeId: f.employeeId, amount: "25000.00", paymentDate: cashDate, wages: [{ earningId, amount: "25000.00" }] };
+    try {
+      contender.ready();
+      f.db.exec("CREATE TRIGGER fail_wal_cash BEFORE INSERT ON employee_salary_cash BEGIN SELECT RAISE(ABORT,'injected WAL cash failure'); END");
+      expect(() => f.payroll.recordCash(input)).toThrow("injected WAL cash failure");
+      for (const table of ["employee_salary_cash", "employee_salary_payment_allocation", "debt_account", "debt_entry", "debt_command", "exact_finance_command"]) {
+        expect(f.db.prepare(`SELECT count(*) AS count FROM ${table}`).get()).toEqual({ count: 0 });
+      }
+      expect(f.db.inTransaction).toBe(false);
+      expect(contender.attempt()).toBe("committed");
+      f.db.exec("DROP TRIGGER fail_wal_cash");
+      const cash = f.payroll.recordCash(input);
+      expect(cash.amount).toBe("25000.00");
+      expect(f.finance.remaining(cash.wageAllocations[0]!.debtEntryId)).toBe("10000.00");
+      expect(f.repository.getCash(cash.id)).toEqual(cash);
+      expect(f.payroll.recordCash(input)).toEqual(cash);
+      expect(receiptReads).toBe(3); expect(sourceReads).toBe(2);
+      expect(f.db.prepare("SELECT count(*) AS count FROM exact_finance_command").get()).toEqual({ count: 1 });
+      expect(f.db.prepare("SELECT count(*) AS count FROM employee_salary_cash").get()).toEqual({ count: 1 });
+      expect(f.db.prepare("SELECT count(*) AS count FROM debt_entry").get()).toEqual({ count: 2 });
+      expect(f.db.inTransaction).toBe(false);
+      expect(contender.attempt()).toBe("committed");
+    } finally {
+      vi.restoreAllMocks();
+      await contender.stop();
+    }
+  }, 20000);
+
   it("persists ordered exact cash and advance provenance across native close/reopen", () => {
     const f = fixture(key);
     const row = f.cash("90071992547409.93");
@@ -218,6 +332,24 @@ describe.each([["plain", ""], ["keyed", "558-native-key"]])("payroll cash storag
     expect(f.repository.getCash(cash.id)).toBeNull();
     expect(() => f.repository.withTransaction(() => { f.repository.saveCash(cash); throw new Error("outer rollback"); })).toThrow("outer rollback");
     expect(f.repository.getCash(cash.id)).toBeNull();
+  });
+
+  it("joins its own FIFO flow and rolls back only a failed nested savepoint", async () => {
+    const f = fixture(key); const first = f.cash("1.00"); const second = f.cash("2.00");
+    await f.lock.run(async () => {
+      f.repository.withTransaction(() => {
+        f.repository.saveCash(first);
+        expect(() => f.repository.withTransaction(() => {
+          f.repository.saveCash(second);
+          throw new Error("nested rollback");
+        })).toThrow("nested rollback");
+        expect(f.db.inTransaction).toBe(true);
+        expect(f.repository.getCash(first.id)).toEqual(first);
+        expect(f.repository.getCash(second.id)).toBeNull();
+      });
+    });
+    expect(f.db.inTransaction).toBe(false);
+    expect(f.repository.listCash(f.employeeId)).toEqual([first]);
   });
 
   it("refuses a foreign async flow while its shared FIFO is held", async () => {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Money, auditActorUserIdSchema, auditTransactionIdSchema, timestampSchema } from "@tuari/contracts";
 import { bindMoney, prepareMoneyRead } from "../../../infrastructure/database/exact-money-storage";
-import { runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock";
+import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import { SqliteExactFinanceRepository } from "../../company/adapters/sqlite-exact-finance.repository";
 import type { PayrollCashRecord, PayrollCashRepository, PayrollSettlementRecord } from "../payroll-cash.repository";
@@ -56,11 +56,13 @@ export class SqlitePayrollCashRepository implements PayrollCashRepository {
   }
   withTransaction<T>(work: () => T): T {
     if (work.constructor.name === "AsyncFunction") throw new TypeError("Payroll cash transaction callback must be synchronous");
-    return runSyncTransaction(this.lock, this.db, () => {
+    // Reserve before aggregate receipt/source reads. Nested finance immediate
+    // transactions are savepoints and cannot upgrade a deferred outer BEGIN.
+    return this.lock.runSync(() => this.db.transaction(() => {
       const result = work();
       if (result && typeof (result as { then?: unknown }).then === "function") throw new TypeError("Payroll cash transaction callback must be synchronous");
       return result;
-    });
+    }).immediate());
   }
   private amount(table: Table, predicate: string, ...ids: string[]): string {
     const value = prepareMoneyRead(this.db, `SELECT amount_minor AS minor_units FROM ${table} WHERE ${predicate}`).get(...ids);
