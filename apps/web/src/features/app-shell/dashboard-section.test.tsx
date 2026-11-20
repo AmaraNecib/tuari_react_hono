@@ -122,11 +122,11 @@ describe("DashboardSection (issue #23)", () => {
     expect(screen.getByText("الجهات الخارجية")).toBeDefined()
   })
 
-  it("keeps wide debt totals exact when aggregating dashboard balances", () => {
+  it.each(["00", "01"])("keeps wide debt totals exact with cents %s when aggregating dashboard balances", cents => {
     mocks.debtsSummary.mockReturnValue({
       data: { accounts: [
-        { id: "large", status: "OPEN", currentBalance: "90071992547409.93" },
-        { id: "cents", status: "OPEN", currentBalance: "0.08" },
+        { id: "large", status: "OPEN", currentBalance: "60000000000000000.00" },
+        { id: "cents", status: "OPEN", currentBalance: `60000000000000000.${cents}` },
       ] },
       isPending: false,
       isError: false,
@@ -136,7 +136,7 @@ describe("DashboardSection (issue #23)", () => {
 
     renderDashboard({ workers: 0, projects: 0, warehouses: 0, roles: 0, counterparties: 0 })
 
-    expect(screen.getByText("90.071.992.547.410.01", { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
+    expect(screen.getByText(`120.000.000.000.000.000${cents === "00" ? "" : ".01"}`, { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
   })
 
   it("shows a placeholder instead of zero while the feature queries are pending", () => {

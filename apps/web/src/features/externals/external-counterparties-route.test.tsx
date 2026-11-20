@@ -53,7 +53,7 @@ describe("ExternalCounterpartiesRoute", () => {
     expect(mocks.useExactDebtSummary).toHaveBeenCalledWith(client)
     expect(screen.getByText("شركة المورد")).toBeTruthy()
     expect(screen.getByText("0555000000")).toBeTruthy()
-    expect(screen.getAllByText("90,071,992,547,409.92").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("90,071,992,547,409.94").length).toBeGreaterThan(0)
     expect(screen.getByText("مورد بلا رصيد")).toBeTruthy()
     expect(screen.getByText("مسوّى")).toBeTruthy()
     fireEvent.click(screen.getAllByRole("button", { name: "فتح الملف" })[0]!)

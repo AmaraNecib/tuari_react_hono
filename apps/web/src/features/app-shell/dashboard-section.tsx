@@ -1,14 +1,15 @@
 import { useTranslation } from "react-i18next"
 
-import { Money } from "@tuari/contracts"
+import { Money, sumMoneyHistory } from "@tuari/contracts"
 import { useExactDebtSummary } from "@/features/debts/debts-exact-queries"
 import { useExactInventoryDefinitions, useExactInventoryInvoices } from "@/features/inventory/inventory-exact-queries"
 import { CurrencyRun } from "@/features/shared/money-value"
 import { financialClient } from "@/lib/orpc-client"
 import { PageHeader, StatBand } from "@/features/shared/page-primitives"
 
-function formatDashboardMoney(value: Money): string {
-  const [whole = "0", fraction] = value.format().split(".")
+function formatDashboardMoney(value: string): string {
+  const [whole = "0", cents = ""] = value.split(".")
+  const fraction = cents.replace(/0+$/, "")
   const groupedWhole = new Intl.NumberFormat("ar-DZ").format(BigInt(whole))
   return fraction ? `${groupedWhole}.${fraction}` : groupedWhole
 }
@@ -49,10 +50,10 @@ export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
   const itemDefinitionsQuery = useExactInventoryDefinitions(financialClient.inventory)
 
   const openInvoices = invoiceGroupsQuery.data?.filter(invoice => invoice.remainingDebtDzd !== "0.00").length ?? 0
-  const outstandingDebts = debtsSummaryQuery.data?.accounts
+  const outstandingDebtsDzd = sumMoneyHistory(debtsSummaryQuery.data?.accounts
     .filter(account => account.status === "OPEN")
-    .reduce((sum, account) => sum.add(Money.parse(account.currentBalance)), Money.parse("0")) ?? Money.parse("0")
-  const outstandingDebtsDzd = outstandingDebts.toWire()
+    .map(account => Money.parse(account.currentBalance)) ?? [])
+  const outstandingDebtsPositive = !outstandingDebtsDzd.startsWith("-") && outstandingDebtsDzd !== "0.00"
   const items = itemDefinitionsQuery.data?.length ?? 0
 
   // Density-first stat cards must never claim zero for data that is still
@@ -79,7 +80,7 @@ export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
       ? "—"
       : debtsSummaryQuery.isPending
         ? "…"
-        : <CurrencyRun amount={formatDashboardMoney(Money.parse(outstandingDebtsDzd))} currencyLabel="د.ج" />
+        : <CurrencyRun amount={formatDashboardMoney(outstandingDebtsDzd)} currencyLabel="د.ج" />
 
   return (
     <div className="space-y-6">
@@ -95,7 +96,7 @@ export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
           { label: labels.warehouses,      value: metrics.warehouses,      tone: metrics.warehouses > 0 ? "good" : "neutral" },
           { label: labels.roles,           value: metrics.roles,           tone: "neutral" },
           { label: labels.invoices,         value: invoicesValue, tone: openInvoices > 0 ? "good" : "neutral" },
-          { label: labels.outstandingDebts, value: debtsValue,    tone: outstandingDebts.compare(Money.parse("0")) > 0 ? "good" : "neutral" },
+          { label: labels.outstandingDebts, value: debtsValue,    tone: outstandingDebtsPositive ? "good" : "neutral" },
           { label: labels.items,            value: itemsValue,    tone: items > 0 ? "good" : "neutral" },
           { label: labels.counterparties,  value: metrics.counterparties,  tone: metrics.counterparties > 0 ? "good" : "neutral" },
         ]}

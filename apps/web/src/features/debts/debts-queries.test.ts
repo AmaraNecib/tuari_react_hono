@@ -286,13 +286,26 @@ describe("buildExternalCounterpartyRows", () => {
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({
       id: "external-1", fullName: "شركة المورد", note: "ملاحظة", phone: "0555000000",
-      totalBalanceDzd: "-90071992547409.92", openAccountCount: 2, totalAccountCount: 2,
+      totalBalanceDzd: "90071992547409.94", openAccountCount: 2, totalAccountCount: 2,
     })
     expect(rows[1]).toMatchObject({
       id: "external-2", fullName: "مورد بدون ديون", totalBalanceDzd: "0.00", openAccountCount: 0, totalAccountCount: 0,
     })
   })
 
+  it.each([
+    ["500.00", "300.00", "-200.00"],
+    ["500.00", "500.00", "0.00"],
+    ["-500.00", "300.00", "800.00"],
+    ["500.00", "-300.00", "-800.00"],
+    ["60000000000000000.00", "-60000000000000000.01", "-120000000000000000.01"],
+  ])("nets payable %s and receivable %s as %s", (payable, receivable, expected) => {
+    const rows = buildExternalCounterpartyRows(exactSummary([
+      exactAccount({ currentBalance: payable }),
+      exactAccount({ id: "receivable", direction: "RECEIVABLE", currentBalance: receivable }),
+    ]), counterparties)
+    expect(rows[0]?.totalBalanceDzd).toBe(expected)
+  })
   it("keeps empty metadata parties visible and sorts them by Arabic name", () => {
     const rows = buildExternalCounterpartyRows(exactSummary([]), counterparties)
     expect(rows.map(row => row.id)).toEqual(["external-1", "external-2"])

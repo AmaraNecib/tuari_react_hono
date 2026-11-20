@@ -4,6 +4,7 @@
  */
 import { CurrencyRun } from "@/features/shared/money-value"
 import { Money, sumMoneyHistory } from "@tuari/contracts"
+import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { TableQueryState } from "@/features/shared/table-primitives"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -16,10 +17,8 @@ import { AppDate } from "@/components/app-date"
 import { useTransferHistoryQuery, type TransferHistoryFilters, type TransferHistoryItem } from "./transfer-history-hooks"
 
 /** formatCurrency - helper function. */
-function formatCurrency(amount: string): string {
-  const [whole = "0", fraction = "00"] = Money.parse(amount).toWire().split(".")
-  const grouped = whole.replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",")
-  return `${grouped}.${fraction}`
+function formatCurrency(amount: string, aggregate = false): string {
+  return formatExactMoney(amount, { aggregate, grouped: true }).text
 }
 
 /** getTransferTypeLabel - helper function. */
@@ -119,7 +118,7 @@ export function TransferHistoryPage() {
             },
             {
               label: t("inventory.transferHistory.totalValue"),
-              value: summaryValue(<CurrencyRun amount={formatCurrency(totalValue)} currencyLabel="دج" />),
+              value: summaryValue(<CurrencyRun amount={formatCurrency(totalValue, true)} currencyLabel="دج" />),
             },
           ]}
         />

@@ -9,7 +9,7 @@
  * The legacy numeric detail helper still uses `workspaceQueryKeys`; exact
  * query keys and invalidation live in `debts-exact-queries.ts`.
  */
-import { Money } from "@tuari/contracts"
+import { Money, sumMoneyHistory } from "@tuari/contracts"
 import type {
   AppError,
   DebtEntry,
@@ -222,14 +222,17 @@ export function buildExternalCounterpartyRows(
   return externalCounterparties
     .map((counterparty) => {
       const accounts = accountsByParty.get(counterparty.id) ?? []
-      const totalBalance = accounts.reduce((total: Money, account) => total.add(Money.parse(account.currentBalance)), Money.parse("0"))
+      const totalBalance = sumMoneyHistory(accounts.map(account => {
+        const balance = Money.parse(account.currentBalance)
+        return account.direction === "PAYABLE" ? balance.negate() : balance
+      }))
       return {
         id: counterparty.id,
         fullName: counterparty.fullName,
         note: counterparty.note,
         openAccountCount: accounts.filter(account => account.status === "OPEN").length,
         phone: counterparty.phoneNumber,
-        totalBalanceDzd: totalBalance.toWire(),
+        totalBalanceDzd: totalBalance,
         totalAccountCount: accounts.length,
       }
     })

@@ -11,7 +11,7 @@ import { Surface } from "@/features/shared/page-primitives"
 import { MoneyValue } from "@/features/shared/money-value"
 import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
 import { getCachedSessionUserId } from "@/features/app-shell/workspace-keys"
-import { Money } from "@tuari/contracts"
+import { Money, sumMoneyHistory } from "@tuari/contracts"
 import { useExactDebtCommand, useExactDebtDetail, useExactDebtSummary, type ExactDebtCommand } from "./debts-exact-queries"
 
 export type ExactDebtPartyOption = { id: string; label: string; partyType: ExactDebtAccount["partyType"] }
@@ -69,12 +69,12 @@ export function ExactDebtsPage({ client, parties, scopedParty }: { client: Exact
   const account = detail.data?.account
   const scopedAccounts = summary.data?.accounts.filter(row => !scopedParty || (row.partyType === scopedParty.partyType && (row.workerId ?? row.externalCounterpartyId) === scopedParty.id)) ?? []
   const matchingAccounts = scopedAccounts.filter(row => (partyNames.get(row.workerId ?? row.externalCounterpartyId ?? "") ?? "").includes(search.trim()))
-  const scopedGross = (direction: ExactDebtAccount["direction"]) => scopedAccounts.reduce((total, row) => {
+  const scopedGross = (direction: ExactDebtAccount["direction"]) => sumMoneyHistory(scopedAccounts.flatMap(row => {
     const balance = Money.parse(row.currentBalance)
     const sameDirection = row.direction === direction
     const owed = sameDirection ? balance.compare(Money.parse("0")) > 0 : balance.compare(Money.parse("0")) < 0
-    return owed ? total.add(sameDirection ? balance : balance.negate()) : total
-  }, Money.parse("0")).toWire()
+    return owed ? [sameDirection ? balance : balance.negate()] : []
+  }))
   const scopedPayableDzd = scopedGross("PAYABLE")
   const scopedReceivableDzd = scopedGross("RECEIVABLE")
   const shownAccounts = matchingAccounts.slice((accountPage - 1) * 25, accountPage * 25)
@@ -124,9 +124,9 @@ export function ExactDebtsPage({ client, parties, scopedParty }: { client: Exact
             <TableCell>{row.remainingDzd !== null ? <MoneyValue exact value={row.remainingDzd} currencyLabel="دج" /> : "—"}</TableCell>
             <TableCell className="min-w-56"><p className="mb-2 max-w-72 whitespace-normal break-words text-xs text-muted-foreground">{row.note} {row.actorLabel}{row.voidReason ? ` · ${row.voidReason}` : ""}</p>
               {(row.targetEntryId || row.correctionOfEntryId) && <p className="mb-2 text-xs">مرتبطة بالحركة <bdi dir="ltr">#{detail.data.entries.find(target => target.id === (row.targetEntryId ?? row.correctionOfEntryId))?.postingSequence}</bdi></p>}
-              {row.status === "LIVE" && !row.producerType && !row.targetEntryId && !row.correctionOfEntryId && <div className="flex flex-wrap gap-2">
-                {row.remainingDzd !== null && !row.remainingDzd.startsWith("-") && row.remainingDzd !== "0.00" && <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "pay", entry: row })}>تسجيل دفعة</Button>}
-                {row.remainingDzd !== null && <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "correct", entry: row })}>تصحيح المبلغ</Button>}
+              {row.status === "LIVE" && !row.producerType && <div className="flex flex-wrap gap-2">
+                {!row.targetEntryId && !row.correctionOfEntryId && row.remainingDzd !== null && !row.remainingDzd.startsWith("-") && row.remainingDzd !== "0.00" && <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "pay", entry: row })}>تسجيل دفعة</Button>}
+                {!row.targetEntryId && !row.correctionOfEntryId && row.remainingDzd !== null && <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "correct", entry: row })}>تصحيح المبلغ</Button>}
                 <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "void", entry: row })}>إلغاء الحركة</Button>
               </div>}
             </TableCell>

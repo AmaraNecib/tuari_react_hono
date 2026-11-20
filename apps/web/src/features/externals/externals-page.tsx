@@ -2,7 +2,8 @@
  * External counterparties listing page.
  */
 import { CurrencyRun } from "@/features/shared/money-value"
-import { DEBT_BALANCE_STATE_PHRASE, Money } from "@tuari/contracts"
+import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts"
+import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -69,11 +70,11 @@ export function ExternalCounterpartiesPage({
           <TableBody>
             {pagedCounterparties.length > 0 ? (
               pagedCounterparties.map((counterparty) => {
-                const amount = Money.parse(counterparty.totalBalanceDzd)
-                const comparison = amount.compare(Money.parse("0"))
+                const display = formatExactMoney(counterparty.totalBalanceDzd, { aggregate: true, grouped: true })
+                const comparison = display.zero ? 0 : counterparty.totalBalanceDzd.startsWith("-") ? -1 : 1
                 const balance = {
                   phrase: comparison === 0 ? DEBT_BALANCE_STATE_PHRASE.settled : comparison > 0 ? DEBT_BALANCE_STATE_PHRASE.owedToUs : DEBT_BALANCE_STATE_PHRASE.owedByUs,
-                  amount: (comparison < 0 ? amount.negate() : amount).format({ grouped: true }),
+                  amount: display.text.replace(/^-/, ""),
                   textClassName: comparison === 0 ? "text-muted-foreground" : comparison > 0 ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300",
                 }
 

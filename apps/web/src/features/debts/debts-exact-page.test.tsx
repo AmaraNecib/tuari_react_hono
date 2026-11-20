@@ -48,6 +48,43 @@ describe("injected exact debt page", () => {
     expect((await screen.findAllByText("90,071,992,547,409.93")).length).toBeGreaterThan(0)
     expect(screen.queryByText(/علي بن حميد/)).toBeNull()
   })
+  it.each(["00", "01"])("renders wide scoped totals with cents %s without mixing identical worker and external IDs", async cents => {
+    const { client, query, unmount } = fixture()
+    unmount()
+    await query.cancelQueries()
+    query.removeQueries({ predicate: row => row.queryKey.includes("debts-exact") })
+    client.summary.mockResolvedValue({ accounts: [
+      { ...account, currentBalance: "60000000000000000.00" },
+      { ...account, id: "second", currentBalance: `60000000000000000.${cents}` },
+      { ...account, id: "worker", partyType: "INTERNAL_WORKER", workerId: party.id, externalCounterpartyId: null, currentBalance: "50.00" },
+    ], grossPayableDzd: "120000000000000050.01", grossReceivableDzd: "0.00" })
+    render(<QueryClientProvider client={query}><ExactDebtsPage client={client as ExactDebtsClient} parties={[party]} scopedParty={party} /></QueryClientProvider>)
+    expect(await screen.findByText(`120,000,000,000,000,000${cents === "00" ? "" : ".01"}`)).toBeTruthy()
+    expect(screen.queryByText("50")).toBeNull()
+  })
+  it.each(["payment", "correction"])("cancels a manual %s child itself without original-only actions", async kind => {
+    const { client } = fixture()
+    const child = { ...entry, id: "manual-child", entryType: "PAYMENT" as const, targetEntryId: kind === "payment" ? entry.id : null, correctionOfEntryId: kind === "correction" ? entry.id : null, remainingDzd: "0.10" }
+    client.detail.mockResolvedValue({ account, entries: [entry, child] })
+    await openAccount()
+    const row = document.querySelector('[data-entry-id="manual-child"]') as HTMLElement
+    expect(within(row).queryByRole("button", { name: "تسجيل دفعة" })).toBeNull()
+    expect(within(row).queryByRole("button", { name: "تصحيح المبلغ" })).toBeNull()
+    fireEvent.click(within(row).getByRole("button", { name: "إلغاء الحركة" }))
+    const dialog = await screen.findByRole("dialog")
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "السبب، مطلوب" }), { target: { value: "Wrong child" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
+    await waitFor(() => expect(client.void).toHaveBeenCalledTimes(1))
+    expect(client.void.mock.calls[0]?.[0]).toMatchObject({ entryId: child.id, voidReason: "Wrong child" })
+    expect(client.pay).not.toHaveBeenCalled()
+    expect(client.correct).not.toHaveBeenCalled()
+  })
+  it.each(["VOIDED", "producer"])("offers no entry actions for a %s child", async kind => {
+    const { client } = fixture()
+    client.detail.mockResolvedValue({ account, entries: [{ ...entry, targetEntryId: "original", status: kind === "VOIDED" ? "VOIDED" : "LIVE", producerType: kind === "producer" ? "PAYROLL_EARNINGS" : null }] })
+    await openAccount()
+    expect(within(screen.getByRole("region", { name: "جدول حركات الدين" })).queryAllByRole("button")).toHaveLength(0)
+  })
   it("does not retain a selected ledger after switching the scoped party", async () => {
     const { switchScope } = fixture()
     await openAccount()
