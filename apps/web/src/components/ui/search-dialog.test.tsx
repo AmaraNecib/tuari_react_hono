@@ -21,6 +21,14 @@ function makeItems() {
 }
 
 describe("SearchDialog", () => {
+  it("renders a root-relative search backdrop blur", () => {
+    render(<SearchDialog isOpen onClose={vi.fn()} onQueryChange={vi.fn()} results={[]} />)
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    // Class wiring only. The real-browser probe checks computed CSS scaling.
+    const overlay = document.querySelector('[class*="backdrop-blur-"]')
+    expect(overlay?.classList.contains("backdrop-blur-[calc(2rem/15)]")).toBe(true)
+  })
+
   it("renders a modal dialog with combobox/listbox semantics when open", () => {
     const items = makeItems()
     render(<SearchDialog isOpen onClose={vi.fn()} onQueryChange={vi.fn()} results={items} />)

@@ -118,60 +118,75 @@ The tier follows the named reachable failure, not line count or a path alone.
 Record the tier and reason in the design note. Lightweight is reserved for
 truly non-reviewable files; code, tests, docs, config and skills are reviewable.
 
-This repository retains three distinct initial sessions: `debate`,
-`test-audit`, then `code-review`. High-assurance applies to reachable money,
-stock, debt-direction, auth/session/secrets, crypto, recovery, dependency,
-schema, CI/release/merge-policy and unresolved integration risks. Do not
-silently import Dockan's repository-specific routine-review exception.
+Use three distinct initial sessions in order: `debate`, `test-audit`, then
+`code-review`, for all other reviewable work outside the eligible routine
+classes below. This includes reachable money, stock, debt-direction,
+auth/session/secrets, security, crypto, recovery, schema, dependency,
+CI/release/merge-policy and unresolved integration risks. This policy change
+itself uses that deeper route; it cannot approve its own lighter review.
 
 A bounded correction needs one fresh review of the combined delta and direct
 affected callers, not a restart of every lens. Read prior findings as claims,
 verify source, record what remains valid and expose any new risk.
 
-### Bounded routine-review trial
+### Narrow routine review
 
-The owner approved the described trial capped at eight genuinely new eligible
-tasks. Record the explicit owner adoption decision and approved scope in this
-workflow or its design note. Reviewer approval alone cannot activate the trial.
-Routing stays unchanged until that adoption decision, policy review and
-alignment of every higher-priority three-lens instruction are complete. Until
-then, use three distinct initial sessions in order: `debate`, `test-audit`, then
-`code-review`. This workflow cannot override a higher-priority rule.
+The owner approved preparing adoption after the completed eight-task trial.
+The trial covered four narrow factual-documentation changes and four related
+visual-unit changes. It established feasibility, not measured cost savings,
+and is not evidence of equal defect-detection sensitivity. It does not justify
+lighter routing for broader runtime or domain changes.
 
-Once adopted and aligned, route no more than eight new, real tasks through the
-trial. Do not count #574, #554, retrospective cases, synthetic examples or
-unselected work. Do not create tasks or quotas to fill the cap. Start with
-narrow, reversible factual changes checked directly against current source.
-Broaden only after a reviewed owner decision. Before outcomes are known,
-record eligibility, rationale and every changed file in the existing design
-note or handoff. Account for contracts, direct callers, consequences,
-uncertainty and reversibility. Disposition each file. A label, file size,
-tests-only status or docs-only status is not enough. Escalate when scope or
-evidence changes.
+Activation requires a separate explicit owner adoption decision after governance
+review. Approval to prepare and review the proposal does not satisfy that gate.
+Record the adoption decision, merge the reviewed repository instructions, then
+apply the matching reviewed higher-priority instruction alignment. Until that
+sequence is complete, retain the three-session default. The adoption design
+records each gate without treating a pending decision as granted. Reviewer
+approval alone cannot activate this exception. The completed trial does not restart or
+authorize additional trial slots.
 
-Exclude money, stock, debt-direction, authentication, security, recovery,
-schema, dependency, CI, release and merge risks; broad documentation rewrites or removals; conflicts with
-accepted authoritative sources; and consequential test weakening without
-proved equivalent detection. Elevated work keeps all three initial sessions.
-For eligible work only, one fresh combined reviewer covers applicable
-standards, the specification and proof adequacy. No local numeric score.
-Existing bounded fixes still get one fresh combined-delta review, with
-unchanged conclusions and proof carried forward explicitly.
+After activation, one fresh combined independent reviewer may replace the
+three initial sessions only for:
+- Narrow source-backed factual corrections with direct current-source proof,
+  no accepted-authority conflict, and no broad guidance rewrite or removal.
+- Small reversible visual-only changes whose actual rendering evidence and
+  relevant interaction tests establish unchanged behavior and domain contracts.
 
-The trial changes no tests, UI, negative or integration evidence, hosted
-verdicts, CI acceptance, enforcement, reviewer independence, finding
-resolution, execution reliability or owner-only gate. It changes no elevated
-scheduling. Keep records in the existing design or handoff and ignored
-per-task evidence. Record scope, disposition, reviewer and parent active and
-elapsed time, executions, unique confirmed defects, duplicates, false
-positives, later misses and observed cost. Unknown measurements stay unknown.
-No new per-task report is required. Do not invent savings when cost is missing.
+Record eligibility, rationale and the complete changed-file manifest in the
+existing design note before outcomes. Account for direct callers, reachable
+consequences, uncertainty and reversibility; disposition every file. Labels,
+line count, docs-only or tests-only status never establish eligibility.
+Mixed scope or unresolved eligibility uses the three-session default.
 
-Pause after a consequential miss, misclassification or evidence failure.
-Counting includes selected cases escalated back to three lenses; do not discard
-inconvenient cases. At eight, restore default routing until the owner decides
-adoption, revision or retirement. Preserve trial evidence and all gates for
-work already reviewed.
+Exclude the elevated risks listed above, consequential test weakening without
+proved equivalent detection, authoritative-source conflicts and broad guidance
+changes. A cosmetic change in a business caller is not automatically a domain
+change, but unchanged semantics must be proved, not assumed from a CSS-only
+label. State/event/contract changes are outside the visual class.
+
+The combined reviewer covers applicable standards, specification and proof
+adequacy at the committed frozen HEAD. Review execution remains independent
+of authorship. A success label, class-string assertion or screenshot alone
+does not establish actual CSS behavior or interaction correctness. The parent
+checks exact-tree execution evidence and failed-attempt boundaries. Missing
+required proof blocks readiness; never relabel it as a passing run.
+
+This exception changes only local initial review depth. Tests, UI, negative
+and integration proof, current-head hosted verdicts, CI acceptance, effective
+protection, reviewer independence, finding resolution and owner-only gates
+remain unchanged. It changes no elevated scheduling. A consequential miss,
+misclassification or evidence failure pauses lighter routing for reassessment.
+Correct incomplete attempts before accepting their evidence; preserve failures
+and escalate if eligibility or required proof remains uncertain.
+
+Use the existing design/handoff and ignored execution records, not a new
+mandatory per-task report, classifier child or automatic retrospective.
+Record actual review/execution counts, confirmed defects and disposition;
+measure parent/reviewer active and elapsed time when available. Tokens and
+currency remain unknown unless observed. Separate setup, checking and CI wait
+costs; never infer savings from fewer sessions alone. Do not manufacture tasks
+or a new quota to measure the route.
 
 Select `openai-codex/gpt-6-luna` explicitly for ordinary workers and reviewers.
 Use the currently enabled routes. OpenCode is opt-in, never a quota fallback.
