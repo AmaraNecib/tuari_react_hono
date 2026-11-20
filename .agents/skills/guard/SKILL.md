@@ -31,8 +31,11 @@ Verify the committed SHA, not an uncommitted draft.
 
 - Focused behavioral proof covers changed code and direct callers. Add
   applicable lint/typecheck and selected browser proof.
-- Initial debate, test-audit and code-review evidence names exact base/head,
-  actual reviewer IDs/models and any same-family exception.
+- Follow review routing in `docs/engineering-workflow.md`. Until the bounded
+  routine-review trial is reviewed and higher-priority three-lens instructions
+  are aligned, require debate, test-audit and code-review evidence with exact
+  base/head, reviewer IDs/models and any same-family exception. After alignment,
+  accept the single combined review only for eligible trial tasks.
 - A bounded correction has affected proof and one fresh combined-delta review,
   with unchanged conclusions carried forward explicitly.
 - Resolve local actionable findings. No local score or separate confidence

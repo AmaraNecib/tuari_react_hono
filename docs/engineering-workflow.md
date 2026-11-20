@@ -128,6 +128,51 @@ A bounded correction needs one fresh review of the combined delta and direct
 affected callers, not a restart of every lens. Read prior findings as claims,
 verify source, record what remains valid and expose any new risk.
 
+### Bounded routine-review trial
+
+The owner approved the described trial capped at eight genuinely new eligible
+tasks. Record the explicit owner adoption decision and approved scope in this
+workflow or its design note. Reviewer approval alone cannot activate the trial.
+Routing stays unchanged until that adoption decision, policy review and
+alignment of every higher-priority three-lens instruction are complete. Until
+then, use three distinct initial sessions in order: `debate`, `test-audit`, then
+`code-review`. This workflow cannot override a higher-priority rule.
+
+Once adopted and aligned, route no more than eight new, real tasks through the
+trial. Do not count #574, #554, retrospective cases, synthetic examples or
+unselected work. Do not create tasks or quotas to fill the cap. Start with
+narrow, reversible factual changes checked directly against current source.
+Broaden only after a reviewed owner decision. Before outcomes are known,
+record eligibility, rationale and every changed file in the existing design
+note or handoff. Account for contracts, direct callers, consequences,
+uncertainty and reversibility. Disposition each file. A label, file size,
+tests-only status or docs-only status is not enough. Escalate when scope or
+evidence changes.
+
+Exclude money, stock, debt-direction, authentication, security, recovery,
+schema, dependency, CI, release and merge risks; broad documentation rewrites or removals; conflicts with
+accepted authoritative sources; and consequential test weakening without
+proved equivalent detection. Elevated work keeps all three initial sessions.
+For eligible work only, one fresh combined reviewer covers applicable
+standards, the specification and proof adequacy. No local numeric score.
+Existing bounded fixes still get one fresh combined-delta review, with
+unchanged conclusions and proof carried forward explicitly.
+
+The trial changes no tests, UI, negative or integration evidence, hosted
+verdicts, CI acceptance, enforcement, reviewer independence, finding
+resolution, execution reliability or owner-only gate. It changes no elevated
+scheduling. Keep records in the existing design or handoff and ignored
+per-task evidence. Record scope, disposition, reviewer and parent active and
+elapsed time, executions, unique confirmed defects, duplicates, false
+positives, later misses and observed cost. Unknown measurements stay unknown.
+No new per-task report is required. Do not invent savings when cost is missing.
+
+Pause after a consequential miss, misclassification or evidence failure.
+Counting includes selected cases escalated back to three lenses; do not discard
+inconvenient cases. At eight, restore default routing until the owner decides
+adoption, revision or retirement. Preserve trial evidence and all gates for
+work already reviewed.
+
 Select `openai-codex/gpt-6-luna` explicitly for ordinary workers and reviewers.
 Use the currently enabled routes. OpenCode is opt-in, never a quota fallback.
 Prefer an enabled working non-author family. If none is enabled, use separate
