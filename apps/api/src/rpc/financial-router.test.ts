@@ -11,7 +11,7 @@ import { AuditService } from "../modules/company/audit.service";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
 import { SqliteRoleRepository } from "../modules/rbac/adapters/sqlite-role.repository";
 import { RoleModule } from "../modules/rbac/role.module";
-import { createFinancialRouter } from "./financial-router";
+import { createFinancialRouter, createUnavailableFinancialRouter } from "./financial-router";
 import { createRpcMiddleware } from "./rpc-middleware";
 import type { RpcContext } from "./context";
 
@@ -42,4 +42,15 @@ it("binds metadata and exact financial branches to the supplied graph and auth",
     await expect(anonymous.metadata()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(anonymous.debts.create({ requestId: "forbidden", partyType: "EXTERNAL_COUNTERPARTY", externalCounterpartyId: "party", direction: "PAYABLE" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   } finally { db.close(); }
+});
+
+it("legacy composition advertises authenticated unavailable financial leaves, not fake data", async () => {
+  const middleware = createRpcMiddleware({ authBootstrapService: { isBootstrapOwner: async () => true } });
+  const context: RpcContext = { headers: new Headers(), resolveCurrentUser: async () => ({ id: "owner", name: "Owner", phone: "0612345678", version: "0.0.0", permissions: [] }) };
+  const router = createUnavailableFinancialRouter(middleware);
+  const client = createRouterClient(router, { context }) as FinancialClient;
+  await expect(client.metadata()).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  await expect(client.debts.create({ requestId: "not-configured", partyType: "INTERNAL_WORKER", workerId: "worker", direction: "PAYABLE" })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  const anonymous = createRouterClient(router, { context: { ...context, resolveCurrentUser: async () => null } }) as FinancialClient;
+  await expect(anonymous.metadata()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
 });

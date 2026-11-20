@@ -92,6 +92,7 @@ export class WorkforceService {
     private readonly operationsRepo: OperationsRepository,
     private readonly mutation: WorkspaceMutationContext,
     private readonly earningRepository?: EmployeeEarningRepository,
+    private readonly financialHistory?: { hasForEmployee(employeeId: string): boolean },
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -550,8 +551,10 @@ export class WorkforceService {
         this.operationsRepo.listProjectManagerOwnershipHistory({ managerId: id }).length > 0;
       const hasManagedWarehouseHistory =
         this.operationsRepo.listWarehouseManagerOwnershipHistory({ managerId: id }).length > 0;
-      const hasSalaryPayments =
-        this.repository.listSalaryPayments({ employeeId: id }).length > 0;
+      const hasFinancialHistory =
+        this.financialHistory
+          ? this.financialHistory.hasForEmployee(id)
+          : this.repository.listSalaryPayments({ employeeId: id }).length > 0;
       const hasApprovedEarnings = this.earningRepository?.hasForEmployee(id) ?? false;
       const managesProjects = this.operationsRepo.listProjects({ managerId: id }).length > 0;
       const managesWarehouses = this.operationsRepo.listWarehouses({ managerId: id }).length > 0;
@@ -562,7 +565,7 @@ export class WorkforceService {
         hasWarehouseHistory ||
         hasManagedProjectHistory ||
         hasManagedWarehouseHistory ||
-        hasSalaryPayments ||
+        hasFinancialHistory ||
         hasApprovedEarnings ||
         managesProjects ||
         managesWarehouses

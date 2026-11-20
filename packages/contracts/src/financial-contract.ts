@@ -1,4 +1,5 @@
 import { oc, type ContractRouterClient } from "@orpc/contract";
+export { isContractProcedure as isFinancialContractProcedure } from "@orpc/contract";
 import { workspaceMetadataSchema } from "./workspace";
 import { exactDebtsContract } from "./debts-exact-contract";
 import { exactInvoicesContract } from "./invoice-exact-contract";

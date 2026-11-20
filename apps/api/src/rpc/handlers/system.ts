@@ -28,7 +28,7 @@ import type { ChangeDbKeyInput, ConsumeRecoveryKeyInput, RevokeRecoveryKeyInput 
 export function createSystemHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
-  companyService: CompanyService,
+  companyService: Pick<CompanyService, "getWorkspaceSnapshot" | "listSystemLog">,
   recoveryKeyService: RecoveryKeyService,
   roleModule: RoleModule,
   databaseKeyManager: DatabaseKeyManager,
