@@ -66,6 +66,21 @@ describe("ProjectCostService exact read model", () => {
     expect(result.materialMovements.map(row => row.valueAmount)).toEqual(["0.30", "0.10"]);
   });
 
+  it("conserves an agreed source total across split movements and reversals", () => {
+    const source = { mode: "agreed-total", total: "10.00", quantity: "3" };
+    const result = read(createRepository({
+      listProjectMaterialMovements: () => [
+        { id: "in-1", itemDefinitionId: null, itemName: null, unit: null, quantity: "1", unitPrice: null, priceSource: source, direction: "IN", occurredAt: NOW },
+        { id: "in-2", itemDefinitionId: null, itemName: null, unit: null, quantity: "2", unitPrice: null, priceSource: source, direction: "IN", occurredAt: NOW },
+        { id: "out-1", itemDefinitionId: null, itemName: null, unit: null, quantity: "1", unitPrice: null, priceSource: source, direction: "OUT", occurredAt: NOW },
+      ],
+    }));
+    expect(result.materialMovements.map(row => row.unitPrice)).toEqual([null, null, null]);
+    expect(result.materialMovements.map(row => row.valueAmount)).toEqual(["3.33", "6.67", "3.33"]);
+    expect(result.parts.chargedMaterialsAmount).toBe("6.67");
+    expect(result.materialMovements[0]).not.toHaveProperty("priceSource");
+  });
+
   it("keeps aggregate precision above JavaScript's safe integer range", () => {
     const result = read(createRepository({
       listProjectExpenses: () => ["90071992547409.93", "90071992547409.93"].map((amount, index) => ({
