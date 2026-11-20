@@ -96,18 +96,35 @@ it("returns exact purchase, internal, and outbound history with bounded filters 
   expect(inventory.transferHistory({ offset: 1, limit: 1 }).items[0]).toEqual(history.items[1]);
 });
 
+it("uses inclusive Algeria local date bounds and distinguishes overlapping location IDs", () => {
+  const { inventory, repo } = setup("memory");
+  const base = { id: "date-event", movementType: "TRANSFER" as const, itemType: "CONSUMABLE" as const, inventoryEntryId: null, assetUnitId: null, quantity: 1,
+    fromWarehouseId: "same", fromProjectId: null, toWarehouseId: null, toProjectId: null, note: null, createdAt: date };
+  repo.saveMovement({ ...base, id: "local-start", fromWarehouseId: null, fromProjectId: "same", occurredAt: "2026-10-14T23:00:00.000Z" });
+  repo.saveMovement({ ...base, id: "local-end", occurredAt: "2026-10-15T22:59:59.999Z" });
+  repo.saveMovement({ ...base, id: "next-day", occurredAt: "2026-10-15T23:00:00.000Z" });
+  expect(inventory.transferHistory({ dateFrom: "2026-10-15", dateTo: "2026-10-15" }).items.map(row => row.id)).toEqual(["local-end", "local-start"]);
+  expect(inventory.transferHistory({ warehouseId: "same" }).items.map(row => row.id)).toContain("local-end");
+  expect(inventory.transferHistory({ projectId: "same" }).items.map(row => row.id)).toEqual(["local-start"]);
+});
+
 it("rejects incomplete outbound ledger links rather than showing a false zero balance", () => {
   const { inventory, repo, finance } = setup("memory");
   inventory.createInvoiceGroup({ requestId: "broken-link-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 1, unitPriceDzd: "1.0000" }] });
+  inventory.createInvoiceGroup({ requestId: "broken-link-extra-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 2, unitPriceDzd: "1.0000" }] });
   const transfer = inventory.createOutboundTransfer({ requestId: "broken-link-sale", fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType: "SALE", debtAmountDzd: "1.00", items: [{ itemId: "material", quantity: 1 }] });
   // Historical domain records are an independent persisted input to this read.
   repo.saveOutbound({ ...transfer, associatedDebtAccountId: null });
+  expect(() => inventory.transferHistory({})).toThrow(/linked debt account/);
   expect(() => inventory.listOutboundTransfers()).toThrow(/linked debt account/);
   repo.saveOutbound({ ...transfer, debtEntryId: null });
+  expect(() => inventory.transferHistory({})).toThrow(/linked original obligation/);
   expect(() => inventory.listOutboundTransfers()).toThrow(/linked original obligation/);
   repo.saveOutbound({ ...transfer, debtEntryId: "missing-original" });
   expect(() => inventory.listOutboundTransfers()).toThrow(/obligation not found/);
   repo.saveOutbound(transfer);
+  const gift = inventory.createOutboundTransfer({ requestId: "history-debt-free-gift", fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType: "GIFT", items: [{ itemId: "material", quantity: 1 }] });
+  expect(inventory.transferHistory({}).items.find(row => row.id === gift.id)).toMatchObject({ paymentStatus: "N/A", totalAmountDzd: null, paidAmountDzd: null, remainingDebtDzd: null });
   finance.forProducer({ type: "INVENTORY_OUTBOUND", id: transfer.id }).voidEntry({ requestId: "void-linked-original", entryId: transfer.debtEntryId!, voidReason: "Cancelled obligation" });
   expect(() => inventory.listOutboundTransfers()).toThrow(/obligation not found/);
 });

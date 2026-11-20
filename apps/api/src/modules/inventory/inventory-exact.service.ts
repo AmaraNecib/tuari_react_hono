@@ -13,6 +13,14 @@ import { exactInventoryQuantityText as quantityText } from "./inventory-exact-qu
 import type { ExactInventoryRepository, ExactInventoryEntryRecord } from "./inventory-exact.repository";
 
 const zero = () => Money.parse("0");
+function historyDayBound(day: string | undefined, side: "start" | "end"): string | undefined {
+  if (!day) return undefined;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return day;
+  const parsed = new Date(`${day}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== day) throw new ExactDebtError("Invalid history date range");
+  parsed.setUTCDate(parsed.getUTCDate() + (side === "end" ? 1 : 0));
+  return new Date(parsed.getTime() - (side === "start" ? 60 * 60 * 1000 : 60 * 60 * 1000 + 1)).toISOString();
+}
 const auditOf = (audit: ExactDebtAudit) => ({ actorUserId: audit.actorUserId ?? null, actorLabel: audit.actorLabel ?? null, transactionId: audit.transactionId ?? null });
 const request = (root: string, kind: string, id: string) => `inventory:${createHash("sha256").update(JSON.stringify([root, kind, id])).digest("hex")}`;
 function quantity(value: number): number {
@@ -58,12 +66,14 @@ export class ExactInventoryService {
       const location = (type: "WAREHOUSE" | "PROJECT" | null, id: string | null) => type && id
         ? { type, id, name: this.repo.locationLabel(type === "WAREHOUSE" ? id : null, type === "PROJECT" ? id : null) } : null;
       const rows: ExactInventoryHistoryRow[] = [];
+      const fromBound = historyDayBound(input.dateFrom, "start");
+      const toBound = historyDayBound(input.dateTo, "end");
       const matches = (row: ExactInventoryHistoryRow) => {
         const stamp = Date.parse(row.date);
-        if (input.dateFrom && stamp < Date.parse(input.dateFrom)) return false;
-        if (input.dateTo && stamp > Date.parse(input.dateTo + (input.dateTo.length === 10 ? "T23:59:59.999Z" : ""))) return false;
-        if (input.warehouseId && row.from?.id !== input.warehouseId && row.to?.id !== input.warehouseId) return false;
-        if (input.projectId && row.from?.id !== input.projectId && row.to?.id !== input.projectId) return false;
+        if (fromBound && stamp < Date.parse(fromBound)) return false;
+        if (toBound && stamp > Date.parse(toBound)) return false;
+        if (input.warehouseId && ![row.from, row.to].some(place => place?.type === "WAREHOUSE" && place.id === input.warehouseId)) return false;
+        if (input.projectId && ![row.from, row.to].some(place => place?.type === "PROJECT" && place.id === input.projectId)) return false;
         if (input.locationType && input.locationType !== "ALL" && row.from?.type !== input.locationType && row.to?.type !== input.locationType) return false;
         if (input.transferType && input.transferType !== "ALL" && row.type !== input.transferType) return false;
         if (input.search) {
@@ -98,6 +108,8 @@ export class ExactInventoryService {
         const type = outbound.transferType;
         const source = location(outbound.fromType, outbound.fromId);
         let totalAmountDzd: string | null = null, paidAmountDzd: string | null = null, remainingDebtDzd: string | null = null;
+        if (outbound.debtEntryId && !outbound.associatedDebtAccountId) throw new ExactDebtError("Outbound has no linked debt account", "CONFLICT");
+        if (!outbound.debtEntryId && outbound.associatedDebtAccountId) throw new ExactDebtError("Outbound has no linked original obligation", "CONFLICT");
         if (outbound.debtEntryId && outbound.associatedDebtAccountId) {
           let accountEntries = debtEntries.get(outbound.associatedDebtAccountId);
           if (!accountEntries) {
