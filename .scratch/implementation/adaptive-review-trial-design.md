@@ -1,6 +1,6 @@
 # Adaptive-review trial policy patch
 
-Status: owner-approved bounded trial, pending policy review, recorded adoption and higher-priority instruction alignment. No live routing changes before all conditions are met. This patch does not authorize publication, merge or an instruction bypass.
+Status: owner adoption recorded. The owner explicitly directed the parent to apply the global instruction alignment after the reviewed trial implementation. Global and project alignment are part of this bounded adoption delta. Routing may use the exception only after this delta is reviewed and its instructions are loaded; no additional owner consent is required. Publication and merge remain separate gates.
 
 ## Decision
 
