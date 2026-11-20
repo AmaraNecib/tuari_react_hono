@@ -32,11 +32,12 @@ review or final rendering. Keep source frozen for independent readers.
 
 ## 3. Review once, then bound corrections
 
-Follow the review routing in `docs/engineering-workflow.md`. Until its bounded
-routine-review trial is reviewed and higher-priority three-lens instructions
-are aligned, run `debate`, `test-audit`, `code-review` in that order, each in a
-distinct read-only session at the committed HEAD. Eligible trial tasks may use
-one fresh combined reviewer only after adoption and instruction alignment.
+Follow routine-review routing and activation in `docs/engineering-workflow.md`.
+Before adoption gates are complete, and for excluded or uncertain work, run
+`debate`, `test-audit`, `code-review` in that order, each in a distinct read-only
+session at committed HEAD. After activation, eligible narrow routine work may
+use one fresh combined independent reviewer for standards, spec and proof
+adequacy. A policy patch uses the deeper route, not its proposed exception.
 Give reviewers the actual worktree, base/head, spec, direct callers and prior
 evidence, not an empty fresh checkout.
 
