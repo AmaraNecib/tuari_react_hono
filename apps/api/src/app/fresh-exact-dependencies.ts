@@ -68,11 +68,14 @@ export async function createFreshExactAppDependencies(
   if (appConfig.dbAdapter !== "sqlite") throw new Error("Selected exact root requires sqlite metadata on the shared connection");
   const databasePath = config.databasePath?.trim() ? config.databasePath : appConfig.databasePath;
   const databaseKey = config.databaseKey ?? appConfig.databaseKey;
-  const connection = createDatabaseConnection(databasePath, databaseKey);
+  const connection = createDatabaseConnection(databasePath, databaseKey, { journalMode: "preserve" });
   let closed = false;
   const close = () => { if (!closed) { closed = true; connection.close(); } };
   try {
     await ensureFreshExactApplicationSchema(connection);
+    // WAL persists header changes. Enable it only after the attestation
+    // transaction commits, so refusing an incompatible file leaves it intact.
+    connection.pragma("journal_mode = WAL");
     const db = createDrizzleFromSqlite(connection);
     const lock = createFifoLock({ timeoutMs: 30_000 });
     const auth = config.authInstance ?? createAuth(db, appConfig);

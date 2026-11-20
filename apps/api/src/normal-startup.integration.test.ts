@@ -7,6 +7,7 @@ import { join, resolve } from "node:path";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
+import Database from "better-sqlite3";
 import { createDatabaseConnection } from "./infrastructure/database/factory";
 import { ensureFreshExactApplicationSchema } from "./infrastructure/database/fresh-exact-schema";
 
@@ -23,21 +24,23 @@ async function freePort() {
   return port;
 }
 function workspace() { return mkdtempSync(join(tmpdir(), "tuari-normal-startup-")); }
-async function launch(directory: string, key = "", adapter = "sqlite") {
+async function launch(directory: string, key = "", adapter = "sqlite", keySource: "env" | "file" = "env") {
   const port = await freePort();
   const databasePath = join(directory, "application.sqlite");
   // Exercise config-file loading as the desktop does. Explicit env values
   // isolate the child from developer configuration and credentials.
   const configFile = join(directory, "config.json");
-  writeFileSync(configFile, JSON.stringify({ db_key: key }));
+  writeFileSync(configFile, JSON.stringify(key ? { db_key: keySource === "file" ? key : "different-file-key-558" } : {}));
+  const environment: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: "development", TUARI_CONFIG_FILE: configFile,
+    APP_DB_PATH: databasePath, AUTH_DB_PATH: databasePath, DATABASE_URL: `file:${databasePath.replaceAll("\\", "/")}`,
+    APP_DB_KEY: key, APP_BACKUPS_ROOT: join(directory, "backups"), DB_ADAPTER: adapter,
+    BETTER_AUTH_SECRET: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM", BOOTSTRAP_SETUP_KEY: "",
+    API_PORT: String(port), API_HOST: "127.0.0.1", WEB_PORT: "3000", TUARI_LICENSE_STATUS: "trial" };
+  if (keySource === "file") delete environment.APP_DB_KEY;
   const child = spawn(process.env.TUARI_STARTUP_NODE ?? process.execPath, process.env.TUARI_STARTUP_BUNDLE
     ? [process.env.TUARI_STARTUP_BUNDLE]
     : ["--import", pathToFileURL(require.resolve("tsx")).href, resolve("src/index.ts")], {
-    cwd: resolve("."), env: { ...process.env, NODE_ENV: "development", TUARI_CONFIG_FILE: configFile,
-      APP_DB_PATH: databasePath, AUTH_DB_PATH: databasePath, DATABASE_URL: `file:${databasePath.replaceAll("\\", "/")}`,
-      APP_DB_KEY: key, APP_BACKUPS_ROOT: join(directory, "backups"), DB_ADAPTER: adapter,
-      BETTER_AUTH_SECRET: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM", BOOTSTRAP_SETUP_KEY: "",
-      API_PORT: String(port), API_HOST: "127.0.0.1", WEB_PORT: "3000", TUARI_LICENSE_STATUS: "trial" },
+    cwd: resolve("."), env: environment,
     stdio: ["ignore", "pipe", "pipe"],
   });
   children.push(child);
@@ -66,10 +69,10 @@ async function rpc(run: Running, path: string, input: unknown = null, token = ""
 }
 
 describe("normal API entry", { timeout: 60_000 }, () => {
-  it.each(["", "normal-key-558"])("boots empty file, authenticates HTTP and reopens exact state (%s)", async key => {
+  it.each([["", "env"], ["normal-key-558", "env"], ["config-only-key-558", "file"]] as const)("boots empty file, authenticates HTTP and reopens exact state (%s, %s)", async (key, keySource) => {
     const directory = workspace();
     writeFileSync(join(directory, "application.sqlite"), "");
-    let run = await launch(directory, key);
+    let run = await launch(directory, key, "sqlite", keySource);
     await ready(run);
     expect((await rpc(run, "authSetupStatus")).body.json).toMatchObject({ hasUsers: false });
     const bootstrap = await rpc(run, "authBootstrap", { name: "Normal owner", phone: "0612345678", password: "password123" });
@@ -98,12 +101,17 @@ describe("normal API entry", { timeout: 60_000 }, () => {
     expect(snapshot.prepare("SELECT count(*) AS n FROM exact_money_schema").get()).toEqual({ n: 5 });
     snapshot.close();
     await stop(run);
+    if (key) {
+      expect(readFileSync(run.databasePath).subarray(0, 16).toString()).not.toBe("SQLite format 3\u0000");
+      expect(() => createDatabaseConnection(run.databasePath, "independent-wrong-key")).toThrow();
+    }
     const db = createDatabaseConnection(run.databasePath, key);
+    expect(db.pragma("journal_mode", { simple: true })).toBe("wal");
     expect(db.prepare("SELECT slice FROM exact_money_schema ORDER BY slice").all()).toEqual([
       { slice: "debt" }, { slice: "expenses" }, { slice: "inventory" }, { slice: "invoice" }, { slice: "workforce" },
     ]);
     db.close();
-    run = await launch(directory, key);
+    run = await launch(directory, key, "sqlite", keySource);
     await ready(run);
     expect((await rpc(run, "authSetupStatus")).body.json).toMatchObject({ hasUsers: true });
     expect((await rpc(run, "financial/metadata", null, token)).status).toBe(200);
@@ -123,6 +131,32 @@ describe("normal API entry", { timeout: 60_000 }, () => {
     expect(run.output()).toContain("Failed to start API");
     expect(run.output()).toContain("Unsupported financial schema");
     expect(readFileSync(path)).toEqual(before);
+  });
+
+  it.each(["legacy", "partial"])("refuses DELETE-mode %s without changing closed bytes or journal mode", async kind => {
+    const directory = workspace();
+    const path = join(directory, "application.sqlite");
+    const raw = new Database(path);
+    raw.pragma("journal_mode = DELETE");
+    raw.exec(kind === "legacy" ? "CREATE TABLE debt_account(id TEXT PRIMARY KEY,current_balance REAL); INSERT INTO debt_account VALUES ('preserved',1.25)" : "CREATE TABLE exact_money_schema(slice TEXT,version INTEGER)");
+    expect(raw.pragma("journal_mode", { simple: true })).toBe("delete");
+    raw.close();
+    const before = readFileSync(path);
+    const run = await launch(directory);
+    expect((await run.exit)[0]).toBe(1);
+    expect(run.output()).toContain("Failed to start API");
+    expect(run.output()).toContain("Unsupported financial schema");
+    expect(readFileSync(path)).toEqual(before);
+    const after = new Database(path, { readonly: true });
+    try { expect(after.pragma("journal_mode", { simple: true })).toBe("delete"); } finally { after.close(); }
+  });
+
+  it("refuses config-valid inmemory at the exact root before creating a database", { timeout: 15_000 }, async () => {
+    const run = await launch(workspace(), "", "inmemory");
+    await expect.poll(() => run.child.exitCode !== null || run.output().includes("API listening"), { timeout: 10_000 }).toBe(true);
+    expect(run.child.exitCode).toBe(1);
+    expect(run.output()).toContain("Selected exact root requires sqlite metadata on the shared connection");
+    expect(existsSync(run.databasePath)).toBe(false);
   });
 
   it("refuses unsupported DB_ADAPTER explicitly before creating a database", async () => {
