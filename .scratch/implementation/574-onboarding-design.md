@@ -6,7 +6,7 @@
 - Tier: standard reviewable documentation. Risk is misleading current persistence, startup, or build ownership; no runtime behavior changes.
 - Verification mode: focused-local / CI-final-enforced, as supplied by parent.
 - Scope: README.md, docs/ARCHITECTURE.md, docs/README.md, and this note only.
-- Current vocabulary: API starts at `apps/api/src/index.ts`; `createAppDependencies` composes migrated SQLite, Drizzle and domain ports; transport is Hono/oRPC; shared contracts are in `packages/contracts`.
+- Current vocabulary: API starts at `apps/api/src/index.ts`; `createAppDependencies` owns the migrated SQLite connection; auth and account use Drizzle, and the payment repository uses prepared SQL; transport is Hono/oRPC; shared contracts are in `packages/contracts`.
 - Deletion-test depth: delete this onboarding text and a new contributor must reconstruct entry point, persistence and current documentation navigation. The guide is useful if it points to their actual owners.
 - No interface or runtime seam changed. Architecture review: no seam moved.
 - Accepted ADR content remains untouched. No runtime, salary, settings, policy, dependency or CI files changed.

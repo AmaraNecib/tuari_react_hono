@@ -15,7 +15,9 @@ The normal desktop flow is:
 
 ## Persistence
 
-The current SQLite path uses `better-sqlite3` with Drizzle, not Prisma. Database setup and adapter selection are composed in `apps/api/src/config/database.ts`; the underlying connection, migrations, and Drizzle instance are created by the API composition path. Feature repositories implement the ports consumed by services. Check those files before changing persistence behavior rather than relying on this overview as a schema specification.
+The [API composition root](../apps/api/src/app/dependencies.ts) opens the SQLite connection, runs migrations, and creates the Drizzle handle. [Database configuration](../apps/api/src/config/database.ts) selects the company repository adapter. [Better Auth](../apps/api/src/infrastructure/auth/auth.ts) and the [account repository](../apps/api/src/modules/account/account.repository.ts) use Drizzle. Other repositories can use the SQLite handle directly, as the [payment repository](../apps/api/src/modules/payment/adapters/payment.repository.ts) does through prepared SQL statements.
+
+[ADR-001](architecture-decisions.md) records Prisma for auth and account persistence. That part of the accepted record differs from current source, which uses Drizzle. This guide documents the implementation; it does not supersede the decision.
 
 The desktop runtime resolves its data directory and database path. Do not assume a fixed path relative to the installed executable; consult the current runtime-path implementation and diagnostics in `apps/desktop` for the active platform and mode.
 

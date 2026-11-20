@@ -17,7 +17,7 @@ Tuari is a local-first desktop application with a React frontend, a Hono API, an
 
 The API process entry point is `apps/api/src/index.ts`. It loads configuration, creates dependencies through `apps/api/src/app/dependencies.ts`, builds the Hono app, and starts the HTTP server. The desktop shell launches this API as a local sidecar.
 
-The API uses SQLite through `better-sqlite3` and Drizzle. `apps/api/src/config/database.ts` composes the database connection and repository adapters. Feature services and repositories live under `apps/api/src/modules`; `apps/api/src/rpc` maps transport requests to application behavior.
+The API composition root opens SQLite. Better Auth and account persistence use Drizzle; feature repositories can also use SQL directly. See the [persistence guide](docs/ARCHITECTURE.md#persistence) for concrete adapters and the difference between current source and ADR-001. Feature services and repositories live under `apps/api/src/modules`; `apps/api/src/rpc` maps transport requests to application behavior.
 
 ## Development
 
