@@ -42,4 +42,8 @@ An unreviewed-opening reminder is nonblocking. Opening values stay outside curre
 
 Tuari's existing `DESIGN.md` governs Arabic RTL layout, dense tables, currency placement and keyboard controls. The configured Impeccable `reference/product.md` file is absent in this checkout; the existing app UI is the design reference, and no product setup or skill changes are in scope. `MoneyValue` supports wide aggregates only in canonical two-decimal form, while the payroll report schema also accepts integer or one-place values. The panel normalizes those strings by decimal padding only; it never converts amounts to `Number`.
 
+## Native browser proof scope
+
+`tests/e2e/payroll-recovery.spec.ts` exercises the real employee finance route and session in two native Chromium tabs, with explicit payroll RPC fixtures only. It checks standalone-advance payload, a held native Web Lock during an uncertain response, no replacement request from the second view, exact retry after reload, storage-event clearing, keyboard activation, RTL and narrow layout. Screenshots crop the payroll region. This selected case addresses the concrete native-lock uncertainty left by the component fake; it does not widen to the full browser suite selected conservatively by the shared translation path, and it cannot prove finance persistence or normal-root activation. It uses an isolated run database and config, never configured developer data.
+
 No architecture seam moved beyond adding a focused payroll panel and user-scoped query hooks. The API methods remain one client adapter. Local component fixtures do not prove that normal app startup has a payroll composition; that integration is still pending.
