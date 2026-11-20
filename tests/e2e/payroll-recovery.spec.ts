@@ -77,7 +77,14 @@ test("payroll fixture UI retains an uncertain advance across native tabs and rel
   await expect(secondPanel.getByRole("button", { name: "تسجيل الدفع", exact: true })).toBeEnabled()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(panel).toBeVisible()
-  expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
   await panel.screenshot({ path: test.info().outputPath("payroll-mobile.png") })
+  const layout = await panel.evaluate(element => {
+    const bounds = element.getBoundingClientRect()
+    return { width: element.clientWidth, scroll: element.scrollWidth, overflow: [...element.querySelectorAll("*")].filter(child => {
+      const rect = child.getBoundingClientRect()
+      return rect.left < bounds.left - 1 || rect.right > bounds.right + 1
+    }).map(child => ({ tag: child.tagName, classes: child.className, text: child.textContent?.slice(0, 70) })) }
+  })
+  expect(layout.scroll, JSON.stringify(layout)).toBeLessThanOrEqual(layout.width)
   await second.close()
 })
