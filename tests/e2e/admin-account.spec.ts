@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test, type Page } from "./helpers/test"
 
 import {
   BOOTSTRAP_SETUP_KEY,
@@ -9,6 +10,8 @@ import {
   dismissUserJourneyTour,
   signIn,
 } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 // Serial because this spec mutates the shared admin account (name/phone/password)
 // and the whole suite shares one SQLite DB per run; retries would re-run against

@@ -1,6 +1,9 @@
-import { expect, test, type Page } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test, type Page } from "./helpers/test"
 
 import { bootstrapOrSignIn, dismissUserJourneyTour } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 test.describe.configure({ mode: "serial" })
 

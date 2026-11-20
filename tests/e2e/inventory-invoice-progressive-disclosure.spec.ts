@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { resetE2eDatabase } from "./helpers/db-isolation"
 import { findE2eDatabase, loadDatabaseConstructor } from "./helpers/db-seed"
@@ -6,6 +7,8 @@ import { selectInvoiceLineItem } from "./helpers/invoice-line"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
+
+installManagedApiLifecycle()
 
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
@@ -21,8 +24,8 @@ let counterpartyName = ""
 // fields stay hidden inside collapsible sections until opened. A full create
 // with every section expanded must still work and land on the details view.
 test.describe("inventory invoice create — progressive disclosure", () => {
-  test.beforeAll(() => {
-    resetE2eDatabase()
+  test.beforeAll(async () => {
+    await resetE2eDatabase()
   })
 
   test("seed an item definition, a warehouse and an external counterparty", async ({ page }) => {

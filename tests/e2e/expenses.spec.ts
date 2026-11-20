@@ -1,8 +1,11 @@
-import { expect, test, type Page } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test, type Page } from "./helpers/test"
 
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 import { seedEmployeeByRole, seedProjectWithManager } from "./helpers/db-seed"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 /**
  * Expenses critical path (issue #411): record an expense tagged to a project,
@@ -31,8 +34,8 @@ async function expectCurrencyPhysicallyLeft(page: Page, amount: string) {
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 
-test.beforeAll(() => {
-  resetE2eDatabase()
+test.beforeAll(async () => {
+  await resetE2eDatabase()
 })
 
 test("record an expense against a project, group it, then void it out of the totals", async ({ page }) => {

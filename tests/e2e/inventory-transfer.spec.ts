@@ -1,10 +1,13 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { resetE2eDatabase } from "./helpers/db-isolation"
 import { selectInvoiceLineItem } from "./helpers/invoice-line"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
+
+installManagedApiLifecycle()
 
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
@@ -16,8 +19,8 @@ let createdItemName = ""
 let warehouseAName = ""
 let warehouseBName = ""
 
-test.beforeAll(() => {
-  resetE2eDatabase()
+test.beforeAll(async () => {
+  await resetE2eDatabase()
 })
 
 test.describe("inventory transfer — critical path", () => {

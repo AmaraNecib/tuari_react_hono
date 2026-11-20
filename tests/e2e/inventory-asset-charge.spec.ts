@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { expectProjectCost, openHistory, openTransfer, readPlacement, seedTransferAsset, transferToProject } from "./helpers/asset-charge"
 
@@ -6,6 +7,8 @@ import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolat
 import { findE2eDatabase, loadDatabaseConstructor } from "./helpers/db-seed"
 import { selectInvoiceLineItem } from "./helpers/invoice-line"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 test.describe.configure({ mode: "serial" })
@@ -17,14 +20,14 @@ test.describe.configure({ mode: "serial" })
 let itemName = ""
 let projectName = ""
 
-test.beforeAll(() => {
-  resetE2eDatabase()
+test.beforeAll(async () => {
+  await resetE2eDatabase()
 })
 
 test.describe("inventory asset charge transfers (#426)", () => {
   test("warehouse to project prefills price and percentage, records history and project cost", async ({ page }) => {
     await bootstrapOrSignIn(page)
-    const fixture = seedTransferAsset()
+    const fixture = await seedTransferAsset(page)
     await transferToProject(page, fixture)
     const history = await openHistory(page)
     await expect(history).toContainText(fixture.projectName)
@@ -34,7 +37,7 @@ test.describe("inventory asset charge transfers (#426)", () => {
 
   test("warehouse destination hides charge fields and records no charge", async ({ page }) => {
     await bootstrapOrSignIn(page)
-    const fixture = seedTransferAsset()
+    const fixture = await seedTransferAsset(page)
     const dialog = await openTransfer(page, fixture)
     // Switch through PROJECT to catch a stale amount leaking into a
     // warehouse submission, not just the initial warehouse rendering.
@@ -56,7 +59,7 @@ test.describe("inventory asset charge transfers (#426)", () => {
 
   test("correct a past charge with its from/to amounts and reason", async ({ page }) => {
     await bootstrapOrSignIn(page)
-    const fixture = seedTransferAsset()
+    const fixture = await seedTransferAsset(page)
     await transferToProject(page, fixture)
     // Move away first: this corrects a historical project placement.
     const dialog = await openTransfer(page, fixture)
@@ -75,7 +78,7 @@ test.describe("inventory asset charge transfers (#426)", () => {
     await expect(revisions).toContainText(reason)
     await expect.poll(() => readPlacement(fixture)).toEqual({
       unit: { warehouseId: fixture.destinationWarehouseId, projectId: null },
-      charges: [{ amountDzd: 3500, projectId: fixture.projectId, status: "LIVE" }],
+      charges: [{ amountDzd: "3500.00", projectId: fixture.projectId, status: "LIVE" }],
     })
     await page.reload()
     const persistedHistory = await openHistory(page)

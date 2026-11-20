@@ -1,7 +1,10 @@
-import { expect, test, type Page } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test, type Page } from "./helpers/test"
 
 import { bootstrapOrSignIn } from "./helpers/session"
 import { apiBaseUrl } from "./helpers/urls"
+
+installManagedApiLifecycle()
 
 // Serial because the pool is shared DB state; retries would re-run against a
 // mutated pool and break the empty-state precondition, so disable them here.

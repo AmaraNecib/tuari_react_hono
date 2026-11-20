@@ -1,10 +1,13 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { resetE2eDatabase } from "./helpers/db-isolation"
 import { findE2eDatabase, loadDatabaseConstructor } from "./helpers/db-seed"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
+
+installManagedApiLifecycle()
 
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
@@ -18,8 +21,8 @@ let itemName = ""
 // re-renders and the header default must seed line items that leave their own
 // warehouse/project unset.
 test.describe("inventory invoice create — header default warehouse persistence and seeding", () => {
-  test.beforeAll(() => {
-    resetE2eDatabase()
+  test.beforeAll(async () => {
+    await resetE2eDatabase()
   })
 
   test("admin creates a consumable item and a warehouse to use as the header default", async ({ page }) => {

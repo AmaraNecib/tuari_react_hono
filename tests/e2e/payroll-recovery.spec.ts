@@ -1,5 +1,8 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 import { bootstrapOrSignIn, dismissUserJourneyTour, uniqueSuffix } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 // Real routes, sessions, localStorage and Web Locks; payroll responses are
 // explicit fixtures. This is not normal-root financial persistence proof.

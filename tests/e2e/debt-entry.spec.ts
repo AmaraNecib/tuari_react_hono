@@ -1,16 +1,19 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { resetE2eDatabase } from "./helpers/db-isolation"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
 
+installManagedApiLifecycle()
+
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 test.describe.configure({ mode: "serial" })
 
-test.beforeAll(() => {
-  resetE2eDatabase()
+test.beforeAll(async () => {
+  await resetE2eDatabase()
 })
 
 let counterpartyName = ""

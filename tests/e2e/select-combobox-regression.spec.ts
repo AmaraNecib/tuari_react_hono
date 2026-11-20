@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test, type Locator, type Page } from "./helpers/test"
 
 import { resetE2eDatabase } from "./helpers/db-isolation"
 import {
@@ -8,6 +9,8 @@ import {
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
+
+installManagedApiLifecycle()
 
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
@@ -25,7 +28,7 @@ test.beforeEach(async ({ page }) => {
   // Per-TEST isolation: every test seeds its own fresh fixture batch, so
   // option lists stay deterministic (exactly 4 counterparties) even when a
   // retried attempt reruns against the same shared database.
-  resetE2eDatabase()
+  await resetE2eDatabase()
   await bootstrapOrSignIn(page)
 
   const suffix = uniqueSuffix()

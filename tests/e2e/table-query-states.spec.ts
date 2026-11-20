@@ -1,9 +1,12 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 import { bootstrapOrSignIn } from "./helpers/session"
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 
+installManagedApiLifecycle()
+
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
-test.beforeAll(() => { resetE2eDatabase() })
+test.beforeAll(async () => { await resetE2eDatabase() })
 
 // Delay a real catalog read, fail it, then let the retry reach the API.
 // The empty database is synthetic and belongs to this Playwright run.

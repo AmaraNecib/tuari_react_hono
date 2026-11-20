@@ -1,4 +1,5 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 import {
@@ -10,6 +11,8 @@ import {
 } from "./helpers/db-seed"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
+installManagedApiLifecycle()
+
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 test.describe.configure({ mode: "serial" })
 
@@ -17,8 +20,8 @@ let workerName = ""
 let workerId = ""
 let projectId = ""
 
-test.beforeAll(() => {
-  resetE2eDatabase()
+test.beforeAll(async () => {
+  await resetE2eDatabase()
   const suffix = uniqueSuffix()
   const digits = `${Date.now().toString().slice(-7)}${Math.floor(Math.random() * 1000)}`
   const managerId = seedEmployeeByRole({
