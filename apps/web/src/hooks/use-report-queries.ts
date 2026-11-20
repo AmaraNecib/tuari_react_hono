@@ -3,9 +3,11 @@ import { getAlgeriaTimeZone } from "@/lib/algeria-time";
  * Hooks for querying report data.
  */
 import { useQuery } from "@tanstack/react-query";
-import type { DebtReport, InventoryReport, MovementReport, Report, ReportType } from "@tuari/contracts";
-import { rpcClient } from "@/lib/orpc-client";
+import type { ExactDebtReport, ExactInventoryReports, ReportType } from "@tuari/contracts";
+import { financialClient } from "@/lib/orpc-client";
 import { resolveDayRangeBounds } from "@/lib/date-range";
+
+type ExactReport = ExactDebtReport | ExactInventoryReports;
 
 interface GenerateReportInput {
   type: ReportType;
@@ -29,7 +31,7 @@ export function useReportQuery(input: GenerateReportInput, enabled = true) {
   return useQuery({
     queryKey: ["reports", input.type, input.startDate, input.endDate],
     queryFn: async () => {
-      const result = await rpcClient.reportsGenerate({
+      const result = await financialClient.reports.generate({
         type: input.type,
         startDate: fromDate,
         endDate: toDate,
@@ -40,21 +42,8 @@ export function useReportQuery(input: GenerateReportInput, enabled = true) {
     enabled,
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 1,
-/**
- * useInventoryReport(startDate? component.
- */
   });
-/**
- * useDebtReport(startDate? component.
- */
 }
-/**
- * useMovementReport(startDate? component.
- */
-
-/**
- * formatReportAsCSV(report component.
- */
 export function useInventoryReport(startDate?: string, endDate?: string) {
   return useReportQuery({ type: "INVENTORY", startDate, endDate });
 }
@@ -67,7 +56,7 @@ export function useMovementReport(startDate?: string, endDate?: string) {
   return useReportQuery({ type: "MOVEMENT", startDate, endDate });
 }
 
-export function formatReportAsCSV(report: Report): string {
+export function formatReportAsCSV(report: ExactReport): string {
   if (!report?.type || !report?.summary) {
     return "";
   }
@@ -75,9 +64,10 @@ export function formatReportAsCSV(report: Report): string {
   const lines: string[] = [];
 
   if (report.type === "INVENTORY") {
-    const r = report as InventoryReport;
+    const r = report;
     lines.push("Inventory Report");
     lines.push(`Generated: ${new Date(r.generatedAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}`);
+    lines.push("Basis,Purchase-entry quantities and purchase locations; not current stock");
     lines.push("");
     lines.push("Summary");
     lines.push(`Total Assets (DZD),${r.summary.totalAssetsDzd}`);
@@ -90,7 +80,7 @@ export function formatReportAsCSV(report: Report): string {
       lines.push(`"${loc.locationLabel}",${loc.assetCount},${loc.assetValueDzd},${loc.consumableCount}`);
     });
   } else if (report.type === "DEBT") {
-    const r = report as DebtReport;
+    const r = report;
     lines.push("Debt Report");
     lines.push(`Generated: ${new Date(r.generatedAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}`);
     lines.push("");
@@ -106,7 +96,7 @@ export function formatReportAsCSV(report: Report): string {
       lines.push(`"${debtor.partyName}",${debtor.amountDzd},${debtor.daysSinceLastPayment}`);
     });
   } else if (report.type === "MOVEMENT") {
-    const r = report as MovementReport;
+    const r = report;
     lines.push("Movement Report");
     lines.push(`Generated: ${new Date(r.generatedAt).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() })}`);
     lines.push("");
@@ -114,7 +104,10 @@ export function formatReportAsCSV(report: Report): string {
     lines.push(`Total Movements,${r.summary.totalMovements}`);
     lines.push(`Asset Transfers,${r.summary.assetTransfers}`);
     lines.push(`Consumable Transfers,${r.summary.consumableTransfers}`);
-    lines.push(`Outbound Sales,${r.summary.outboundSales}`);
+    lines.push(`Raw outbound movement-kind count (OUTBOUND_SALE; sale/return/gift),${r.summary.outboundSales}`);
+    lines.push("Outbound documents by kind");
+    lines.push("Document kind,Count");
+    r.outboundDocuments.forEach((row) => lines.push(`${row.transferType},${row.count}`));
   }
 
   return lines.join("\n");
