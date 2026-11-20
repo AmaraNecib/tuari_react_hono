@@ -4,7 +4,7 @@ Status: owner adoption recorded. The owner explicitly directed the parent to app
 
 ## Decision
 
-Add one concise proposal section to `docs/engineering-workflow.md`. Keep the existing policy requirements as the governing behavior. In particular, shadow mode is observation only, while future explicitly owner-approved activation could select up to eight eligible routine tasks for one code-review session. Elevated tasks retain three distinct initial lenses in their existing order. No check, review, protection, publication, independence, or owner-decision gate changes.
+The reviewed workflow section defines the owner-approved eight-task trial. Shadow mode remains observation only. Eligible new tasks can use one combined code-review session once the adoption delta is reviewed and the aligned instructions are loaded. Elevated tasks retain three distinct initial lenses in their existing order. No check, review, protection, publication, independence, or owner-decision gate changes.
 
 Eligibility is recorded before review outcomes, against the complete changed-file scope and the task's contract, callers, consequences, uncertainty and reversibility. Start with narrow factual corrections directly checked against source. Broad material removals, accepted-source conflicts, and consequential test weakening without demonstrated equivalent failure detection are excluded. Reassess and escalate when evidence or scope changes.
 
@@ -12,7 +12,7 @@ Record reviewer and parent active and elapsed time, executions, unique confirmed
 
 ## Activation delta and approval
 
-The parent supplied owner authorization to implement the bounded trial after the owner said, "ok u can do that" to the described plan of up to eight new routine tasks, with tests, CI, hosted review and merge safeguards retained. This authorizes drafting and reviewing the policy, not publication, merge or bypass of higher-priority instructions.
+The owner said, "ok u can do that" to the explained eight-new-task trial with tests, CI, hosted review and merge safeguards retained, then explicitly directed the parent to apply the global instruction alignment. The parent recorded adoption under that authorization. This does not authorize publication, merge or bypass of higher-priority instructions.
 
 The patch replaces the inactive proposal with explicit routing conditions and updates the workflow pointers in `AGENTS.md`, `feature-implement` and `guard`. Those three-lens instructions remain binding until this patch is reviewed and the higher-priority instructions are aligned through their own review. Therefore this patch alone does not activate reduced review depth.
 
@@ -31,6 +31,8 @@ Changed-file dispositions for the routing implementation:
 - `.agents/skills/guard/SKILL.md`: checks the same adoption and higher-priority boundaries.
 - `.scratch/implementation/adaptive-review-trial-design.md`: design, approval boundary and full scope record.
 
-No application, tests, CI, configuration, tracker, global-instruction or third-party skill changes. Current routing remains unchanged.
+The owner-authorized alignment also changes `C:/ProgramData/CortexKitPi-ounz/agent/AGENTS.md` outside the repository. Its disposition is the same bounded Tuari exception, with other repositories unaffected and all critical gates retained. It is separate from the five tracked repository files listed above.
+
+No application, tests, CI, configuration, tracker or third-party skill changes. Routing remains unchanged until the adoption delta is reviewed and the aligned instructions are loaded. Owner consent is already recorded; instruction loading is not another approval step.
 
 Required policy review remains parent-owned because the document has elevated governance risk. The implementation agent does not run the three initial lenses and does not claim final approval. Focused policy test, applicable prose/link/source checks and `git diff --check` are required before commit. Evidence is local and ignored under `.scratch/reviews/`.
