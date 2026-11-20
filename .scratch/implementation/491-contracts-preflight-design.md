@@ -20,10 +20,14 @@ Applied stale contracts `dist` and stale installed dependency lessons: successfu
 
 ## Verification and review
 
-Focused test: `node --test tests/worktree-contracts.test.mjs`. Expected-red import failure recorded separately before implementation. Parent handles three review lenses. Changed-file manifest: the CLI, its usage README, focused test, and this design note only.
+Focused test: `node --test tests/worktree-contracts.test.mjs`. Expected-red import failure recorded separately before implementation. Parent handles three review lenses. Changed-file manifest: the CLI, its usage README, focused test, root `package.json`, and this design note. The root manifest change adds the fixture suite to the existing `check:repo-hygiene` script, already invoked by CI and root lint/test; no dependency, lockfile, workflow or protection change.
 
 ## Bounded review corrections
 
 Initial reviews found directory export targets could pass and web-link coverage could be masked by a still-invalid API link. Parent confirmed these, malformed/null metadata behavior and insufficient negative/CLI proof. Export targets now require package-relative forward-slash paths and regular files after canonical containment. Malformed/null metadata returns diagnostics; unsupported/duplicate CLI arguments fail with usage status2. Each sibling case starts with the other app valid. All sibling fixtures live under a uniquely owned temporary sandbox, never a fixed shared sibling directory.
 
 Expanded tests were run against the original module first: 17 passed and 8 failed. Corrected implementation passes 25 ownership/CLI cases plus 5 existing repo-hygiene cases. Cases cover both missing links, independent sibling ownership, missing/type/runtime targets, directories, malformed metadata, lexical/symlink escapes, spaces/root aliases and CLI success/default/failure. No claim of generated freshness or complete dependency-manager resolution. Initial worker exact-head logs were unavailable in its tree; parent preserved fresh expected-red and green logs separately rather than inventing those earlier records. Corrections and committed-head proof require a fresh bounded combined-delta review.
+
+## Hosted finding: fixture suite not selected by CI
+
+Greptile identified that the new suite was not included in root or CI command discovery. Parent verified the existing explicit lists. `check:repo-hygiene` now includes the fixture suite; CI already calls this command, as do root lint/test, so no workflow or gate change is needed. This runs isolated fixtures, not the preflight against CI's installed dependencies. The exact root command must pass and its script wiring is reviewed in the bounded delta. Issue #491 remains partial; hosted current-head 5/5 and acceptance still required.
