@@ -38,7 +38,17 @@ function renderPanel() {
 }
 
 afterEach(() => { cleanup(); localStorage.clear() })
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  let tail = Promise.resolve()
+  Object.defineProperty(navigator, "locks", { configurable: true, value: {
+    request: (_name: string, callback: () => Promise<unknown>) => {
+      const next = tail.then(callback)
+      tail = next.then(() => undefined, () => undefined)
+      return next
+    },
+  } })
+})
 
 describe("employee payroll controls", () => {
   it("records cash paid against an approved earning and shows the opening reminder without blocking", async () => {
@@ -71,10 +81,57 @@ describe("employee payroll controls", () => {
     })))
   })
 
+  it("records an advance without an outstanding earning", async () => {
+    const earnings = mocks.payroll.earnings
+    mocks.payroll.earnings = []
+    try {
+      mocks.cash.mockResolvedValueOnce({ id: "advance-only" })
+      renderPanel()
+      fireEvent.change(screen.getByRole("textbox", { name: "سلفة نقدية إضافية، اختيارية" }), { target: { value: "5,000" } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفع" }))
+      await waitFor(() => expect(mocks.cash).toHaveBeenCalledWith(expect.objectContaining({
+        amount: "5000.00", wages: [], advanceAmount: "5000.00",
+      })))
+    } finally { mocks.payroll.earnings = earnings }
+  })
+
+  it("preserves the first uncertain request when two views submit concurrently", async () => {
+    let fail!: (cause: Error) => void
+    mocks.cash.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject }))
+    const first = renderPanel()
+    const second = renderPanel()
+    const fields = screen.getAllByRole("textbox", { name: "المبلغ المدفوع من الأجر" })
+    fields.forEach(field => fireEvent.change(field, { target: { value: "1000" } }))
+    const buttons = screen.getAllByRole("button", { name: "تسجيل الدفع" })
+    buttons.forEach(button => fireEvent.click(button))
+    await waitFor(() => expect(mocks.cash).toHaveBeenCalledTimes(1))
+    const original = mocks.cash.mock.calls[0]![0]
+    fail(new Error("response lost"))
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "إعادة العملية نفسها" })).toHaveLength(2))
+    expect(mocks.cash).toHaveBeenCalledTimes(1)
+    first.unmount()
+    second.unmount()
+    renderPanel()
+    expect(screen.getByRole("button", { name: "إعادة العملية نفسها" })).toBeTruthy()
+    mocks.cash.mockResolvedValueOnce({ id: "confirmed" })
+    fireEvent.click(screen.getByRole("button", { name: "إعادة العملية نفسها" }))
+    await waitFor(() => expect(mocks.cash).toHaveBeenCalledTimes(2))
+    expect(mocks.cash.mock.calls[1]![0]).toEqual(original)
+  })
+
+  it("refuses new writes when cross-view coordination is unavailable", async () => {
+    Object.defineProperty(navigator, "locks", { configurable: true, value: undefined })
+    renderPanel()
+    fireEvent.change(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" }), { target: { value: "1000" } })
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفع" }))
+    expect(await screen.findByRole("alert")).toBeTruthy()
+    expect(mocks.cash).not.toHaveBeenCalled()
+  })
+
   it("records repayment as a separate cash action", async () => {
     mocks.repay.mockResolvedValueOnce({ id: "repay-1" })
     renderPanel()
-    fireEvent.click(screen.getByRole("tab", { name: "سداد سلفة" }))
+    fireEvent.click(screen.getByRole("button", { name: "سداد سلفة", pressed: false }))
     fireEvent.change(screen.getByRole("textbox", { name: "مبلغ السداد النقدي" }), { target: { value: "1,500" } })
     fireEvent.click(screen.getByRole("button", { name: "تسجيل السداد" }))
 
@@ -97,7 +154,7 @@ describe("employee payroll controls", () => {
   it("uses an explicit offset command and preserves the independent balances", async () => {
     mocks.offset.mockResolvedValueOnce({ id: "offset-1" })
     renderPanel()
-    fireEvent.click(screen.getByRole("tab", { name: "تسوية سلفة" }))
+    fireEvent.click(screen.getByRole("button", { name: "تسوية سلفة", pressed: false }))
     fireEvent.change(screen.getByRole("textbox", { name: "مبلغ التسوية من الأجر" }), { target: { value: "2,000" } })
     fireEvent.click(screen.getByRole("button", { name: "تسجيل التسوية" }))
 

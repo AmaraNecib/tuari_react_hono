@@ -88,6 +88,13 @@ export function getPayrollStorage(): PayrollStorage | null {
   catch { return null }
 }
 
+/** Serialize durable intent creation and resolution across views of one employee. */
+export async function withPayrollIntentLock<T>(identity: PayrollIdentity, callback: () => Promise<T>): Promise<T> {
+  if (typeof navigator === "undefined" || !navigator.locks) throw new Error("STORAGE_UNAVAILABLE")
+  const key = `employee-payroll-lock:v1:${encodeURIComponent(identity.userId)}:${encodeURIComponent(identity.workspaceId)}:${encodeURIComponent(identity.employeeId)}`
+  return navigator.locks.request(key, callback)
+}
+
 export function createPayrollRequestId(): string {
   return crypto.randomUUID()
 }

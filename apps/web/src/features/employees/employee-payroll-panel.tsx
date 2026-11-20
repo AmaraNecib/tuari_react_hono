@@ -21,6 +21,7 @@ import {
   getPayrollStorage,
   loadPayrollPendingIntent,
   savePayrollPendingIntent,
+  withPayrollIntentLock,
   type PayrollAction,
   type PayrollIdentity,
   type PayrollPendingIntent,
@@ -57,6 +58,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   const [action, setAction] = useState<PayrollAction>("cash")
   const [pending, setPending] = useState<PayrollPendingIntent | null>(null)
   const [storageError, setStorageError] = useState(false)
+  const [storageRevision, setStorageRevision] = useState(0)
   const [error, setError] = useState("")
   const [earningId, setEarningId] = useState("")
   const [advanceId, setAdvanceId] = useState("")
@@ -74,6 +76,12 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   const availableEarnings = earnings.filter(item => minor(item.remaining) > 0n)
   const advances = data?.advances ?? []
   const availableAdvances = advances.filter(item => minor(item.remaining) > 0n)
+
+  useEffect(() => {
+    const refresh = () => setStorageRevision(value => value + 1)
+    window.addEventListener("storage", refresh)
+    return () => window.removeEventListener("storage", refresh)
+  }, [])
 
   useEffect(() => {
     if (!identity) {
@@ -108,7 +116,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
       setStorageError(true)
     }
     setError("")
-  }, [identity])
+  }, [identity, storageRevision])
 
   useEffect(() => {
     if (!locked || typeof window === "undefined") return
@@ -152,6 +160,32 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!identity) return
+    const submittedIdentity = JSON.stringify(identity)
+    void withPayrollIntentLock(identity, async () => {
+      if (identityKeyRef.current !== submittedIdentity) return
+      await prepareAndSend()
+    }).catch(() => setStorageError(true))
+  }
+
+  async function retryIntent(intent: PayrollPendingIntent) {
+    try {
+      await withPayrollIntentLock(intent.identity, async () => {
+        if (identityKeyRef.current !== JSON.stringify(intent.identity)) return
+        const storage = getPayrollStorage()
+        if (!storage) throw new Error("STORAGE_UNAVAILABLE")
+        const current = loadPayrollPendingIntent(intent.action, intent.identity, storage)
+        if (!current.ok) throw new Error("STORAGE_UNAVAILABLE")
+        if (current.pending?.payload.requestId !== intent.payload.requestId) {
+          setStorageRevision(value => value + 1)
+          return
+        }
+        await sendIntent(current.pending)
+      })
+    } catch { setStorageError(true) }
+  }
+
+  async function prepareAndSend() {
     if (!identity || !data || locked || storageError) return
     const storage = getPayrollStorage()
     if (!storage) { setStorageError(true); return }
@@ -173,17 +207,16 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
     try {
       let intent: PayrollPendingIntent
       if (action === "cash") {
-        if (!selectedEarning) throw new TypeError("EARNING_REQUIRED")
-        const wageAmount = parseLocalizedMoneyInput(amount).toWire()
+        const wageAmount = amount.trim() ? parseLocalizedMoneyInput(amount).toWire() : ZERO
         const wageMinor = minor(wageAmount)
-        if (wageMinor <= 0n || wageMinor > minor(selectedEarning.remaining)) throw new TypeError("AMOUNT_EXCEEDS_BALANCE")
+        if (wageMinor < 0n || (wageMinor > 0n && (!selectedEarning || wageMinor > minor(selectedEarning.remaining)))) throw new TypeError("AMOUNT_EXCEEDS_BALANCE")
         const extra = advanceAmount.trim() ? parseLocalizedMoneyInput(advanceAmount).toWire() : ZERO
         const extraMinor = minor(extra)
-        if (extraMinor < 0n) throw new TypeError("INVALID_AMOUNT")
+        if (extraMinor < 0n || wageMinor + extraMinor <= 0n) throw new TypeError("INVALID_AMOUNT")
         const payload: EmployeePayrollCashRecordInput = {
           requestId: createPayrollRequestId(), employeeId,
           amount: wire(wageMinor + extraMinor), paymentDate: timestamp,
-          wages: [{ earningId: selectedEarning.earning.id, amount: wageAmount }],
+          wages: wageMinor > 0n && selectedEarning ? [{ earningId: selectedEarning.earning.id, amount: wageAmount }] : [],
           ...(extraMinor > 0n ? { advanceAmount: extra } : {}),
         }
         intent = savePayrollPendingIntent("cash", identity, payload, storage)
@@ -208,7 +241,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
         intent = savePayrollPendingIntent("offset", identity, payload, storage)
       }
       setPending(intent)
-      void sendIntent(intent)
+      await sendIntent(intent)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "INVALID_AMOUNT")
     }
@@ -252,9 +285,9 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
           {data.opening.wages !== null || data.opening.advances !== null ? (
             <p className="text-xs text-muted-foreground">{t("payroll.openingNotIncluded")}</p>
           ) : null}
-          <div className="flex flex-wrap gap-2" role="tablist" aria-label={t("payroll.actions")}>
+          <div className="flex flex-wrap gap-2" role="group" aria-label={t("payroll.actions")}>
             {(["cash", "offset", "repay"] as const).map(item => (
-              <Button key={item} type="button" size="sm" variant={action === item ? "default" : "outline"} role="tab" aria-selected={action === item} onClick={() => setAction(item)} disabled={locked || busy}>
+              <Button key={item} type="button" size="sm" variant={action === item ? "default" : "outline"} aria-pressed={action === item} onClick={() => setAction(item)} disabled={locked || busy}>
                 {t(`payroll.action.${item}`)}
               </Button>
             ))}
@@ -279,7 +312,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
             ) : null}
             <label className="space-y-1 text-sm">
               <span>{action === "offset" ? t("payroll.offsetAmount") : action === "repay" ? t("payroll.repaymentAmount") : t("payroll.wageCashAmount")}</span>
-              <CurrencyInput aria-label={action === "offset" ? t("payroll.offsetAmount") : action === "repay" ? t("payroll.repaymentAmount") : t("payroll.wageCashAmount")} currencyLabel={currencyLabel} value={amount} onChange={event => setAmount(event.target.value)} disabled={locked} required />
+              <CurrencyInput aria-label={action === "offset" ? t("payroll.offsetAmount") : action === "repay" ? t("payroll.repaymentAmount") : t("payroll.wageCashAmount")} currencyLabel={currencyLabel} value={amount} onChange={event => setAmount(event.target.value)} disabled={locked} required={action !== "cash"} />
             </label>
             {action === "cash" ? (
               <label className="space-y-1 text-sm">
@@ -306,10 +339,10 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
                     </p>
                   ) : <p><MoneyValue exact value={pending.payload.amount} currencyLabel={currencyLabel} /></p>}
                 </div>
-                <Button type="button" disabled={busy || identityKey !== JSON.stringify(pending.identity)} onClick={() => void sendIntent(pending)}>{busy ? t("payroll.saving") : t("payroll.retry")}</Button>
+                <Button type="button" disabled={busy || identityKey !== JSON.stringify(pending.identity)} onClick={() => void retryIntent(pending)}>{busy ? t("payroll.saving") : t("payroll.retry")}</Button>
               </div>
             ) : (
-              <Button type="submit" className="sm:col-span-2" disabled={busy || storageError || !identity || (action === "cash" && availableEarnings.length === 0) || (action !== "cash" && availableAdvances.length === 0)}>
+              <Button type="submit" className="sm:col-span-2" disabled={busy || storageError || !identity || (action !== "cash" && availableAdvances.length === 0)}>
                 {busy ? t("payroll.saving") : t(`payroll.submit.${action}`)}
               </Button>
             )}
