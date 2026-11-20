@@ -104,7 +104,7 @@ export function ResponsiveTableHead({ children, className }: ResponsiveTableHead
   return (
     <th
       className={cn(
-        "px-4 py-2.5 text-start text-[12px] font-mono font-semibold uppercase tracking-widest text-ink-4",
+        "px-4 py-2.5 text-start text-[0.8rem] font-mono font-semibold uppercase tracking-widest text-ink-4",
         className,
       )}
       scope="col"
