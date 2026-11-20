@@ -18,9 +18,9 @@ The service now aggregates exact source lines before one history finalization. I
 
 ## Verification plan and status
 
-Expected focused proof: project-cost service unit tests, exact-schema adapter tests built with `freshExactSchemaPlan` / `ensureFreshExactApplicationSchema`, existing legacy project-cost integration tests, and scoped API lint/typecheck. The source-level unit regression covers a 10.00 agreed source over quantity 3 split into movement quantities 1 and 2, then a quantity-1 reversal. The full native adapter and contribution-comparison scenarios still need to be added before this scope is ready for review.
+The worker checkout lacked dependencies and returned its committed slice without executable proof. Parent integration in `D:/worktrees/tuari_react_hono/t3-48d661ef-3ae352d3d2c079c6` reused installed pinned dependencies. Initial parent execution caught a missing internal quantity type and a leaked internal priceSource field; both were corrected without weakening assertions.
 
-Local proof is currently blocked because this checkout has no `node_modules`: `pnpm --filter @tuari/contracts build` exited 1 (`tsup` not found; pnpm reported missing node_modules). No dependency installation was run. CI-final remains pending under the repository activation record.
+Focused native plain/keyed adapter cases now use `ensureFreshExactApplicationSchema` and the actual shared financial graph. They compare a 10.00 agreed source split across quantities 1 and 2, then a quantity-1 reversal, against exact inventory contribution; verify separate 20.00 equipment charge and parked asset value; preserve 35,000 labor cost after 25,000 cash, 5,000 advance, 2,000 offset and 1,000 repayment; and pin a wide total of 90071992582536.70 after a large expense. The source-level service regression and existing expense handler/router cases also pass in the selected parent run: 23 cases across five files, with API typecheck and scoped lint clean. Independent reviews and normal-root integration remain pending. CI-final remains pending under the repository activation record.
 
 ## Design boundary
 

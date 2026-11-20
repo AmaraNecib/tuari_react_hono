@@ -45,6 +45,12 @@ Focused tests construct the complete financial graph and check actual root-owned
 
 `workspaceMetadataSchema` excludes debt accounts, debt entries and retired numeric salary payments, and rejects those extra collections rather than silently stripping them. The standalone `financialContract.metadata` read uses this organizational shape; it is not yet registered in appContract. `AuditService.getWorkspaceMetadata` reads only organizational repositories. Legacy snapshot assembly reuses that method and adds its own existing monetary collections, so unchanged legacy callers retain their old behavior until the actual fresh-root switch. The activated shell must use metadata plus separate exact financial reads, never coerce ledger balances into the legacy snapshot shape or report fabricated zero balances.
 
+## Financial router assembly
+
+`createFinancialRouter` binds the selected graph's metadata, debt, invoice/payment, inventory and expense branches to the caller's authenticated middleware. It remains separate from appContract registration and normal root selection until activation. A native selected-schema test exercises actual metadata, a wide exact debt mutation/read and anonymous refusal through this assembled router. Its context is a synthetic authenticated user; this is graph/handler assembly proof, not the pending real-session normal-startup acceptance.
+
+Expense permission/audit actions are factored from their contract registration so both legacy and exact routers share the same authorization behavior while the exact subrouter retains concrete output types. Exact expense handlers parse their output schemas, including mandatory DZD currency. Existing expense-handler and exact-router regressions remain selected proof.
+
 ## Scope resolution in progress
 
 A read-only Luna child maps actual normal-root financial writers/readers, prepared exact services and existing public wire contracts. It writes ignored findings only. The parent owns the startup integration test and final composition. Implementation lanes will be bounded to disjoint files only after those interface gaps are pinned. Do not infer that the absence of old data eliminates writer/reader compatibility work.

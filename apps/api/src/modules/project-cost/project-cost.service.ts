@@ -49,7 +49,11 @@ export class ProjectCostService {
       row => row.occurredAt,
       row => row.id,
     );
-    const materialMovements = valuedMaterialMovements.map(({ exactLine, ...row }) => { void exactLine; return row; });
+    const materialMovements = valuedMaterialMovements.map(({ exactLine, priceSource, ...row }) => {
+      void exactLine;
+      void priceSource;
+      return row;
+    });
 
     const expensesAmount = sumAmounts(expenses.map(row => row.amount));
     const salariesAmount = sumAmounts(salaries.map(row => row.amount));
@@ -96,7 +100,7 @@ function lineForMovement(source: ExactLine, quantity: string): ExactLine {
   return ExactLine.fromDerived(Money.parse(source.source.total), Quantity.inventory(source.source.originalQuantity), movementQuantity);
 }
 
-function netMaterialCost(rows: Array<{ direction: ProjectCostMaterialDirection; valueAmount: string; exactLine?: ExactLine | null }>): string {
+function netMaterialCost(rows: Array<{ direction: ProjectCostMaterialDirection; quantity: string; valueAmount: string; exactLine?: ExactLine | null }>): string {
   if (rows.some(row => row.exactLine !== undefined)) {
     return sumExactLineHistory(rows.flatMap(row => {
       if (!row.exactLine) return [];
