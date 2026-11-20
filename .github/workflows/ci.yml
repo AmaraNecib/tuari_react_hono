@@ -343,6 +343,10 @@ jobs:
         if: needs.detect.outputs.encryption == 'true'
         with:
           persist-credentials: false
+      - name: Test Windows Shell ZIP file identity
+        if: needs.detect.outputs.encryption == 'true'
+        shell: powershell
+        run: ./scripts/smoke/portable-shell-entry-names.test.ps1
       - uses: pnpm/action-setup@v4
         if: needs.detect.outputs.encryption == 'true'
       - uses: actions/setup-node@v4
@@ -353,6 +357,12 @@ jobs:
       - name: Install dependencies
         if: needs.detect.outputs.encryption == 'true'
         run: pnpm install --frozen-lockfile
+      - name: Test Windows portable proof lifecycle
+        if: needs.detect.outputs.encryption == 'true'
+        run: node --test --test-name-pattern="closes a separate proof process before publishing" apps/desktop/scripts/build-portable.test.mjs
+      - name: Test Windows ZIP identity and workflow output
+        if: needs.detect.outputs.encryption == 'true'
+        run: node --test --test-name-pattern="creates a Windows Explorer-visible ZIP" apps/desktop/scripts/build-portable.test.mjs
       - name: Build shared contracts
         if: needs.detect.outputs.encryption == 'true'
         run: pnpm --filter @tuari/contracts build

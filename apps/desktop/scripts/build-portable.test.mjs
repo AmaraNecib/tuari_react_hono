@@ -6,14 +6,37 @@ import { copyValidatedTree } from "./script-security-utils.mjs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { EventEmitter } from "node:events";
+import { runPortableProofProcess } from "./portable-proof-process.mjs";
 import { fileURLToPath } from "node:url";
 import { renamePortableCandidate } from "./portable-rename.mjs";
+import { createPortableRenameDiagnostics, reportPortableRenameDiagnosticFailure } from "./portable-rename-diagnostics.mjs";
 
 const scriptsRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const ownedChildren = new WeakMap();
 
-function registerChild(t, child) {
+function assertProofStopped(pid) {
+  try {
+    process.kill(pid, 0);
+  } catch (error) {
+    if (error.code === "ESRCH") return;
+    throw error;
+  }
+  if (process.platform === "linux") {
+    try {
+      const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+      const state = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[0];
+      if (state === "Z") return; // Exited, awaiting reaping; no files remain open.
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+  }
+  assert.fail(`Owned proof process ${pid} is still running`);
+}
+
+function registerChild(t, child, { tree = false } = {}) {
   const children = ownedChildren.get(t) ?? new Set();
   ownedChildren.set(t, children);
   let closed = false;
@@ -25,7 +48,16 @@ function registerChild(t, child) {
     });
   });
   const stop = async () => {
-    if (!closed && child.pid) child.kill("SIGKILL");
+    if (!closed && child.pid) {
+      if (tree && process.platform === "win32") {
+        const kill = spawnSync(path.join(process.env.SystemRoot, "System32", "taskkill.exe"), ["/PID", String(child.pid), "/T", "/F"], { encoding: "utf8", timeout: 5000 });
+        if (kill.error) throw kill.error;
+      } else if (tree) {
+        process.kill(-child.pid, "SIGKILL");
+      } else {
+        child.kill("SIGKILL");
+      }
+    }
     let timer;
     try {
       await Promise.race([
@@ -96,7 +128,7 @@ async function startDirectoryLock(t, directory, { startupTimeoutMs = 10_000 } = 
   };
 }
 
-function fixture(t, { reject = false, realProof = false, proofBarrier = false } = {}) {
+function fixture(t, { reject = false, realProof = false, proofBarrier = false, diagnostics = false } = {}) {
   const root = mkdtempSync(path.join(os.tmpdir(), "tuari-portable-test-"));
   t.after(async () => {
     await stopOwnedChildren(t);
@@ -111,13 +143,19 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false } 
   mkdirSync(scripts, { recursive: true });
   mkdirSync(path.join(runtime, "dist"), { recursive: true });
   mkdirSync(path.join(portable, "Tuari-portable"), { recursive: true });
+  mkdirSync(path.join(release, "resources"), { recursive: true });
+  writeFileSync(path.join(release, "resources", "required.dat"), "required resource");
   writeFileSync(path.join(release, "app.exe"), "synthetic app");
   copyFileSync(process.execPath, path.join(bin, "node.exe"));
   writeFileSync(path.join(runtime, "dist", "index.cjs"), "// synthetic loader");
   writeFileSync(path.join(portable, "Tuari-portable", "previous.txt"), "previous folder");
   writeFileSync(path.join(portable, "Tuari-portable.zip"), "previous zip");
   copyFileSync(path.join(scriptsRoot, "build-portable.mjs"), path.join(scripts, "build-portable.mjs"));
+  copyFileSync(path.join(scriptsRoot, "portable-proof-process.mjs"), path.join(scripts, "portable-proof-process.mjs"));
   copyFileSync(path.join(scriptsRoot, "portable-rename.mjs"), path.join(scripts, "portable-rename.mjs"));
+  copyFileSync(path.join(scriptsRoot, "portable-rename-diagnostics.mjs"), path.join(scripts, "portable-rename-diagnostics.mjs"));
+  copyFileSync(path.join(scriptsRoot, "portable-rename-diagnostics.ps1"), path.join(scripts, "portable-rename-diagnostics.ps1"));
+  const diagnosticsDir = diagnostics ? path.join(root, "portable-lock-diagnostics") : undefined;
   writeFileSync(path.join(scripts, "script-security-utils.mjs"), `
     import fs from 'node:fs';
     import { resolveTrustedTarPath as resolveTar } from ${JSON.stringify(new URL("./script-security-utils.mjs", import.meta.url).href)};
@@ -137,35 +175,41 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false } 
       import fs from 'node:fs';
       import path from 'node:path';
       export { parseArgs } from ${JSON.stringify(new URL("./sqlcipher-encryption-proof.mjs", import.meta.url).href)};
-      export async function runProof(options) {
+      import { pathToFileURL } from 'node:url';
+      async function main() {
+        const args = process.argv.slice(2);
+        const runtimeDir = args[args.indexOf('--runtime') + 1];
+        const nodeExe = args[args.indexOf('--node') + 1];
         const candidate = ${JSON.stringify(path.join(portable, ".tmp-Tuari-portable"))};
-        assert.equal(options.runtimeDir, path.join(candidate, 'bin', 'api-runtime'));
-        assert.equal(options.nodeExe, path.join(candidate, 'bin', 'node.exe'));
-        assert.equal(fs.readFileSync(path.join(options.runtimeDir, 'dist', 'index.cjs'), 'utf8'), '// synthetic loader');
+        assert.equal(runtimeDir, path.join(candidate, 'bin', 'api-runtime'));
+        assert.equal(nodeExe, path.join(candidate, 'bin', 'node.exe'));
+        assert.equal(fs.readFileSync(path.join(runtimeDir, 'dist', 'index.cjs'), 'utf8'), '// synthetic loader');
         assert.equal(fs.readFileSync(path.join(${JSON.stringify(portable)}, 'Tuari-portable.zip'), 'utf8'), 'previous zip');
-        fs.writeFileSync(${JSON.stringify(path.join(root, "proof-called"))}, 'called');
+        fs.writeFileSync(${JSON.stringify(path.join(root, "proof-called"))}, String(process.pid));
         ${proofBarrier ? `
-          fs.writeFileSync(${JSON.stringify(path.join(root, "proof-ready"))}, options.runtimeDir);
+          fs.writeFileSync(${JSON.stringify(path.join(root, "proof-ready"))}, runtimeDir);
           while (!fs.existsSync(${JSON.stringify(path.join(root, "proof-continue"))})) await new Promise(resolve => setTimeout(resolve, 10));
         ` : "await new Promise(resolve => setTimeout(resolve, 10));"}
         ${reject ? "throw new Error('synthetic plaintext runtime rejection');" : "return { results: ['synthetic proof success'] };"}
       }
+      if (import.meta.url === pathToFileURL(process.argv[1]).href) main().then(() => {}, error => { console.error(error); process.exitCode = 1; });
     `);
   }
   return {
-    root, portable, runtime,
+    root, portable, runtime, diagnosticsDir,
     run() {
       return spawnSync(process.execPath, [path.join(scripts, "build-portable.mjs")], {
         encoding: "utf8", timeout: 60_000,
-        env: { ...process.env, NODE_OPTIONS: "" },
+        env: { ...process.env, NODE_OPTIONS: "", ...(diagnosticsDir ? { TUARI_PORTABLE_DIAGNOSTICS_DIR: diagnosticsDir } : {}) },
       });
     },
     start() {
       const child = spawn(process.execPath, [path.join(scripts, "build-portable.mjs")], {
-        env: { ...process.env, NODE_OPTIONS: "" },
+        env: { ...process.env, NODE_OPTIONS: "", ...(diagnosticsDir ? { TUARI_PORTABLE_DIAGNOSTICS_DIR: diagnosticsDir } : {}) },
         stdio: ["ignore", "pipe", "pipe"],
+        detached: process.platform !== "win32",
       });
-      const owned = registerChild(t, child);
+      const owned = registerChild(t, child, { tree: true });
       let output = "";
       const waitFor = async (pattern) => {
         const deadline = Date.now() + 10_000;
@@ -180,6 +224,44 @@ function fixture(t, { reject = false, realProof = false, proofBarrier = false } 
   };
 }
 
+test("portable proof waits for close rather than exit and rejects abnormal termination", async () => {
+  const child = new EventEmitter();
+  child.pid = 123;
+  let settled = false;
+  const proof = runPortableProofProcess("proof.mjs", { runtimeDir: "runtime", nodeExe: "node" }, { spawnProcess: () => child });
+  proof.then(() => { settled = true; });
+  child.emit("exit", 0, null);
+  await Promise.resolve();
+  assert.equal(settled, false, "exit alone does not prove stdio and process resources closed");
+  child.emit("close", 0, null);
+  assert.deepEqual(await proof, { pid: 123, status: 0 });
+  for (const [status, signal, expected] of [[1, null, /status 1/], [null, "SIGTERM", /signal SIGTERM/]]) {
+    const failed = new EventEmitter();
+    const result = runPortableProofProcess("proof.mjs", { runtimeDir: "runtime", nodeExe: "node" }, { spawnProcess: () => failed });
+    failed.emit("close", status, signal);
+    await assert.rejects(result, expected);
+  }
+  await assert.rejects(runPortableProofProcess("proof.mjs", { runtimeDir: "runtime", nodeExe: "node" }, { spawnProcess: () => { throw new Error("spawn denied"); } }), /spawn denied/);
+});
+
+test("portable:only closes a separate proof process before publishing the verified candidate", { skip: process.platform !== "win32" }, async (t) => {
+  const f = fixture(t, { proofBarrier: true });
+  const run = f.start();
+  const readyPath = path.join(f.root, "proof-ready");
+  const deadline = Date.now() + 10_000;
+  while (!existsSync(readyPath) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.ok(existsSync(readyPath), "proof must run in its own process before publication");
+  const proofPid = Number(readFileSync(path.join(f.root, "proof-called"), "utf8"));
+  assert.notEqual(proofPid, run.child.pid, "native proof process must not be the packaging process");
+  writeFileSync(path.join(f.root, "proof-continue"), "continue");
+  const result = await run.done;
+  assert.equal(result.status, 0, result.output);
+  assert.match(result.output, new RegExp(`\\[portable-proof\\] completed pid=${proofPid} status=0; process closed before candidate publication`));
+  assert.ok(result.output.indexOf("process closed before candidate publication") < result.output.indexOf("Portable folder ready"));
+  assert.ok(existsSync(path.join(f.root, "archive-called")));
+  assert.ok(existsSync(path.join(f.portable, "Tuari-portable")));
+});
+
 test("portable:only rejects failed encryption proof before replacing outputs or archiving", (t) => {
   const f = fixture(t, { reject: true });
   const result = f.run();
@@ -192,16 +274,56 @@ test("portable:only rejects failed encryption proof before replacing outputs or 
   assert.equal(readFileSync(path.join(f.portable, "Tuari-portable", "previous.txt"), "utf8"), "previous folder");
 });
 
-test("portable:only publishes and archives only after the copied candidate passes proof", { skip: process.platform !== "win32" }, (t) => {
+test("portable:only creates a Windows Explorer-visible ZIP with root app, runtime and resources", { skip: process.platform !== "win32" }, (t) => {
   const f = fixture(t);
   const result = f.run();
   assert.equal(result.error, undefined);
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.ok(existsSync(path.join(f.root, "proof-called")));
   assert.ok(existsSync(path.join(f.root, "archive-called")));
-  assert.equal(readFileSync(path.join(f.portable, "Tuari-portable.zip")).subarray(0, 2).toString(), "PK");
+  const archive = path.join(f.portable, "Tuari-portable.zip");
+  assert.equal(readFileSync(archive).subarray(0, 2).toString(), "PK");
+  const trustedTar = path.join(process.env.SystemRoot ?? process.env.windir, "System32", "tar.exe");
+  const entries = spawnSync(trustedTar, ["-tf", archive], { encoding: "utf8" });
+  assert.equal(entries.status, 0, entries.stderr);
+  const names = entries.stdout.trim().split(/\r?\n/);
+  assert.ok(names.includes("Tuari.exe"), `root executable missing from ZIP: ${names.join(", ")}`);
+  assert.ok(names.includes("bin/node.exe"), `runtime missing from ZIP: ${names.join(", ")}`);
+  assert.ok(names.includes("resources/required.dat"), `resource missing from ZIP: ${names.join(", ")}`);
+  assert.ok(names.every(name => !name.startsWith("./") && !name.includes("\\")), `ZIP paths must be relative and use forward slashes: ${names.join(", ")}`);
+  const extracted = path.join(f.root, "extracted");
+  mkdirSync(extracted);
+  const extraction = spawnSync(trustedTar, ["-xf", archive, "-C", extracted], { encoding: "utf8" });
+  assert.equal(extraction.status, 0, extraction.stderr);
+  assert.equal(readFileSync(path.join(extracted, "Tuari.exe"), "utf8"), "synthetic app");
+  assert.equal(readFileSync(path.join(extracted, "bin", "api-runtime", "dist", "index.cjs"), "utf8"), "// synthetic loader");
+  assert.equal(readFileSync(path.join(extracted, "resources", "required.dat"), "utf8"), "required resource");
+  const shellCheck = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", path.resolve(scriptsRoot, "../../../scripts/smoke/check-portable-zip-shell.ps1"), archive], { encoding: "utf8" });
+  assert.equal(shellCheck.status, 0, shellCheck.stdout + shellCheck.stderr);
+  assert.match(shellCheck.stdout, /Windows Shell ZIP entries .*Tuari\.exe.*bin.*resources/);
+  const workflow = readFileSync(path.resolve(scriptsRoot, "../../../.github/workflows/nightly.yml"), "utf8");
+  const shellStep = workflow.split("      - name: Check portable ZIP in Windows Shell")[1].split("      #")[0];
+  const body = shellStep.split("        run: |\n")[1].split("\n").map(line => line.startsWith("          ") ? line.slice(10) : line).join("\n");
+  const replay = path.join(f.root, "shell-step.ps1");
+  const output = path.join(f.root, "github-output.txt");
+  writeFileSync(replay, "$global:LASTEXITCODE = $null\n" + body.replace('"apps/desktop/src-tauri/target/release/bundle/portable"', `'${f.portable.replaceAll("'", "''")}'`));
+  const replayResult = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-File", replay], {
+    cwd: path.resolve(scriptsRoot, "../../.."), encoding: "utf8", env: { ...process.env, GITHUB_OUTPUT: output }, timeout: 10_000,
+  });
+  assert.equal(replayResult.status, 0, replayResult.stdout + replayResult.stderr);
+  const outputLine = readFileSync(output, "utf8").replace(/^\uFEFF/, "").trim();
+  assert.ok(outputLine.startsWith("path="), "actual workflow step must export its checked archive without a native exit code");
+  assert.equal(realpathSync.native(outputLine.slice(5)), realpathSync.native(archive), "exported path must identify the exact checked ZIP across Windows path aliases");
   assert.equal(readFileSync(path.join(f.portable, "Tuari-portable", "bin", "api-runtime", "dist", "index.cjs"), "utf8"), "// synthetic loader");
   assert.ok(!existsSync(path.join(f.portable, ".tmp-Tuari-portable")));
+});
+
+test("Windows Shell identity ignores hidden extensions and display labels", { skip: process.platform !== "win32" }, () => {
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path.resolve(scriptsRoot, "../../../scripts/smoke/portable-shell-entry-names.test.ps1")], { encoding: "utf8", timeout: 10_000 });
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /PASS hidden-extension/);
+  assert.match(result.stdout, /PASS executable display label cannot disguise/);
 });
 
 test("portable:only retries the production candidate rename after a held Win32 directory handle releases", { skip: process.platform !== "win32" }, async (t) => {
@@ -227,8 +349,8 @@ test("portable:only retries the production candidate rename after a held Win32 d
   assert.equal(readFileSync(path.join(f.portable, "Tuari-portable.zip")).subarray(0, 2).toString(), "PK");
 });
 
-test("portable:only keeps the previous archive when a held Win32 directory handle exhausts rename retries", { skip: process.platform !== "win32" }, async (t) => {
-  const f = fixture(t, { proofBarrier: true });
+test("portable:only records the real failed rename and keeps the previous archive under a held Win32 directory handle", { skip: process.platform !== "win32" }, async (t) => {
+  const f = fixture(t, { proofBarrier: true, diagnostics: true });
   const run = f.start();
   const readyPath = path.join(f.root, "proof-ready");
   const deadline = Date.now() + 10_000;
@@ -246,6 +368,19 @@ test("portable:only keeps the previous archive when a held Win32 directory handl
   assert.ok(!existsSync(path.join(f.root, "archive-called")));
   assert.equal(readFileSync(path.join(f.portable, "Tuari-portable.zip"), "utf8"), "previous zip");
   assert.ok(existsSync(path.join(f.portable, ".tmp-Tuari-portable")), "failed candidate must remain for diagnosis");
+  const reportPath = path.join(f.diagnosticsDir, "portable-rename-failure.json");
+  const report = JSON.parse(readFileSync(reportPath, "utf8"));
+  assert.equal(report.event, "portable-candidate-rename-failed");
+  assert.equal(report.process.pid, run.child.pid);
+  assert.equal(report.source, path.join(f.portable, ".tmp-Tuari-portable"));
+  assert.equal(report.destination, path.join(f.portable, "Tuari-portable"));
+  assert.match(report.nativeError.code, /^(EPERM|EBUSY|EACCES)$/);
+  assert.equal(report.nativeError.syscall, "rename");
+  assert.equal(report.beforeProof.paths.find(item => item.path === report.source).exists, true);
+  assert.equal(report.afterProofBeforeRename.paths.find(item => item.path === report.destination).exists, false);
+  assert.ok(["no-owners-reported", "partial", "probe-error", "queried"].includes(report.immediateFailureSnapshot.restartManager.status));
+  assert.match(JSON.stringify(report.immediateFailureSnapshot.restartManager.limitations), /does not prove no directory handle/);
+  assert.ok(report.immediateFailureSnapshot.restartManager.directoryResourcesNotQueried.includes(report.source));
 });
 
 for (const code of ["EACCES", "EBUSY", "EPERM"]) {
@@ -287,9 +422,11 @@ test("failed setup stops a blocked build before deleting its fixture", async () 
     const deadline = Date.now() + 10_000;
     while (!existsSync(path.join(f.root, "proof-ready")) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
     assert.ok(existsSync(path.join(f.root, "proof-ready")), "build must actually be blocked in proof before cleanup");
+    const proofPid = Number(readFileSync(path.join(f.root, "proof-called"), "utf8"));
     // Run failure hooks without writing proof-continue, as a failed lock setup does.
     for (const hook of hooks) await hook();
     assert.ok(run.child.exitCode !== null || run.child.signalCode !== null);
+    assertProofStopped(proofPid);
     assert.ok(!existsSync(f.root), "fixture removed only after the owned child closes");
   } finally {
     await stopOwnedChildren(scope);
@@ -315,6 +452,16 @@ test("lock startup timeout cleans both children before deleting fixture files", 
     await stopOwnedChildren(scope);
     if (existsSync(f.root)) rmSync(f.root, { recursive: true, force: true });
   }
+});
+
+test("a failed diagnostic write cannot replace the primary native rename exception", () => {
+  const primary = Object.assign(new Error("EPERM rename source -> destination"), { code: "EPERM" });
+  const logs = [];
+  assert.doesNotThrow(() => reportPortableRenameDiagnosticFailure(primary, {
+    recordFailure() { throw new Error("diagnostic probe denied"); },
+  }, line => logs.push(line)));
+  assert.equal(primary.code, "EPERM");
+  assert.match(logs[0], /diagnostic probe denied; primary rename error preserved/);
 });
 
 test("portable candidate rename retries only recognized transient Windows errors", async () => {
@@ -373,6 +520,73 @@ test("portable candidate rename reproduces a real Win32 directory-handle lock", 
   await renamePortableCandidate(source, destination, { log: line => console.log(`[win32-directory-lock] green ${line}`) });
   assert.ok(existsSync(destination), "rename must succeed after the exact owned lock process closes its handle");
   console.log(`[win32-directory-lock] green=success at=${new Date().toISOString()} destinationExists=true`);
+});
+
+test("Restart Manager reports its honest result for a known owned packaged-file lock", { skip: process.platform !== "win32" }, async (t) => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "tuari-rm-file-lock-"));
+  t.after(async () => {
+    await stopOwnedChildren(t);
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+  const candidate = path.join(root, "candidate");
+  const final = path.join(root, "published");
+  const executable = path.join(candidate, "Tuari.exe");
+  const diagnosticsDir = path.join(root, "diagnostics");
+  mkdirSync(candidate);
+  writeFileSync(executable, "fixture executable");
+  const prebuild = path.join(candidate, "bin", "api-runtime", "node_modules", "better-sqlite3-multiple-ciphers", "prebuilds", "win32-x64.node");
+  mkdirSync(path.dirname(prebuild), { recursive: true });
+  writeFileSync(prebuild, "synthetic prebuild resource, not loaded");
+  const lockScript = path.join(root, "file-lock.ps1");
+  writeFileSync(lockScript, `
+    Add-Type -TypeDefinition @'
+    using System;
+    using System.Runtime.InteropServices;
+    public static class FileLockFixture {
+      [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+      public static extern IntPtr CreateFile(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+      [DllImport("kernel32.dll", SetLastError = true)]
+      public static extern bool CloseHandle(IntPtr handle);
+    }
+'@
+    $handle = [FileLockFixture]::CreateFile($args[0], 0x80000000, 0x3, [IntPtr]::Zero, 3, 0, [IntPtr]::Zero)
+    if ($handle -eq [IntPtr]::new(-1)) { throw "CreateFile failed: $([Runtime.InteropServices.Marshal]::GetLastWin32Error())" }
+    Write-Output "LOCKED pid=$PID path=$($args[0]) shareDelete=false"
+    [Console]::In.ReadLine() | Out-Null
+    [void][FileLockFixture]::CloseHandle($handle)
+  `);
+  const child = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", lockScript, executable], { stdio: ["pipe", "pipe", "pipe"] });
+  const owned = registerChild(t, child);
+  let output = "";
+  child.stdout.on("data", chunk => { output += chunk.toString(); });
+  child.stderr.on("data", chunk => { output += chunk.toString(); });
+  const deadline = Date.now() + 10_000;
+  while (!output.includes("LOCKED") && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.match(output, /LOCKED pid=(\d+)/, `file holder did not start: ${output}`);
+  const holderPid = Number(output.match(/LOCKED pid=(\d+)/)[1]);
+
+  const diagnostics = createPortableRenameDiagnostics(candidate, final, { directory: diagnosticsDir });
+  diagnostics.updateFinal(final);
+  diagnostics.beforeRename();
+  const error = Object.assign(new Error(`EPERM: rename '${candidate}' -> '${final}'`), {
+    code: "EPERM", errno: -4048, syscall: "rename", path: candidate, dest: final,
+  });
+  const reportPath = diagnostics.recordFailure(error);
+  assert.ok(reportPath);
+  const report = JSON.parse(readFileSync(reportPath, "utf8"));
+  assert.equal(report.process.sourceSha?.length, 40);
+  const manager = report.immediateFailureSnapshot.restartManager;
+  assert.ok(["queried", "no-owners-reported"].includes(manager.status), JSON.stringify(manager));
+  assert.deepEqual(manager.errors, []);
+  if (manager.owners.some(owner => owner.pid === holderPid)) {
+    assert.ok(manager.owners.some(owner => owner.pid === holderPid && owner.resource === executable));
+  } else {
+    assert.ok(manager.limitations.some(limit => limit.includes("empty file-owner list does not prove")));
+  }
+  assert.ok(report.immediateFailureSnapshot.resources.some(resource => resource.path === prebuild && resource.exists), "selected native prebuild file is captured, not an imaginary directory");
+  assert.ok(report.immediateFailureSnapshot.resources.some(resource => resource.path === executable && resource.exists), "the exact locked file was registered as a resource");
+  child.stdin.end("release\n");
+  await owned.stop();
 });
 
 test("portable:only runs the real proof and rejects a legacy runtime missing encrypted dependencies", (t) => {

@@ -38,6 +38,27 @@ test('known docs skip expensive areas; API and Rust changes remain covered', () 
   assert.equal(selectCiScope(['README.md']).encryption, 'false');
 });
 
+test('Windows CI executes Shell identity regressions when its files change', () => {
+  for (const file of ['scripts/smoke/portable-shell-entry-names.ps1', 'scripts/smoke/portable-shell-entry-names.test.ps1', 'scripts/smoke/check-portable-zip-shell.ps1']) {
+    assert.equal(selectCiScope([file]).encryption, 'true', file);
+  }
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const job = ci.split('\n  prove-encryption:')[1].split('\n  audit:')[0];
+  assert.match(job, /windows-2022/);
+  assert.match(job, /name: Test Windows Shell ZIP file identity\s*\n\s*if: needs\.detect\.outputs\.encryption == 'true'\s*\n\s*shell: powershell\s*\n\s*run: \.\/scripts\/smoke\/portable-shell-entry-names\.test\.ps1/);
+  assert.doesNotMatch(job, /continue-on-error/);
+});
+
+test('Nightly-only edits activate the Windows ZIP workflow replay', () => {
+  assert.equal(selectCiScope(['.github/workflows/nightly.yml']).encryption, 'true');
+});
+
+test('Windows CI runs the actual portable proof publication lifecycle', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const job = ci.split('\n  prove-encryption:')[1].split('\n  audit:')[0];
+  assert.match(job, /name: Test Windows portable proof lifecycle\s*\n\s*if: needs\.detect\.outputs\.encryption == 'true'\s*\n\s*run: node --test --test-name-pattern="closes a separate proof process before publishing" apps\/desktop\/scripts\/build-portable\.test\.mjs/);
+});
+
 test('aggregate permits only successful checks and selector-proven skips', () => {
   assert.deepEqual(acceptanceErrors(success()), []);
   const scope = selectCiScope([], { full: true });
