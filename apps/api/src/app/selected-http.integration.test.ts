@@ -1,5 +1,4 @@
-import { mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AppClient } from "@tuari/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -49,11 +48,13 @@ function httpClient(app: ReturnType<typeof createApp>, token = "") {
 }
 
 describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 }, () => {
-  it.each(["", "558-http-key"])("persists exact payroll and refuses unauthorized or stale writes (%s)", async databaseKey => {
+  it.each(["", "558-http-key"])("persists exact payroll and attachment bytes while enforcing owner and write gates (%s)", async databaseKey => {
     vi.stubEnv("TUARI_LICENSE_STATUS", "trial");
-    const directory = mkdtempSync(join(tmpdir(), "tuari-558-http-"));
+    mkdirSync("D:/temp/tuari-selected-attachments", { recursive: true });
+    const directory = mkdtempSync("D:/temp/tuari-selected-attachments/http-");
     const databasePath = join(directory, "application.sqlite");
     const config = createAppConfig({ BETTER_AUTH_SECRET: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM", DB_ADAPTER: "sqlite", API_PORT: "4318", WEB_PORT: "3000" });
+    config.attachmentsRootPath = join(directory, "attachments");
     const root = await createFreshExactAppDependencies({ databasePath, databaseKey, now: () => new Date("2026-11-18T09:00:00.000Z") }, config);
     roots.push(root);
     const connectionIndex = vi.mocked(createDatabaseConnection).mock.calls.map(args => args[0]).lastIndexOf(databasePath);
@@ -109,15 +110,72 @@ describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 
         expect(response.headers.get("cache-control")).toBe("no-store, private");
       }
     }
-    for (const [path, method] of [["/api/inventory/attachments/missing", "GET"], ["/api/inventory/invoice-groups/missing/attachments", "POST"]]) {
-      const response = await app.request(base + path, { method, headers: { origin, authorization: `Bearer ${session.token}` } });
-      expect(response.status).toBe(503);
+    const definition = root.catalogService.createItemDefinition({ name: "HTTP cement", itemType: "CONSUMABLE", unit: "bag" }, { actorUserId: bootstrap.item.id });
+    const warehouse = root.operationsService.createWarehouse({ name: "HTTP depot", status: "ACTIVE" }, { actorUserId: bootstrap.item.id });
+    const purchase = root.financial.services.inventory.createInvoiceGroup({ requestId: "http-stock", warehouseId: warehouse.item.id, entries: [{ kind: "CONSUMABLE", itemDefinitionId: definition.item.id, quantity: 1, unitPriceDzd: "12.3400" }] });
+    const headers = { origin, authorization: `Bearer ${session.token}` };
+    const uploadPath = base + `/api/inventory/invoice-groups/${purchase.group.id}/attachments`;
+    const bytes = new Uint8Array([37, 80, 68, 70, 45, 49, 0, 255]);
+    const form = () => { const data = new FormData(); data.append("files", new File([bytes], "invoice proof.pdf", { type: "application/pdf" })); return data; };
+    const uploaded = await app.request(uploadPath, { method: "POST", headers, body: form() });
+    expect(uploaded.status).toBe(200);
+    const result = await uploaded.json();
+    expect(result).toMatchObject({ success: true, items: [{ invoiceGroupId: purchase.group.id, originalName: "invoice proof.pdf", mimeType: "application/pdf", byteSize: 8 }] });
+    const attachment = result.items[0];
+    expect(readFileSync(join(config.attachmentsRootPath, attachment.relativePath))).toEqual(Buffer.from(bytes));
+    expect(db.prepare("SELECT invoice_group_id AS groupId, byte_size AS size FROM inventory_invoice_attachment WHERE id=?").get(attachment.id)).toEqual({ groupId: purchase.group.id, size: 8 });
+    const downloadPath = base + `/api/inventory/attachments/${attachment.id}`;
+    const assertDownload = async (target: ReturnType<typeof createApp>) => {
+      const response = await target.request(downloadPath, { headers });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("application/pdf");
+      expect(response.headers.get("content-length")).toBe("8");
+      expect(response.headers.get("content-disposition")).toBe('inline; filename="invoice%20proof.pdf"');
+      expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    };
+    await assertDownload(app);
+    const snapshot = db.prepare("SELECT total_changes() AS n").get();
+    const storedFiles = readdirSync(config.attachmentsRootPath, { recursive: true });
+    for (const token of ["", otherSession.token]) {
+      const refusedHeaders = { origin, authorization: token ? `Bearer ${token}` : "" };
+      expect((await app.request(uploadPath, { method: "POST", headers: refusedHeaders, body: form() })).status).toBe(401);
+      expect((await app.request(downloadPath, { headers: refusedHeaders })).status).toBe(401);
     }
-    vi.stubEnv("TUARI_LICENSE_STATUS", "expired");
-    const locked = await app.request(base + "/api/inventory/invoice-groups/missing/attachments", { method: "POST", headers: { origin, authorization: `Bearer ${session.token}` } });
-    expect(locked.status).toBe(403);
-    expect(await locked.json()).toMatchObject({ success: false, error: { code: "UPGRADE_REQUIRED" } });
+    expect(db.prepare("SELECT total_changes() AS n").get()).toEqual(snapshot);
+    expect(readdirSync(config.attachmentsRootPath, { recursive: true })).toEqual(storedFiles);
+    for (const [path, method] of [["/api/inventory/attachments/missing", "GET"], ["/api/inventory/invoice-groups/missing/attachments", "POST"]]) {
+      const response = await app.request(base + path, { method, headers, ...(method === "POST" ? { body: form() } : {}) });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({ success: false, error: { code: "NOT_FOUND" } });
+    }
+    for (const status of ["expired", "grace"]) {
+      vi.stubEnv("TUARI_LICENSE_STATUS", status);
+      const locked = await app.request(uploadPath, { method: "POST", headers, body: form() });
+      expect(locked.status).toBe(403);
+      expect(await locked.json()).toMatchObject({ success: false, error: { code: "UPGRADE_REQUIRED" } });
+      await assertDownload(app);
+    }
+    expect(db.prepare("SELECT total_changes() AS n").get()).toEqual(snapshot);
+    expect(readdirSync(config.attachmentsRootPath, { recursive: true })).toEqual(storedFiles);
     vi.stubEnv("TUARI_LICENSE_STATUS", "trial");
+    for (const data of [
+      (() => { const data = new FormData(); data.append("files", new File([bytes], "unsafe.html", { type: "text/html" })); return data; })(),
+      (() => { const data = form(); for (let n = 0; n < 10; n++) data.append("files", new File([bytes], "extra.pdf", { type: "application/pdf" })); return data; })(),
+    ]) {
+      const invalid = await app.request(uploadPath, { method: "POST", headers, body: data });
+      expect(invalid.status).toBe(400);
+      expect(await invalid.json()).toMatchObject({ success: false, error: { code: "VALIDATION" } });
+    }
+    expect(db.prepare("SELECT total_changes() AS n").get()).toEqual(snapshot);
+    expect(readdirSync(config.attachmentsRootPath, { recursive: true })).toEqual(storedFiles);
+    db.exec("CREATE TRIGGER reject_attachment BEFORE INSERT ON inventory_invoice_attachment WHEN NEW.original_name='reject.pdf' BEGIN SELECT RAISE(ABORT,'injected metadata failure'); END");
+    const failingForm = form();
+    failingForm.append("files", new File([bytes], "reject.pdf", { type: "application/pdf" }));
+    const failedUpload = await app.request(uploadPath, { method: "POST", headers, body: failingForm });
+    expect(failedUpload.status).toBe(500);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM inventory_invoice_attachment").get()).toEqual({ n: 1 });
+    expect(readdirSync(config.attachmentsRootPath, { recursive: true })).toEqual(storedFiles);
+    db.exec("DROP TRIGGER reject_attachment");
     const malformed = await app.request(base + "/rpc/financial/metadata", { method: "POST", headers: { origin, "content-type": "application/json" }, body: "{" });
     expect(malformed.status).toBe(400);
     expect(malformed.headers.get("x-frame-options")).toBe("DENY");
@@ -132,7 +190,9 @@ describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 
     root.close();
     const reopened = await createFreshExactAppDependencies({ databasePath, databaseKey }, config);
     roots.push(reopened);
-    const reload = httpClient(createApp(reopened, { allowedOrigins: [origin] }), session.token);
+    const reopenedApp = createApp(reopened, { allowedOrigins: [origin] });
+    await assertDownload(reopenedApp);
+    const reload = httpClient(reopenedApp, session.token);
     expect(await reload.employeePayrollCashRecord(wageInput)).toEqual(paid);
     expect(await reload.employeePayrollAdvanceOffset(offsetInput)).toEqual(offset);
     expect(await reload.employeePayrollAdvanceRepay(repaymentInput)).toEqual(repayment);

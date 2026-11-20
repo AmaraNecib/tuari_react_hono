@@ -47,6 +47,7 @@ export type FreshExactAppDependencies = Omit<AppDependencies,
 > & {
   mode: "fresh-exact-selected";
   companyService: CompanyMetadataService;
+  inventoryAttachmentService: Pick<InventoryService, "addInvoiceAttachments" | "getAttachmentDownload">;
   catalogService: Pick<InventoryService, "listItemDefinitions" | "listItemDefinitionOptions" | "getItemDefinition" | "createItemDefinition" | "updateItemDefinition">;
   financial: { services: FinancialDependencies; getMetadata(): Promise<WorkspaceMetadata> };
   payroll: { service: FinancialDependencies["payroll"]; getEmployeePayroll: FinancialDependencies["lifecycle"]["getEmployeePayroll"] };
@@ -81,7 +82,8 @@ export async function createFreshExactAppDependencies(
     const roleModule = new RoleModule({ repository: new SqliteRbacRoleRepository(db) });
     const authBootstrapService = new AuthBootstrapService(new SqliteBootstrapPort(db, connection, lock), auth, appConfig.bootstrapSetupKey);
     // Reuse catalog validation without supplying a numeric debt/charge service.
-    // Only these nonfinancial methods escape the selected composition root.
+    // Only catalog and attachment methods escape the selected composition root.
+    // Attachment ownership selects the group ID, never retired numeric money columns.
     const catalog = new InventoryService(createInventoryRepository(connection, lock), new InventoryAttachmentStorage(appConfig.attachmentsRootPath), undefined, company);
     return {
       mode: "fresh-exact-selected",
@@ -99,6 +101,10 @@ export async function createFreshExactAppDependencies(
         getItemDefinition: catalog.getItemDefinition.bind(catalog),
         createItemDefinition: catalog.createItemDefinition.bind(catalog),
         updateItemDefinition: catalog.updateItemDefinition.bind(catalog),
+      },
+      inventoryAttachmentService: {
+        addInvoiceAttachments: catalog.addInvoiceAttachments.bind(catalog),
+        getAttachmentDownload: catalog.getAttachmentDownload.bind(catalog),
       },
       sessionService: new SessionService(auth, new SqlitePermissionResolver(db, authBootstrapService)),
       recoveryKeyService: new RecoveryKeyService(new SqliteRecoveryKeyPort(db, connection, lock)),

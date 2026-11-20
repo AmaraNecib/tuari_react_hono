@@ -410,10 +410,8 @@ export function createApp(
         return c.json({ success: false, error: { code: "UPGRADE_REQUIRED", message: licenseRefusal } }, 403)
       }
 
-      // Temporary selected-root limitation, disclosed only after authorization.
-      if (!("inventoryService" in dependencies)) {
-        return c.json({ message: "Inventory attachments are unavailable for this application mode." }, 503)
-      }
+      const attachmentsService = "inventoryService" in dependencies
+        ? dependencies.inventoryService : dependencies.inventoryAttachmentService
 
       const { invoiceGroupId } = c.req.param()
       const formData = await c.req.formData()
@@ -430,7 +428,7 @@ export function createApp(
         bytes: () => file.arrayBuffer().then((buffer) => new Uint8Array(buffer)),
       }))
 
-      const attachments = await dependencies.inventoryService.addInvoiceAttachments(
+      const attachments = await attachmentsService.addInvoiceAttachments(
         invoiceGroupId,
         normalizedFiles,
         {
@@ -461,13 +459,11 @@ export function createApp(
         return c.json({ message: "غير مصرح بهذا الإجراء." }, 401)
       }
 
-      // Selected attachments remain unavailable; never bypass session/owner checks.
-      if (!("inventoryService" in dependencies)) {
-        return c.json({ message: "Inventory attachments are unavailable for this application mode." }, 503)
-      }
+      const attachmentsService = "inventoryService" in dependencies
+        ? dependencies.inventoryService : dependencies.inventoryAttachmentService
 
       const { attachmentId } = c.req.param()
-      const { attachment, body } = await dependencies.inventoryService.getAttachmentDownload(attachmentId)
+      const { attachment, body } = await attachmentsService.getAttachmentDownload(attachmentId)
       c.header("Content-Type", attachment.mimeType)
       c.header("Content-Length", String(attachment.byteSize))
       c.header("Content-Disposition", `inline; filename="${encodeURIComponent(attachment.originalName)}"`)

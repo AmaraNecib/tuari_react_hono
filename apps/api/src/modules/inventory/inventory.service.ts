@@ -1047,8 +1047,7 @@ export class InventoryService {
   async addInvoiceAttachments(invoiceGroupId: string, files: InventoryUploadFile[], auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 
-    const group = this.repository.getInvoiceGroupById(invoiceGroupId)
-    if (!group) {
+    if (!this.repository.invoiceGroupExists(invoiceGroupId)) {
       throw new InventoryError("NOT_FOUND", "تعذر العثور على الفاتورة المطلوبة.")
     }
 
@@ -1069,18 +1068,19 @@ export class InventoryService {
       ])
     }
 
+    for (const file of files) {
+      if (!ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES.has(file.type)) {
+        throw new InventoryError("VALIDATION", `نوع الملف غير مدعوم: ${file.name}`)
+      }
+      if (file.size > MAX_INVOICE_ATTACHMENT_SIZE) {
+        throw new InventoryError("VALIDATION", `حجم الملف كبير جدًا: ${file.name}`)
+      }
+    }
+
     const savedFiles: Array<InventoryStoredUpload> = []
 
     try {
       for (const file of files) {
-        if (!ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES.has(file.type)) {
-          throw new InventoryError("VALIDATION", `نوع الملف غير مدعوم: ${file.name}`)
-        }
-
-        if (file.size > MAX_INVOICE_ATTACHMENT_SIZE) {
-          throw new InventoryError("VALIDATION", `حجم الملف كبير جدًا: ${file.name}`)
-        }
-
         // Read the bytes only after every limit check passes — over-limit
         // requests are rejected before any byte-array copy is allocated
         // (issue #214: lazy bytes owned by the module, not the transport).
