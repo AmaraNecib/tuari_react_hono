@@ -1,0 +1,30 @@
+import { describe, expect, it, vi } from "vitest";
+import { CompanyMetadataService } from "./company-metadata.service";
+import { CounterpartyService } from "./counterparty.service";
+
+describe("CompanyMetadataService", () => {
+  it("serves organizational metadata without numeric finance reads", () => {
+    const workforce = { listRoles: vi.fn(() => ({ items: [] })), listEmployees: vi.fn(() => ({ items: [] })) } as never;
+    const operations = { listProjects: vi.fn(() => ({ items: [] })), listWarehouses: vi.fn(() => ({ items: [] })) } as never;
+    const audit = { getWorkspaceMetadata: vi.fn(() => ({ roles: [], employees: [], externalCounterparties: [], projects: [], warehouses: [] })) } as never;
+    const counterparties = { listExternalCounterparties: vi.fn(() => ({ items: [] })), getExternalCounterparty: vi.fn() } as never;
+    const service = new CompanyMetadataService(workforce, operations, audit, counterparties);
+    const result = service.getWorkspaceMetadata();
+    expect(service.listRoles()).toEqual({ items: [] });
+    expect(result).not.toHaveProperty("debtAccounts");
+    expect(result).not.toHaveProperty("debtEntries");
+    expect(result).not.toHaveProperty("salaryPayments");
+  });
+
+  it("delegates counterparty CRUD through the shared mutation context", () => {
+    const item = { id: "cp1", fullName: "Vendor", phoneNumber: "123", note: null };
+    const repository = { listExternalCounterparties: vi.fn(() => [item]), getExternalCounterpartyById: vi.fn(() => item), createExternalCounterparty: vi.fn(() => item) };
+    const mutation = { createMutationAuditContext: vi.fn(), withTransaction: (fn: () => unknown) => fn() };
+    const service = new CounterpartyService(repository, mutation as never);
+    expect(service.listExternalCounterparties().items).toEqual([item]);
+    expect(service.getExternalCounterparty("cp1").item).toEqual(item);
+    expect(service.createExternalCounterparty({ fullName: " Vendor ", phoneNumber: " 123 ", note: "  " }, { actorUserId: "owner" })).toMatchObject({ item });
+    expect(repository.createExternalCounterparty).toHaveBeenCalledWith({ fullName: "Vendor", phoneNumber: "123", note: null });
+    expect(mutation.createMutationAuditContext).toHaveBeenCalledWith({ actorUserId: "owner" });
+  });
+});
