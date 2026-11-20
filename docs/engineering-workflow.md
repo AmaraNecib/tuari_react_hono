@@ -128,6 +128,51 @@ A bounded correction needs one fresh review of the combined delta and direct
 affected callers, not a restart of every lens. Read prior findings as claims,
 verify source, record what remains valid and expose any new risk.
 
+### Adaptive-review trial proposal (inactive)
+
+This section records an owner-controlled proposal only. It is inactive: all
+work uses the review depth and order above unless the owner approves a later
+reviewed policy that explicitly activates the trial. Shadow observations do
+not change review selection or discharge any gate. No routine agent may toggle
+activation. The trial cannot waive current local proof, any of the three
+distinct initial lenses for elevated work, current-head hosted verdicts,
+CI acceptance, protection, independence, finding resolution, or owner-only
+decisions. It does not change sequencing or any other gate.
+
+If activated by that later policy, the trial is limited to at most eight
+selected real routine tasks. Eligibility must be recorded in the existing
+design note before review outcomes are known, with the complete changed-file
+list and a reasoned account of changed contracts, direct callers, consequences,
+uncertainty and reversibility. Begin only with narrow factual corrections
+whose claims can be checked directly against source. Broader routine task
+types require clear callers, reversal paths and applicable proof. Task size,
+file type and absence of runtime edits do not establish eligibility. Reassess
+and escalate if scope or evidence changes.
+
+Exclude broad documentation removals or rewrites that materially remove
+guidance, conflicts between accepted authoritative sources, and changes that
+weaken consequential test assertions unless equivalent failure detection is
+proved. These exclusions do not become routine by narrowing the diff. Keep
+three distinct initial sessions, in their existing order, for all elevated
+work. For an eligible task only, one fresh code-review session may replace the
+three initial sessions only when the later reviewed policy explicitly records
+owner approval and the task's eligibility. No such approval exists in this
+proposal.
+
+For each shadow or activated candidate, record eligibility, full scope,
+reviewer and parent active time, elapsed time, actual executions, unique
+confirmed defects, duplicates, false positives, later confirmed misses, and
+observed cost. Mark unavailable measurements unknown. Preserve original
+findings before hosted feedback; compare only with comparable historical
+records and disclose selection and sample limits. Do not claim a numeric
+saving or general safety from this sample.
+
+Pause expansion for diagnosis after a consequential misclassification, an
+escaped consequential defect, or unusable evidence. At the cap or any approved
+end date, the owner chooses adoption, revision or retirement. Rollback restores
+prior review routing for future work; it does not delete trial evidence or
+alter checks already required for a current head.
+
 Select `openai-codex/gpt-6-luna` explicitly for ordinary workers and reviewers.
 Use the currently enabled routes. OpenCode is opt-in, never a quota fallback.
 Prefer an enabled working non-author family. If none is enabled, use separate
