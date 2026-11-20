@@ -494,6 +494,7 @@ describe("HomeView workspace shell", () => {
 
   it("shows a missing record for an id-less purchase details route", async () => {
     renderWorkspace("invoice-details", { sessionUser: demoUser })
+    expect(await screen.findByRole("heading", { name: "الفواتير" })).toBeTruthy()
     expect(await screen.findByText("تعذر العثور على هذا السجل أو لم يعد متاحًا ضمن البيانات الحالية.")).toBeTruthy()
     expect(getInvoiceGroupQueryState().enabled).toBe(false)
   })
