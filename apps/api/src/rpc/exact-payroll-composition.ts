@@ -11,7 +11,23 @@ import { PayrollService } from "../modules/workforce/payroll.service";
 import type { RpcMiddleware } from "./rpc-middleware";
 import { createPayrollRouter } from "./payroll-router";
 
-/** Opt-in only. The caller owns the prepared schema and supplies the shared finance instance. */
+/** The caller owns the prepared schema and supplies the shared finance instance. */
+export function createExactPayrollServices(
+  db: BetterSqliteDatabase,
+  lock: FifoLock,
+  finance: ExactFinanceService,
+  financeRepository: ExactFinanceRepository,
+  dependencies: { id(): string; now(): string },
+  opening?: PayrollOpeningReviewProvider,
+) {
+  const cash = new SqlitePayrollCashRepository(db, lock);
+  const sources = new SqlitePayrollSourceRepository(db, lock, financeRepository);
+  const offsets = new SqlitePayrollOffsetRepository(db, lock);
+  const payroll = new PayrollService(finance, cash, sources, dependencies, offsets);
+  const lifecycle = new SqlitePayrollLifecycleReader(db, lock, finance, financeRepository, sources, cash, offsets, opening);
+  return { payroll, lifecycle };
+}
+
 export function createExactPayrollComposition(
   db: BetterSqliteDatabase,
   lock: FifoLock,
@@ -21,10 +37,6 @@ export function createExactPayrollComposition(
   dependencies: { id(): string; now(): string },
   opening?: PayrollOpeningReviewProvider,
 ) {
-  const cash = new SqlitePayrollCashRepository(db, lock);
-  const sources = new SqlitePayrollSourceRepository(db, lock, financeRepository);
-  const offsets = new SqlitePayrollOffsetRepository(db, lock);
-  const payroll = new PayrollService(finance, cash, sources, dependencies, offsets);
-  const lifecycle = new SqlitePayrollLifecycleReader(db, lock, finance, financeRepository, sources, cash, offsets, opening);
-  return { services: { payroll, lifecycle }, router: createPayrollRouter(payroll, employeeId => lifecycle.getEmployeePayroll(employeeId), middleware) };
+  const services = createExactPayrollServices(db, lock, finance, financeRepository, dependencies, opening);
+  return { services, router: createPayrollRouter(services.payroll, employeeId => services.lifecycle.getEmployeePayroll(employeeId), middleware) };
 }

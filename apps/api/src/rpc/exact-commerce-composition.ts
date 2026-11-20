@@ -11,10 +11,17 @@ import { createExactDebtsRouter } from "./debts-exact-router";
 import { createExactInvoicesRouter } from "./invoice-exact-router";
 import { createExactInventoryRouter } from "./inventory-exact-router";
 
-/** No initialization or activation. Caller supplies an isolated prepared exact copy and its one shared FIFO. */
-export function createExactCommerceComposition(db: BetterSqliteDatabase, lock: FifoLock, middleware: RpcMiddleware, dependencies: { id(): string; now(): string }) {
-  const finance = new ExactFinanceService(new SqliteExactFinanceRepository(db, lock), dependencies);
+/** Construct one financial graph on the caller's prepared connection and FIFO. */
+export function createExactCommerceServices(db: BetterSqliteDatabase, lock: FifoLock, dependencies: { id(): string; now(): string }) {
+  const financeRepository = new SqliteExactFinanceRepository(db, lock);
+  const finance = new ExactFinanceService(financeRepository, dependencies);
   const invoices = new ExactInvoiceService(new SqliteExactInvoiceRepository(db, lock), finance, dependencies);
   const inventory = new ExactInventoryService(new SqliteExactInventoryRepository(db, lock), finance, dependencies);
-  return { services: { finance, invoices, inventory }, router: { debts: createExactDebtsRouter(finance, middleware), invoices: createExactInvoicesRouter(invoices, middleware), inventory: createExactInventoryRouter(inventory, middleware) } };
+  return { financeRepository, finance, invoices, inventory };
+}
+
+/** Bind the same graph to authenticated handlers; schema ownership stays with the caller. */
+export function createExactCommerceComposition(db: BetterSqliteDatabase, lock: FifoLock, middleware: RpcMiddleware, dependencies: { id(): string; now(): string }) {
+  const services = createExactCommerceServices(db, lock, dependencies);
+  return { services, router: { debts: createExactDebtsRouter(services.finance, middleware), invoices: createExactInvoicesRouter(services.invoices, middleware), inventory: createExactInventoryRouter(services.inventory, middleware) } };
 }

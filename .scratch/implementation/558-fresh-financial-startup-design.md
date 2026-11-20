@@ -29,6 +29,10 @@ The normal application contract adds `financial` with `debts`, `invoices`, `inve
 
 `ensureFreshApplicationIdentity` reuses phone-only auth compatibility, employee auth-link index and current role/permission seeds in one executor transaction, without executing legacy money migrations or creating monetary tables. It is inert until the selected fresh initializer calls it. Focused native tests pin stable role/permission identities on repeated finalization and rollback of all seed/DDL effects on a permission-insert failure. The existing legacy initializer is unchanged.
 
+## Shared financial construction
+
+`createFinancialDependencies` composes commerce, payroll and exact expenses on the caller-owned native connection/FIFO. Commerce exposes its single exact finance repository and service to payroll rather than constructing another ledger service. Middleware-free commerce/payroll service factories are shared by the existing prepared router compositions and the normal-root constructor. They do not initialize or activate schemas. Focused prepared composition/auth and invoice/inventory router regressions remain passing; the normal-root test intentionally remains red until the selected initializer and route composition are installed.
+
 ## Scope resolution in progress
 
 A read-only Luna child maps actual normal-root financial writers/readers, prepared exact services and existing public wire contracts. It writes ignored findings only. The parent owns the startup integration test and final composition. Implementation lanes will be bounded to disjoint files only after those interface gaps are pinned. Do not infer that the absence of old data eliminates writer/reader compatibility work.
