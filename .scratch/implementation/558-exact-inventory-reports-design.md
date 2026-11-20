@@ -21,21 +21,32 @@ repository reads join through nested savepoints. There is no await, second
 connection, write, migration, cache, ledger or audit store. Existing codecs use
 statement-local safe integer money projections and validate DZD and source operands.
 
-A consumable balance is current stock at a typed warehouse/project location.
-An asset carries its own authoritative purchase cost and current location, even
-when parked without an internal location. Placement charges are not stock value.
-Consumable sources preserve price4, agreed total/original quantity and derived
-original quantity. Exact source lines are summed before finalization in each
-report bucket. Display buckets need not add to a separately rounded grand total.
-Amounts may exceed int64 in report aggregates, but never become JavaScript numbers.
+Inventory is a purchase-entry projection, not a current-stock report. Each entry
+contributes its original quantity, purchase location and updatedAt, regardless of
+later internal transfers, outbound transfers or live balance deletion. Consumable
+sources preserve price4, agreed total/original quantity and derived original
+quantity. Asset entry sources retain the original sum of unit purchase costs,
+recorded by createInvoiceGroup as a derived source with original and effective
+quantity equal to the asset count. Placement charges are not inventory value.
+MOVEMENT still values each linked asset at its own purchase cost and consumables
+at the original entry source ratio. Exact source lines are summed before
+finalization in each bucket. Display buckets need not add to a separately rounded
+grand total. Report amounts may exceed int64 but never become JavaScript numbers.
 
 Inventory retains legacy field names, item-name grouping, Arabic label sorting,
 exact descending value sorting, and document-date aging at 30/89/179-day cutoffs.
-The requested current-location/current-stock semantics intentionally replace the
-legacy repository's purchase-entry quantity/location projection. Aging counts
-entries once per bucket, not assets or split balances. Last update comes from
-current stock records. All assets remain visible, including externally parked
-units; no disposal write model is invented.
+Quantity and location come from the same purchase-entry fields as legacy
+listInventoryValuations. Aging counts one row per entry, not one row per asset or
+split balance. Last update comes from entry.updatedAt and uses the legacy lexical
+maximum within an item-name group. Neither asset movement nor placement-charge
+updates rewrite entry.updatedAt. All purchased entries remain visible, including
+fully transferred/outbound stock. No disposal or as-of stock model is invented.
+
+The first implementation incorrectly treated the current-stock engineering cue
+as authority to change public report meaning. All three initial review lenses
+identified this compatibility finding at 62806f45d5ffde1bad6ce9ac1450f5f15d785ad3.
+The bounded correction restores the purchase projection without changing public
+schemas, MOVEMENT behavior, snapshot/FIFO ownership or monetary codecs.
 
 Date-only filters mean inclusive selected Algeria days. Timestamp filters retain
 the supplied instant. Invoice business date, falling back to group creation,
@@ -77,7 +88,15 @@ repository to cover the durable reader mode. Native total_changes proves report
 reads do not mutate rows. Tests include FIFO refusal, pre-hydration row limits,
 source corruption, wide money, price4, 10-over-3 splits/reversals, document aging,
 selected-day boundaries, stored period buckets and typed location collisions.
-Legacy monetary-bound report tests are retained and run directly.
+Legacy monetary-bound report tests are retained and run directly. The correction
+adds an independent native purchase-10-at-A / transfer-4-to-B regression with
+literal quantity, location, exact value, entry update time and aging expectations.
+It failed on both drivers before the fix, emitting six at A and four at B. The
+same case continues through full transfer and outbound removal without losing
+the purchase row. A two-unit asset case pins entry-level aging and quantity,
+purchase location/cost and creation update time after charge correction,
+parking and outbound transfer. The typed-location test now introduces its second
+location through a second purchase, not through current stock movement.
 
 The initial wide native test failed on both drivers because using UnitPrice to
 represent asset Money narrowed its int64 range. The fix uses a Money-derived
@@ -91,3 +110,18 @@ Applied wisdom: money split shares must reconcile, exact lines are finalized onl
 after bucket aggregation. DatePicker's canonical yyyy-MM-dd input is accepted
 without a display-format bridge. Allocation is not used because reports do not
 redistribute persisted money. No wisdom files were changed.
+
+## Conditional review notes
+
+Timestamp bounds already use Date.parse as supplied instants. No current Algeria
+offset failure was demonstrated, so the correction does not replace date
+infrastructure or add a dependency. The offset-change concern remains hypothetical.
+
+The selected fresh exact root supplies now as new Date().toISOString() in
+apps/api/src/app/fresh-exact-dependencies.ts:71. ExactInventoryService writes that
+value into entry.createdAt/updatedAt on purchase and has no later entry mutation
+for transfer, outbound or placement charges. The actual production purchase
+entry timestamps are normalized UTC ISO strings, sortable lexically. The
+noncanonical injected-clock scenario is not a demonstrated production failure.
+This correction restores the legacy entry timestamp source and retains its
+comparison rule, rather than changing it for a hypothetical persisted format.

@@ -68,16 +68,56 @@ function setup(kind: "memory" | "plain" | "keyed") {
 import { ExactInventoryReportSource } from "./exact-inventory-report-source";
 import { ExactInventoryReports } from "./exact-inventory-reports";
 
+it.each(["plain", "keyed"] as const)("%s: preserves the legacy purchase projection after partial/full transfer and outbound", kind => {
+  const { inventory, reportSource, nativeDb: db, repo, finance } = setup(kind);
+  db!.exec("INSERT INTO warehouse VALUES ('warehouse-b','Warehouse B')");
+  const purchase = inventory.createInvoiceGroup({ requestId: "compat-purchase", invoiceDate: "2026-11-01T00:00:00.000Z", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 10, unitPriceDzd: "3.1250" }] });
+  const later = "2026-12-20T12:00:00.000Z";
+  const mover = new ExactInventoryService(repo, finance, { ...dependencies, now: () => later });
+  const reports = new ExactInventoryReports(reportSource, () => later);
+  const assertPurchaseProjection = () => {
+    const report = reports.generateInventoryReport();
+    expect(report.summary).toEqual({ totalAssetsDzd: "0.00", totalConsumablesDzd: "31.25", totalValueDzd: "31.25" });
+    expect(report.byLocation).toEqual([{ locationId: "warehouse", locationType: "WAREHOUSE", locationLabel: "Synthetic warehouse", assetCount: 0, assetValueDzd: "0.00", consumableCount: 10 }]);
+    expect(report.byItemType).toEqual([{ itemName: "Synthetic material", quantity: 10, valueDzd: "31.25", lastUpdated: date }]);
+    expect(report.agingAnalysis[1]).toEqual({ ageCategory: "31-90_DAYS", count: 1, valueDzd: "31.25" });
+  };
+  mover.transferConsumable({ requestId: "compat-partial", inventoryEntryId: purchase.entries[0]!.id, fromWarehouseId: "warehouse", toWarehouseId: "warehouse-b", quantity: 4 });
+  assertPurchaseProjection();
+  mover.transferConsumable({ requestId: "compat-full", inventoryEntryId: purchase.entries[0]!.id, fromWarehouseId: "warehouse", toWarehouseId: "warehouse-b", quantity: 6 });
+  assertPurchaseProjection();
+  mover.createOutboundTransfer({ requestId: "compat-gift", fromType: "WAREHOUSE", fromId: "warehouse-b", counterpartyId: partyId, transferType: "GIFT", items: [{ itemId: "material", quantity: 10 }] });
+  assertPurchaseProjection();
+  expect(reports.generateMovementReport().byType).toEqual([{ movementType: "PURCHASE", count: 1, valueDzd: "31.25" }, { movementType: "TRANSFER", count: 2, valueDzd: "31.25" }, { movementType: "OUTBOUND_SALE", count: 1, valueDzd: "31.25" }]);
+});
 it.each(["plain", "keyed"] as const)("%s: values wide parked assets at purchase cost, not placement charges", kind => {
   const { inventory, reportSource } = setup(kind);
   const purchase = inventory.createInvoiceGroup({ requestId: "wide", projectId: "project", entries: [{ kind: "ASSET", itemDefinitionId: "asset", assets: [{ assetName: "Wide", purchasePriceDzd: "9007199254740993.07" }] }] });
   inventory.transferAsset({ requestId: "park", assetUnitId: purchase.entries[0]!.assets[0]!.id, toWarehouseId: "warehouse" });
   const reports = new ExactInventoryReports(reportSource, () => date);
   expect(reports.generateInventoryReport().summary.totalAssetsDzd).toBe("9007199254740993.07");
-  expect(reports.generateInventoryReport().byLocation[0]).toMatchObject({ locationId: "warehouse", assetCount: 1, assetValueDzd: "9007199254740993.07" });
+  expect(reports.generateInventoryReport().byLocation[0]).toMatchObject({ locationId: "project", assetCount: 1, assetValueDzd: "9007199254740993.07" });
   expect(reports.generateMovementReport().byType.find(row => row.movementType === "TRANSFER")!.valueDzd).toBe("9007199254740993.07");
 });
 
+it.each(["plain", "keyed"] as const)("%s: preserves asset purchase-entry quantity, aging and update time after movement and charge correction", kind => {
+  const { inventory, reportSource, repo, finance } = setup(kind);
+  const purchase = inventory.createInvoiceGroup({ requestId: "asset-projection", projectId: "project", entries: [{ kind: "ASSET", itemDefinitionId: "asset", assets: [{ assetName: "First", purchasePriceDzd: "10.00" }, { assetName: "Second", purchasePriceDzd: "20.00" }] }] });
+  const later = "2026-12-20T12:00:00.000Z";
+  const mover = new ExactInventoryService(repo, finance, { ...dependencies, now: () => later });
+  const charge = repo.listCharges().find(row => row.assetUnitId === purchase.entries[0]!.assets[0]!.id)!;
+  mover.updateAssetCharge({ requestId: "asset-charge", chargeId: charge.id, amountDzd: "100.00", reason: "Placement-only correction" });
+  for (const asset of purchase.entries[0]!.assets) mover.transferAsset({ requestId: "park-" + asset.id, assetUnitId: asset.id, toWarehouseId: "warehouse" });
+  const reports = new ExactInventoryReports(reportSource, () => later);
+  const report = reports.generateInventoryReport();
+  expect(report.summary).toEqual({ totalAssetsDzd: "30.00", totalConsumablesDzd: "0.00", totalValueDzd: "30.00" });
+  expect(report.byLocation).toEqual([{ locationId: "project", locationType: "PROJECT", locationLabel: "Synthetic project", assetCount: 2, assetValueDzd: "30.00", consumableCount: 0 }]);
+  expect(report.byItemType).toEqual([{ itemName: "Synthetic equipment", quantity: 2, valueDzd: "30.00", lastUpdated: date }]);
+  expect(report.agingAnalysis[1]).toEqual({ ageCategory: "31-90_DAYS", count: 1, valueDzd: "30.00" });
+  mover.createOutboundTransfer({ requestId: "asset-gift", fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType: "GIFT", items: [{ itemId: "asset", quantity: 2 }] });
+  expect(reports.generateInventoryReport()).toEqual(report);
+  expect(reports.generateMovementReport().byType.find(row => row.movementType === "OUTBOUND_SALE")).toEqual({ movementType: "OUTBOUND_SALE", count: 2, valueDzd: "30.00" });
+});
 it.each(["plain", "keyed"] as const)("%s: sums original total ratios before rounding across split stock and reversals", kind => {
   const { inventory, reportSource } = setup(kind);
   const purchase = inventory.createInvoiceGroup({ requestId: "ratio", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 3, priceSource: { mode: "agreed-total", total: "10.00", quantity: "3" } }] });
@@ -127,11 +167,13 @@ it.each(["plain", "keyed"] as const)("%s: separates typed location namespaces an
   db!.exec("INSERT INTO project VALUES ('warehouse','Same id project')");
   const purchase = inventory.createInvoiceGroup({ requestId: "provenance", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 6, unitPriceDzd: "1.0000" }] });
   inventory.transferConsumable({ requestId: "same-id", inventoryEntryId: purchase.entries[0]!.id, fromWarehouseId: "warehouse", toProjectId: "warehouse", quantity: 1 });
+  // A second purchase, not the transfer, introduces the project in the purchase projection.
+  inventory.createInvoiceGroup({ requestId: "project-purchase", projectId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 1, unitPriceDzd: "1.0000" }] });
   for (const transferType of ["SALE", "RETURN", "GIFT"] as const) inventory.createOutboundTransfer({ requestId: transferType, fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType, debtAmountDzd: transferType === "GIFT" ? undefined : "1.00", items: [{ itemId: "material", quantity: 1 }] });
   const changes = () => db!.prepare("SELECT total_changes() AS count").get();
   const before = changes();
   const reports = new ExactInventoryReports(reportSource, () => date);
-  expect(reports.generateInventoryReport().byLocation.map(row => row.locationType).sort()).toEqual(["PROJECT", "WAREHOUSE"]);
+  expect(reports.generateInventoryReport().byLocation.map(row => [row.locationType, row.consumableCount]).sort()).toEqual([["PROJECT", 1], ["WAREHOUSE", 6]]);
   const report = reports.generateMovementReport();
   expect(report.outboundDocuments).toEqual([{ transferType: "SALE", count: 1 }, { transferType: "RETURN", count: 1 }, { transferType: "GIFT", count: 1 }]);
   expect(report.byType.find(row => row.movementType === "OUTBOUND_SALE")).toMatchObject({ count: 3, valueDzd: "3.00" });

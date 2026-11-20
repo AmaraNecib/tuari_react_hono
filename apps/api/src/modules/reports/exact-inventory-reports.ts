@@ -35,34 +35,30 @@ function group<T>(rows: T[], key: (row: T) => string) {
 }
 const descendingMoney = (a: string, b: string) => { const left = BigInt(a.replace(".", "")), right = BigInt(b.replace(".", "")); return left > right ? -1 : left < right ? 1 : 0; };
 
-/** Inert readers. Both reports use current stock, never an as-of reconstructed ledger. */
+/** Inert readers. Inventory projects purchases; movements project persisted stock movements. */
 export class ExactInventoryReports {
   constructor(private readonly source: ExactInventoryReportSource, private readonly now: () => string = () => new Date().toISOString()) {}
   generateInventoryReport(input: Filter = {}) {
     const generatedAt = this.now(), range = window(input, generatedAt);
     return this.source.snapshot(data => {
-      const entries = new Map(data.entries.map(entry => [entry.id, entry]));
       const groups = new Map(data.groups.map(row => [row.id, row]));
-      const metadata = (entryId: string) => {
-        const entry = entries.get(entryId); if (!entry) throw new Error("Missing inventory entry source");
+      // Match legacy listInventoryValuations: one row per purchase entry, not live stock.
+      // Asset entry sources retain the original sum of unit purchase costs, not charges.
+      const rows = data.entries.map(entry => {
         const owner = groups.get(entry.invoiceGroupId); if (!owner) throw new Error("Missing inventory invoice source");
-        return { entry, documentDate: owner.invoiceDate ?? owner.createdAt };
-      };
-      const rows = [
-        ...data.assets.map(asset => ({ ...metadata(asset.inventoryEntryId), itemType: "ASSET" as const, count: 1, value: amountLine(asset.purchasePriceDzd), warehouse: asset.currentWarehouseId, project: asset.currentProjectId, updatedAt: asset.updatedAt })),
-        ...data.balances.map(balance => { const info = metadata(balance.inventoryEntryId); return { ...info, itemType: "CONSUMABLE" as const, count: balance.quantity, value: sourceValue(info.entry, balance.quantity), warehouse: balance.warehouseId, project: balance.projectId, updatedAt: balance.updatedAt }; }),
-      ].filter(row => range.includes(row.documentDate));
+        return { entry, documentDate: owner.invoiceDate ?? owner.createdAt, itemType: entry.itemType, count: entry.quantity, value: sourceValue(entry, entry.quantity), warehouse: entry.warehouseId, project: entry.projectId, updatedAt: entry.updatedAt };
+      }).filter(row => range.includes(row.documentDate));
       const assets = rows.filter(row => row.itemType === "ASSET"), consumables = rows.filter(row => row.itemType === "CONSUMABLE");
       return exactInventoryReportSchema.parse({ type: "INVENTORY", generatedAt,
         summary: { totalAssetsDzd: total(assets), totalConsumablesDzd: total(consumables), totalValueDzd: total(rows) },
         byLocation: group(rows, row => locationKey(row.warehouse, row.project)).map(bucket => {
           const row = bucket[0]!;
-          return { locationId: row.warehouse ?? row.project, locationType: row.warehouse ? "WAREHOUSE" : row.project ? "PROJECT" : null, locationLabel: data.locationLabel(row.warehouse, row.project), assetCount: bucket.filter(row => row.itemType === "ASSET").length, assetValueDzd: total(bucket.filter(row => row.itemType === "ASSET")), consumableCount: bucket.filter(row => row.itemType === "CONSUMABLE").reduce((sum, row) => sum + row.count, 0) };
+          return { locationId: row.warehouse ?? row.project, locationType: row.warehouse ? "WAREHOUSE" : row.project ? "PROJECT" : null, locationLabel: data.locationLabel(row.warehouse, row.project), assetCount: bucket.filter(row => row.itemType === "ASSET").reduce((sum, row) => sum + row.count, 0), assetValueDzd: total(bucket.filter(row => row.itemType === "ASSET")), consumableCount: bucket.filter(row => row.itemType === "CONSUMABLE").reduce((sum, row) => sum + row.count, 0) };
         }).sort((a, b) => a.locationLabel.localeCompare(b.locationLabel, "ar")),
         byItemType: group(rows, row => row.entry.itemName).map(bucket => ({ itemName: bucket[0]!.entry.itemName, quantity: bucket.reduce((sum, row) => sum + row.count, 0), valueDzd: total(bucket), lastUpdated: bucket.reduce((latest, row) => row.updatedAt > latest ? row.updatedAt : latest, bucket[0]!.updatedAt) })).sort((a, b) => descendingMoney(a.valueDzd, b.valueDzd) || a.itemName.localeCompare(b.itemName, "ar")),
         agingAnalysis: categories.map((ageCategory, index) => {
           const bucket = rows.filter(row => { const age = Math.max(0, Math.floor((range.asOf - Date.parse(row.documentDate)) / 86400000)); return (age <= 30 ? 0 : age <= 89 ? 1 : age <= 179 ? 2 : 3) === index; });
-          return { ageCategory, count: new Set(bucket.map(row => row.entry.id)).size, valueDzd: total(bucket) };
+          return { ageCategory, count: bucket.length, valueDzd: total(bucket) };
         }),
       });
     });
