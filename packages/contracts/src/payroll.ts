@@ -52,7 +52,7 @@ export const employeePayrollOutputSchema = z.object({
   earnings: z.array(z.object({ earning: employeeEarningSchema, registration: z.enum(["POSTED", "PENDING_REGISTRATION"]), remaining: payrollAmount }).strict()).max(10_000),
   cash: z.array(payrollCashRecordSchema).max(10_000), repayments: z.array(payrollRepaymentRecordSchema).max(10_000), offsets: z.array(payrollOffsetRecordSchema).max(10_000),
   advances: z.array(z.object({ cashId: payrollId, advance: z.object({ id: payrollId, amount: positiveAmount, debtAccountId: payrollId, debtEntryId: payrollId }).strict(), remaining: payrollAmount }).strict()).max(10_000),
-  opening: z.object({ review: z.enum(["UNREVIEWED", "REVIEWED"]), reminder: z.boolean(), wages: payrollAmount.nullable(), advances: payrollAmount.nullable() }).strict(),
+  opening: z.object({ review: z.enum(["UNREVIEWED", "REVIEWED"]), reminder: z.boolean(), wages: reportAmount.nullable(), advances: reportAmount.nullable() }).strict(),
   summary: z.object({ approvedEarnings: reportAmount, wageCashPaid: reportAmount, wagesOffset: reportAmount, wagesOwed: reportAmount, advancesGiven: reportAmount, advancesCashRecovered: reportAmount, advancesOffset: reportAmount, advancesOwed: reportAmount, unallocatedEarnings: reportAmount, currentAppTotalsExcludeUnknownOpening: z.boolean() }).strict(),
 }).strict();
 

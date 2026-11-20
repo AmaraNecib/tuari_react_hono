@@ -146,7 +146,7 @@ describe.each([["plain", ""], ["keyed", "558-offset-public-key"]])("explicit wag
   it("rejects another worker's advance without leaving a new wage obligation behind", () => {
     const f = fixture(key); const otherWorker = f.employee();
     const otherCash = f.service.recordCash({ ...f.audit, requestId: "other-advance", employeeId: otherWorker, amount: "5000.00", paymentDate: paidAt, wages: [], advanceAmount: "5000.00" });
-    expect(() => f.service.offsetAdvance({ ...f.input, advanceSource: { kind: "ADVANCE", id: otherCash.advance!.id } })).toThrow(/source/);
+    expect(() => f.service.offsetAdvance({ ...f.input, advanceSource: { kind: "ADVANCE", id: otherCash.advance!.id } })).toThrow("Advance was not found for this employee");
     expect(f.sources.getEarning(f.earning.id)?.original).toBeNull();
     expect(f.finance.remaining(otherCash.advance!.debtEntryId)).toBe("5000.00");
     expect(f.finance.remaining(f.advanceCash.advance!.debtEntryId)).toBe("5000.00");

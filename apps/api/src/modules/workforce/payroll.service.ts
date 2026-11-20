@@ -7,6 +7,13 @@ import type { PayrollCashRepository, PayrollCashRecord, PayrollSettlementRecord 
 import type { PayrollSourceRepository } from "./payroll-source.repository";
 import type { PayrollOffsetRecord, PayrollOffsetRepository } from "./payroll-offset.repository";
 
+export class PayrollDomainError extends Error {
+  constructor(message: string, readonly code: "BAD_REQUEST" | "NOT_FOUND" | "CONFLICT") {
+    super(message);
+    this.name = "PayrollDomainError";
+  }
+}
+
 const entityId = z.string().min(1).max(128);
 const positiveMoney = z.string().max(96).transform((value, context) => {
   try {
@@ -50,7 +57,8 @@ export class PayrollService {
 
   private registerSelectedEarning(earningId: string, requestId: string, audit: PayrollAudit, employeeId?: string): ExactDebtEntry | null {
     const source = this.sources.getEarning(earningId);
-    if (!source || source.id !== earningId || source.currency !== "DZD" || (employeeId !== undefined && source.employeeId !== employeeId)) throw new Error("Invalid approved earning source");
+    if (!source || source.id !== earningId || (employeeId !== undefined && source.employeeId !== employeeId)) throw new PayrollDomainError("Approved earning was not found for this employee", "NOT_FOUND");
+    if (source.currency !== "DZD") throw new PayrollDomainError("Approved earning uses an unsupported currency", "BAD_REQUEST");
     const amount = Money.parse(source.amount);
     if (amount.compare(Money.parse("0")) < 0) throw new Error("Invalid approved earning amount");
     if (source.original) {
@@ -79,7 +87,7 @@ export class PayrollService {
     return this.finance.runAggregate({ requestId, producer: { type: "PAYROLL_EARNINGS", id: key("cash", requestId) }, intent: { kind: "cash-payment", ...intent }, ...audit }, this.cash, () => {
       const wageAllocations = input.wages.map(row => {
         const original = this.registerSelectedEarning(row.earningId, requestId, audit, input.employeeId);
-        if (!original) throw new Error("Positive earning original is required");
+        if (!original) throw new PayrollDomainError("A positive approved earning is required", "BAD_REQUEST");
         const producer = this.finance.forProducer({ type: "PAYROLL_EARNINGS", id: row.earningId });
         const payment = producer.recordPayment({ requestId: key(requestId, "wage", row.earningId), debtEntryId: original.id, amountDzd: row.amount, currency: "DZD", paymentMethod: "CASH", ...audit });
         return { id: this.dependencies.id(), source: { kind: "EARNING" as const, id: row.earningId }, amount: row.amount, debtAccountId: original.debtAccountId, debtEntryId: original.id, paymentEntryId: payment.id };
@@ -101,7 +109,8 @@ export class PayrollService {
   private selectedAdvance(advanceId: string, employeeId: string) {
     const source = this.sources.getAdvance(advanceId);
     const cashSource = this.cash.getAdvance(advanceId);
-    if (!source || !cashSource || source.id !== advanceId || source.employeeId !== employeeId || cashSource.employeeId !== employeeId || source.currency !== "DZD" || cashSource.currency !== "DZD" || !accountMatches(source.account, employeeId, "RECEIVABLE") || source.original.debtAccountId !== source.account.id || source.original.id !== cashSource.advance.debtEntryId || source.account.id !== cashSource.advance.debtAccountId || source.original.entryType !== "ADVANCE" || source.original.producerType !== "PAYROLL_ADVANCE" || source.original.producerId !== advanceId || source.original.currency !== "DZD" || source.original.status !== "LIVE" || source.original.targetEntryId || source.original.correctionOfEntryId || Money.parse(source.original.signedAmountDzd).compare(Money.parse(cashSource.advance.amount)) !== 0 || Money.parse(source.amount).compare(Money.parse(cashSource.advance.amount)) !== 0) throw new Error("Selected advance source is invalid");
+    if (!source || !cashSource || source.id !== advanceId || source.employeeId !== employeeId || cashSource.employeeId !== employeeId) throw new PayrollDomainError("Advance was not found for this employee", "NOT_FOUND");
+    if (source.currency !== "DZD" || cashSource.currency !== "DZD" || !accountMatches(source.account, employeeId, "RECEIVABLE") || source.original.debtAccountId !== source.account.id || source.original.id !== cashSource.advance.debtEntryId || source.account.id !== cashSource.advance.debtAccountId || source.original.entryType !== "ADVANCE" || source.original.producerType !== "PAYROLL_ADVANCE" || source.original.producerId !== advanceId || source.original.currency !== "DZD" || source.original.status !== "LIVE" || source.original.targetEntryId || source.original.correctionOfEntryId || Money.parse(source.original.signedAmountDzd).compare(Money.parse(cashSource.advance.amount)) !== 0 || Money.parse(source.amount).compare(Money.parse(cashSource.advance.amount)) !== 0) throw new Error("Payroll advance ledger linkage mismatch");
     return source;
   }
 
@@ -109,17 +118,17 @@ export class PayrollService {
     const input = offsetSchema.parse(raw);
     const offsets = this.offsets;
     if (!offsets) throw new Error("Payroll offset persistence is not configured");
-    if (input.wageSource.kind !== "EARNING" || input.advanceSource.kind !== "ADVANCE") throw new Error("Reviewed opening source provider is not configured");
+    if (input.wageSource.kind !== "EARNING" || input.advanceSource.kind !== "ADVANCE") throw new PayrollDomainError("Reviewed opening sources are not available for settlement", "BAD_REQUEST");
     const { requestId, actorUserId, actorLabel, transactionId, ...intent } = input;
     const audit = { actorUserId, actorLabel, transactionId };
     return this.finance.runAggregate({ requestId, producer: { type: "PAYROLL_ADVANCE", id: key("offset", requestId) }, intent: { kind: "explicit-wage-advance-offset", ...intent }, ...audit }, offsets, () => {
       const wageOriginal = this.registerSelectedEarning(input.wageSource.id, requestId, audit, input.employeeId);
-      if (!wageOriginal) throw new Error("Positive earning original is required");
+      if (!wageOriginal) throw new PayrollDomainError("A positive approved earning is required", "BAD_REQUEST");
       const advance = this.selectedAdvance(input.advanceSource.id, input.employeeId);
       const wages = this.finance.forProducer({ type: "PAYROLL_EARNINGS", id: input.wageSource.id });
       const advances = this.finance.forProducer({ type: "PAYROLL_ADVANCE", id: input.advanceSource.id });
       const amount = Money.parse(input.amount);
-      if (amount.compare(Money.parse(wages.remaining(wageOriginal.id))) > 0 || amount.compare(Money.parse(advances.remaining(advance.original.id))) > 0) throw new Error("Offset exceeds remaining wages or advance");
+      if (amount.compare(Money.parse(wages.remaining(wageOriginal.id))) > 0 || amount.compare(Money.parse(advances.remaining(advance.original.id))) > 0) throw new PayrollDomainError("Offset exceeds the remaining wages or advance", "CONFLICT");
       const wageEntry = wages.recordSettlement({ requestId: key(requestId, "offset-wage", input.wageSource.id), debtEntryId: wageOriginal.id, amountDzd: input.amount, currency: "DZD", ...audit });
       const advanceEntry = advances.recordSettlement({ requestId: key(requestId, "offset-advance", input.advanceSource.id), debtEntryId: advance.original.id, amountDzd: input.amount, currency: "DZD", ...audit });
       const record: PayrollOffsetRecord = { id: this.dependencies.id(), employeeId: input.employeeId, currency: "DZD", amount: input.amount, settlementDate: input.settlementDate, ...audit, createdAt: timestamp.parse(this.dependencies.now()),

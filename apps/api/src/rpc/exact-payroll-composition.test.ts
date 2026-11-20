@@ -10,9 +10,14 @@ import { payrollOffsetSchemaStatements } from "../modules/workforce/adapters/pay
 import { payrollFixture, now } from "../modules/workforce/__test-utils__/payroll-native";
 import type { RpcContext } from "./context";
 import { createExactPayrollComposition } from "./exact-payroll-composition";
+import { createPayrollRouter } from "./payroll-router";
 import { createRpcMiddleware } from "./rpc-middleware";
 
 const owner = { id: "payroll-owner", name: "Owner", phone: "0612345678", version: "0.0.0", permissions: [] };
+const rollbackTables = ["employee_earning", "employee_earning_segment", "employee_salary_cash", "employee_salary_payment_allocation", "employee_salary_advance", "employee_salary_settlement", "employee_salary_advance_offset", "debt_account", "debt_entry", "debt_command", "exact_finance_command"] as const;
+function snapshot(db: ReturnType<typeof payrollFixture>["db"]) {
+  return Object.fromEntries(rollbackTables.map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+}
 it.each(["", "558-payroll-keyed"]) ("serves authenticated exact payroll over prepared schema (%s)", async key => {
   const f = payrollFixture(key);
   try {
@@ -48,7 +53,7 @@ it.each(["", "558-payroll-keyed"]) ("serves authenticated exact payroll over pre
     const offset = await client.employeePayrollAdvanceOffset(offsetInput);
     expect(offset).toMatchObject({ amount: "1000.00", wageSource: offsetInput.wageSource, advanceSource: offsetInput.advanceSource, actorUserId: owner.id });
     expect(await client.employeePayrollAdvanceOffset(offsetInput)).toEqual(offset);
-    await expect(client.employeePayrollAdvanceOffset({ ...offsetInput, requestId: "offset-too-much", amount: "10000.00" })).rejects.toThrow();
+    await expect(client.employeePayrollAdvanceOffset({ ...offsetInput, requestId: "offset-too-much", amount: "10000.00" })).rejects.toMatchObject({ code: "CONFLICT" });
     expect(await client.employeePayrollGet({ employeeId: f.employeeId })).toMatchObject({
       summary: { approvedEarnings: "80000.00", wageCashPaid: "60000.00", wagesOffset: "1000.00", wagesOwed: "19000.00", advancesGiven: "5000.00", advancesCashRecovered: "2000.00", advancesOffset: "1000.00", advancesOwed: "2000.00" },
       opening: { review: "UNREVIEWED", reminder: true, wages: null, advances: null },
@@ -57,14 +62,32 @@ it.each(["", "558-payroll-keyed"]) ("serves authenticated exact payroll over pre
     await expect(nonOwner.employeePayrollCashRecord({ ...cashInput, requestId: "other-owner" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(client.employeePayrollCashRecord({ ...cashInput, requestId: "forged-audit", actorUserId: "attacker" } as never)).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(client.employeePayrollCashRecord({ ...cashInput, requestId: "invalid-money", amount: "0.001", wages: [{ earningId: earning.id, amount: "0.001" }] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    await expect(client.employeePayrollCashRecord({ ...cashInput, requestId: "wrong-worker", employeeId: f.employee(), amount: "1.00", wages: [{ earningId: earning.id, amount: "1.00" }] })).rejects.toThrow();
-    const rollbackEarning = f.earning("100.00");
-    f.db.exec("CREATE TRIGGER payroll_api_fail_cash BEFORE INSERT ON employee_salary_cash BEGIN SELECT RAISE(ABORT,'forced receipt failure'); END");
-    await expect(client.employeePayrollCashRecord({ requestId: "receipt-failure", employeeId: f.employeeId, amount: "100.00", paymentDate: "2026-11-19T09:00:00.000Z", wages: [{ earningId: rollbackEarning.id, amount: "100.00" }] })).rejects.toMatchObject({ code: "BAD_REQUEST" });
-    f.db.exec("DROP TRIGGER payroll_api_fail_cash");
+    await expect(client.employeePayrollCashRecord({ ...cashInput, requestId: "wrong-worker", employeeId: f.employee(), amount: "1.00", wages: [{ earningId: earning.id, amount: "1.00" }] })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    const allocationFailureEarning = f.earning("35000.00");
+    const allocationFailureInput = { requestId: "allocation-source-failure", employeeId: f.employeeId, amount: "25000.00", paymentDate: "2026-11-19T09:00:00.000Z", wages: [{ earningId: allocationFailureEarning.id, amount: "25000.00" }] };
+    const allocationBefore = snapshot(f.db);
+    f.db.exec("CREATE TRIGGER payroll_api_fail_allocation BEFORE INSERT ON employee_salary_payment_allocation BEGIN SELECT RAISE(ABORT,'forced allocation source failure'); END");
+    await expect(client.employeePayrollCashRecord(allocationFailureInput)).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR", message: "Payroll operation failed." });
+    expect(snapshot(f.db)).toEqual(allocationBefore);
+    f.db.exec("DROP TRIGGER payroll_api_fail_allocation");
+    const allocationRetry = await client.employeePayrollCashRecord(allocationFailureInput);
+    expect(allocationRetry.wageAllocations).toHaveLength(1);
+    expect(await client.employeePayrollCashRecord(allocationFailureInput)).toEqual(allocationRetry);
+    expect((await client.employeePayrollGet({ employeeId: f.employeeId })).earnings.find(row => row.earning.id === allocationFailureEarning.id)?.remaining).toBe("10000.00");
+
+    const receiptFailureEarning = f.earning("35000.00");
+    const receiptFailureInput = { requestId: "aggregate-receipt-failure", employeeId: f.employeeId, amount: "25000.00", paymentDate: "2026-11-19T09:00:00.000Z", wages: [{ earningId: receiptFailureEarning.id, amount: "25000.00" }] };
+    const receiptBefore = snapshot(f.db);
+    f.db.exec("CREATE TRIGGER payroll_api_fail_aggregate_receipt BEFORE INSERT ON exact_finance_command WHEN json_type(NEW.result_json,'$.wageAllocations')='array' BEGIN SELECT RAISE(ABORT,'forced aggregate receipt failure'); END");
+    await expect(client.employeePayrollCashRecord(receiptFailureInput)).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR", message: "Payroll operation failed." });
+    expect(snapshot(f.db)).toEqual(receiptBefore);
+    f.db.exec("DROP TRIGGER payroll_api_fail_aggregate_receipt");
+    const receiptRetry = await client.employeePayrollCashRecord(receiptFailureInput);
+    expect(receiptRetry.wageAllocations).toHaveLength(1);
+    expect(await client.employeePayrollCashRecord(receiptFailureInput)).toEqual(receiptRetry);
     const afterRollback = await client.employeePayrollGet({ employeeId: f.employeeId });
-    expect(afterRollback.cash.some(row => row.id === "receipt-failure")).toBe(false);
-    expect(afterRollback.earnings.find(row => row.earning.id === rollbackEarning.id)?.registration).toBe("PENDING_REGISTRATION");
+    expect(afterRollback.cash.filter(row => row.id === allocationRetry.id || row.id === receiptRetry.id)).toHaveLength(2);
+    expect(afterRollback.earnings.find(row => row.earning.id === receiptFailureEarning.id)?.remaining).toBe("10000.00");
     f.db.close();
     const reopenedDb = createDatabaseConnection(f.path, key);
     try {
@@ -74,9 +97,23 @@ it.each(["", "558-payroll-keyed"]) ("serves authenticated exact payroll over pre
       const reopenedComposition = createExactPayrollComposition(reopenedDb, reopenedLock, reopenedFinance, reopenedRepository, middleware, { id: randomUUID, now: () => now });
       const reopenedClient = createRouterClient(reopenedComposition.router, { context }) as AppClient;
       expect(await reopenedClient.employeePayrollGet({ employeeId: f.employeeId })).toMatchObject({
-        summary: { approvedEarnings: "80100.00", wageCashPaid: "60000.00", wagesOffset: "1000.00", wagesOwed: "19100.00", advancesGiven: "5000.00", advancesCashRecovered: "2000.00", advancesOffset: "1000.00", advancesOwed: "2000.00" },
+        summary: { approvedEarnings: "150000.00", wageCashPaid: "110000.00", wagesOffset: "1000.00", wagesOwed: "39000.00", advancesGiven: "5000.00", advancesCashRecovered: "2000.00", advancesOffset: "1000.00", advancesOwed: "2000.00" },
         opening: { review: "UNREVIEWED", reminder: true, wages: null, advances: null },
       });
+      expect(await reopenedClient.employeePayrollCashRecord(allocationFailureInput)).toEqual(allocationRetry);
+      expect(await reopenedClient.employeePayrollCashRecord(receiptFailureInput)).toEqual(receiptRetry);
+      const replayed = await reopenedClient.employeePayrollGet({ employeeId: f.employeeId });
+      expect(replayed.cash.filter(row => row.id === allocationRetry.id || row.id === receiptRetry.id)).toHaveLength(2);
+      expect(replayed.earnings.find(row => row.earning.id === allocationFailureEarning.id)?.remaining).toBe("10000.00");
+      expect(replayed.earnings.find(row => row.earning.id === receiptFailureEarning.id)?.remaining).toBe("10000.00");
+      const allocation = reopenedDb.prepare("SELECT id FROM employee_salary_payment_allocation LIMIT 1").get() as { id: string };
+      const unrelatedEntry = reopenedDb.prepare("SELECT id FROM debt_entry WHERE id <> (SELECT debt_entry_id FROM employee_salary_payment_allocation WHERE id=?) LIMIT 1").get(allocation.id) as { id: string };
+      reopenedDb.exec("DROP TRIGGER employee_salary_payment_allocation_immutable_update");
+      reopenedDb.prepare("UPDATE employee_salary_payment_allocation SET debt_entry_id=? WHERE id=?").run(unrelatedEntry.id, allocation.id);
+      await expect(reopenedClient.employeePayrollGet({ employeeId: f.employeeId })).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR", message: "Payroll operation failed." });
+      const invalidOutputRouter = createPayrollRouter(reopenedComposition.services.payroll, () => ({ employeeId: f.employeeId } as never), middleware);
+      const invalidOutputClient = createRouterClient(invalidOutputRouter, { context }) as AppClient;
+      await expect(invalidOutputClient.employeePayrollGet({ employeeId: f.employeeId })).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR", message: "Payroll operation failed." });
     } finally { reopenedDb.close(); }
   } finally { f.db.close(); }
 });
