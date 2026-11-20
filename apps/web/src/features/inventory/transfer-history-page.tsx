@@ -3,7 +3,6 @@
  * Shows internal transfers, sales, gifts, and returns.
  */
 import { CurrencyRun } from "@/features/shared/money-value"
-import { Money, sumMoneyHistory } from "@tuari/contracts"
 import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { TableQueryState } from "@/features/shared/table-primitives"
 import { useState } from "react"
@@ -81,11 +80,11 @@ export function TransferHistoryPage() {
     setFilters((prev) => ({ ...prev, [key]: value || undefined }))
   }
 
-  // Calculate summary stats
-  const totalTransfers = transfers.length
-  const totalSales = transfers.filter((t) => t.type === "SALE").length
-  const totalInternal = transfers.filter((t) => t.type === "INTERNAL").length
-  const totalValue = sumMoneyHistory(transfers.flatMap(t => t.totalAmountDzd ? [Money.parse(t.totalAmountDzd)] : []))
+  const summary = transfersQuery.data?.summary
+  const totalTransfers = summary?.total
+  const totalSales = summary?.sales
+  const totalInternal = summary?.internal
+  const totalValue = summary?.totalAmountDzd
   const summaryValue = <T,>(value: T) => transfersQuery.isPending && !transfersQuery.data ? "…" : transfersQuery.isError && !transfersQuery.data ? "—" : value
 
   return (
@@ -118,7 +117,7 @@ export function TransferHistoryPage() {
             },
             {
               label: t("inventory.transferHistory.totalValue"),
-              value: summaryValue(<CurrencyRun amount={formatCurrency(totalValue, true)} currencyLabel="دج" />),
+              value: summaryValue(<CurrencyRun amount={totalValue === undefined ? "�" : formatCurrency(totalValue, true)} currencyLabel="دج" />),
             },
           ]}
         />
@@ -225,6 +224,7 @@ export function TransferHistoryPage() {
               </div>
             )}
           </TableQueryState>
+          {transfersQuery.hasNextPage && <Button variant="outline" disabled={transfersQuery.isFetchingNextPage} onClick={() => void transfersQuery.fetchNextPage()}>{t("inventory.transferHistory.showMore")}</Button>}
         </PageSurfaceContent>
       </Surface>
     </div>

@@ -1,3 +1,4 @@
+import { sqliteHistoryCandidates } from "./sqlite-inventory-history-read";
 import {
   Money, UnitPrice, exactInventoryInvoiceSchema, exactInventoryEntrySchema, exactInventoryAssetSchema, exactInventoryChargeSchema, exactInventoryOutboundSchema,
   inventoryInvoiceAttachmentSchema, inventoryItemDefinitionSchema, inventoryConsumableBalanceSchema, inventoryMovementSchema,
@@ -143,6 +144,8 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
   deleteBalance(id: string) { this.withTransaction(() => { this.db.prepare("DELETE FROM inventory_consumable_balance WHERE id=?").run(id); }); }
   listMovements() { return this.withTransaction(() => this.ids("inventory_movement").map(id => inventoryMovementSchema.parse(this.row("inventory_movement", movementFields, id)))); }
   saveMovement(row: InventoryMovement) { this.withTransaction(() => { this.save("inventory_movement", this.metadata(row, movementFields)); }); }
+  listHistoryCandidates() { return this.withTransaction(() => sqliteHistoryCandidates(this.db, this)); }
+  getMovement(id: string) { return this.withTransaction(() => { const row = this.row("inventory_movement", movementFields, id); return row ? inventoryMovementSchema.parse(row) : null; }); }
   getCharge(id: string): ExactInventoryChargeRecord | null {
     return this.withTransaction(() => {
       const row = this.row("inventory_asset_charge", chargeFields, id);

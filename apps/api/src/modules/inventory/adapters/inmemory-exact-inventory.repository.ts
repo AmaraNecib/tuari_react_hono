@@ -1,3 +1,4 @@
+import { memoryHistoryCandidates } from "../inventory-history-read";
 import type { InventoryInvoiceAttachment, ExactInventoryInvoice, ExactInventoryAsset, ExactInventoryOutbound, InventoryItemDefinition, InventoryConsumableBalance, InventoryMovement } from "@tuari/contracts";
 import type { ExactTransactionIdentity } from "../../company/exact-finance.repository";
 import type { ExactInventoryRepository, ExactInventoryEntryRecord, ExactInventoryChargeRecord } from "../inventory-exact.repository";
@@ -43,6 +44,8 @@ export class InMemoryExactInventoryRepository implements ExactInventoryRepositor
   deleteBalance(id: string) { this.balances.delete(id); }
   listMovements() { return structuredClone([...this.movements.values()]); }
   saveMovement(row: InventoryMovement) { this.movements.set(row.id, structuredClone(row)); }
+  listHistoryCandidates() { return memoryHistoryCandidates(this); }
+  getMovement(id: string) { return structuredClone(this.movements.get(id) ?? null); }
   getCharge(id: string) { return structuredClone(this.charges.get(id) ?? null); }
   listCharges() { return structuredClone([...this.charges.values()]); }
   listAssetCharges(assetUnitId: string) { return structuredClone([...this.charges.values()].filter(row => row.assetUnitId === assetUnitId).sort((a, b) => b.placementSequence - a.placementSequence)); }

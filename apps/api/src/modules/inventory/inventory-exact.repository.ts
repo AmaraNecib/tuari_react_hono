@@ -5,6 +5,8 @@ import type { ExactDebtAudit } from "../company/exact-finance.service";
 export type ExactInventoryEntryRecord = Omit<ExactInventoryEntry, "assets">;
 export type ExactInventoryChargeRecord = ExactInventoryCharge & ExactDebtAudit;
 export interface ExactInventoryRepository extends ExactTransactionParticipant {
+  listHistoryCandidates(): import("./inventory-history-read").HistoryCandidate[];
+  getMovement(id: string): InventoryMovement | null;
   getDefinition(id: string): InventoryItemDefinition | null;
   listDefinitions(): InventoryItemDefinition[];
   warehouseExists(id: string): boolean;

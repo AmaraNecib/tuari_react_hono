@@ -1,5 +1,6 @@
 import { createORPCClient } from "@orpc/client"
-import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
+import { useInfiniteQuery } from "@tanstack/react-query"
+import { useSessionQuery } from "@/features/session/use-session-query"
 import type { ExactInventoryClient } from "@tuari/contracts"
 
 import { rpcLink } from "@/lib/orpc-client"
@@ -37,33 +38,24 @@ export type TransferHistoryItem = {
   note: string | null
 }
 
-async function fetchAllHistory(input: Parameters<ExactInventoryClient["transferHistory"]>[0]) {
-  const rows = []
-  let offset = 0
-  let total = 0
-  do {
-    const page = await exactHistoryClient.financial.inventory.transferHistory({ ...input, limit: 100, offset })
-    rows.push(...page.items)
-    total = page.total
-    offset += page.items.length
-  } while (offset < total)
-  return { items: rows, total, offset: 0, limit: 100 }
+function useHistoryPages(input: Parameters<ExactInventoryClient["transferHistory"]>[0], key: (owner: string | null) => readonly unknown[], limit: number, enabled = true) {
+  const session = useSessionQuery()
+  const query = useInfiniteQuery({
+    queryKey: key(session.data?.user?.id ?? null),
+    enabled: Boolean(session.data?.user) && enabled,
+    initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) => exactHistoryClient.financial.inventory.transferHistory({ ...input, limit, offset: pageParam }, { signal }),
+    getNextPageParam: page => page.offset + page.items.length < page.total && page.items.length > 0 ? page.offset + page.items.length : undefined,
+  })
+  const first = query.data?.pages[0]
+  return { ...query, data: first ? { ...first, items: query.data!.pages.flatMap(page => page.items) } : undefined }
 }
 
 export function useTransferHistoryQuery(filters: TransferHistoryFilters = {}) {
-  return useWorkspaceScopedQuery({
-    key: owner => transferHistoryKeys.filtered(owner, filters),
-    queryFn: () => fetchAllHistory(filters),
-  })
+  return useHistoryPages(filters, owner => transferHistoryKeys.filtered(owner, filters), 50)
 }
 
-export function useLocationTransferHistoryQuery(
-  locationId: string | undefined,
-  locationType: "WAREHOUSE" | "PROJECT" | undefined,
-) {
-  return useWorkspaceScopedQuery({
-    key: owner => transferHistoryKeys.location(owner, locationId ?? "", locationType ?? "WAREHOUSE"),
-    enabled: Boolean(locationId && locationType),
-    queryFn: () => fetchAllHistory(locationType === "WAREHOUSE" ? { warehouseId: locationId } : { projectId: locationId }),
-  })
+export function useLocationTransferHistoryQuery(locationId: string | undefined, locationType: "WAREHOUSE" | "PROJECT" | undefined) {
+  return useHistoryPages(locationType === "WAREHOUSE" ? { warehouseId: locationId } : { projectId: locationId },
+    owner => transferHistoryKeys.location(owner, locationId ?? "", locationType ?? "WAREHOUSE"), 10, Boolean(locationId && locationType))
 }

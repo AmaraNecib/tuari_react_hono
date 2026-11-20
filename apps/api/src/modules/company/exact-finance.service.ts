@@ -104,6 +104,13 @@ export class ExactFinanceService {
     if (rows.length > limit) throw new ExactDebtError("Debt entry read limit exceeded");
     return rows;
   }
+  /** Original signed operand for history totals; no allocation graph is needed. */
+  historyOriginal(accountId: string, entryId: string): string {
+    this.getAccount(accountId);
+    const entry = this.repository.getEntry(entryId);
+    if (!entry || entry.debtAccountId !== accountId || entry.status !== "LIVE" || entry.targetEntryId || entry.correctionOfEntryId) throw new ExactDebtError("Live outbound obligation not found", "NOT_FOUND");
+    return entry.signedAmountDzd;
+  }
   detail(id: string) {
     return this.repository.withTransaction(() => {
       const rows = this.listEntries(id);

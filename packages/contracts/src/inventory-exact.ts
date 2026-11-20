@@ -160,7 +160,7 @@ export const exactInventoryHistoryRowSchema = z.object({
   currency: z.literal("DZD").nullable(), paymentStatus: z.enum(["PAID", "PARTIAL", "UNPAID", "N/A"]),
   status: z.enum(["COMPLETED", "PENDING", "CANCELLED"]), note: z.string().nullable(),
 });
-export const exactInventoryHistorySchema = z.object({ items: z.array(exactInventoryHistoryRowSchema), total: z.number().int().nonnegative(), offset: z.number().int().nonnegative(), limit: z.number().int().positive() });
+export const exactInventoryHistorySchema = z.object({ items: z.array(exactInventoryHistoryRowSchema), total: z.number().int().nonnegative(), offset: z.number().int().nonnegative(), limit: z.number().int().positive(), summary: z.object({ total: z.number().int().nonnegative(), sales: z.number().int().nonnegative(), internal: z.number().int().nonnegative(), totalAmountDzd: exactHistoryAggregate }) });
 export const exactInventoryAssetHistoryInputSchema = z.object({ assetUnitId: z.string().min(1) });
 export const exactInventoryAssetHistorySchema = z.object({ assetUnitId: z.string().min(1), items: z.array(exactInventoryChargeSchema) });
 export type ExactInventoryInvoiceInput = z.input<typeof exactInventoryInvoiceCreateSchema>;

@@ -4,7 +4,6 @@
  */
 import { CurrencyRun } from "@/features/shared/money-value"
 import { TableQueryState } from "@/features/shared/table-primitives"
-import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -83,14 +82,13 @@ type LocationTransferHistoryProps = {
  */
 export function LocationTransferHistory({ locationId, locationType }: LocationTransferHistoryProps) {
   const { t } = useTranslation()
-  const [limit, setLimit] = useState(10)
   const transfersQuery = useLocationTransferHistoryQuery(locationId, locationType)
 
   const transfers = transfersQuery.data?.items ?? []
 
   // Limit displayed transfers
-  const displayedTransfers = transfers.slice(0, limit)
-  const hasMore = transfers.length > limit
+  const displayedTransfers = transfers
+  const hasMore = transfersQuery.hasNextPage
 
   return (
     <div className="space-y-4">
@@ -122,7 +120,8 @@ export function LocationTransferHistory({ locationId, locationType }: LocationTr
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setLimit((prev) => prev + 10)}
+                  disabled={transfersQuery.isFetchingNextPage}
+                  onClick={() => void transfersQuery.fetchNextPage()}
                 >
                   {t("inventory.transferHistory.showMore")}
                 </Button>
