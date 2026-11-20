@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   clearPayrollPendingIntent,
   loadPayrollPendingIntent,
+  markPayrollIntentAttempt,
   savePayrollPendingIntent,
   type PayrollIdentity,
   type PayrollStorage,
@@ -26,6 +27,18 @@ const payload = {
 }
 
 describe("payroll pending intent recovery", () => {
+  it("persists distinct dispatch attempts without changing financial identity or payload", () => {
+    const storage = memoryStorage()
+    const saved = savePayrollPendingIntent("cash", identity, payload, storage)
+    const first = markPayrollIntentAttempt(saved, storage)
+    const second = markPayrollIntentAttempt(saved, storage)
+    expect(first.attemptId).toBeTruthy()
+    expect(second.attemptId).not.toBe(first.attemptId)
+    expect(second.payload).toEqual(payload)
+    expect(second.identity).toEqual(identity)
+    expect(loadPayrollPendingIntent("cash", identity, storage)).toEqual({ ok: true, pending: second })
+  })
+
   it("reloads the frozen canonical payload and request id for retry", () => {
     const storage = memoryStorage()
     savePayrollPendingIntent("cash", identity, payload, storage)

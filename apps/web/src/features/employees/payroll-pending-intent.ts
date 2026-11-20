@@ -16,6 +16,7 @@ export type PayrollPayloadByAction = {
 export type PayrollIdentity = { userId: string; workspaceId: string; employeeId: string }
 export type PayrollPendingIntent<A extends PayrollAction = PayrollAction> = A extends PayrollAction ? {
   version: 1
+  attemptId?: string
   action: A
   identity: PayrollIdentity
   payload: PayrollPayloadByAction[A]
@@ -49,9 +50,10 @@ export function loadPayrollPendingIntent<A extends PayrollAction>(
   try {
     const entry = JSON.parse(raw) as Partial<PayrollPendingIntent<A>>
     if (entry.version !== 1 || entry.action !== action || !matchesIdentity(entry.identity, identity)) return { ok: false }
+    if (entry.attemptId !== undefined && (typeof entry.attemptId !== "string" || !entry.attemptId)) return { ok: false }
     const parsed = schemas[action].safeParse(entry.payload)
     if (!parsed.success || parsed.data.employeeId !== identity.employeeId) return { ok: false }
-    return { ok: true, pending: { version: 1, action, identity, payload: parsed.data } as PayrollPendingIntent<A> }
+    return { ok: true, pending: { version: 1, action, identity, payload: parsed.data, ...(entry.attemptId ? { attemptId: entry.attemptId } : {}) } as PayrollPendingIntent<A> }
   } catch {
     return { ok: false }
   }
@@ -68,6 +70,15 @@ export function savePayrollPendingIntent<A extends PayrollAction>(
   const intent = { version: 1 as const, action, identity, payload: parsed } as PayrollPendingIntent<A>
   storage.setItem(storageKey(action, identity), JSON.stringify(intent))
   return intent
+}
+
+/** Mark each dispatch under the Web Lock so refusals cannot outlive a later retry. */
+export function markPayrollIntentAttempt(intent: PayrollPendingIntent, storage: PayrollStorage): PayrollPendingIntent {
+  const current = loadPayrollPendingIntent(intent.action, intent.identity, storage)
+  if (!current.ok || current.pending?.payload.requestId !== intent.payload.requestId) throw new Error("STORAGE_UNAVAILABLE")
+  const attempted = { ...current.pending, attemptId: crypto.randomUUID() }
+  storage.setItem(storageKey(intent.action, intent.identity), JSON.stringify(attempted))
+  return attempted
 }
 
 /** Remove only the intent whose write received this response. */

@@ -80,6 +80,10 @@ function usePayrollMutation<A>(
         queryClient.invalidateQueries({ queryKey: employeeEarningsQueryKeys.root(userId) }),
         invalidateWorkspaceDomains(queryClient, userId, { debtsSummary: true, debtAccounts: true, salaryPayments: true }),
         queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.debtsDetail(userId) }),
+        queryClient.invalidateQueries({ predicate: query => {
+          const key = query.queryKey
+          return key[0] === "phase1" && key[1] === "workspace" && key[2] === "debts-exact" && key[4] === userId
+        } }),
       ])
     },
   })
@@ -114,6 +118,7 @@ export function useApproveEmployeeEarningMutation() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: employeeEarningsQueryKeys.root(userId) }),
         invalidateWorkspaceDomains(queryClient, userId, { employees: true }),
+        queryClient.invalidateQueries({ queryKey: employeeEarningsQueryKeys.payroll(userId, input.employeeId) }),
         ...[...new Set(input.segments.map((segment) => segment.projectId))].map((projectId) =>
           queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.projectCost(userId, projectId) }),
         ),

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { Money, auditActorUserIdSchema, auditTransactionIdSchema, timestampSchema } from "@tuari/contracts";
-import type { ExactFinanceService } from "../company/exact-finance.service";
+import { ExactDebtError, type ExactFinanceService } from "../company/exact-finance.service";
 import type { ExactDebtAccount, ExactDebtEntry } from "../company/exact-finance.repository";
 import type { PayrollCashRepository, PayrollCashRecord, PayrollSettlementRecord } from "./payroll-cash.repository";
 import type { PayrollSourceRepository } from "./payroll-source.repository";
@@ -12,6 +12,14 @@ export class PayrollDomainError extends Error {
     super(message);
     this.name = "PayrollDomainError";
   }
+}
+
+export class PayrollNotCommittedError extends PayrollDomainError {}
+
+function confirmedRefusal(cause: unknown): unknown {
+  return cause instanceof PayrollDomainError || cause instanceof ExactDebtError
+    ? new PayrollNotCommittedError(cause.message, cause.code)
+    : cause;
 }
 
 const entityId = z.string().min(1).max(128);
@@ -103,7 +111,7 @@ export class PayrollService {
       const record: PayrollCashRecord = { id: this.dependencies.id(), employeeId: input.employeeId, currency: "DZD", amount: input.amount, paymentDate: input.paymentDate, ...audit, createdAt: timestamp.parse(this.dependencies.now()), wageAllocations, advance };
       this.cash.saveCash(record);
       return record;
-    });
+    }, confirmedRefusal);
   }
 
   private selectedAdvance(advanceId: string, employeeId: string) {
@@ -137,7 +145,7 @@ export class PayrollService {
         advance: { debtAccountId: advance.account.id, debtEntryId: advance.original.id, settlementEntryId: advanceEntry.id } };
       offsets.saveOffset(record);
       return record;
-    });
+    }, confirmedRefusal);
   }
 
   repayAdvance(raw: PayrollRepaymentInput): PayrollSettlementRecord {
@@ -151,6 +159,6 @@ export class PayrollService {
       const settlement: PayrollSettlementRecord = { id: this.dependencies.id(), employeeId: input.employeeId, currency: "DZD", amount: input.amount, paymentDate: input.paymentDate, ...audit, createdAt: timestamp.parse(this.dependencies.now()), source: { kind: "ADVANCE", id: input.advanceId }, debtAccountId: source.account.id, debtEntryId: source.original.id, paymentEntryId: payment.id };
       this.cash.saveSettlement(settlement);
       return settlement;
-    });
+    }, confirmedRefusal);
   }
 }

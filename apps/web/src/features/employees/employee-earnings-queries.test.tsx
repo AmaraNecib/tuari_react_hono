@@ -39,11 +39,13 @@ import {
   useRepayEmployeePayrollAdvanceMutation,
   useOffsetEmployeePayrollAdvanceMutation,
 } from "./employee-earnings-queries"
+import { useExactDebtSummary, useExactDebtDetail } from "@/features/debts/debts-exact-queries"
+import { employeePayrollOutputSchema, employeeEarningSchema, exactDebtSummarySchema, exactDebtDetailSchema, type ExactDebtsClient } from "@tuari/contracts"
 import { workspaceQueryKeys } from "@/features/app-shell/workspace-keys"
 import { orpc } from "@/lib/orpc-client"
 
 function makeQueryClient() {
-  return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: 1, retryDelay: 0 } } })
+  return new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 }, mutations: { retry: 1, retryDelay: 0 } } })
 }
 
 function wrapper(queryClient: QueryClient) {
@@ -66,18 +68,55 @@ const approval = {
   ],
 }
 
+function payrollFixture(wagesOwed = "100.00") {
+  return employeePayrollOutputSchema.parse({ employeeId: "employee-1", currency: "DZD", earnings: [], advances: [], cash: [], repayments: [], offsets: [], opening: { review: "UNREVIEWED", reminder: true, wages: null, advances: null }, summary: { approvedEarnings: wagesOwed, wageCashPaid: "0.00", wagesOffset: "0.00", wagesOwed, advancesGiven: "0.00", advancesCashRecovered: "0.00", advancesOffset: "0.00", advancesOwed: "0.00", unallocatedEarnings: "0.00", currentAppTotalsExcludeUnknownOpening: true } })
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.session.mockReturnValue({ data: { user: { id: "user-1" } } })
   mocks.earningsList.mockResolvedValue({ items: [] })
-  mocks.earningsApprove.mockResolvedValue({ success: true, message: "ok", item: { id: "earning-1", employeeId: "employee-1", segments: approval.segments } })
-  mocks.payrollGet.mockResolvedValue({ employeeId: "employee-1", summary: { wagesOwed: "100.00" } })
+  mocks.earningsApprove.mockResolvedValue({ success: true, message: "ok", item: employeeEarningSchema.parse({ ...approval, id: "earning-1", referenceSalary: null, approvedAt: "2026-11-19T09:00:00.000Z", createdAt: "2026-11-19T09:00:00.000Z", actorUserId: null, transactionId: null }) })
+  mocks.payrollGet.mockResolvedValue(payrollFixture())
   mocks.payrollCash.mockResolvedValue({ id: "cash-1" })
   mocks.payrollRepay.mockResolvedValue({ id: "repay-1" })
   mocks.payrollOffset.mockResolvedValue({ id: "offset-1" })
 })
 
 describe("employee earnings queries", () => {
+  it("refetches a mounted fresh payroll cache on earning approval", async () => {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(orpc.session.queryOptions().queryKey, { user: { id: "user-1", name: null, phone: "0612345678", version: "0.0.0" } })
+    const payroll = renderHook(() => useEmployeePayrollQuery("employee-1"), { wrapper: wrapper(queryClient) })
+    await waitFor(() => expect(payroll.result.current.data?.summary.wagesOwed).toBe("100.00"))
+    mocks.payrollGet.mockResolvedValue(payrollFixture("200.00"))
+    const approve = renderHook(() => useApproveEmployeeEarningMutation(), { wrapper: wrapper(queryClient) })
+    await act(async () => { await approve.result.current.mutateAsync(approval) })
+    await waitFor(() => expect(payroll.result.current.data?.summary.wagesOwed).toBe("200.00"))
+    expect(mocks.payrollGet).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(["cash", "repay", "offset"] as const)("refreshes active exact debt summary and detail after %s", async kind => {
+    const queryClient = makeQueryClient()
+    queryClient.setQueryData(orpc.session.queryOptions().queryKey, { user: { id: "user-1", name: null, phone: "0612345678", version: "0.0.0" } })
+    let balance = "100.00"
+    const account = () => ({ id: "debt-1", partyType: "INTERNAL_WORKER", workerId: "employee-1", externalCounterpartyId: null, status: "OPEN", direction: "RECEIVABLE", currency: "DZD", currentBalance: balance, note: null, settledAt: null, actorUserId: null, actorLabel: null, transactionId: null, createdAt: "2026-11-19T09:00:00.000Z", updatedAt: "2026-11-19T09:00:00.000Z" })
+    const client = { summary: vi.fn(async () => exactDebtSummarySchema.parse({ accounts: [account()], grossPayableDzd: "0.00", grossReceivableDzd: balance })), detail: vi.fn(async () => exactDebtDetailSchema.parse({ account: account(), entries: [] })) } as unknown as ExactDebtsClient
+    const view = renderHook(() => ({ summary: useExactDebtSummary(client), detail: useExactDebtDetail(client, "debt-1") }), { wrapper: wrapper(queryClient) })
+    await waitFor(() => expect(view.result.current.summary.data?.grossReceivableDzd).toBe("100.00"))
+    await waitFor(() => expect(view.result.current.detail.data?.account.currentBalance).toBe("100.00"))
+    const mutations = renderHook(() => ({ cash: useRecordEmployeePayrollCashMutation(), repay: useRepayEmployeePayrollAdvanceMutation(), offset: useOffsetEmployeePayrollAdvanceMutation() }), { wrapper: wrapper(queryClient) })
+    balance = "80.00"
+    const shared = { employeeId: "employee-1", requestId: "refresh-request", amount: "20.00" }
+    await act(async () => {
+      if (kind === "cash") await mutations.result.current.cash.mutateAsync({ ...shared, wages: [{ earningId: "earning-1", amount: "20.00" }], paymentDate: "2026-11-19T09:00:00.000Z" })
+      else if (kind === "repay") await mutations.result.current.repay.mutateAsync({ ...shared, advanceId: "advance-1", paymentDate: "2026-11-19T09:00:00.000Z" })
+      else await mutations.result.current.offset.mutateAsync({ ...shared, wageSource: { kind: "EARNING", id: "earning-1" }, advanceSource: { kind: "ADVANCE", id: "advance-1" }, settlementDate: "2026-11-19T09:00:00.000Z" })
+    })
+    await waitFor(() => expect(view.result.current.summary.data?.grossReceivableDzd).toBe("80.00"))
+    await waitFor(() => expect(view.result.current.detail.data?.account.currentBalance).toBe("80.00"))
+  })
+
   it("gates list RPCs on a resolved authenticated session and keys by user and employee", async () => {
     const queryClient = makeQueryClient()
     mocks.session.mockReturnValue({ data: undefined })
@@ -132,7 +171,7 @@ describe("employee earnings queries", () => {
     const queryClient = makeQueryClient()
     renderHook(() => useEmployeePayrollQuery("employee-1"), { wrapper: wrapper(queryClient) })
     await waitFor(() => expect(mocks.payrollGet).toHaveBeenCalledWith({ employeeId: "employee-1" }))
-    expect(queryClient.getQueryData(employeeEarningsQueryKeys.payroll("user-1", "employee-1"))).toEqual({ employeeId: "employee-1", summary: { wagesOwed: "100.00" } })
+    expect(queryClient.getQueryData(employeeEarningsQueryKeys.payroll("user-1", "employee-1"))).toEqual(payrollFixture())
   })
 
   it("sends each payroll command unchanged and invalidates payroll and debt views, not project cost", async () => {

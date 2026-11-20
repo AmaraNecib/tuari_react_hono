@@ -31,7 +31,7 @@ export class ExactFinanceService {
 
   get transactionIdentity() { return this.repository.transactionIdentity; }
 
-  runAggregate<T>(input: ExactDebtAudit & { requestId: string; producer: ExactFinanceAggregateOwner; intent: unknown }, participant: ExactTransactionParticipant, work: () => T): T {
+  runAggregate<T>(input: ExactDebtAudit & { requestId: string; producer: ExactFinanceAggregateOwner; intent: unknown }, participant: ExactTransactionParticipant, work: () => T, rolledBack?: (cause: unknown) => unknown): T {
     if (work.constructor.name === "AsyncFunction") throw new ExactDebtError("Aggregate work must be synchronous JSON work");
     const producer = exactFinanceAggregateOwnerSchema.parse(input.producer);
     if (!/^[A-Za-z0-9:_-]{1,128}$/.test(input.requestId)) throw new ExactDebtError("Invalid aggregate request id");
@@ -39,17 +39,24 @@ export class ExactFinanceService {
     if (participant.transactionIdentity.connection !== identity.connection || participant.transactionIdentity.lock !== identity.lock) throw new ExactDebtError("Aggregate participants require the same connection and shared FIFO");
     const id = JSON.stringify([producer.type, producer.id, input.requestId]);
     const fingerprint = aggregateJson({ producer, intent: input.intent, actorUserId: input.actorUserId ?? null, actorLabel: input.actorLabel ?? null });
-    return participant.withTransaction(() => this.repository.withTransaction(() => {
-      const previous = this.repository.getAggregateCommand(id);
-      if (previous) {
-        if (previous.fingerprint !== fingerprint) throw new ExactDebtError("Aggregate command replay conflict", "CONFLICT");
-        return JSON.parse(previous.resultJson) as T;
-      }
-      const result = work();
-      const resultJson = aggregateJson(result);
-      this.repository.saveAggregateCommand({ id, fingerprint, resultJson });
-      return JSON.parse(resultJson) as T;
-    }));
+    let beganWork = false;
+    try {
+      return participant.withTransaction(() => this.repository.withTransaction(() => {
+        const previous = this.repository.getAggregateCommand(id);
+        if (previous) {
+          if (previous.fingerprint !== fingerprint) throw new ExactDebtError("Aggregate command replay conflict", "CONFLICT");
+          return JSON.parse(previous.resultJson) as T;
+        }
+        beganWork = true;
+        const result = work();
+        const resultJson = aggregateJson(result);
+        this.repository.saveAggregateCommand({ id, fingerprint, resultJson });
+        return JSON.parse(resultJson) as T;
+      }));
+    } catch (cause) {
+      // Both transaction wrappers have unwound before classifying a refusal.
+      throw beganWork && rolledBack ? rolledBack(cause) : cause;
+    }
   }
 
   /** Trusted domain composition only. This capability is not exposed by the debt RPC. */

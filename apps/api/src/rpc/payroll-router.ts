@@ -4,13 +4,14 @@ import { employeePayrollOutputSchema, payrollCashRecordSchema, payrollContract, 
 import type { EmployeePayrollAdvanceOffsetInput, EmployeePayrollAdvanceRepayInput, EmployeePayrollCashRecordInput } from "@tuari/contracts";
 import { FifoLockBusyError } from "../infrastructure/database/fifo-lock";
 import { ExactDebtError } from "../modules/company/exact-finance.service";
-import { PayrollDomainError } from "../modules/workforce/payroll.service";
+import { PayrollDomainError, PayrollNotCommittedError } from "../modules/workforce/payroll.service";
 import type { PayrollService } from "../modules/workforce/payroll.service";
 import type { PayrollLifecycle } from "../modules/workforce/payroll-lifecycle";
 import type { RpcContext } from "./context";
 import type { RpcMiddleware, MutationAuditContext } from "./rpc-middleware";
 
 function resolveError(error: unknown): unknown {
+  if (error instanceof PayrollNotCommittedError) return new ORPCError(error.code, { message: error.message, data: { payrollOutcome: "NOT_COMMITTED" } });
   if (error instanceof PayrollDomainError) return new ORPCError(error.code, { message: error.message });
   if (error instanceof ExactDebtError) {
     const message = error.code === "NOT_FOUND" ? "Payroll source was not found."

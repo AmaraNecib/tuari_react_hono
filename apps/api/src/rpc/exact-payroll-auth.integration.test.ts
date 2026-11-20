@@ -112,11 +112,13 @@ describe("prepared exact payroll with real BetterAuth sessions", { timeout: 60_0
       expect(openingResult.summary).toMatchObject({ wagesOwed: report, advancesOwed: report });
 
       const earning = f.earning("35000.00", payrollEmployeeId);
+      await expect(ownerClient.employeePayrollCashRecord({ requestId: "confirmed-stale-earning", employeeId: payrollEmployeeId, amount: "35001.00", paymentDate: "2026-11-18T09:00:00.000Z", wages: [{ earningId: earning.id, amount: "35001.00" }] })).rejects.toMatchObject({ code: "BAD_REQUEST", data: { payrollOutcome: "NOT_COMMITTED" } });
       const paymentInput = { requestId: "real-session-payroll-25k", employeeId: payrollEmployeeId, amount: "25000.00", paymentDate: "2026-11-18T09:00:00.000Z", wages: [{ earningId: earning.id, amount: "25000.00" }] };
       const payment = await ownerClient.employeePayrollCashRecord(paymentInput);
       expect(payment).toMatchObject({ actorUserId: bootstrap.item.id, actorLabel: "Payroll owner", amount: "25000.00" });
       expect(payment.transactionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
       expect(await ownerClient.employeePayrollCashRecord(paymentInput)).toEqual(payment);
+      await expect(ownerClient.employeePayrollCashRecord({ ...paymentInput, amount: "24000.00", wages: [{ earningId: earning.id, amount: "24000.00" }] })).rejects.toMatchObject({ code: "CONFLICT", data: undefined });
       expect((await ownerClient.employeePayrollGet({ employeeId: payrollEmployeeId })).summary).toMatchObject({ wagesOwed: "10000.00", wageCashPaid: "25000.00" });
       await expect(anonymousClient.employeePayrollGet({ employeeId: payrollEmployeeId })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
       await expect(nonownerClient.employeePayrollCashRecord({ ...paymentInput, requestId: "nonowner-payroll-write" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
@@ -129,6 +131,8 @@ describe("prepared exact payroll with real BetterAuth sessions", { timeout: 60_0
         await expect(denied.employeePayrollAdvanceRepay(repaymentInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
         await expect(denied.employeePayrollAdvanceOffset(offsetInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
       }
+      await expect(ownerClient.employeePayrollAdvanceRepay({ ...repaymentInput, requestId: "confirmed-stale-advance", amount: "5001.00" })).rejects.toMatchObject({ code: "BAD_REQUEST", data: { payrollOutcome: "NOT_COMMITTED" } });
+      await expect(ownerClient.employeePayrollAdvanceOffset({ ...offsetInput, requestId: "confirmed-stale-offset", amount: "5001.00" })).rejects.toMatchObject({ code: "CONFLICT", data: { payrollOutcome: "NOT_COMMITTED" } });
       const repayment = await ownerClient.employeePayrollAdvanceRepay(repaymentInput);
       expect(repayment).toMatchObject({ employeeId: payrollEmployeeId, amount: "2000.00", actorUserId: bootstrap.item.id, source: { kind: "ADVANCE", id: advanceCash.advance!.id } });
       expect(await ownerClient.employeePayrollAdvanceRepay(repaymentInput)).toEqual(repayment);

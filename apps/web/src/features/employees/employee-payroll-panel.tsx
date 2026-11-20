@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
+import { ORPCError } from "@orpc/client"
 import type { EmployeePayrollAdvanceOffsetInput, EmployeePayrollAdvanceRepayInput, EmployeePayrollCashRecordInput } from "@tuari/contracts"
 
+import { AppDate } from "@/components/app-date"
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
@@ -20,6 +22,7 @@ import {
   createPayrollRequestId,
   getPayrollStorage,
   loadPayrollPendingIntent,
+  markPayrollIntentAttempt,
   savePayrollPendingIntent,
   withPayrollIntentLock,
   type PayrollAction,
@@ -57,6 +60,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   const offsetMutation = useOffsetEmployeePayrollAdvanceMutation()
   const [action, setAction] = useState<PayrollAction>("cash")
   const [pending, setPending] = useState<PayrollPendingIntent | null>(null)
+  const [refusedAttemptId, setRefusedAttemptId] = useState<string | null>(null)
   const [storageError, setStorageError] = useState(false)
   const [storageRevision, setStorageRevision] = useState(0)
   const [error, setError] = useState("")
@@ -83,7 +87,21 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
     return () => window.removeEventListener("storage", refresh)
   }, [])
 
+  const draftEmployeeId = useRef(employeeId)
   useEffect(() => {
+    if (draftEmployeeId.current === employeeId) return
+    draftEmployeeId.current = employeeId
+    setEarningId("")
+    setAdvanceId("")
+    setAmount("")
+    setAdvanceAmount("")
+    setError("")
+    setAction("cash")
+    setDate(getAlgeriaDateInputValue())
+  }, [employeeId])
+
+  useEffect(() => {
+    setRefusedAttemptId(null)
     if (!identity) {
       setPending(null)
       setStorageError(false)
@@ -126,16 +144,21 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   }, [locked])
 
   useEffect(() => {
-    if (!earningId && availableEarnings[0]) setEarningId(availableEarnings[0].earning.id)
-    if (!advanceId && availableAdvances[0]) setAdvanceId(availableAdvances[0].advance.id)
+    if (!availableEarnings.some(item => item.earning.id === earningId)) setEarningId(availableEarnings[0]?.earning.id ?? "")
+    if (!availableAdvances.some(item => item.advance.id === advanceId)) setAdvanceId(availableAdvances[0]?.advance.id ?? "")
   }, [earningId, advanceId, availableEarnings, availableAdvances])
 
   const selectedEarning = earnings.find(item => item.earning.id === earningId)
   const selectedAdvance = advances.find(item => item.advance.id === advanceId)
 
   async function sendIntent(intent: PayrollPendingIntent) {
+    setRefusedAttemptId(null)
     setError("")
     try {
+      const attemptStorage = getPayrollStorage()
+      if (!attemptStorage) throw new Error("STORAGE_UNAVAILABLE")
+      intent = markPayrollIntentAttempt(intent, attemptStorage)
+      if (identityKeyRef.current === JSON.stringify(intent.identity)) setPending(intent)
       if (intent.action === "cash") await cashMutation.mutateAsync(intent.payload as EmployeePayrollCashRecordInput)
       else if (intent.action === "repay") await repayMutation.mutateAsync(intent.payload as EmployeePayrollAdvanceRepayInput)
       else await offsetMutation.mutateAsync(intent.payload as EmployeePayrollAdvanceOffsetInput)
@@ -152,10 +175,38 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
         setError("")
       }
     } catch (cause) {
+      if (identityKeyRef.current === JSON.stringify(intent.identity) && cause instanceof ORPCError &&
+        ["BAD_REQUEST", "NOT_FOUND", "CONFLICT"].includes(cause.code) &&
+        cause.data?.payrollOutcome === "NOT_COMMITTED") {
+        setRefusedAttemptId(intent.attemptId ?? null)
+        setError(visibleError(cause))
+        return "refused" as const
+      }
       // The server may have committed before the response was lost. Keep this
       // exact request frozen so retry uses the same id and payload.
       setError(visibleError(cause))
     }
+  }
+
+  async function discardRefusedIntent(intent: PayrollPendingIntent) {
+    try {
+      await withPayrollIntentLock(intent.identity, async () => {
+        if (identityKeyRef.current !== JSON.stringify(intent.identity) || refusedAttemptId !== intent.attemptId) return
+        const storage = getPayrollStorage()
+        if (!storage) throw new Error("STORAGE_UNAVAILABLE")
+        const current = loadPayrollPendingIntent(intent.action, intent.identity, storage)
+        if (!current.ok || current.pending?.payload.requestId !== intent.payload.requestId) { setStorageRevision(value => value + 1); return }
+        // A refusal authorizes discarding only its own dispatch attempt.
+        if (current.pending.attemptId !== refusedAttemptId) { setStorageRevision(value => value + 1); return }
+        if (!clearPayrollPendingIntent(intent.action, intent.identity, intent.payload.requestId, storage)) throw new Error("STORAGE_UNAVAILABLE")
+        setPending(null)
+        setRefusedAttemptId(null)
+        setAmount("")
+        setAdvanceAmount("")
+        setError("")
+        await payroll.refetch()
+      })
+    } catch { setStorageError(true) }
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -339,6 +390,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
                     </p>
                   ) : <p><MoneyValue exact value={pending.payload.amount} currencyLabel={currencyLabel} /></p>}
                 </div>
+                {refusedAttemptId !== null && refusedAttemptId === pending.attemptId ? <Button type="button" disabled={busy} onClick={() => void discardRefusedIntent(pending)}>{t("common.cancel")}</Button> : null}
                 <Button type="button" disabled={busy || identityKey !== JSON.stringify(pending.identity)} onClick={() => void retryIntent(pending)}>{busy ? t("payroll.saving") : t("payroll.retry")}</Button>
               </div>
             ) : (
@@ -350,9 +402,9 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
           <details className="border-t border-border/60 pt-3">
             <summary className="cursor-pointer text-sm font-medium">{t("payroll.history")}</summary>
             <ol className="mt-3 space-y-2 text-sm">
-              {data.cash.map(record => <li key={record.id} className="flex flex-wrap justify-between gap-2"><span>{t("payroll.historyCash")} · {record.paymentDate.slice(0, 10)}</span><MoneyValue exact value={record.amount} currencyLabel={currencyLabel} /></li>)}
-              {data.offsets.map(record => <li key={record.id} className="flex flex-wrap justify-between gap-2"><span>{t("payroll.historyOffset")} · {record.settlementDate.slice(0, 10)}</span><MoneyValue exact value={record.amount} currencyLabel={currencyLabel} /></li>)}
-              {data.repayments.map(record => <li key={record.id} className="flex flex-wrap justify-between gap-2"><span>{t("payroll.historyRepayment")} · {record.paymentDate.slice(0, 10)}</span><MoneyValue exact value={record.amount} currencyLabel={currencyLabel} /></li>)}
+              {data.cash.map(record => <li key={record.id} className="flex flex-wrap justify-between gap-2"><span>{t("payroll.historyCash")} · <AppDate value={record.paymentDate} /></span><MoneyValue exact value={record.amount} currencyLabel={currencyLabel} /></li>)}
+              {data.offsets.map(record => <li key={record.id} className="flex flex-wrap justify-between gap-2"><span>{t("payroll.historyOffset")} · <AppDate value={record.settlementDate} /></span><MoneyValue exact value={record.amount} currencyLabel={currencyLabel} /></li>)}
+              {data.repayments.map(record => <li key={record.id} className="flex flex-wrap justify-between gap-2"><span>{t("payroll.historyRepayment")} · <AppDate value={record.paymentDate} /></span><MoneyValue exact value={record.amount} currencyLabel={currencyLabel} /></li>)}
               {data.cash.length + data.offsets.length + data.repayments.length === 0 ? <li className="text-muted-foreground">{t("payroll.historyEmpty")}</li> : null}
             </ol>
           </details>

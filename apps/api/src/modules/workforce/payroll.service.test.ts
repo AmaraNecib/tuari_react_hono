@@ -14,7 +14,7 @@ import { SqliteEmployeeEarningRepository } from "./adapters/sqlite-employee-earn
 import { payrollCashSchemaStatements } from "./adapters/payroll-cash-schema";
 import { SqlitePayrollCashRepository } from "./adapters/sqlite-payroll-cash.repository";
 import { SqlitePayrollSourceRepository } from "./adapters/sqlite-payroll-source.repository";
-import { PayrollService } from "./payroll.service";
+import { PayrollService, PayrollNotCommittedError } from "./payroll.service";
 
 const now = "2026-11-19T10:00:00.000Z";
 const paidAt = "2026-11-18T09:00:00.000Z";
@@ -56,6 +56,21 @@ function fixture(key: string) {
 }
 
 describe.each([["plain", ""], ["keyed", "558-command-public-key"]])("payroll command integration %s", (_driver, key) => {
+  it("confirms only rolled-back absent-receipt refusals and accepts a corrected request", () => {
+    const f = fixture(key); const earning = f.earning("100.00");
+    const input = { ...f.audit, requestId: "stale-balance", employeeId: f.employeeId, amount: "101.00", paymentDate: paidAt, wages: [{ earningId: earning.id, amount: "101.00" }] };
+    expect(() => f.service.recordCash(input)).toThrow(PayrollNotCommittedError);
+    expect(f.cash.listCash(f.employeeId)).toEqual([]);
+    expect(f.financeRepository.listAccounts()).toEqual([]);
+    expect(f.db.prepare("SELECT count(*) AS count FROM exact_finance_command").get()).toEqual({ count: 0 });
+    const corrected = { ...input, requestId: "corrected-balance", amount: "100.00", wages: [{ earningId: earning.id, amount: "100.00" }] };
+    const recorded = f.service.recordCash(corrected);
+    expect(f.service.recordCash(corrected)).toEqual(recorded);
+    try { f.service.recordCash({ ...corrected, amount: "99.00", wages: [{ earningId: earning.id, amount: "99.00" }] }); throw new Error("expected conflict"); }
+    catch (cause) { expect(cause).not.toBeInstanceOf(PayrollNotCommittedError); expect(cause).toHaveProperty("code", "CONFLICT"); }
+    expect(f.cash.listCash(f.employeeId)).toHaveLength(1);
+  });
+
   it("keeps reference, approval, repeated cash and project labor cost independent", () => {
     const f = fixture(key); const earning = f.earning();
     const original = f.service.registerEarning({ ...f.audit, requestId: "registration", earningId: earning.id });
