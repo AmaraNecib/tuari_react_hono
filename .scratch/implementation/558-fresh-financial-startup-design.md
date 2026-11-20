@@ -23,7 +23,7 @@ Initial test attempt failed due an invalid earning request UUID and was correcte
 
 ## Financial wire seam
 
-The normal application contract adds `financial` with `debts`, `invoices`, `inventory` and `expenses`, reusing the existing exact contracts without Number adapters or monetary shape coercion. `FinancialClient` is the shared typed client for production page wiring. The parent owns this public seam and root/router composition; the schema lane does not edit contracts. Existing payroll method names remain unchanged. Legacy monetary handlers must cease to construct numeric writers on the activated graph; stale numeric calls must fail closed rather than reach a parallel ledger. Unrelated metadata and identity operations remain available.
+`financialContract` defines `debts`, `invoices`, `inventory` and `expenses`, reusing the existing exact contracts without Number adapters or monetary shape coercion. It remains separately exported during inert preparation; `appContract` must register the `financial` namespace only in the same change that installs its normal-router handlers. The initial review caught premature public registration, which is removed before the foundation handoff. `FinancialClient` is the shared typed client for production page wiring. The parent owns this public seam and root/router composition; the schema lane does not edit contracts. Existing payroll method names remain unchanged. Legacy monetary handlers must cease to construct numeric writers on the activated graph; stale numeric calls must fail closed rather than reach a parallel ledger. Unrelated metadata and identity operations remain available.
 
 ## Fresh identity finalization
 

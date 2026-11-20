@@ -5,7 +5,6 @@ import { workspaceSnapshotSchema } from "./workspace"
 import { authContract } from "./auth-contract"
 import { workforceContract } from "./workforce-contract"
 import { payrollContract } from "./payroll-contract"
-import { financialContract } from "./financial-contract"
 import { operationsContract } from "./operations-contract"
 import { inventoryContract } from "./inventory-contract"
 import { debtsContract } from "./debts-contract"
@@ -25,7 +24,6 @@ export const appContract = {
   ...authContract,
   ...workforceContract,
   ...payrollContract,
-  financial: financialContract,
   ...operationsContract,
   ...inventoryContract,
   ...debtsContract,
