@@ -1,6 +1,6 @@
 import {
   Money, UnitPrice, exactInventoryInvoiceSchema, exactInventoryEntrySchema, exactInventoryAssetSchema, exactInventoryChargeSchema, exactInventoryOutboundSchema,
-  inventoryItemDefinitionSchema, inventoryConsumableBalanceSchema, inventoryMovementSchema,
+  inventoryInvoiceAttachmentSchema, inventoryItemDefinitionSchema, inventoryConsumableBalanceSchema, inventoryMovementSchema,
   type ExactInventoryInvoice, type ExactInventoryAsset, type ExactInventoryOutbound, type InventoryConsumableBalance, type InventoryMovement,
 } from "@tuari/contracts";
 import { bindMoney, bindUnitPrice, prepareMoneyRead, prepareUnitPriceRead } from "../../../infrastructure/database/exact-money-storage";
@@ -73,6 +73,12 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
   private save(table: string, row: Record<string, unknown>) {
     const columns = Object.keys(row);
     this.db.prepare(`INSERT INTO "${table}" (${columns.map(name => `"${name}"`).join(",")}) VALUES (${columns.map(() => "?").join(",")}) ON CONFLICT(id) DO UPDATE SET ${columns.filter(name => name !== "id").map(name => `"${name}"=excluded."${name}"`).join(",")}`).run(...Object.values(row));
+  }
+  listAttachmentsByInvoiceGroupId(id: string) {
+    return this.lock.runSync(() => this.db.prepare(`SELECT id, invoice_group_id AS invoiceGroupId, original_name AS originalName, mime_type AS mimeType, byte_size AS byteSize, storage_key AS storageKey, relative_path AS relativePath, sha256, created_at AS createdAt FROM inventory_invoice_attachment WHERE invoice_group_id=? ORDER BY created_at DESC,id`).all(id).map(row => {
+      const attachment = row as { id: string };
+      return inventoryInvoiceAttachmentSchema.parse({ ...attachment, downloadUrl: `/api/inventory/attachments/${attachment.id}` });
+    }));
   }
   getDefinition(id: string) {
     return this.withTransaction(() => {

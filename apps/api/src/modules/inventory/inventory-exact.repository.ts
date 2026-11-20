@@ -1,4 +1,4 @@
-import type { ExactInventoryInvoice, ExactInventoryEntry, ExactInventoryAsset, ExactInventoryCharge, ExactInventoryOutbound, InventoryItemDefinition, InventoryConsumableBalance, InventoryMovement } from "@tuari/contracts";
+import type { InventoryInvoiceAttachment, ExactInventoryInvoice, ExactInventoryEntry, ExactInventoryAsset, ExactInventoryCharge, ExactInventoryOutbound, InventoryItemDefinition, InventoryConsumableBalance, InventoryMovement } from "@tuari/contracts";
 import type { ExactTransactionParticipant } from "../company/exact-finance.repository";
 import type { ExactDebtAudit } from "../company/exact-finance.service";
 
@@ -11,6 +11,7 @@ export interface ExactInventoryRepository extends ExactTransactionParticipant {
   projectExists(id: string): boolean;
   locationLabel(warehouseId: string | null, projectId: string | null): string;
   counterpartyLabel(id: string): string;
+  listAttachmentsByInvoiceGroupId(id: string): InventoryInvoiceAttachment[];
   getGroup(id: string): ExactInventoryInvoice | null;
   listGroups(): ExactInventoryInvoice[];
   saveGroup(row: ExactInventoryInvoice): void;

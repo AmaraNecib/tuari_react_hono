@@ -12,6 +12,7 @@ import { financialClient } from "@/lib/orpc-client"
 import type { HomeViewPageContentProps } from "./home-view-page-content-shared"
 import { MissingRecordState } from "./home-view-page-content-shared"
 
+const ExactInventoryPage = lazy(async () => import("@/features/inventory/inventory-exact-page").then(module => ({ default: module.ExactInventoryPage })))
 const TransferHistoryPage = lazy(async () => import("@/features/inventory/transfer-history-page").then((module) => ({ default: module.TransferHistoryPage })))
 const ExactFinancialRoutePage = lazy(async () => import("@/features/shared/exact-financial-route").then((module) => ({ default: module.ExactFinancialRoutePage })))
 const ExternalCounterpartyCreatePage = lazy(async () => import("@/features/externals/external-create-page").then((module) => ({ default: module.ExternalCounterpartyCreatePage })))
@@ -352,19 +353,18 @@ export function HomeViewPageDetailContent({
       />)
 
     case "invoices":
+      return renderLazy(<ExactInventoryPage client={financialClient.inventory} locations={[
+        ...derived.warehouses.map(row => ({ id: row.id, label: row.name, type: "WAREHOUSE" as const })),
+        ...derived.projects.map(row => ({ id: row.id, label: row.name, type: "PROJECT" as const })),
+      ]} parties={derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName }))} />)
+
     case "invoice-create":
     case "invoice-details":
-      return renderLazy(<ExactFinancialRoutePage
-        route="invoices"
-        parties={[
-          ...derived.employeeRows.filter(employee => employee.isWorker).map(employee => ({ id: employee.id, label: employee.name, type: "WORKER" as const })),
-          ...derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName, type: "EXTERNAL_COUNTERPARTY" as const })),
-        ]}
-        locations={[]}
-        expenses={{ projects: [], employees: [], sellers: [] }}
-        invoiceId={page === "invoice-details" ? selectedInvoiceId : undefined}
-        createInvoice={page === "invoice-create"}
-      />)
+      if (page === "invoice-details" && !selectedInvoiceId) return <MissingRecordState backLabel={detailCopy.shared.back} description={detailCopy.shared.missingRecordDescription} navigation={navigation} target={workspaceRoutes.invoices()} title={t("detailPages.invoice.title")} />
+      return renderLazy(<ExactInventoryPage key={page === "invoice-create" ? "create" : selectedInvoiceId} client={financialClient.inventory} initialCreate={page === "invoice-create"} initialInvoiceId={page === "invoice-details" ? selectedInvoiceId : undefined} locations={[
+        ...derived.warehouses.map(row => ({ id: row.id, label: row.name, type: "WAREHOUSE" as const })),
+        ...derived.projects.map(row => ({ id: row.id, label: row.name, type: "PROJECT" as const })),
+      ]} parties={derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName }))} />)
 
     default:
       return null

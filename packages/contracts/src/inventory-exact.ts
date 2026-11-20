@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { Money, UnitPrice, Quantity, parseExactLine } from "./exact-money";
 import {
-  inventoryAssetUnitCreateInputSchema, inventoryAssetEntryCreateInputSchema, inventoryConsumableBalanceSchema, inventoryMovementSchema, inventoryItemDefinitionSchema,
+  inventoryInvoiceAttachmentSchema, inventoryAssetUnitCreateInputSchema, inventoryAssetEntryCreateInputSchema, inventoryConsumableBalanceSchema, inventoryMovementSchema, inventoryItemDefinitionSchema,
   inventoryConsumableEntryCreateInputSchema, inventoryInvoiceGroupCreateInputSchema,
   inventoryInvoiceGroupSchema, inventoryAssetUnitSchema, inventoryAssetChargeSchema,
   inventoryAssetChargeRevisionSchema, inventoryEntrySchema,
@@ -131,7 +131,7 @@ export const exactInventoryLocationInputSchema = z.object({ warehouseId: z.strin
   if (Boolean(input.warehouseId) === Boolean(input.projectId)) ctx.addIssue({ code: "custom", message: "Choose exactly one location" });
 });
 export const exactInventoryLocationSchema = z.object({ assets: z.array(exactInventoryAssetSchema), consumables: z.array(inventoryConsumableBalanceSchema) });
-export const exactInventoryDetailSchema = z.object({ group: exactInventoryInvoiceSchema, entries: z.array(exactInventoryEntrySchema),
+export const exactInventoryDetailSchema = z.object({ attachments: z.array(inventoryInvoiceAttachmentSchema), group: exactInventoryInvoiceSchema, entries: z.array(exactInventoryEntrySchema),
   consumableBalances: z.array(inventoryConsumableBalanceSchema), movements: z.array(inventoryMovementSchema) });
 const aggregateAmount = z.string().max(256).regex(/^-?(?:0|[1-9]\d*)\.\d{2}$/);
 export const exactInventoryProjectContributionSchema = z.object({ projectId: z.string().min(1), chargedMaterialsDzd: aggregateAmount, equipmentChargesDzd: aggregateAmount,

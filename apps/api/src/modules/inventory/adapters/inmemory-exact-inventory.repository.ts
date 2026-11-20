@@ -1,4 +1,4 @@
-import type { ExactInventoryInvoice, ExactInventoryAsset, ExactInventoryOutbound, InventoryItemDefinition, InventoryConsumableBalance, InventoryMovement } from "@tuari/contracts";
+import type { InventoryInvoiceAttachment, ExactInventoryInvoice, ExactInventoryAsset, ExactInventoryOutbound, InventoryItemDefinition, InventoryConsumableBalance, InventoryMovement } from "@tuari/contracts";
 import type { ExactTransactionIdentity } from "../../company/exact-finance.repository";
 import type { ExactInventoryRepository, ExactInventoryEntryRecord, ExactInventoryChargeRecord } from "../inventory-exact.repository";
 
@@ -12,7 +12,7 @@ export class InMemoryExactInventoryRepository implements ExactInventoryRepositor
   private charges = new Map<string, ExactInventoryChargeRecord>();
   private outbounds = new Map<string, ExactInventoryOutbound>();
   constructor(readonly transactionIdentity: ExactTransactionIdentity, private readonly references: {
-    definitions: InventoryItemDefinition[]; warehouses: { id: string; name: string }[]; projects: { id: string; name: string }[];
+    attachments?: InventoryInvoiceAttachment[]; definitions: InventoryItemDefinition[]; warehouses: { id: string; name: string }[]; projects: { id: string; name: string }[];
   }) {}
   withTransaction<T>(work: () => T): T {
     const before = structuredClone([this.groups, this.entries, this.assets, this.balances, this.movements, this.charges, this.outbounds] as const);
@@ -22,6 +22,7 @@ export class InMemoryExactInventoryRepository implements ExactInventoryRepositor
       return result;
     } catch (error) { [this.groups, this.entries, this.assets, this.balances, this.movements, this.charges, this.outbounds] = before; throw error; }
   }
+  listAttachmentsByInvoiceGroupId(id: string) { return structuredClone((this.references.attachments ?? []).filter(row => row.invoiceGroupId === id)); }
   getDefinition(id: string) { return structuredClone(this.references.definitions.find(row => row.id === id) ?? null); }
   listDefinitions() { return structuredClone(this.references.definitions); }
   warehouseExists(id: string) { return this.references.warehouses.some(row => row.id === id); }

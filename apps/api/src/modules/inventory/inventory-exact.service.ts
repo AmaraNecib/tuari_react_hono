@@ -165,7 +165,7 @@ export class ExactInventoryService {
     if (!group) throw new ExactDebtError("Inventory invoice not found", "NOT_FOUND");
     const entries = this.repo.listEntries(id).map(row => ({ ...row, assets: this.repo.listAssets().filter(asset => asset.inventoryEntryId === row.id) }));
     const ids = new Set(entries.map(row => row.id));
-    return { group, entries, consumableBalances: this.repo.listBalances().filter(row => ids.has(row.inventoryEntryId)), movements: this.repo.listMovements().filter(row => row.inventoryEntryId && ids.has(row.inventoryEntryId)) };
+    return { group, entries, attachments: this.repo.listAttachmentsByInvoiceGroupId(id), consumableBalances: this.repo.listBalances().filter(row => ids.has(row.inventoryEntryId)), movements: this.repo.listMovements().filter(row => row.inventoryEntryId && ids.has(row.inventoryEntryId)) };
   }
   createInvoiceGroup(raw: ExactInventoryInvoiceInput & ExactDebtAudit) {
     const input = exactInventoryInvoiceCreateSchema.parse(raw);

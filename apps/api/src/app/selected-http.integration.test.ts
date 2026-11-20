@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { AppClient } from "@tuari/contracts";
+import { exactInventoryDetailSchema, type AppClient } from "@tuari/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppConfig } from "../config";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
@@ -184,6 +184,12 @@ describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 
     const result = await uploaded.json();
     expect(result).toMatchObject({ success: true, items: [{ invoiceGroupId: purchase.group.id, originalName: "invoice proof.pdf", mimeType: "application/pdf", byteSize: 8 }] });
     const attachment = result.items[0];
+    const assertDetailAttachments = async (reader: ReturnType<typeof httpClient>) => {
+      const detail = exactInventoryDetailSchema.strict().parse(await reader.request("financial/inventory/getInvoice", { id: purchase.group.id }));
+      expect(detail.attachments).toEqual([{ ...attachment, downloadUrl: `/api/inventory/attachments/${attachment.id}` }]);
+      expect(detail.attachments[0]!.invoiceGroupId).toBe(detail.group.id);
+    };
+    await assertDetailAttachments(client);
     expect(readFileSync(join(config.attachmentsRootPath, attachment.relativePath))).toEqual(Buffer.from(bytes));
     expect(db.prepare("SELECT invoice_group_id AS groupId, byte_size AS size FROM inventory_invoice_attachment WHERE id=?").get(attachment.id)).toEqual({ groupId: purchase.group.id, size: 8 });
     const downloadPath = base + `/api/inventory/attachments/${attachment.id}`;
@@ -255,6 +261,7 @@ describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 
     const reopenedApp = createApp(reopened, { allowedOrigins: [origin] });
     await assertDownload(reopenedApp);
     const reload = httpClient(reopenedApp, session.token);
+    await assertDetailAttachments(reload);
     const reloadedReports = await assertReports(reload);
     // generatedAt belongs to each read, not durable report state.
     expect({ ...reloadedReports.inventory, generatedAt: reports.inventory.generatedAt }).toEqual(reports.inventory);

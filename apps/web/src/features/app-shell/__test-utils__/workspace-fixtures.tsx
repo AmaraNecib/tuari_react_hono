@@ -625,11 +625,11 @@ vi.mock("@/features/inventory/inventory-exact-queries", () => ({
 vi.mock("@/features/employees/employee-payroll-panel", () => ({
   EmployeePayrollPanel: ({ employeeId }: { employeeId: string }) => <div data-payroll-employee={employeeId} />,
 }))
-vi.mock("@/features/invoices/invoices-exact-page", () => ({
-  ExactInvoicesPage: ({ initialInvoiceId }: { initialInvoiceId?: string }) => {
+vi.mock("@/features/inventory/inventory-exact-page", () => ({
+  ExactInventoryPage: ({ initialInvoiceId }: { initialInvoiceId?: string }) => {
     invoiceGroupQueryState.invoiceId = initialInvoiceId
     invoiceGroupQueryState.enabled = Boolean(initialInvoiceId)
-    return <h1>{initialInvoiceId ?? "exact-invoices"}</h1>
+    return <h1>{initialInvoiceId ?? "exact-purchases"}</h1>
   },
 }))
 

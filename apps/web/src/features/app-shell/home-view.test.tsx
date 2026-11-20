@@ -486,15 +486,15 @@ describe("HomeView workspace shell", () => {
     expect(screen.getByText("العمال المرتبطون")).toBeTruthy()
   })
 
-  it("forwards invoice detail IDs through HomeView into the exact invoice page", async () => {
+  it("forwards purchase detail IDs through HomeView into the exact inventory page", async () => {
     renderWorkspace("invoice-details", { sessionUser: demoUser, invoiceId: "invoice-1" })
     expect(await screen.findByRole("heading", { name: "invoice-1" })).toBeTruthy()
     expect(getInvoiceGroupQueryState()).toEqual({ invoiceId: "invoice-1", enabled: true })
   })
 
-  it("opens the exact invoice list for an id-less invoice details route", async () => {
+  it("shows a missing record for an id-less purchase details route", async () => {
     renderWorkspace("invoice-details", { sessionUser: demoUser })
-    expect(await screen.findByRole("heading", { name: "exact-invoices" })).toBeTruthy()
+    expect(await screen.findByText("تعذر العثور على هذا السجل أو لم يعد متاحًا ضمن البيانات الحالية.")).toBeTruthy()
     expect(getInvoiceGroupQueryState().enabled).toBe(false)
   })
 

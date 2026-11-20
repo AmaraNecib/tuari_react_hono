@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { Money, Quantity, finalizeLines, parseExactLine, type ExactInvoicesClient, type ExactInvoice, type ExactPayment } from "@tuari/contracts"
@@ -12,7 +12,7 @@ import { Surface } from "@/features/shared/page-primitives"
 import { MoneyValue } from "@/features/shared/money-value"
 import { ExactPriceInput } from "@/features/shared/exact-price-input"
 import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
-import { useExactInvoiceAction, useExactInvoices, useExactPayments, type ExactInvoiceAction } from "./invoices-exact-queries"
+import { useExactInvoiceAction, useExactInvoice, useExactInvoices, useExactPayments, type ExactInvoiceAction } from "./invoices-exact-queries"
 
 export type ExactInvoiceParty = { id: string; label: string; type: "EXTERNAL_COUNTERPARTY" | "WORKER" }
 type DraftLine = { key: string; description: string; quantity: string; mode: "unit-price" | "agreed-total" | "derived-price"; value: string; originalQuantity?: string }
@@ -24,6 +24,8 @@ export function ExactInvoicesPage({ client, parties, initialInvoiceId, initialCr
   const { t, i18n } = useTranslation()
   const invoices = useExactInvoices(client)
   const payments = useExactPayments(client)
+  const requestedInvoice = useExactInvoice(client, initialInvoiceId)
+  const consumedIntent = useRef<string | undefined>(undefined)
   const mutation = useExactInvoiceAction(client)
   const [editor, setEditor] = useState<ExactInvoice | "new" | null>(initialCreate ? "new" : null)
   const [payment, setPayment] = useState<ExactPayment | "new" | null>(null)
@@ -37,14 +39,17 @@ export function ExactInvoicesPage({ client, parties, initialInvoiceId, initialCr
   const availableInvoices = useMemo(() => invoices.data?.pages.flatMap(page => page.items) ?? [], [invoices.data])
   const availablePayments = payments.data?.pages.flatMap(page => page.items) ?? []
   useEffect(() => {
-    if (initialInvoiceId && editor === null) {
-      const invoice = availableInvoices.find(row => row.id === initialInvoiceId)
-      if (invoice) setEditor(invoice)
+    if (!initialInvoiceId) { consumedIntent.current = undefined; return }
+    if (consumedIntent.current !== initialInvoiceId && requestedInvoice.data?.id === initialInvoiceId) {
+      consumedIntent.current = initialInvoiceId
+      setEditor(requestedInvoice.data)
     }
-  }, [availableInvoices, editor, initialInvoiceId])
+  }, [requestedInvoice.data, initialInvoiceId])
   return <main dir={i18n.dir()} aria-label={t("exactCommerce.invoicePageLabel")} className="min-w-0 space-y-6">
     <header className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold">{t("exactCommerce.invoiceTitle")}</h1><p className="mt-2 text-sm text-muted-foreground">{t("exactCommerce.invoiceDescription")}</p></div>
       <div className="flex flex-wrap gap-2"><Button disabled={mutation.isPending || !parties.length} onClick={() => { mutation.reset(); setEditor("new") }}>{t("exactCommerce.newInvoice")}</Button><Button variant="outline" disabled={mutation.isPending || !parties.length} onClick={() => { mutation.reset(); setPayment("new") }}>{t("exactCommerce.newPayment")}</Button></div></header>
+    {initialInvoiceId && requestedInvoice.isPending && <p role="status">{t("exactCommerce.loadingInvoiceDetails")}</p>}
+    {initialInvoiceId && requestedInvoice.isError && <div role="alert">{t("exactCommerce.loadDetailsError")} <Button onClick={() => void requestedInvoice.refetch()}>{t("common.retry")}</Button></div>}
     {saved && <p role="status">{t("exactCommerce.invoiceSaved")}</p>}
     {mutation.isError && !editor && !payment && !cancel && <p role="alert" className="text-destructive">{t("exactCommerce.commandError")}</p>}
     {invoices.isPending ? <p role="status">{t("exactCommerce.loadingInvoices")}</p> : invoices.isError ? <div role="alert">{t("exactCommerce.loadInvoicesError")} <Button variant="outline" onClick={() => void invoices.refetch()}>{t("common.retry")}</Button></div> : <Surface variant="card" className="min-w-0 p-5">
