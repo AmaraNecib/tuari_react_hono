@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@tuari/contracts": [
+        "packages/contracts/src/index.ts"
+      ]
+    }
+  }
+}
