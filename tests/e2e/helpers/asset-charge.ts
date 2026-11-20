@@ -91,11 +91,45 @@ export async function transferToProject(page: Page, fixture: TransferFixture) {
   })
 }
 
-export async function openHistory(page: Page) {
-  await page.getByRole("button", { name: "سجل الاحتساب", exact: true }).click()
-  const history = page.getByTestId("asset-charge-history")
+export async function openHistory(page: Page, fixture: TransferFixture) {
+  const placement = readPlacement(fixture).unit as { warehouseId: string | null; projectId: string | null } | undefined
+  if (!placement || Boolean(placement.warehouseId) === Boolean(placement.projectId)) {
+    throw new Error(`Asset ${fixture.assetId} must have exactly one current location`)
+  }
+  const route = placement.warehouseId
+    ? `/warehouses/${encodeURIComponent(placement.warehouseId)}`
+    : `/projects/${encodeURIComponent(placement.projectId!)}`
+  await page.goto(route)
+  await page.getByRole("tab", { name: "العناصر", exact: true }).click()
+  const items = page.getByRole("tabpanel", { name: "العناصر", exact: true })
+  // The renderer binds this disclosure to the asset ID, not its display name.
+  const toggle = items.locator(`button[aria-controls$="-${fixture.assetId}"]`)
+  await expect(toggle).toHaveCount(1)
+  await expect(toggle.locator("..").getByText(fixture.assetName, { exact: true })).toBeVisible()
+  await expect(toggle).toHaveAttribute("aria-expanded", "false")
+  const controls = await toggle.getAttribute("aria-controls")
+  if (!controls) throw new Error(`Asset ${fixture.assetId} has no history target`)
+  await toggle.click()
+  await expect(toggle).toHaveAttribute("aria-expanded", "true")
+  const history = items.locator(`[id=${JSON.stringify(controls)}]`)
   await expect(history).toBeVisible()
   return history
+}
+
+/** History is read-only; corrections belong to the owned project's charges. */
+export async function openChargeCorrection(page: Page, fixture: TransferFixture) {
+  await page.goto("/inventory")
+  await page.getByRole("combobox", { name: "المشروع", exact: true }).selectOption(fixture.projectId)
+  const charges = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "احتسابات العتاد على المشروع", exact: true }),
+  })
+  const correct = charges.getByRole("button", { name: "تصحيح الاحتساب", exact: true })
+  // Each fixture owns one project and one charge; ambiguity must fail closed.
+  await expect(correct).toHaveCount(1)
+  await correct.click()
+  const editor = page.getByRole("dialog", { name: "تصحيح احتساب العتاد", exact: true })
+  await expect(editor.getByRole("textbox", { name: "المبلغ المصحح", exact: true })).toHaveValue("5000.00")
+  return editor
 }
 
 export async function expectProjectCost(page: Page, fixture: TransferFixture, amount: number) {

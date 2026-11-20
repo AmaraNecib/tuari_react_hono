@@ -1,7 +1,7 @@
 import { installManagedApiLifecycle } from "./helpers/test"
 import { expect, test } from "./helpers/test"
 
-import { expectProjectCost, openHistory, openTransfer, readPlacement, seedTransferAsset, transferToProject } from "./helpers/asset-charge"
+import { expectProjectCost, openChargeCorrection, openHistory, openTransfer, readPlacement, seedTransferAsset, transferToProject } from "./helpers/asset-charge"
 
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 import { findE2eDatabase, loadDatabaseConstructor } from "./helpers/db-seed"
@@ -29,9 +29,9 @@ test.describe("inventory asset charge transfers (#426)", () => {
     await bootstrapOrSignIn(page)
     const fixture = await seedTransferAsset(page)
     await transferToProject(page, fixture)
-    const history = await openHistory(page)
+    const history = await openHistory(page, fixture)
     await expect(history).toContainText(fixture.projectName)
-    await expect(history).toContainText((5000).toLocaleString("ar-DZ"))
+    await expect(history).toContainText("5,000")
     await expectProjectCost(page, fixture, 5000)
   })
 
@@ -41,11 +41,12 @@ test.describe("inventory asset charge transfers (#426)", () => {
     const dialog = await openTransfer(page, fixture)
     // Switch through PROJECT to catch a stale amount leaking into a
     // warehouse submission, not just the initial warehouse rendering.
-    await dialog.getByLabel("نوع الوجهة").selectOption("PROJECT")
-    await expect(dialog.getByLabel("مبلغ الاحتساب", { exact: true })).toHaveValue("5000")
-    await dialog.getByLabel("نوع الوجهة").selectOption("WAREHOUSE")
-    await dialog.getByLabel(/^الوجهة/).selectOption(fixture.destinationWarehouseId)
-    await expect(dialog.getByLabel("مبلغ الاحتساب", { exact: true })).toHaveCount(0)
+    await dialog.getByRole("combobox", { name: "الوجهة", exact: true }).selectOption(`PROJECT:${fixture.projectId}`)
+    await expect(dialog.getByText(/الاحتساب الافتراضي/)).toContainText("5000.00")
+    await dialog.getByRole("checkbox", { name: "تحديد احتساب مختلف على المشروع", exact: true }).check()
+    await expect(dialog.getByLabel("احتساب المشروع، صفر يعني مجانًا", { exact: true })).toHaveValue("5000.00")
+    await dialog.getByRole("combobox", { name: "الوجهة", exact: true }).selectOption(`WAREHOUSE:${fixture.destinationWarehouseId}`)
+    await expect(dialog.getByLabel("احتساب المشروع، صفر يعني مجانًا", { exact: true })).toHaveCount(0)
     await expect(dialog.getByLabel("النسبة من سعر الشراء")).toHaveCount(0)
     await dialog.getByRole("button", { name: "تأكيد التحويل" }).click()
     await expect(dialog).toBeHidden()
@@ -53,7 +54,7 @@ test.describe("inventory asset charge transfers (#426)", () => {
       unit: { warehouseId: fixture.destinationWarehouseId, projectId: null },
       charges: [],
     })
-    const history = await openHistory(page)
+    const history = await openHistory(page, fixture)
     await expect(history).toHaveText("لا توجد احتسابات لهذا الأصل بعد.")
   })
 
@@ -63,26 +64,33 @@ test.describe("inventory asset charge transfers (#426)", () => {
     await transferToProject(page, fixture)
     // Move away first: this corrects a historical project placement.
     const dialog = await openTransfer(page, fixture)
-    await dialog.getByLabel(/^الوجهة/).selectOption(fixture.destinationWarehouseId)
+    await dialog.getByRole("combobox", { name: "الوجهة", exact: true }).selectOption(`WAREHOUSE:${fixture.destinationWarehouseId}`)
     await dialog.getByRole("button", { name: "تأكيد التحويل" }).click()
     await expect(dialog).toBeHidden()
-    const history = await openHistory(page)
-    await history.getByRole("button", { name: "تعديل", exact: true }).click()
-    await history.getByLabel("المبلغ الجديد").fill("3500")
+    const before = await openHistory(page, fixture)
+    await expect(before).toContainText(fixture.projectName)
+    await expect(before).toContainText("5,000")
+    const editor = await openChargeCorrection(page, fixture)
+    await editor.getByRole("textbox", { name: "المبلغ المصحح", exact: true }).fill("3500")
     const reason = `تصحيح احتساب ${uniqueSuffix()}`
-    await history.getByLabel("السبب (اختياري)", { exact: true }).fill(reason)
-    await history.getByRole("button", { name: "حفظ", exact: true }).click()
+    await editor.getByRole("textbox", { name: "السبب", exact: true }).fill(reason)
+    await editor.getByRole("button", { name: "تأكيد الحفظ", exact: true }).click()
+    await expect(editor).toBeHidden()
+    const history = await openHistory(page, fixture)
     const revisions = history.getByRole("list", { name: "سجل التصحيحات" })
     await expect(revisions.getByRole("listitem")).toHaveCount(1)
-    await expect(revisions).toContainText(`تصحيح من ${(5000).toLocaleString("ar-DZ")} إلى ${(3500).toLocaleString("ar-DZ")}`)
+    await expect(revisions.locator('span[dir="ltr"] > bdi[dir="ltr"]')).toHaveText(["5,000", "3,500"])
     await expect(revisions).toContainText(reason)
     await expect.poll(() => readPlacement(fixture)).toEqual({
       unit: { warehouseId: fixture.destinationWarehouseId, projectId: null },
       charges: [{ amountDzd: "3500.00", projectId: fixture.projectId, status: "LIVE" }],
     })
     await page.reload()
-    const persistedHistory = await openHistory(page)
+    const persistedHistory = await openHistory(page, fixture)
     await expect(persistedHistory).toContainText(reason)
+    const persistedRevisions = persistedHistory.getByRole("list", { name: "سجل التصحيحات" })
+    await expect(persistedRevisions.getByRole("listitem")).toHaveCount(1)
+    await expect(persistedRevisions.locator('span[dir="ltr"] > bdi[dir="ltr"]')).toHaveText(["5,000", "3,500"])
     await expectProjectCost(page, fixture, 3500)
   })
 })

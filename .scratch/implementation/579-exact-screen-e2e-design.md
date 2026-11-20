@@ -78,3 +78,47 @@ composition root, not schema-less resets; exact native command exits and
 owned-port/process checks. The old retry lesson assumes a shared API per run;
 current per-file managed restarts supersede that assumption, but unique names
 still protect per-attempt setup. No forced-retry execution is claimed.
+
+## Bounded history navigation correction
+
+Correction base: bf9d478a0ba1b9feb36d0b96d20022edd071086f. The parent's
+complete combined-delta review found one source-confirmed P2: movement returns
+on /inventory, which has no per-asset history disclosure. The history helper
+also expected a retired test ID and edit controls in a read-only renderer.
+
+`openHistory(page, fixture)` now reads that asset's persisted current location,
+rejects missing or ambiguous placement, opens its warehouse/project detail and
+selects the items tab. It binds the disclosure to the fixture asset ID through
+aria-controls, checks the concrete asset name, expands it and returns only the
+controlled history container. Every helper caller now passes its fixture.
+Current location matters after a transfer or a later move away from a project;
+the original purchase location is not the history owner's navigation address.
+
+The historical correction test first observes the old charge in read-only
+history, then selects the fixture-owned project in /inventory and uses its one
+charge correction action. The dialog must show the known 5000.00 before the
+3500 edit. Reopened history must retain exactly one revision with ordered
+previous/new values 5,000 and 3,500 and the reason. Repeat those checks after
+reload. Existing placement, LIVE status and project-cost checks remain.
+The warehouse branch still switches from project amount override to warehouse,
+hides charge/percentage fields, persists placement and verifies empty history.
+Only actual destination/override controls replace obsolete controls; no new
+percentage support or waived percentage expectation is introduced.
+
+Vocabulary and seam: current location is an asset-unit placement, while a charge
+belongs to its historical project. Read-only ExactAssetHistory is an observation
+interface, not a correction command interface. No production seam moved and no
+new routing abstraction or package is needed. Asset ID binds the disclosure;
+unique project ownership and a one-action cardinality guard bind the editor.
+
+No browser, restore or production edit is authorized for this correction. The
+previous 22-case execution remains historical at bf9d478a. The parent's stock
+fix 4f62a6f4003e633c57966091d392ee896247c071 and develop merge are not imported.
+Focused compiler and existing mounted DOM regressions check the affected
+interfaces. DOM regressions use mocked transport and are not execution of the
+Playwright helper. No established non-browser Page navigation test adapter is
+present; inventing fake Page/Locator behavior would not prove real navigation.
+Browser proof for these downstream callers remains unrun pending reviewed
+stock integration, owner UX/percentage disposition and disk capacity. No
+syntactic test is substituted for that proof. The parent owns one fresh
+combined-delta source review carrying valid prior conclusions forward.
