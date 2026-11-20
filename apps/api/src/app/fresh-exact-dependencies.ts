@@ -41,6 +41,12 @@ import { UpdateHistoryService } from "../modules/update/update-history.service";
 import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-update-history.port";
 import { createBackupService } from "../modules/backup/backup.service";
 import { createWorkerSnapshotter } from "../modules/backup/backup.snapshot";
+import { ExactDebtReportReader } from "../modules/reports/exact-debt-report";
+import { SqliteExactDebtReportSnapshot } from "../modules/reports/exact-debt-report-snapshot";
+import { ExactInventoryReports } from "../modules/reports/exact-inventory-reports";
+import { ExactInventoryReportSource } from "../modules/reports/exact-inventory-report-source";
+import { createExactReportCapability, type ExactReportCapability } from "../rpc/exact-reports-router";
+import { createExactSystemLogReader, type ExactSystemLogReader } from "../modules/company/exact-system-log.reader";
 
 export type FreshExactAppDependencies = Omit<AppDependencies,
   "companyService" | "financeService" | "inventoryService" | "invoiceModule" | "paymentModule" | "expensesModule"
@@ -49,11 +55,12 @@ export type FreshExactAppDependencies = Omit<AppDependencies,
   companyService: CompanyMetadataService;
   inventoryAttachmentService: Pick<InventoryService, "addInvoiceAttachments" | "getAttachmentDownload">;
   catalogService: Pick<InventoryService, "listItemDefinitions" | "listItemDefinitionOptions" | "getItemDefinition" | "createItemDefinition" | "updateItemDefinition">;
-  financial: { services: FinancialDependencies; getMetadata(): Promise<WorkspaceMetadata> };
+  financial: { services: FinancialDependencies; getMetadata(): Promise<WorkspaceMetadata>; reports: ExactReportCapability };
+  listSystemLog: ExactSystemLogReader["listSystemLog"];
   payroll: { service: FinancialDependencies["payroll"]; getEmployeePayroll: FinancialDependencies["lifecycle"]["getEmployeePayroll"] };
 };
 
-/** Selected fresh root only. Reports/audit adapters and default activation remain pending. */
+/** Selected fresh root only; default activation remains pending. */
 export async function createFreshExactAppDependencies(
   config: CreateAppDependenciesConfig = {},
   appConfig: AppConfig = createAppConfig(),
@@ -70,6 +77,11 @@ export async function createFreshExactAppDependencies(
     const lock = createFifoLock({ timeoutMs: 30_000 });
     const auth = config.authInstance ?? createAuth(db, appConfig);
     const financial = createFinancialDependencies(connection, lock, { id: () => crypto.randomUUID(), now: () => new Date().toISOString() });
+    const reports = createExactReportCapability(
+      new ExactDebtReportReader(new SqliteExactDebtReportSnapshot(connection, lock, financial.financeRepository)),
+      new ExactInventoryReports(new ExactInventoryReportSource(connection, lock)),
+    );
+    const systemLog = createExactSystemLogReader(connection, lock);
     const company = createCompanyRepository(connection, appConfig, lock);
     const mutation = new WorkspaceMutationContext(company, company);
     const workforceService = new WorkforceService(company, company, mutation, new SqliteEmployeeEarningRepository(connection, lock), {
@@ -87,7 +99,8 @@ export async function createFreshExactAppDependencies(
     const catalog = new InventoryService(createInventoryRepository(connection, lock), new InventoryAttachmentStorage(appConfig.attachmentsRootPath), undefined, company);
     return {
       mode: "fresh-exact-selected",
-      financial: { services: financial, getMetadata: async () => ({ ...companyService.getWorkspaceMetadata(), roles: await roleModule.list() }) },
+      financial: { services: financial, getMetadata: async () => ({ ...companyService.getWorkspaceMetadata(), roles: await roleModule.list() }), reports },
+      listSystemLog: systemLog.listSystemLog,
       payroll: { service: financial.payroll, getEmployeePayroll: id => financial.lifecycle.getEmployeePayroll(id) },
       auth,
       accountService: new AccountService(new DrizzleAccountRepository(db, lock), auth),

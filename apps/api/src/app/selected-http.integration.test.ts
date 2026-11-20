@@ -42,6 +42,8 @@ function httpClient(app: ReturnType<typeof createApp>, token = "") {
     employeePayrollAdvanceRepay: procedure<AppClient["employeePayrollAdvanceRepay"]>("employeePayrollAdvanceRepay"),
     employeePayrollGet: procedure<AppClient["employeePayrollGet"]>("employeePayrollGet"),
     metadata: procedure<AppClient["financial"]["metadata"]>("financial/metadata"),
+    report: procedure<AppClient["financial"]["reports"]["generate"]>("financial/reports/generate"),
+    systemLog: procedure<AppClient["systemLogList"]>("systemLogList"),
     debtCreate: procedure<AppClient["financial"]["debts"]["create"]>("financial/debts/create"),
     debtDetail: procedure<AppClient["financial"]["debts"]["detail"]>("financial/debts/detail"),
   };
@@ -113,6 +115,66 @@ describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 
     const definition = root.catalogService.createItemDefinition({ name: "HTTP cement", itemType: "CONSUMABLE", unit: "bag" }, { actorUserId: bootstrap.item.id });
     const warehouse = root.operationsService.createWarehouse({ name: "HTTP depot", status: "ACTIVE" }, { actorUserId: bootstrap.item.id });
     const purchase = root.financial.services.inventory.createInvoiceGroup({ requestId: "http-stock", warehouseId: warehouse.item.id, entries: [{ kind: "CONSUMABLE", itemDefinitionId: definition.item.id, quantity: 1, unitPriceDzd: "12.3400" }] });
+    const assets = root.catalogService.createItemDefinition({ name: "HTTP equipment", itemType: "ASSET" }, { actorUserId: bootstrap.item.id });
+    const party = root.companyService.createExternalCounterparty({ fullName: "HTTP recipient", phoneNumber: "0555123990" }, { actorUserId: bootstrap.item.id });
+    root.financial.services.inventory.createInvoiceGroup({ requestId: "http-wide-assets", warehouseId: warehouse.item.id, entries: [{ kind: "ASSET", itemDefinitionId: assets.item.id, assets: [{ assetName: "Wide", purchasePriceDzd: "9007199254740993.07" }, { assetName: "Small", purchasePriceDzd: "20.00" }] }] });
+    root.financial.services.inventory.transferConsumable({ requestId: "http-transfer", inventoryEntryId: purchase.entries[0]!.id, fromWarehouseId: warehouse.item.id, toProjectId: project.item.id, quantity: 1 });
+    root.financial.services.inventory.createOutboundTransfer({ requestId: "http-gift", fromType: "WAREHOUSE", fromId: warehouse.item.id, counterpartyId: party.item.id, transferType: "GIFT", items: [{ itemId: assets.item.id, quantity: 2 }] });
+    await adapter.updateUser(bootstrap.item.id, { name: "Renamed owner" });
+    const assertReports = async (reader: ReturnType<typeof httpClient>) => {
+      const inventory = await reader.report({ type: "INVENTORY" });
+      expect(inventory.type).toBe("INVENTORY");
+      if (inventory.type !== "INVENTORY") throw new Error("Wrong report binding");
+      expect(inventory.summary).toEqual({ totalAssetsDzd: "9007199254741013.07", totalConsumablesDzd: "12.34", totalValueDzd: "9007199254741025.41" });
+      expect(inventory.byLocation).toEqual([{ locationId: warehouse.item.id, locationType: "WAREHOUSE", locationLabel: "HTTP depot", assetCount: 2, assetValueDzd: "9007199254741013.07", consumableCount: 1 }]);
+      expect(inventory.byItemType).toEqual(expect.arrayContaining([expect.objectContaining({ itemName: "HTTP equipment", quantity: 2, valueDzd: "9007199254741013.07" })]));
+      const movement = await reader.report({ type: "MOVEMENT" });
+      if (movement.type !== "MOVEMENT") throw new Error("Wrong movement binding");
+      expect(movement.summary).toEqual({ totalMovements: 6, assetTransfers: 0, consumableTransfers: 1, outboundSales: 2 });
+      expect(movement.outboundDocuments).toEqual([{ transferType: "SALE", count: 0 }, { transferType: "RETURN", count: 0 }, { transferType: "GIFT", count: 1 }]);
+      expect(movement.byType).toEqual([{ movementType: "PURCHASE", count: 3, valueDzd: "9007199254741025.41" }, { movementType: "TRANSFER", count: 1, valueDzd: "12.34" }, { movementType: "OUTBOUND_SALE", count: 2, valueDzd: "9007199254741013.07" }]);
+      const debt = await reader.report({ type: "DEBT" });
+      if (debt.type !== "DEBT") throw new Error("Wrong debt binding");
+      expect(debt.byParty).toEqual(expect.arrayContaining([expect.objectContaining({ partyId: separate.item.id, outstandingDzd: "90071992547409.93" })]));
+      for (const type of ["DEBT", "INVENTORY", "MOVEMENT"] as const) {
+        const empty = await reader.report({ type, startDate: "1900-01-01T00:00:00.000Z", endDate: "1900-01-02T00:00:00.000Z" });
+        if (empty.type === "DEBT") expect(empty.summary.totalOutstandingDzd).toBe("0.00");
+        if (empty.type === "INVENTORY") expect(empty.summary.totalValueDzd).toBe("0.00");
+        if (empty.type === "MOVEMENT") expect(empty.summary.totalMovements).toBe(0);
+      }
+      const log = await reader.systemLog({});
+      expect(Object.keys(log)).toEqual(["items"]);
+      const wide = log.items.find(row => row.entityLabel === "Large Debt" && row.entityType === "DEBT_ENTRY");
+      expect(wide).toMatchObject({ actorUserId: bootstrap.item.id, actorLabel: "HTTP owner", actorCurrentLabel: "Renamed owner" });
+      expect(wide!.detail).toContain("+90071992547409.93 دج");
+      // Metadata/cash use transaction groups; debt events retain individual IDs.
+      const cash = log.items.find(row => row.id === paid.transactionId);
+      expect(cash).toMatchObject({ actorUserId: bootstrap.item.id, actorLabel: "HTTP owner", transactionId: paid.transactionId });
+      expect(cash!.detail).toContain("25000.00 دج");
+      expect(log.items.filter(row => row.transactionId === paid.transactionId)).toHaveLength(3);
+      expect(log.items.filter(row => row.id === paid.transactionId)).toHaveLength(1);
+      const filtered = await reader.systemLog({ actorUserId: bootstrap.item.id, entityType: "DEBT_ENTRY", entityId: wide!.entityId! });
+      expect(filtered.items).toEqual([wide]);
+      expect((await reader.systemLog({ fromDate: "1900-01-01T00:00:00.000Z", toDate: "1900-01-02T00:00:00.000Z" })).items).toEqual([]);
+      return { inventory, movement, debt, log };
+    };
+    // BetterAuth session lookup can refresh bookkeeping; financial tables must stay inert.
+    const databaseState = () => db.serialize();
+    const beforeReports = databaseState();
+    const reports = await assertReports(client);
+    expect(databaseState()).toEqual(beforeReports);
+    const reportTrap = vi.fn(() => { throw new Error("Report capability reached before authorization"); });
+    const logTrap = vi.fn(() => { throw new Error("Log capability reached before authorization"); });
+    const guardedApp = createApp({ ...root, financial: { ...root.financial, reports: { generate: reportTrap } }, listSystemLog: logTrap }, { allowedOrigins: [origin] });
+    for (const token of ["", otherSession.token]) {
+      const denied = httpClient(guardedApp, token);
+      for (const type of ["DEBT", "INVENTORY", "MOVEMENT"] as const) await expect(denied.report({ type })).rejects.toMatchObject({ status: 401, code: "UNAUTHORIZED" });
+      await expect(denied.systemLog({})).rejects.toMatchObject({ status: 401, code: "UNAUTHORIZED" });
+    }
+    expect(reportTrap).not.toHaveBeenCalled();
+    expect(logTrap).not.toHaveBeenCalled();
+    await expect(client.request("reportsGenerate", { type: "DEBT" })).rejects.toMatchObject({ status: 503 });
+    expect(databaseState()).toEqual(beforeReports);
     const headers = { origin, authorization: `Bearer ${session.token}` };
     const uploadPath = base + `/api/inventory/invoice-groups/${purchase.group.id}/attachments`;
     const bytes = new Uint8Array([37, 80, 68, 70, 45, 49, 0, 255]);
@@ -193,6 +255,15 @@ describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 
     const reopenedApp = createApp(reopened, { allowedOrigins: [origin] });
     await assertDownload(reopenedApp);
     const reload = httpClient(reopenedApp, session.token);
+    const reloadedReports = await assertReports(reload);
+    // generatedAt belongs to each read, not durable report state.
+    expect({ ...reloadedReports.inventory, generatedAt: reports.inventory.generatedAt }).toEqual(reports.inventory);
+    expect({ ...reloadedReports.movement, generatedAt: reports.movement.generatedAt }).toEqual(reports.movement);
+    expect({ ...reloadedReports.debt, generatedAt: reports.debt.generatedAt }).toEqual(reports.debt);
+    expect(reloadedReports.log).toEqual(reports.log);
+    // Replay fingerprints include recorded audit labels; restore the original
+    // authenticated name before replaying the earlier mutation requests.
+    await (await reopened.auth.$context).internalAdapter.updateUser(bootstrap.item.id, { name: "HTTP owner" });
     expect(await reload.employeePayrollCashRecord(wageInput)).toEqual(paid);
     expect(await reload.employeePayrollAdvanceOffset(offsetInput)).toEqual(offset);
     expect(await reload.employeePayrollAdvanceRepay(repaymentInput)).toEqual(repayment);

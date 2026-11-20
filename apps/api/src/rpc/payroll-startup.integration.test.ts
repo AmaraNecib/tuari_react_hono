@@ -75,7 +75,10 @@ describe("selected exact application startup (not default activation)", { timeou
     expect(await client.inventoryItemDefinitionsGet({ id: catalog.item.id })).toMatchObject({ success: true, item: { name: "Updated sand" } });
     expect((await client.inventoryItemDefinitionsList()).items).toMatchObject([{ id: catalog.item.id }]);
     await expect(client.reportsGenerate({ type: "DEBT" })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
-    await expect(client.systemLogList()).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    expect(await client.systemLogList()).toHaveProperty("items");
+    for (const type of ["DEBT", "INVENTORY", "MOVEMENT"] as const) {
+      expect(await client.financial.reports.generate({ type })).toMatchObject({ type });
+    }
     await expect(client.workspaceSnapshot()).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
     const changes = () => db.prepare("SELECT total_changes() AS n").get();
     const beforeStale = changes();

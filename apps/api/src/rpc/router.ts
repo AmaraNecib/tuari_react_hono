@@ -114,10 +114,9 @@ export function createRouter(
     employeePayrollAdvanceOffset: os.employeePayrollAdvanceOffset.handler(async params => payrollOffsetRecordSchema.parse(await m.mutationAudit(() => payrollUnavailable(), error => error)(params))),
   };
   if ("mode" in dependencies) {
-    // The selected graph is deliberately not the production default. Pending
-    // reports/audit adapters fail explicitly rather than reading numeric columns.
+    // Exact reports use their own contract. The legacy numeric report stays unavailable.
     const unavailable = m.queryAuth(async () => {
-      throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Exact reports/audit adapter pending; selected root is not production activation" });
+      throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Use financial.reports.generate for exact reports; selected root is not production activation" });
     });
     const refuse = createRetiredFinancialAction(m);
     // Explicit leaves preserve compiler checking when the public contract grows.
@@ -172,7 +171,7 @@ export function createRouter(
       ...retired,
       ...baseHandlers,
       ...payrollHandlers,
-      financial: createFinancialRouter(dependencies.financial.services, dependencies.financial.getMetadata, m),
+      financial: createFinancialRouter(dependencies.financial.services, dependencies.financial.getMetadata, m, dependencies.financial.reports),
       ...createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
       salaryPaymentsList: os.salaryPaymentsList.handler(refuse),
       salaryPaymentsCreate: os.salaryPaymentsCreate.handler(refuse),
@@ -181,7 +180,7 @@ export function createRouter(
       ...createCatalogHandlers(os, m, dependencies.catalogService),
       ...createSystemHandlers(os, m, {
         getWorkspaceSnapshot: () => { throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Use financial.metadata" }); },
-        listSystemLog: () => { throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Exact financial audit adapter pending" }); },
+        listSystemLog: dependencies.listSystemLog,
       }, dependencies.recoveryKeyService, dependencies.roleModule, dependencies.databaseKeyManager, dependencies.databaseKeyPersister),
       ...createProjectCostHandlers(os, m, dependencies.projectCostService),
       ...createUpdateHandlers(os, m, dependencies.updateService, dependencies.updateHistoryService),
