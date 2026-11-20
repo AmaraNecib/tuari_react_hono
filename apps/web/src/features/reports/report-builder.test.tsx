@@ -53,6 +53,36 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
+describe("CSV text escaping", () => {
+  it.each([
+    ['North "A"', '"North ""A""",2,12345678901234567890.01,3'],
+    ['North "A", depot\nAnnex', '"North ""A"", depot\nAnnex",2,12345678901234567890.01,3'],
+  ])("preserves the location label %j and unchanged exact money", (locationLabel, expectedRow) => {
+    const report = exactReportSchema.parse({
+      ...inventory,
+      byLocation: [{ locationId: null, locationType: null, locationLabel, assetCount: 2, assetValueDzd: "12345678901234567890.01", consumableCount: 3 }],
+    })
+    const csv = formatReportAsCSV(report)
+    expect(csv).toContain(`Location,Asset Count,Asset Value (DZD),Consumable Count\n${expectedRow}`)
+    expect(csv).toContain("Total Value (DZD),12345678901234567890.02")
+    expect(csv).toContain("Total Consumables (DZD),0.00")
+  })
+
+  it.each([
+    ['North "A"', '"North ""A""",12345678901234567890.02,4'],
+    ['North "A", partner\r\nBranch', '"North ""A"", partner\r\nBranch",12345678901234567890.02,4'],
+  ])("preserves the debtor name %j and unchanged exact money", (partyName, expectedRow) => {
+    const report = exactReportSchema.parse({
+      ...debt,
+      topDebtors: [{ partyName, amountDzd: "12345678901234567890.02", daysSinceLastPayment: 4 }],
+    })
+    const csv = formatReportAsCSV(report)
+    expect(csv).toContain(`Party Name,Amount (DZD),Days Since Last Payment\n${expectedRow}`)
+    expect(csv).toContain("Overdue (DZD),-0.01")
+    expect(csv).toContain("Total Settled (DZD),0.00")
+  })
+})
+
 describe("exact report consumers", () => {
   it("does not fetch or offer a download until generation is enabled", async () => {
     generate.mockResolvedValue(inventory)

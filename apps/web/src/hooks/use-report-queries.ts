@@ -56,6 +56,10 @@ export function useMovementReport(startDate?: string, endDate?: string) {
   return useReportQuery({ type: "MOVEMENT", startDate, endDate });
 }
 
+function encodeCSVText(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
 export function formatReportAsCSV(report: ExactReport): string {
   if (!report?.type || !report?.summary) {
     return "";
@@ -77,7 +81,7 @@ export function formatReportAsCSV(report: ExactReport): string {
     lines.push("By Location");
     lines.push("Location,Asset Count,Asset Value (DZD),Consumable Count");
     r.byLocation.forEach((loc) => {
-      lines.push(`"${loc.locationLabel}",${loc.assetCount},${loc.assetValueDzd},${loc.consumableCount}`);
+      lines.push(`${encodeCSVText(loc.locationLabel)},${loc.assetCount},${loc.assetValueDzd},${loc.consumableCount}`);
     });
   } else if (report.type === "DEBT") {
     const r = report;
@@ -93,7 +97,7 @@ export function formatReportAsCSV(report: ExactReport): string {
     lines.push("Top Debtors");
     lines.push("Party Name,Amount (DZD),Days Since Last Payment");
     r.topDebtors.forEach((debtor) => {
-      lines.push(`"${debtor.partyName}",${debtor.amountDzd},${debtor.daysSinceLastPayment}`);
+      lines.push(`${encodeCSVText(debtor.partyName)},${debtor.amountDzd},${debtor.daysSinceLastPayment}`);
     });
   } else if (report.type === "MOVEMENT") {
     const r = report;

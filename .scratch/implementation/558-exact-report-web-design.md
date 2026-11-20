@@ -36,6 +36,18 @@ New precision proof uses two wide values differing by one cent beyond safe integ
 
 These are JSDOM/UI-mock checks, not browser, native, backend-query or actual authenticated network proof. The browser selector returns full scope for an unmapped report test; per the brief no local browser run is authorized. That full acceptance remains CI/parent work.
 
+## Bounded CSV correction after initial review
+
+Correction base: `c8759ead96a8db48cd101bd924e30d6df1bb2fe5`. All three initial lenses completed on that migration head. None established an introduced defect. Code review directly verified one pre-existing P2 defect at the location-label and debtor-name CSV sites: embedded double quotes were not doubled. Both interpolation expressions already existed at the original base. The parent explicitly accepted this small correction before integration; it is not a regression caused by exact money migration.
+
+The exporter now uses one private text encoder only at those two sites. It wraps text in double quotes and doubles embedded double quotes, retaining commas and line breaks inside the quoted field. Monetary strings, numeric columns, headers, metadata, query lifecycle and UI are unchanged. Formula-injection policy and broader CSV structure are outside this correction.
+
+Four new public-exporter cases parse the published schema before exporting. Each site has a pure `North "A"` case with a literal doubled-quote CSV expectation. Additional location and debtor fixtures contain quotes, commas and LF or CRLF respectively. Literal expected row text includes unchanged wide monetary strings and numeric counts/days. Signed and zero summary expectations remain. All prior nine report tests are retained.
+
+These four tests were executed before the production edit and all failed specifically on missing quote doubling. The retained business-red log is `.scratch/reviews/558-web/csv-red.log`. This correction has real red-before-green chronology, separate from the original draft-first migration. Only the hook, report test and this design are changed. Existing dependencies/build outputs are reused without another install or build.
+
+Prior conclusions about exact money, dates, enabled/retry behavior, domain labels, UI states and keyboard semantics remain unchanged claims from the initial pinned reviews. They are not relabelled as current-head verdicts. The parent will obtain one fresh combined-delta review, not repeat all initial lenses. Browser/native/root/hosted acceptance remains outstanding and outside worker authority.
+
 ## Wisdom applied and excluded
 
 Applied the dashboard stat-band lesson's no-false-zero rule to pending/error reports. Its historical numeric `toLocaleString` advice is excluded because current exact strings require the shared exact formatter. Read the oRPC session-key lesson; no session cache access or invalidation is changed, so its generated-key prescription does not apply. Existing report query keys and enabled semantics remain unchanged. Financial authentication remains the existing link's responsibility.
