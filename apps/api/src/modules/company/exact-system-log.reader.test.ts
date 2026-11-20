@@ -127,6 +127,36 @@ describe.each(["", "558-systemlog-key"])("exact system log native %s", key => {
     expect(result.items.filter(row => row.actionType === "DEBT_SETTLED")).toHaveLength(2);
     expect(result.items.filter(row => row.entityType === "DEBT_ENTRY")).toHaveLength(5);
   });
+  it("preserves tied profile/catalog legacy order across a grouped page boundary", async () => {
+    const f = await fixture(key);
+    const profileTransaction = randomUUID();
+    f.db.prepare("INSERT INTO user(id,name,phoneNumber,created_at,updated_at) VALUES ('tied-user','New','0555000013',?,?)").run(now, now);
+    const insertProfile = f.db.prepare("INSERT INTO user_profile_history(id,user_id,name,phone,previous_name,previous_phone,password_changed,transaction_id,created_at,updated_at) VALUES (?,'tied-user','New',?,'Old',NULL,0,?,?,?)");
+    insertProfile.run("tied-profile-a", null, profileTransaction, now, now);
+    insertProfile.run("tied-profile-b", "0555000013", profileTransaction, now, now);
+    f.db.prepare("INSERT INTO inventory_item_definition(id,name,item_type,is_active,created_at,updated_at) VALUES ('tied-catalog','Catalog','ASSET',1,?,?)").run(now, now);
+
+    // Fresh exact tables cannot use the legacy finance projections. No financial
+    // rows exist in this scenario; retain the real organizational/profile/catalog reads.
+    const metadata = Object.create(f.repo) as SqliteCompanyRepository;
+    metadata.listDebtAccounts = () => []; metadata.listSalaryPayments = () => [];
+    const legacy = buildCompanySystemLog(metadata);
+    const result = f.reader.listSystemLog();
+    // The legacy builder emits profile history before catalog definitions. Both
+    // profile rows form one transaction group, even at the same timestamp.
+    const expectedTiedIds = [profileTransaction, "inventory-item-tied-catalog"];
+    expect(legacy.items.filter(row => row.createdAt === now).map(row => row.id)).toEqual(expectedTiedIds);
+    expect(result.items.filter(row => row.createdAt === now).map(row => row.id)).toEqual(expectedTiedIds);
+    expect(result).toEqual(legacy);
+
+    const boundary = legacy.items.findIndex(row => row.id === profileTransaction);
+    const profilePage = f.reader.listSystemLogPage(undefined, { offset: boundary, limit: 1 });
+    const catalogPage = f.reader.listSystemLogPage(undefined, { offset: boundary + 1, limit: 1 });
+    expect(profilePage).toEqual({ items: [legacy.items[boundary]], totalCount: legacy.items.length });
+    expect(profilePage.items[0]!.detail).toContain("تم تحديث رقم الهاتف");
+    expect(catalogPage).toEqual({ items: [legacy.items[boundary + 1]], totalCount: legacy.items.length });
+    expect(catalogPage.items[0]!.id).toBe("inventory-item-tied-catalog");
+  });
   it("matches legacy metadata grouping, filters and profile/catalog behavior without legacy money tables", async () => {
     const f = await fixture(key);
     f.db.prepare("INSERT INTO inventory_item_definition(id,name,item_type,is_active,created_at,updated_at) VALUES ('catalog','Catalog','ASSET',1,?,?)").run(now, now);

@@ -96,3 +96,31 @@ This reader alone does not establish issue 558 readiness or CI-final acceptance.
 Applied wisdom: deterministic gated FIFO proof; API timestamp bounds stay instants,
 while client date-range builders own inclusive local end-of-day expansion.
 Architecture review remains parent-owned and scoped to this read interface.
+
+## Bounded review correction
+
+Correction base 4471fd8123b93393380ea438a0174d06033aa499.
+The initial debate and code-review reports found no actionable implementation
+defect. The parent accepted a stronger discriminating test for tied profile/catalog
+ordering and paging, not a claimed current defect. The older metadata parity test
+already inserts both families together; the new scenario adds explicit independent
+order assertions and a page boundary containing a two-row profile transaction group.
+
+Source inspection and native execution establish profile-before-catalog at an
+equal timestamp. The legacy builder emits user_profile_history before catalog
+definitions, and the current reader rank agrees. Review wording that claimed
+catalog-before-profile does not match this source. No production change is needed.
+
+The new scenario runs in both existing plain/keyed native modes, uses equal
+created_at and updated_at values at insertion, compares full unfiltered output to
+the compatible legacy projection, and checks one-item pages on both sides of the
+profile/catalog group boundary. Two profile rows must remain together.
+
+Negative proof temporarily swaps only these two reader family ranks. The new
+order assertion fails in both native modes, while the legacy expectation remains
+unchanged. The mutation is restored before affected tests, typecheck and lint.
+This is mutation discrimination, not evidence of an original implementation bug.
+Raw results and source fingerprints live under
+.scratch/reviews/558-systemlog-tie. Only this test and design note are committed.
+The parent owns one fresh combined-delta review that carries forward unchanged
+initial conclusions. Default mounting and CI-final acceptance remain pending.
