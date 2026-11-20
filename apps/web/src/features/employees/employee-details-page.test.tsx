@@ -22,6 +22,7 @@ vi.mock("@/features/employees/employee-earnings-queries", () => ({
   useApproveEmployeeEarningMutation: () => ({ mutateAsync: approveEarning, isPending: false }),
   useEmployeeEarningsQuery: () => ({ data: { items: earningHistoryItems }, isPending: false, isError: false, isFetching: false, error: null, refetch: vi.fn() }),
 }))
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: () => null }))
 vi.mock("@/features/session/use-session-query", () => ({
   useSessionQuery: () => ({ data: { user: sessionUser } }),
 }))

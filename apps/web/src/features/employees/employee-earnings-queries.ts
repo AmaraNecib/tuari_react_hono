@@ -1,5 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import type { AppError, EmployeeEarning, EmployeeEarningApprovalInput } from "@tuari/contracts"
+import type {
+  AppError,
+  EmployeeEarning,
+  EmployeeEarningApprovalInput,
+  EmployeePayrollAdvanceOffsetInput,
+  EmployeePayrollAdvanceRepayInput,
+  EmployeePayrollCashRecordInput,
+} from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/workspace-mutations"
 import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
@@ -16,6 +23,11 @@ export const employeeEarningsQueryKeys = {
     ...employeeEarningsQueryKeys.root(userId),
     "list",
     employeeId ?? "all",
+  ] as const,
+  payrollRoot: (userId: string) => ["phase1", "workspace-domain", "employee-payroll", userId] as const,
+  payroll: (userId: string, employeeId: string) => [
+    ...employeeEarningsQueryKeys.payrollRoot(userId),
+    employeeId,
   ] as const,
 }
 
@@ -40,6 +52,49 @@ export function useEmployeeEarningsQuery(employeeId?: string) {
     key: (userId) => employeeEarningsQueryKeys.list(userId ?? "anonymous", employeeId),
     queryFn: () => rpcClient.employeeEarningsList(employeeId ? { employeeId } : undefined),
   })
+}
+
+export function useEmployeePayrollQuery(employeeId: string) {
+  return useWorkspaceScopedQuery({
+    key: (userId) => employeeEarningsQueryKeys.payroll(userId ?? "anonymous", employeeId),
+    queryFn: () => rpcClient.employeePayrollGet({ employeeId }),
+  })
+}
+
+function usePayrollMutation<A>(
+  mutationKey: string,
+  mutationFn: (input: A) => Promise<unknown>,
+) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["employee-payroll", mutationKey],
+    mutationFn,
+    onMutate: () => ({ userId: getCachedSessionUserId(queryClient) }),
+    onSuccess: async (_result, input, context) => {
+      const userId = context.userId
+      if (userId === null) return
+      const employeeId = (input as { employeeId: string }).employeeId
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: employeeEarningsQueryKeys.payroll(userId, employeeId) }),
+        queryClient.invalidateQueries({ queryKey: employeeEarningsQueryKeys.root(userId) }),
+        invalidateWorkspaceDomains(queryClient, userId, { debtsSummary: true, debtAccounts: true, salaryPayments: true }),
+        queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.debtsDetail(userId) }),
+      ])
+    },
+  })
+}
+
+export function useRecordEmployeePayrollCashMutation() {
+  return usePayrollMutation("cash", (input: EmployeePayrollCashRecordInput) => rpcClient.employeePayrollCashRecord(input))
+}
+
+export function useRepayEmployeePayrollAdvanceMutation() {
+  return usePayrollMutation("repay", (input: EmployeePayrollAdvanceRepayInput) => rpcClient.employeePayrollAdvanceRepay(input))
+}
+
+export function useOffsetEmployeePayrollAdvanceMutation() {
+  return usePayrollMutation("offset", (input: EmployeePayrollAdvanceOffsetInput) => rpcClient.employeePayrollAdvanceOffset(input))
 }
 
 export function useApproveEmployeeEarningMutation() {

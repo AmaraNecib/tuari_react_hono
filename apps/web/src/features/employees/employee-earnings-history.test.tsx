@@ -13,6 +13,7 @@ vi.mock("@/lib/orpc-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/orpc-client")>()
   return { ...actual, rpcClient: { ...actual.rpcClient, employeeEarningsList: mocks.earningsList } }
 })
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: () => null }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: mocks.session }))
 
 import { EmployeeEarningsHistory } from "./employee-earnings-history"

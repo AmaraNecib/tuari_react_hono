@@ -11,6 +11,7 @@ import type { DebtAccount, DebtEntry, SalaryProjectAssignmentWindow } from "@tua
 import { getSalaryPeriodLabelKey } from "@/features/app-shell/salary-table-primitives"
 import type { SalaryProjectOption } from "./employee-earning-approval-form"
 import { EmployeeEarningsHistory } from "./employee-earnings-history"
+import { EmployeePayrollPanel } from "./employee-payroll-panel"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { classifyWorkforceRole } from "./role-classification"
@@ -246,6 +247,7 @@ export function EmployeeDetailsPage({
               {t("earnings.historyTitle")}
             </h3>
             <EmployeeEarningsHistory employeeId={employee.id} employeeNames={employeeNames} projectNames={projectNames} />
+            <EmployeePayrollPanel employeeId={employee.id} />
           </section>
 
           <div className="overflow-hidden rounded-xl border border-border/70 bg-sidebar dark:bg-surface" dir="rtl">

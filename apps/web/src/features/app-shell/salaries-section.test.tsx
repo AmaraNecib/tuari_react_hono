@@ -15,6 +15,7 @@ vi.mock("@/features/employees/employee-earnings-queries", () => ({
   useApproveEmployeeEarningMutation: () => ({ mutateAsync: approveAsync, isPending: false }),
   useEmployeeEarningsQuery: () => ({ data: { items: earnings }, isPending: false, isError: false }),
 }))
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: ({ employeeId }: { employeeId: string }) => <div data-testid="payroll-panel" data-employee-id={employeeId} /> }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: sessionUser } }) }))
 vi.mock("@/components/ui/date-picker", () => ({
   DatePicker: ({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) => (
@@ -83,6 +84,14 @@ describe("SalariesSection (#412)", () => {
 
   afterEach(() => {
     cleanup()
+  })
+
+  it("opens payroll controls for the selected worker on the salary earnings tab", () => {
+    renderSection()
+    fireEvent.click(screen.getByRole("tab", { name: "سجل الأجور المعتمدة" }))
+
+    expect((screen.getByLabelText("الموظف") as HTMLSelectElement).value).toBe("worker-1")
+    expect(screen.getByTestId("payroll-panel").getAttribute("data-employee-id")).toBe("worker-1")
   })
 
   it("routes approval from the worker table without treating it as a payment", () => {

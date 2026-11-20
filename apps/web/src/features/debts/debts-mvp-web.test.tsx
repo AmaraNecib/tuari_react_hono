@@ -66,6 +66,8 @@ vi.mock("@/features/session/use-session-query", () => ({
   useSessionQuery: () => ({ data: { user: { id: "user-1" } } }),
 }))
 
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: () => null }))
+
 vi.mock("@/features/employees/employee-earnings-queries", async (importActual) => ({
   ...(await importActual<typeof import("@/features/employees/employee-earnings-queries")>()),
   useApproveEmployeeEarningMutation: () => ({ isPending: false, mutateAsync: vi.fn(async () => ({})) }),

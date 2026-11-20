@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { SalariesSection } from "./salaries-section"
 import { parseSalariesSearch, patchSalariesSearch, type SalariesRouteSearch } from "./salaries-route-search"
 
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: () => null }))
+
 const projects = [{ id: "project-1", name: "مشروع" }]
 const workers = [{
   employeeId: "worker-1", employeeName: "العامل", employeePhone: "0555000001", employeeRole: "عامل",
