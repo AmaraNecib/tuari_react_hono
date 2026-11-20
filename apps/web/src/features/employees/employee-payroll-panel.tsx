@@ -293,7 +293,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
             ))}
           </div>
           {action === "offset" ? <p className="text-sm text-muted-foreground">{t("payroll.offsetOptions")}</p> : null}
-          <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" onSubmit={submit}>
+          <form className="grid min-w-0 grid-cols-1 gap-3 [&>label]:min-w-0 sm:grid-cols-2 xl:grid-cols-4" onSubmit={submit}>
             {action !== "repay" ? (
               <label className="space-y-1 text-sm">
                 <span>{t("payroll.earning")}</span>
