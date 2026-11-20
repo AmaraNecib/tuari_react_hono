@@ -820,7 +820,7 @@ export const ar = {
     salaries: {
       recentTitle: "آخر دفعات الرواتب",
       recentEmpty: "لا توجد دفعات راتب مسجلة بعد.",
-      workersTitle: "العاملون الجاهزون لتسجيل دفعة",
+      workersTitle: "مراجع أجور العاملين",
       workersEmpty: "لا يوجد عاملون بإعدادات راتب جاهزة حاليًا.",
       paymentDate: "تاريخ الدفع",
       days: "الأيام",
@@ -1442,12 +1442,13 @@ export const ar = {
     },
     externalsPage: {
       title: "الجهات الخارجية",
-      description: "قائمة مستقلة للجهات الخارجية مع إجمالي الرصيد وعدد حالات الدين المنفصلة لكل جهة.",
+      description: "قائمة الجهات الخارجية مع إجمالي الرصيد وعدد حسابات الدين لكل جهة.",
       addButton: "إضافة جهة خارجية",
       empty: "لا توجد أطراف خارجية بعد.",
       openFile: "فتح الملف",
-      caseUnit: "حالة",
-      openCases: "مفتوحة",
+      accounts: "الحسابات",
+      accountUnit: "حساب",
+      openAccounts: "مفتوحة",
     },
     dashboardPage: {
       outstandingDebts: "الديون المتبقية",

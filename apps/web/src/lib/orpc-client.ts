@@ -1,7 +1,7 @@
 import { createORPCClient, onError } from "@orpc/client"
 import { RPCLink } from "@orpc/client/fetch"
 import { createTanstackQueryUtils } from "@orpc/tanstack-query"
-import type { AppClient } from "@tuari/contracts"
+import type { AppClient, FinancialClient } from "@tuari/contracts"
 
 import { desktopApiFetch } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
@@ -37,5 +37,8 @@ export const rpcLink = new RPCLink({
 })
 
 export const rpcClient: AppClient = createORPCClient(rpcLink)
+// Financial routes are mounted by the parent integration lane; bind their exact
+// contract to the existing authenticated transport without widening AppClient.
+export const financialClient: FinancialClient = createORPCClient<{ financial: FinancialClient }>(rpcLink).financial
 /** Configured oRPC client for API calls. */
 export const orpc = createTanstackQueryUtils(rpcClient)

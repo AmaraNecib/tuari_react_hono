@@ -6,8 +6,12 @@ import { useTranslation } from "react-i18next"
 import { useMobileLayout } from "@/hooks/use-mobile-layout"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
-import { useEmployeesQuery, useProjectsQuery, useWarehousesQuery, useDebtAccountsQuery, useExternalCounterpartiesQuery } from "./workspace-queries"
-import { useInventoryItemDefinitionsQuery, useInventoryInvoiceGroupsQuery } from "@/features/inventory/inventory-hooks"
+import { useEmployeesQuery, useProjectsQuery, useWarehousesQuery, useExternalCounterpartiesQuery } from "./workspace-queries"
+import { useInventoryItemDefinitionsQuery } from "@/features/inventory/inventory-hooks"
+import { useExactDebtSummary } from "@/features/debts/debts-exact-queries"
+import { useExactInventoryInvoices } from "@/features/inventory/inventory-exact-queries"
+import { Money } from "@tuari/contracts"
+import { financialClient } from "@/lib/orpc-client"
 import { UserJourneyTour } from "@/hooks/use-user-journey"
 import { SearchDialog, type SearchItem } from "@/components/ui/search-dialog"
 import { KeyboardShortcutsHelp } from "@/components/ui/keyboard-shortcuts-provider"
@@ -32,7 +36,6 @@ import { WorkspaceBreadcrumbs } from "./workspace-breadcrumbs"
 import { UpdateRestartModal, UpdateRestartBadge } from "@/features/update"
 import { WorkspaceSidebar } from "./workspace-sidebar"
 import { WorkspaceLink, workspaceRoutes } from "@/router/navigation"
-import { formatDebtAmount, getDebtAccountBalanceDisplay } from "@/features/debts/debt-utils"
 
 /** Main app shell with sidebar, header, and content area. */
 /**
@@ -122,10 +125,10 @@ export function HomeViewSignedInShell({
   const employeesQuery = useEmployeesQuery({ enabled: searchOpen })
   const projectsQuery = useProjectsQuery({ enabled: searchOpen })
   const warehousesQuery = useWarehousesQuery({ enabled: searchOpen })
-  const debtAccountsQuery = useDebtAccountsQuery({ enabled: searchOpen })
+  const debtAccountsQuery = useExactDebtSummary(financialClient.debts, { enabled: searchOpen })
   const externalsQuery = useExternalCounterpartiesQuery({ enabled: searchOpen })
   const inventoryQuery = useInventoryItemDefinitionsQuery({ enabled: searchOpen })
-  const invoicesQuery = useInventoryInvoiceGroupsQuery({ enabled: searchOpen })
+  const invoicesQuery = useExactInventoryInvoices(financialClient.inventory, { enabled: searchOpen })
 
   // Build the unified search corpus + Fuse index lazily — they only exist
   // while the dialog is open and rebuild only when the query DATA changes,
@@ -235,22 +238,22 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = `/warehouses/${w.id}` },
     }))
 
-    const debts: SearchItem[] = (debtAccountsQuery.data?.items ?? []).map((d) => {
+    const debts: SearchItem[] = (debtAccountsQuery.data?.accounts ?? []).map((account) => {
       const empList = employeesQuery.data?.items ?? []
       const extList = externalsQuery.data?.items ?? []
-      const partyName = d.partyType === "INTERNAL_WORKER"
-        ? empList.find((e) => e.id === d.workerId)
-        : extList.find((e) => e.id === d.externalCounterpartyId)
+      const partyName = account.partyType === "INTERNAL_WORKER"
+        ? empList.find((employee) => employee.id === account.workerId)
+        : extList.find((counterparty) => counterparty.id === account.externalCounterpartyId)
       const name = partyName && "firstName" in partyName
         ? `${partyName.firstName} ${partyName.lastName}`
         : partyName && "fullName" in partyName
           ? partyName.fullName
           : t("search.unknownParty")
-      const balance = getDebtAccountBalanceDisplay(d)
+      const phrase = account.direction === "PAYABLE" ? t("search.debtOwedByUs") : t("search.debtOwedToUs")
       return {
-        id: `debt-${d.id}`,
+        id: `debt-${account.id}`,
         title: name,
-        description: `${balance.phrase} ${formatDebtAmount(balance.amount)} ${t("search.currency")}`,
+        description: `${phrase} ${Money.parse(account.currentBalance).format({ grouped: true })} ${t("search.currency")}`,
         category: t("debts.label"),
         action: () => { window.location.href = "/debts" },
       }
@@ -272,7 +275,7 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = "/inventory" },
     }))
 
-    const invoices: SearchItem[] = (invoicesQuery.data?.items ?? []).map((inv) => ({
+    const invoices: SearchItem[] = (invoicesQuery.data ?? []).map((inv) => ({
       id: `invgrp-${inv.id}`,
       title: inv.invoiceNumber ?? t("search.unknownParty"),
       description: inv.supplierName ?? undefined,

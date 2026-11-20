@@ -14,15 +14,15 @@ import type {
   SystemLogEntry,
   Warehouse,
   WarehouseManagerOwnershipHistory,
-  WorkspaceSnapshot,
+  WorkspaceMetadata,
 } from "@tuari/contracts"
 
 import { useSessionQuery } from "@/features/session/use-session-query"
-import { rpcClient } from "@/lib/orpc-client"
+import { financialClient, rpcClient } from "@/lib/orpc-client"
 import { resolveDayRangeBounds } from "@/lib/date-range"
 import { workspaceQueryKeys } from "./workspace-keys"
 
-export type DemoWorkspace = WorkspaceSnapshot
+export type DemoWorkspace = WorkspaceMetadata
 
 /**
  * The snapshot query key — the single RPC backing the shell composite.
@@ -283,7 +283,7 @@ export function useCompositeWorkspaceQuery({ enabled = true }: { enabled?: boole
   return useWorkspaceScopedQuery({
     key: workspaceQueryKeys.workspaceSnapshot,
     enabled,
-    queryFn: () => rpcClient.workspaceSnapshot(),
+    queryFn: () => financialClient.metadata(),
   })
 }
 

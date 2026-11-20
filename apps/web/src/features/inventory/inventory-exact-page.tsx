@@ -22,8 +22,8 @@ export const locationInput = (value: string, locations: ExactInventoryLocation[]
 
 type PaymentTarget = { kind: "purchase"; row: ExactInventoryInvoice } | { kind: "outbound"; row: ExactInventoryOutboundView }
 
-/** Exact purchase, stock, outbound and charge screens. Injected only into the opt-in application. */
-export function ExactInventoryPage({ client, locations, parties }: { client: ExactInventoryClient; locations: ExactInventoryLocation[]; parties: ExactInventoryParty[] }) {
+/** Exact purchase, stock, outbound and charge screens for the authenticated workspace. */
+export function ExactInventoryPage({ client, locations, parties, initialMovement = false }: { client: ExactInventoryClient; locations: ExactInventoryLocation[]; parties: ExactInventoryParty[]; initialMovement?: boolean }) {
   const { t, i18n } = useTranslation()
   const groups = useExactInventoryInvoices(client)
   const definitions = useExactInventoryDefinitions(client)
@@ -37,7 +37,7 @@ export function ExactInventoryPage({ client, locations, parties }: { client: Exa
   const contribution = useExactProjectContribution(client, project || null)
   const mutation = useExactInventoryAction(client)
   const [purchase, setPurchase] = useState(false)
-  const [movement, setMovement] = useState(false)
+  const [movement, setMovement] = useState(initialMovement)
   const [payment, setPayment] = useState<PaymentTarget | null>(null)
   const [charge, setCharge] = useState<{ row: ExactInventoryCharge; kind: "updateCharge" | "voidCharge" } | null>(null)
   const [saved, setSaved] = useState(false)

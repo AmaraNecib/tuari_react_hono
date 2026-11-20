@@ -28,7 +28,7 @@ import type { ReactNode } from "react"
 
 import { AppPreferencesProvider } from "@/features/preferences/preferences"
 import { HomeView, type HomeViewPage } from "../home-view"
-import type { InventoryInvoiceGroupDetail, WorkspaceSnapshot } from "@tuari/contracts"
+import type { InventoryInvoiceGroupDetail, WorkspaceMetadata } from "@tuari/contracts"
 
 // ─── Hoisted: navigateMock + AppMutationError must exist before vi.mock factories ───
 const { navigateMock, AppMutationError } = vi.hoisted(() => {
@@ -69,7 +69,7 @@ const mockState: {
   setupStatus: { hasUsers: boolean; requiresSetupKey?: boolean } | undefined
   setupPending: boolean
   setupError: Error | null
-  workspaceData: WorkspaceSnapshot | undefined
+  workspaceData: WorkspaceMetadata | undefined
   workspacePending: boolean
   workspaceError: Error | null
   debtsSummaryError: boolean
@@ -568,12 +568,21 @@ vi.mock("@/features/inventory/transfer-history-hooks", () => ({
 
 // Debts pages own their data via feature-scoped queries. Keep the workspace
 // fixture fully offline so debts routes never race a real RPC request.
+vi.mock("@/features/debts/debts-exact-queries", () => ({
+  useExactDebtSummary: (_client: unknown, options?: { enabled?: boolean }) => {
+    if (options) searchState.debts = options.enabled
+    return {
+      data: mockState.debtsSummaryPending || mockState.debtsSummaryError ? undefined : { accounts: [], grossPayableDzd: "0.00", grossReceivableDzd: "0.00" },
+      isPending: mockState.debtsSummaryPending,
+      isError: mockState.debtsSummaryError,
+      refetch: vi.fn(),
+    }
+  },
+  useExactDebtDetail: () => ({ data: undefined, isPending: false, isError: false, refetch: vi.fn() }),
+  useExactDebtCommand: () => ({ isPending: false, isError: false, mutateAsync: vi.fn(), reset: vi.fn() }),
+}))
+
 vi.mock("@/features/debts/debts-queries", () => ({
-  useDebtsSummaryQuery: () => ({
-    data: { parties: [], debtAccounts: [] },
-    isPending: mockState.debtsSummaryPending,
-    isError: mockState.debtsSummaryError,
-  }),
   useDebtPartyDetailQuery: () => ({
     data: undefined,
     isPending: mockState.debtsSummaryPending,
@@ -586,13 +595,34 @@ vi.mock("@/features/debts/debts-queries", () => ({
   buildExternalCounterpartyRows: () => [],
 }))
 
+vi.mock("@/features/inventory/inventory-exact-queries", () => ({
+  useExactInventoryInvoices: (_client: unknown, options?: { enabled?: boolean }) => {
+    if (options) searchState.invoices = options.enabled
+    return { data: [], isPending: false, isError: false }
+  },
+  useExactInventoryDefinitions: () => ({ data: [], isPending: false, isError: false }),
+}))
+
+// HomeView tests pin composition and route intent. Exact page tests exercise
+// invoice details and payroll state through their own typed query seams.
+vi.mock("@/features/employees/employee-payroll-panel", () => ({
+  EmployeePayrollPanel: ({ employeeId }: { employeeId: string }) => <div data-payroll-employee={employeeId} />,
+}))
+vi.mock("@/features/invoices/invoices-exact-page", () => ({
+  ExactInvoicesPage: ({ initialInvoiceId }: { initialInvoiceId?: string }) => {
+    invoiceGroupQueryState.invoiceId = initialInvoiceId
+    invoiceGroupQueryState.enabled = Boolean(initialInvoiceId)
+    return <h1>{initialInvoiceId ?? "exact-invoices"}</h1>
+  },
+}))
+
 // ─── Helper: default workspace data ──────────────────────────────
-// Matches the WorkspaceSnapshot shape used throughout the test suite.
+// Matches the WorkspaceMetadata shape used throughout the test suite.
 
 export function makeWorkspaceData(
-  overrides?: Partial<WorkspaceSnapshot>,
-): WorkspaceSnapshot {
-  const data: Record<string, unknown> = {
+  overrides?: Partial<WorkspaceMetadata>,
+): WorkspaceMetadata {
+  const data: WorkspaceMetadata = {
     roles: [
       {
         id: "role-worker",
@@ -600,6 +630,7 @@ export function makeWorkspaceData(
         name: "عامل",
         description: "الدور التنفيذي الميداني ضمن فرق المشاريع.",
         isSystem: true,
+        permissions: [],
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -609,6 +640,7 @@ export function makeWorkspaceData(
         name: "مدير مشروع",
         description: "يشرف على فرق العمل ويقود المشاريع النشطة.",
         isSystem: true,
+        permissions: [],
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -618,6 +650,7 @@ export function makeWorkspaceData(
         name: "مدير مخزن",
         description: "يدير المستودعات النشطة.",
         isSystem: true,
+        permissions: [],
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -651,8 +684,6 @@ export function makeWorkspaceData(
       },
     ],
     externalCounterparties: [],
-    debtAccounts: [],
-    debtEntries: [],
     projects: [
       {
         id: "project-1",
@@ -686,6 +717,8 @@ export function makeWorkspaceData(
         startDate: "2026-03-13T10:00:00.000Z",
         endDate: null,
         notes: null,
+        actorUserId: null,
+        transactionId: null,
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -699,6 +732,8 @@ export function makeWorkspaceData(
         startDate: "2026-03-13T10:00:00.000Z",
         endDate: null,
         notes: null,
+        actorUserId: null,
+        transactionId: null,
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -707,28 +742,13 @@ export function makeWorkspaceData(
     employeeStateHistory: [],
     projectManagerOwnershipHistory: [],
     warehouseManagerOwnershipHistory: [],
-    salaryPayments: [
-      {
-        id: "salary-payment-1",
-        employeeId: "employee-worker-1",
-        paymentDate: "2026-03-18T08:00:00.000Z",
-        expectedAmountDzd: 4500,
-        actualAmountDzd: 5000,
-        periodType: "DAILY",
-        days: 1,
-        projectSplits: [],
-        note: "دفعة مع زيادة",
-        createdAt: "2026-03-18T08:00:00.000Z",
-        updatedAt: "2026-03-18T08:00:00.000Z",
-      },
-    ],
   }
 
   if (overrides) {
     Object.assign(data, overrides)
   }
 
-  return data as WorkspaceSnapshot
+  return data
 }
 
 // Initialize default workspace data
@@ -871,7 +891,7 @@ export function renderWorkspace(
     /** True to simulate the feature-scoped debts summary query loading. */
     debtsSummaryPending?: boolean
     /** Full workspace data override. */
-    workspaceData?: WorkspaceSnapshot | undefined
+    workspaceData?: WorkspaceMetadata | undefined
     /** Detail tab within a detail page (e.g. "finance"). */
     detailTab?: string
     /** Currently viewed employee id. */

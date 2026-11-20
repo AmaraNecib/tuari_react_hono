@@ -7,7 +7,6 @@ import { EmployeePayrollPanel } from "@/features/employees/employee-payroll-pane
 import { RecordTabs } from "@/features/shared/record-page-frame"
 import { EmployeeEarningsHistory } from "@/features/employees/employee-earnings-history"
 
-import { SalaryPaymentsTable, type SalaryPaymentRow } from "./salary-payments-table"
 import { SalariedWorkersTable, type SalariedWorkerRow } from "./salaried-workers-table"
 import { patchSalariesSearch, type SalariesRouteSearch } from "./salaries-route-search"
 import type { SalaryRoutePagination } from "./salary-route-pagination"
@@ -16,7 +15,6 @@ const DEFAULT_SEARCH: SalariesRouteSearch = { tab: "recent", page: 1, pageSize: 
 
 /** Salary tabs share route-backed pagination; each table keeps its own filters. */
 export function SalariesSection({
-  recentPayments,
   workers,
   employees,
   projects,
@@ -25,7 +23,6 @@ export function SalariesSection({
   routeSearch,
   onRouteSearchChange,
 }: {
-  recentPayments: SalaryPaymentRow[]
   workers: SalariedWorkerRow[]
   employees: Array<{ id: string; name: string }>
   projects: Array<{ id: string; name: string }>
@@ -37,7 +34,9 @@ export function SalariesSection({
   const { t } = useTranslation()
   const [localSearch, setLocalSearch] = useState(DEFAULT_SEARCH)
   const [payrollEmployeeId, setPayrollEmployeeId] = useState(() => workers[0]?.employeeId ?? "")
-  const search = routeSearch ?? localSearch
+  const rawSearch = routeSearch ?? localSearch
+  // Old recent-payment URLs now open the actual approved-earnings lifecycle.
+  const search = { ...rawSearch, tab: rawSearch.tab === "recent" ? "earnings" : rawSearch.tab }
   const updateSearch = (patch: Partial<Pick<SalariesRouteSearch, "tab" | "page" | "pageSize">>) => {
     if (onRouteSearchChange) {
       onRouteSearchChange(patch)
@@ -70,23 +69,11 @@ export function SalariesSection({
       <RecordTabs
         activeTab={search.tab}
         tabs={[
-          { id: "recent", label: t("salaries.recentTitle") },
           { id: "workers", label: t("salaries.workersTitle") },
           { id: "earnings", label: t("earnings.historyTitle") },
         ]}
         onChange={(tab) => updateSearch({ tab: tab as SalariesRouteSearch["tab"], page: 1 })}
       />
-
-      <div hidden={search.tab !== "recent"}>
-        <SalaryPaymentsTable
-          payments={recentPayments}
-          projects={projects}
-          onAddPayment={onAddPayment}
-          onEditSalary={onEditSalary}
-          routePagination={search.tab === "recent" ? routePagination : undefined}
-          onFilterChange={resetPageForFilter}
-        />
-      </div>
 
       <div hidden={search.tab !== "workers"}>
         <SalariedWorkersTable

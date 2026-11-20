@@ -103,14 +103,12 @@ describe("EmployeeEarningsHistory", () => {
           employees={[{ id: "employee-1", name: "عامل الرواتب" }]}
           onEditSalary={vi.fn()}
           projects={[{ id: "project-a", name: "مشروع ألف" }, { id: "project-b", name: "مشروع باء" }]}
-          recentPayments={[]}
           workers={[{
             employeeId: "employee-1",
             employeeName: "عامل الرواتب",
             employeePhone: "0555000001",
             employeeRole: "عامل",
             salaryReference: { period: "MONTHLY", amount: "50000.00" },
-            lastPaymentDate: null,
             projectAssignments: [],
           }]}
         />

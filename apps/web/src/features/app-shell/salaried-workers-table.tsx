@@ -1,4 +1,3 @@
-import { AppDate } from "@/components/app-date"
 import { CurrencyRun } from "@/features/shared/money-value"
 import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
 import { formatSalaryReferenceAmount } from "@/features/shared/exact-salary-reference-display"
@@ -36,7 +35,6 @@ export type SalariedWorkerRow = {
   employeePhone: string
   employeeRole: string
   salaryReference: { period: SalaryPeriodType; amount: string } | null
-  lastPaymentDate: string | null
   projectAssignments: SalaryProjectAssignmentWindow[]
 }
 
@@ -116,7 +114,6 @@ export function SalariedWorkersTable({
             <tr>
               <AppShellTableHeaderCell>{t("columns.name")}</AppShellTableHeaderCell>
               <AppShellTableHeaderCell>{t("salaries.currentSalary")}</AppShellTableHeaderCell>
-              <AppShellTableHeaderCell>{t("salaries.lastPaymentDate")}</AppShellTableHeaderCell>
               <AppShellTableHeaderCell className="text-end">{t("common.actions")}</AppShellTableHeaderCell>
             </tr>
           </AppShellTableHead>
@@ -142,11 +139,6 @@ export function SalariedWorkersTable({
                       <span className="text-[12.5px] text-ink-4">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-start text-[13px] text-ink-3">
-                    {worker.lastPaymentDate
-                      ? <AppDate value={worker.lastPaymentDate} />
-                      : <span className="text-ink-4">—</span>}
-                  </td>
                   <td className="px-4 py-3 text-end">
                     <AppShellActionGroup className="justify-end">
                       <Button size="xs" onClick={() => onAddPayment(worker.employeeId, worker.employeeName)}>
@@ -160,7 +152,7 @@ export function SalariedWorkersTable({
                 </AppShellTableRow>
               ))
             ) : (
-              <AppShellEmptyStateRow colSpan={4}>
+              <AppShellEmptyStateRow colSpan={3}>
                 {workers.length === 0 ? t("salaries.workersEmpty") : t("search.noResults")}
               </AppShellEmptyStateRow>
             )}

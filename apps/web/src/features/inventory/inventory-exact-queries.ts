@@ -10,8 +10,8 @@ export type ExactInventoryAction =
   | { kind: "createOutbound"; input: ExactInventoryOutboundInput }
   | { kind: "updateCharge"; input: ExactInventoryChargeUpdate }
   | { kind: "voidCharge"; input: ExactInventoryChargeVoid }
-export function useExactInventoryInvoices(client: ExactInventoryClient) {
-  return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "invoices"], queryFn: () => client.listInvoices() })
+export function useExactInventoryInvoices(client: ExactInventoryClient, { enabled = true }: { enabled?: boolean } = {}) {
+  return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "invoices"], enabled, queryFn: () => client.listInvoices() })
 }
 export function useExactInventoryDefinitions(client: ExactInventoryClient) {
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "definitions"], queryFn: () => client.definitions() })

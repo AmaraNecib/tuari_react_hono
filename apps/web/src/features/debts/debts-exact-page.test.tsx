@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ExactDebtAccount, ExactDebtDetail, ExactDebtsClient } from "@tuari/contracts"
 import { sessionQueryKey, workspaceQueryKeys } from "@/features/app-shell/workspace-keys"
 import { setMoneyGrouping } from "@/features/preferences/money-format-preference"
-import { ExactDebtsPage } from "./debts-exact-page"
+import { ExactDebtsPage, type ExactDebtPartyOption } from "./debts-exact-page"
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: "operator" } } }) }))
 const party = { id: "00000000-0000-4000-8000-000000000999", label: "المورد أحمد", partyType: "EXTERNAL_COUNTERPARTY" as const }
 const date = "2026-11-10T10:00:00.000Z"
@@ -24,7 +24,7 @@ function fixture() {
   query.setQueryData(sessionQueryKey, { user: { id: "operator", name: "Operator", phone: "0612345678", version: "0.0.0" } })
   query.setQueryData(workspaceQueryKeys.workspaceSnapshot("operator"), { marker: "numeric-unchanged" })
   const view = render(<QueryClientProvider client={query}><ExactDebtsPage client={client as ExactDebtsClient} parties={[party]} /></QueryClientProvider>)
-  return { client, query, unmount: view.unmount, remount: () => render(<QueryClientProvider client={query}><ExactDebtsPage client={client as ExactDebtsClient} parties={[party]} /></QueryClientProvider>), switchClient: (next: ExactDebtsClient) => view.rerender(<QueryClientProvider client={query}><ExactDebtsPage client={next} parties={[party]} /></QueryClientProvider>) }
+  return { client, query, unmount: view.unmount, remount: () => render(<QueryClientProvider client={query}><ExactDebtsPage client={client as ExactDebtsClient} parties={[party]} /></QueryClientProvider>), switchClient: (next: ExactDebtsClient) => view.rerender(<QueryClientProvider client={query}><ExactDebtsPage client={next} parties={[party]} /></QueryClientProvider>), switchScope: (next: ExactDebtPartyOption) => view.rerender(<QueryClientProvider client={query}><ExactDebtsPage client={client as ExactDebtsClient} parties={[next]} scopedParty={next} /></QueryClientProvider>) }
 }
 async function openAccount() {
   fireEvent.click(await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ }))
@@ -38,6 +38,32 @@ describe("injected exact debt page", () => {
     expect(screen.getAllByText("90,071,992,547,409.93").length).toBeGreaterThan(2)
     expect(screen.getByText("0.3")).toBeTruthy()
     expect(query.getQueryData(workspaceQueryKeys.workspaceSnapshot("operator"))).toEqual({ marker: "numeric-unchanged" })
+  })
+  it("filters accounts and computes scoped totals exactly for one party", async () => {
+    const { client, query } = fixture()
+    const otherAccount = { ...account, id: "other-account", workerId: "worker-1", externalCounterpartyId: null, partyType: "INTERNAL_WORKER" as const, currentBalance: "0.07" }
+    client.summary.mockResolvedValue({ accounts: [account, otherAccount], grossPayableDzd: "90071992547410.00", grossReceivableDzd: "0.00" })
+    const scoped = { id: party.id, label: party.label, partyType: party.partyType }
+    render(<QueryClientProvider client={query}><ExactDebtsPage client={client as ExactDebtsClient} parties={[party]} scopedParty={scoped} /></QueryClientProvider>)
+    expect((await screen.findAllByText("90,071,992,547,409.93")).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/علي بن حميد/)).toBeNull()
+  })
+  it("does not retain a selected ledger after switching the scoped party", async () => {
+    const { switchScope } = fixture()
+    await openAccount()
+    switchScope({ id: "worker-1", label: "علي بن حميد", partyType: "INTERNAL_WORKER" })
+    expect(screen.queryByRole("region", { name: "جدول حركات الدين" })).toBeNull()
+    expect(screen.queryByText("اتفاق المورد")).toBeNull()
+  })
+  it("hides generic payment, correction, and void actions for producer-owned originals", async () => {
+    const { client } = fixture()
+    client.detail.mockResolvedValue({ account, entries: [{ ...entry, producerType: "PAYROLL_EARNINGS", producerId: "earning-1" }] })
+    await openAccount()
+    const ledger = screen.getByRole("region", { name: "جدول حركات الدين" })
+    expect(within(ledger).queryByRole("button", { name: "تسجيل دفعة" })).toBeNull()
+    expect(within(ledger).queryByRole("button", { name: "تصحيح المبلغ" })).toBeNull()
+    expect(within(ledger).queryByRole("button", { name: "إلغاء الحركة" })).toBeNull()
+    expect((screen.getByRole("button", { name: "تسوية الحساب بالكامل" }) as HTMLButtonElement).disabled).toBe(true)
   })
   it("submits localized payment as canonical text, with per-obligation maximum and first-click full amount", async () => {
     const { client } = fixture()

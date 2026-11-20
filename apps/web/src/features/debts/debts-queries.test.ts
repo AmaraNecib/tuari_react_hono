@@ -2,13 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type {
   DebtPartySummaryItem,
   DebtsSummary,
+  ExactDebtAccount,
   ExternalCounterparty,
 } from "@tuari/contracts"
 
 const mocks = vi.hoisted(() => ({
   useQuery: vi.fn(),
   useSessionQuery: vi.fn(),
-  debtsSummary: vi.fn(),
   debtPartyDetail: vi.fn(),
   debtEntriesList: vi.fn(),
 }))
@@ -24,7 +24,6 @@ vi.mock("@/features/session/use-session-query", () => ({
 
 vi.mock("@/lib/orpc-client", () => ({
   rpcClient: {
-    debtsSummary: mocks.debtsSummary,
     debtPartyDetail: mocks.debtPartyDetail,
     debtEntriesList: mocks.debtEntriesList,
   },
@@ -55,7 +54,7 @@ import {
   buildDebtsHubRows,
   buildExternalCounterpartyRows,
   useDebtPartyDetailQuery,
-  useDebtsSummaryQuery,
+  type ExactDebtSummary,
 } from "./debts-queries"
 
 const workerParty: DebtPartySummaryItem = {
@@ -268,105 +267,40 @@ describe("buildDebtsHubRows", () => {
 })
 
 describe("buildExternalCounterpartyRows", () => {
-  it("joins summary balances with base counterparty data", () => {
-    const rows = buildExternalCounterpartyRows(makeSummary([externalParty]), counterparties)
+  const exactAccount = (overrides: Partial<ExactDebtAccount>): ExactDebtAccount => ({
+    id: "account-1", partyType: "EXTERNAL_COUNTERPARTY", externalCounterpartyId: "external-1", workerId: null,
+    direction: "PAYABLE", currency: "DZD", status: "OPEN", currentBalance: "-90071992547409.93", settledAt: null,
+    note: null, actorUserId: null, actorLabel: null, transactionId: null,
+    createdAt: "2026-03-27T10:00:00.000Z", updatedAt: "2026-03-27T10:00:00.000Z", ...overrides,
+  })
+  const exactSummary = (accounts: ExactDebtAccount[]): ExactDebtSummary => ({ accounts, grossPayableDzd: "0.00", grossReceivableDzd: "0.00" })
+
+  it("joins metadata and sums only matching external party accounts with exact cents", () => {
+    const rows = buildExternalCounterpartyRows(exactSummary([
+      exactAccount({}),
+      exactAccount({ id: "account-2", direction: "RECEIVABLE", currentBalance: "0.01" }),
+      exactAccount({ id: "wrong-party-type", partyType: "INTERNAL_WORKER", workerId: "external-1", externalCounterpartyId: null, currentBalance: "500.00" }),
+      exactAccount({ id: "wrong-party-id", externalCounterpartyId: "external-3", currentBalance: "800.00" }),
+    ]), counterparties)
 
     expect(rows).toHaveLength(2)
     expect(rows[0]).toMatchObject({
-      id: "external-1",
-      fullName: "شركة المورد",
-      note: "ملاحظة",
-      openCaseCount: 1,
-      phone: "0555000000",
-      totalBalanceDzd: -700,
-      totalCaseCount: 2,
+      id: "external-1", fullName: "شركة المورد", note: "ملاحظة", phone: "0555000000",
+      totalBalanceDzd: "-90071992547409.92", openAccountCount: 2, totalAccountCount: 2,
     })
     expect(rows[1]).toMatchObject({
-      id: "external-2",
-      fullName: "مورد بدون ديون",
-      openCaseCount: 0,
-      totalBalanceDzd: 0,
-      totalCaseCount: 0,
+      id: "external-2", fullName: "مورد بدون ديون", totalBalanceDzd: "0.00", openAccountCount: 0, totalAccountCount: 0,
     })
   })
 
-  it("aggregates multi-account counts per counterparty", () => {
-    const multi: DebtPartySummaryItem = {
-      ...externalParty,
-      externalCounterpartyId: "external-1",
-      openDebtCasesCount: 3,
-      settledDebtCasesCount: 2,
-    }
-    const rows = buildExternalCounterpartyRows(makeSummary([multi]), counterparties)
-
-    expect(rows[0]).toMatchObject({ openCaseCount: 3, totalCaseCount: 5 })
+  it("keeps empty metadata parties visible and sorts them by Arabic name", () => {
+    const rows = buildExternalCounterpartyRows(exactSummary([]), counterparties)
+    expect(rows.map(row => row.id)).toEqual(["external-1", "external-2"])
+    expect(rows.every(row => row.totalBalanceDzd === "0.00" && row.openAccountCount === 0 && row.totalAccountCount === 0)).toBe(true)
   })
 
-  it("sorts by Arabic name", () => {
-    const rows = buildExternalCounterpartyRows(makeSummary([]), counterparties)
-    expect(rows.map((row) => row.id)).toEqual(["external-1", "external-2"])
-  })
-
-  it("handles an empty counterparties list", () => {
-    const rows = buildExternalCounterpartyRows(makeSummary([externalParty]), [])
-    expect(rows).toEqual([])
-  })
-
-  it("handles an empty summary", () => {
-    const rows = buildExternalCounterpartyRows(makeSummary([]), counterparties)
-    expect(
-      rows.every(
-        (row) =>
-          row.totalBalanceDzd === 0 && row.openCaseCount === 0 && row.totalCaseCount === 0,
-      ),
-    ).toBe(true)
-  })
-})
-
-describe("useDebtsSummaryQuery", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    mocks.useSessionQuery.mockReturnValue({ data: { user: { id: "user-1" } } })
-    mocks.useQuery.mockImplementation((options) => options)
-  })
-
-  it("reads the debtsSummary RPC with the invalidated workspace-domain key", () => {
-    useDebtsSummaryQuery()
-
-    const options = readQueryOptions<{
-      queryKey: readonly unknown[]
-      queryFn: () => Promise<DebtsSummary>
-      enabled: boolean
-    }>()
-    expect(options.queryKey).toEqual(["phase1", "workspace-domain", "debts-summary", "user-1"])
-    expect(options.enabled).toBe(true)
-  })
-
-  it("returns the summary payload", async () => {
-    const summary = { parties: [workerParty], debtAccounts: [] }
-    mocks.debtsSummary.mockResolvedValue(summary)
-    useDebtsSummaryQuery()
-
-    await expect(readQueryOptions().queryFn()).resolves.toEqual(summary)
-  })
-
-  it("propagates RPC failures instead of swallowing them", async () => {
-    const error = new Error("network down")
-    mocks.debtsSummary.mockRejectedValue(error)
-    useDebtsSummaryQuery()
-
-    await expect(readQueryOptions().queryFn()).rejects.toBe(error)
-  })
-
-  it("disables the query while no session user is present", () => {
-    mocks.useSessionQuery.mockReturnValue({ data: { user: null } })
-    useDebtsSummaryQuery()
-
-    expect(readQueryOptions().enabled).toBe(false)
-  })
-  it("honours an explicit enabled: false override", () => {
-    useDebtsSummaryQuery({ enabled: false })
-    expect(readQueryOptions().enabled).toBe(false)
+  it("returns no rows when there are no metadata counterparties", () => {
+    expect(buildExternalCounterpartyRows(exactSummary([exactAccount({})]), [])).toEqual([])
   })
 })
 
