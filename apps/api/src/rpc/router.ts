@@ -16,6 +16,9 @@ import type { ExpensesModule } from "../modules/expenses/expenses-module.interfa
 import type { ProjectCostService } from "../modules/project-cost/project-cost.service";
 import { getCurrentUser, type RpcContext } from "./context";
 import { createRpcMiddleware } from "./rpc-middleware";
+import { createPayrollRouter } from "./payroll-router";
+import type { PayrollService } from "../modules/workforce/payroll.service";
+import type { PayrollLifecycle } from "../modules/workforce/payroll-lifecycle";
 import { createWorkforceHandlers } from "./handlers/workforce";
 import { createOperationsHandlers } from "./handlers/operations";
 import { createFinanceHandlers } from "./handlers/finance";
@@ -40,6 +43,11 @@ import type { BackupService } from "../modules/backup/backup.types";
 import type { BackupFolderPersister } from "../infrastructure/config/backup-folder-persister";
 
 type RouterDependencies = {
+  /** Caller-owned exact capability. Absence must never revive numeric payroll. */
+  payroll?: {
+    service: PayrollService;
+    getEmployeePayroll: (employeeId: string) => PayrollLifecycle;
+  };
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
   companyService: CompanyService;
   workforceService: WorkforceService;
@@ -93,12 +101,17 @@ export function createRouter(
   };
 
   const payrollUnavailable = () => { throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Exact payroll composition is not configured" }); };
-  const allHandlers = {
-    ...baseHandlers,
+  const payrollHandlers = dependencies.payroll
+    ? createPayrollRouter(dependencies.payroll.service, dependencies.payroll.getEmployeePayroll, m)
+    : {
     employeePayrollGet: os.employeePayrollGet.handler(async params => employeePayrollOutputSchema.parse(await m.queryAuth(async () => payrollUnavailable())(params))),
     employeePayrollCashRecord: os.employeePayrollCashRecord.handler(async params => payrollCashRecordSchema.parse(await m.mutationAudit(() => payrollUnavailable(), error => error)(params))),
     employeePayrollAdvanceRepay: os.employeePayrollAdvanceRepay.handler(async params => payrollRepaymentRecordSchema.parse(await m.mutationAudit(() => payrollUnavailable(), error => error)(params))),
     employeePayrollAdvanceOffset: os.employeePayrollAdvanceOffset.handler(async params => payrollOffsetRecordSchema.parse(await m.mutationAudit(() => payrollUnavailable(), error => error)(params))),
+  };
+  const allHandlers = {
+    ...baseHandlers,
+    ...payrollHandlers,
     ...createSystemHandlers(os, m, dependencies.companyService, dependencies.recoveryKeyService, dependencies.roleModule, dependencies.databaseKeyManager, dependencies.databaseKeyPersister),
     ...createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
     ...createOperationsHandlers(os, m, dependencies.operationsService),

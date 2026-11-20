@@ -19,6 +19,7 @@ import { payrollFixture, now } from "../modules/workforce/__test-utils__/payroll
 import { createRpcContext } from "./context";
 import { createExactPayrollComposition } from "./exact-payroll-composition";
 import { createRpcMiddleware } from "./rpc-middleware";
+import { createRouter } from "./router";
 
 const AUTH_SECRET = "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM";
 const DATABASE_KEY = "558-exact-payroll-auth-reopen-key";
@@ -81,9 +82,21 @@ describe("prepared exact payroll with real BetterAuth sessions", { timeout: 60_0
       const middleware = createRpcMiddleware({ authBootstrapService: authRoot.authBootstrapService });
       const composition = createExactPayrollComposition(f.db, f.lock, f.finance, f.financeRepository, middleware, { id: randomUUID, now: () => now }, openingProvider);
       const ownerContext = createRpcContext(ownerHeaders, authRoot.sessionService);
-      const ownerClient = createRouterClient(composition.router, { context: ownerContext }) as AppClient;
-      const anonymousClient = createRouterClient(composition.router, { context: createRpcContext(new Headers(), authRoot.sessionService) }) as AppClient;
-      const nonownerClient = createRouterClient(composition.router, { context: createRpcContext(nonownerHeaders, authRoot.sessionService) }) as AppClient;
+      // Inject the prepared capability into the existing application router.
+      // Financial fixtures remain separate from the real auth root; this proves
+      // additive routing, not normal financial schema activation.
+      const router = createRouter({ ...authRoot, payroll: {
+        service: composition.services.payroll,
+        getEmployeePayroll: employeeId => composition.services.lifecycle.getEmployeePayroll(employeeId),
+      } });
+      const ownerClient = createRouterClient(router, { context: ownerContext }) as AppClient;
+      expect(await ownerClient.health()).toMatchObject({ status: "ok" });
+      expect((await ownerClient.session()).user?.id).toBe(bootstrap.item.id);
+      expect((await ownerClient.employeesList()).items).toEqual([]);
+      const unconfigured = createRouterClient(createRouter(authRoot), { context: ownerContext }) as AppClient;
+      await expect(unconfigured.employeePayrollGet({ employeeId: payrollEmployeeId })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+      const anonymousClient = createRouterClient(router, { context: createRpcContext(new Headers(), authRoot.sessionService) }) as AppClient;
+      const nonownerClient = createRouterClient(router, { context: createRpcContext(nonownerHeaders, authRoot.sessionService) }) as AppClient;
 
       const openingResult = await ownerClient.employeePayrollGet({ employeeId: openingEmployeeId });
       expect(openingResult.opening).toEqual({ review: "REVIEWED", reminder: false, wages: report, advances: report });
@@ -107,7 +120,11 @@ describe("prepared exact payroll with real BetterAuth sessions", { timeout: 60_0
         const reopenedRepository = new SqliteExactFinanceRepository(reopenedDb, reopenedLock);
         const reopenedFinance = new ExactFinanceService(reopenedRepository, { id: randomUUID, now: () => now });
         const reopened = createExactPayrollComposition(reopenedDb, reopenedLock, reopenedFinance, reopenedRepository, middleware, { id: randomUUID, now: () => now }, openingProviderFor(reopenedFinance));
-        const reopenedClient = createRouterClient(reopened.router, { context: createRpcContext(ownerHeaders, authRoot.sessionService) }) as AppClient;
+        const reopenedRouter = createRouter({ ...authRoot, payroll: {
+          service: reopened.services.payroll,
+          getEmployeePayroll: employeeId => reopened.services.lifecycle.getEmployeePayroll(employeeId),
+        } });
+        const reopenedClient = createRouterClient(reopenedRouter, { context: createRpcContext(ownerHeaders, authRoot.sessionService) }) as AppClient;
         expect(await reopenedClient.employeePayrollCashRecord(paymentInput)).toEqual(payment);
         expect((await reopenedClient.employeePayrollGet({ employeeId: payrollEmployeeId })).summary).toMatchObject({ wagesOwed: "10000.00", wageCashPaid: "25000.00" });
         expect((await reopenedClient.employeePayrollGet({ employeeId: openingEmployeeId })).opening).toEqual({ review: "REVIEWED", reminder: false, wages: report, advances: report });
