@@ -60,7 +60,7 @@ export type FreshExactAppDependencies = Omit<AppDependencies,
   payroll: { service: FinancialDependencies["payroll"]; getEmployeePayroll: FinancialDependencies["lifecycle"]["getEmployeePayroll"] };
 };
 
-/** Selected fresh root only; default activation remains pending. */
+/** Exact application root used by normal startup; incompatible files are refused. */
 export async function createFreshExactAppDependencies(
   config: CreateAppDependenciesConfig = {},
   appConfig: AppConfig = createAppConfig(),

@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs"
 import { dirname } from "node:path"
+import { createRequire } from "node:module"
 import Database from "better-sqlite3"
 import type { BetterSqliteDatabase } from "../../types/sqlite"
 
@@ -27,8 +28,9 @@ function resolveDatabaseConstructor(key: string | null): typeof Database {
   if (!key) return Database
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require("better-sqlite3-multiple-ciphers") as typeof Database
+    // Source startup is ESM; the packaged sidecar is CJS.
+    const load = createRequire(typeof __filename === "string" ? __filename : import.meta.url)
+    return load("better-sqlite3-multiple-ciphers") as typeof Database
   } catch {
     throw new Error(
       "Database encryption requires better-sqlite3-multiple-ciphers, which is not installed. "
