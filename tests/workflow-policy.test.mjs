@@ -41,7 +41,16 @@ test('routine review routing stays narrow and requires reviewed instruction alig
   assert.match(workflow, /### Narrow routine review/);
   assert.match(workflow, /source-backed factual corrections/);
   assert.match(workflow, /reversible visual-only changes/);
-  assert.match(workflow, /Activation requires/);
+  assert.match(workflow, /Activation requires a separate explicit owner adoption decision after governance\s+review/);
+  assert.match(workflow, /Approval to prepare and review the proposal does not satisfy that gate/);
+  assert.match(workflow, /merge the reviewed repository instructions, then\s+apply the matching reviewed higher-priority instruction alignment/);
+  assert.match(workflow, /policy change\s+itself uses that deeper route/);
+  assert.match(workflow, /direct current-source proof/);
+  assert.match(workflow, /actual rendering evidence and\s+relevant interaction tests establish unchanged behavior and domain contracts/);
+  for (const risk of ['money', 'stock', 'debt-direction', 'auth/session/secrets', 'security', 'crypto',
+    'recovery', 'schema', 'dependency', 'CI/release/merge-policy', 'unresolved integration risks']) {
+    assert.ok(workflow.includes(risk), `Excluded risk must remain discoverable: ${risk}`);
+  }
   assert.match(workflow, /higher-priority instruction alignment/);
   assert.match(workflow, /all other reviewable work/);
   assert.match(workflow, /proof\s+adequacy/);

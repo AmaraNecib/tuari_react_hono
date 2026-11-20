@@ -137,11 +137,13 @@ visual-unit changes. It established feasibility, not measured cost savings,
 and is not evidence of equal defect-detection sensitivity. It does not justify
 lighter routing for broader runtime or domain changes.
 
-Activation requires the explicit owner adoption decision, completed governance
-review, merged repository instructions and higher-priority instruction alignment.
-Until all are complete, retain the three-session default. The adoption design
-records the owner decision and activation boundary. Reviewer approval alone
-cannot activate this exception. The completed trial does not restart or
+Activation requires a separate explicit owner adoption decision after governance
+review. Approval to prepare and review the proposal does not satisfy that gate.
+Record the adoption decision, merge the reviewed repository instructions, then
+apply the matching reviewed higher-priority instruction alignment. Until that
+sequence is complete, retain the three-session default. The adoption design
+records each gate without treating a pending decision as granted. Reviewer
+approval alone cannot activate this exception. The completed trial does not restart or
 authorize additional trial slots.
 
 After activation, one fresh combined independent reviewer may replace the
