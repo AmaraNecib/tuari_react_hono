@@ -1,7 +1,7 @@
 import { serve } from "@hono/node-server";
 
 import { createApp } from "./app/create-app";
-import { createAppDependencies } from "./app/dependencies";
+import { createFreshExactAppDependencies } from "./app/fresh-exact-dependencies";
 import { installShutdownHook } from "./app/shutdown";
 import { createAppConfig } from "./config";
 import { createStartupBackup } from "./modules/backup/backup.scheduler";
@@ -12,11 +12,9 @@ async function main() {
   // one injected AppConfig instead of separate env singletons.
   const config = createAppConfig();
 
-  // Self-contained composition root: opens the database connection, runs the
-  // schema migrations, builds Drizzle + better-auth, and wires every domain
-  // service. No raw handles are created or passed here — the root keeps the
-  // connection and hands the rest of the app narrow ports.
-  const appDependencies = await createAppDependencies({}, config);
+  // The normal server entry selects the exact financial root. Unsupported or
+  // incompatible databases fail closed; startup never falls back to legacy.
+  const appDependencies = await createFreshExactAppDependencies({}, config);
 
   const app = createApp(appDependencies, {
     allowedOrigins: config.allowedOrigins,
