@@ -41,6 +41,10 @@ The expected physical schema is generated from current DDL in a disposable plain
 
 Focused tests construct the complete financial graph and check actual root-owned connection/FIFO identity, stable no-write reattestation, real file close/reopen on plain and keyed native drivers, legacy-file refusal without data changes, and missing-trigger refusal despite valid markers. An initial keyed-memory attempt failed because the driver requires an on-disk file; the corrected test uses isolated temporary files and preserves the failed log. Native keyed support works in the parent tree. No normal-root switch has yet been installed.
 
+## Metadata-only workspace reads
+
+`workspaceMetadataSchema` excludes debt accounts, debt entries and retired numeric salary payments, and rejects those extra collections rather than silently stripping them. The standalone `financialContract.metadata` read uses this organizational shape; it is not yet registered in appContract. `AuditService.getWorkspaceMetadata` reads only organizational repositories. Legacy snapshot assembly reuses that method and adds its own existing monetary collections, so unchanged legacy callers retain their old behavior until the actual fresh-root switch. The activated shell must use metadata plus separate exact financial reads, never coerce ledger balances into the legacy snapshot shape or report fabricated zero balances.
+
 ## Scope resolution in progress
 
 A read-only Luna child maps actual normal-root financial writers/readers, prepared exact services and existing public wire contracts. It writes ignored findings only. The parent owns the startup integration test and final composition. Implementation lanes will be bounded to disjoint files only after those interface gaps are pinned. Do not infer that the absence of old data eliminates writer/reader compatibility work.
