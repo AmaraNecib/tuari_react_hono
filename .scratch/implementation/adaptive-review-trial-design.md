@@ -1,6 +1,6 @@
 # Adaptive-review trial policy patch
 
-Status: inactive proposal. This patch adds no activation mechanism and does not authorize publication or merge. The owner must approve any later reviewed policy that activates reduced review depth.
+Status: owner-approved bounded trial, pending policy review, recorded adoption and higher-priority instruction alignment. No live routing changes before all conditions are met. This patch does not authorize publication, merge or an instruction bypass.
 
 ## Decision
 
@@ -20,9 +20,17 @@ The trial cap counts eligible cases escalated back to three lenses. It excludes 
 
 ## Scope and proof
 
-Base: `f94af99e1dee404e704d44c4d5d67d161a9a5efe`.
+Initial proposal base: `f94af99e1dee404e704d44c4d5d67d161a9a5efe`. Routing implementation base: `7f787e9ea04724e789ef593ca827c053795902a8`.
 Verification mode: focused-local / CI-final-enforced. CI acceptance and effective protection remain separate; this local patch makes no claim about a current PR's checks.
 
-Changed paths: `docs/engineering-workflow.md` and this design note. No application, tests, CI, configuration, skill, activation, or tracker changes.
+Changed-file dispositions for the routing implementation:
+
+- `docs/engineering-workflow.md`: authoritative bounded trial conditions, explicit owner adoption and retained risk exclusions.
+- `AGENTS.md`: pointer to the workflow; preserves binding routing until all prerequisites are met.
+- `.agents/skills/feature-implement/SKILL.md`: follows the same conditional workflow route without adding policy authority.
+- `.agents/skills/guard/SKILL.md`: checks the same adoption and higher-priority boundaries.
+- `.scratch/implementation/adaptive-review-trial-design.md`: design, approval boundary and full scope record.
+
+No application, tests, CI, configuration, tracker, global-instruction or third-party skill changes. Current routing remains unchanged.
 
 Required policy review remains parent-owned because the document has elevated governance risk. The implementation agent does not run the three initial lenses and does not claim final approval. Focused policy test, applicable prose/link/source checks and `git diff --check` are required before commit. Evidence is local and ignored under `.scratch/reviews/`.

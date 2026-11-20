@@ -130,12 +130,13 @@ verify source, record what remains valid and expose any new risk.
 
 ### Bounded routine-review trial
 
-The owner approved drafting a trial capped at eight genuinely new eligible
-tasks. This approval does not itself change routing. The patch stays inactive
-until reviewers approve it and every higher-priority instruction that requires
-three initial lenses is aligned. Until then, use three distinct initial
-sessions in order: `debate`, `test-audit`, then `code-review`. This workflow
-cannot override a higher-priority rule.
+The owner approved the described trial capped at eight genuinely new eligible
+tasks. Record the explicit owner adoption decision and approved scope in this
+workflow or its design note. Reviewer approval alone cannot activate the trial.
+Routing stays unchanged until that adoption decision, policy review and
+alignment of every higher-priority three-lens instruction are complete. Until
+then, use three distinct initial sessions in order: `debate`, `test-audit`, then
+`code-review`. This workflow cannot override a higher-priority rule.
 
 Once adopted and aligned, route no more than eight new, real tasks through the
 trial. Do not count #574, #554, retrospective cases, synthetic examples or
@@ -148,8 +149,8 @@ uncertainty and reversibility. Disposition each file. A label, file size,
 tests-only status or docs-only status is not enough. Escalate when scope or
 evidence changes.
 
-Exclude financial, authentication, security, recovery, schema, dependency,
-CI and merge risks; broad documentation rewrites or removals; conflicts with
+Exclude money, stock, debt-direction, authentication, security, recovery,
+schema, dependency, CI, release and merge risks; broad documentation rewrites or removals; conflicts with
 accepted authoritative sources; and consequential test weakening without
 proved equivalent detection. Elevated work keeps all three initial sessions.
 For eligible work only, one fresh combined reviewer covers applicable
