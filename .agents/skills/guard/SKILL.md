@@ -31,11 +31,13 @@ Verify the committed SHA, not an uncommitted draft.
 
 - Focused behavioral proof covers changed code and direct callers. Add
   applicable lint/typecheck and selected browser proof.
-- Follow review routing in `docs/engineering-workflow.md`. Until the bounded
-  routine-review trial is reviewed and higher-priority three-lens instructions
-  are aligned, require debate, test-audit and code-review evidence with exact
-  base/head, reviewer IDs/models and any same-family exception. After alignment,
-  accept the single combined review only for eligible trial tasks.
+- Follow narrow routine-review routing and activation in
+  `docs/engineering-workflow.md`. Before adoption gates are complete, or for
+  excluded/uncertain work, require debate, test-audit and code-review in order.
+  After activation, eligible routine work may use one combined independent
+  review covering standards, spec and proof adequacy. Record exact base/head,
+  reviewer IDs/models and any approved same-family exception in either route.
+  Policy changes retain the deeper route.
 - A bounded correction has affected proof and one fresh combined-delta review,
   with unchanged conclusions carried forward explicitly.
 - Resolve local actionable findings. No local score or separate confidence
