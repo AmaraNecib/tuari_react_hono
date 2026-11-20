@@ -1312,6 +1312,8 @@ export const ar = {
         addItem: "إضافة عنصر",
       },
       chargeHistory: {
+        placement: "التواجد رقم",
+        live: "ساري",
         show: "سجل الاحتساب",
         hide: "إخفاء سجل الاحتساب",
         loading: "جارٍ تحميل سجل الاحتساب...",

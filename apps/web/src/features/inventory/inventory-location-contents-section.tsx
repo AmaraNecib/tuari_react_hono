@@ -7,6 +7,7 @@ import { financialClient } from "@/lib/orpc-client"
 import { useInventoryExternalCounterpartiesQuery, useInventoryProjectsQuery, useInventoryWarehousesQuery } from "./inventory-hooks"
 import { ExactInventoryMovementForm } from "./inventory-exact-movement-form"
 import { useExactInventoryAction, useExactInventoryDefinitions, useExactInventoryLocation } from "./inventory-exact-queries"
+import { ExactAssetHistory } from "./inventory-exact-asset-history"
 import type { ExactInventoryLocation, ExactInventoryParty } from "./inventory-exact-page"
 
 export function InventoryLocationContentsSection({ warehouseId, projectId }: { warehouseId?: string; projectId?: string }) {
@@ -61,6 +62,7 @@ export function InventoryLocationContentsSection({ warehouseId, projectId }: { w
                 <MoneyValue exact value={asset.purchasePriceDzd} currencyLabel={t("common.currency")} />
                 <Button
                   size="xs"
+                  className="min-h-11"
                   variant="ghost"
                   aria-expanded={expandedHistory === `${source}:${asset.id}`}
                   aria-controls={`${historyId}-${asset.id}`}
@@ -68,9 +70,10 @@ export function InventoryLocationContentsSection({ warehouseId, projectId }: { w
                 >
                   {t(expandedHistory === `${source}:${asset.id}` ? "inventory.chargeHistory.hide" : "inventory.chargeHistory.show")}
                 </Button>
-                {/* Asset-wide history needs an exact read. Never mount retired numeric actions. */}
                 {expandedHistory === `${source}:${asset.id}` && (
-                  <p id={`${historyId}-${asset.id}`} role="alert" className="text-sm text-destructive">{t("inventory.chargeHistory.loadError")}</p>
+                  <div id={`${historyId}-${asset.id}`} className="mt-3 space-y-2">
+                    <ExactAssetHistory key={`${source}:${asset.id}`} client={financialClient.inventory} assetUnitId={asset.id} />
+                  </div>
                 )}
               </div>
             ))}

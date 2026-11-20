@@ -31,6 +31,10 @@ export function useExactProjectContribution(client: ExactInventoryClient, projec
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "contribution", projectId], enabled: projectId !== null,
     queryFn: () => { if (!projectId) throw new Error("Select a project"); return client.projectContribution({ projectId }) } })
 }
+export function useExactAssetHistory(client: ExactInventoryClient, assetUnitId: string | null) {
+  return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "asset-history", assetUnitId], enabled: assetUnitId !== null,
+    queryFn: () => { if (!assetUnitId) throw new Error("Select an inventory asset"); return client.assetHistory({ assetUnitId }) } })
+}
 export function useExactProjectCharges(client: ExactInventoryClient, projectId: string | null) {
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "charges", projectId], enabled: projectId !== null,
     queryFn: () => { if (!projectId) throw new Error("Select a project"); return client.projectCharges({ projectId }) } })
