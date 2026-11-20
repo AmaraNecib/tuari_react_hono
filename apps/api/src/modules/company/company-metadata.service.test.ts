@@ -17,7 +17,7 @@ describe("CompanyMetadataService", () => {
   });
 
   it("delegates counterparty CRUD through the shared mutation context", () => {
-    const item = { id: "cp1", fullName: "Vendor", phoneNumber: "123", note: null };
+    const item = { id: "cp1", fullName: "Vendor", phoneNumber: "123", note: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
     const repository = { listExternalCounterparties: vi.fn(() => [item]), getExternalCounterpartyById: vi.fn(() => item), createExternalCounterparty: vi.fn(() => item) };
     const mutation = { createMutationAuditContext: vi.fn(), withTransaction: (fn: () => unknown) => fn() };
     const service = new CounterpartyService(repository, mutation as never);
