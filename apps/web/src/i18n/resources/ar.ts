@@ -1200,7 +1200,6 @@ export const ar = {
     inventory: {
       transfer: {
         title: "تحويل عنصر",
-        button: "تحويل",
         quantity: "الكمية",
         of: "من",
         destType: "نوع الوجهة",
@@ -1299,11 +1298,7 @@ export const ar = {
       location: {
         currentItems: "العناصر الحالية",
         currentItemsDescription: "كل ما يوجد الآن داخل هذا الموقع مع الكميات والأصول الحالية.",
-        assets: "الأصول",
-        noAssets: "لا توجد أصول في هذا الموقع.",
-        consumables: "المواد الاستهلاكية",
         currentQuantity: "الكمية الحالية:",
-        noConsumables: "لا توجد مواد استهلاكية في هذا الموقع.",
       },
       items: {
         selectItem: "اختر العنصر",
