@@ -33,6 +33,7 @@ test.describe("inventory invoice create — progressive disclosure", () => {
 
     itemName = `صنف إفصاح ${uniqueSuffix()}`
     await page.getByRole("link", { name: "دليل العناصر" }).first().click()
+    await page.getByRole("button", { name: "دليل العناصر", exact: true }).click()
     await expect(page.getByRole("heading", { name: "دليل العناصر" })).toBeVisible()
     await page.getByLabel("اسم العنصر").fill(itemName)
     await page.getByLabel("وحدة القياس").fill("قطعة")
@@ -168,7 +169,8 @@ test.describe("inventory invoice create — progressive disclosure", () => {
     // note and debt — and both lines inherited the header warehouse (XOR
     // seeding intact with the sections in play).
     const Database = loadDatabaseConstructor()
-    const db = new Database(findE2eDatabase(), { readonly: true })
+    const db = Database(findE2eDatabase())
+    db.pragma("query_only = ON")
     try {
       const cpId = db
         .prepare("SELECT id FROM external_counterparty WHERE full_name = ?")

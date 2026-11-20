@@ -92,6 +92,7 @@ test.describe("inventory asset charge — purchase onto a project", () => {
     await bootstrapOrSignIn(page)
 
     await page.getByRole("link", { name: "دليل العناصر" }).first().click()
+    await page.getByRole("button", { name: "دليل العناصر", exact: true }).click()
     await expect(page.getByRole("heading", { name: "دليل العناصر" })).toBeVisible()
 
     itemName = `مثقاب احتساب ${uniqueSuffix()}`

@@ -29,6 +29,7 @@ test.describe("inventory invoice create — header default warehouse persistence
     await bootstrapOrSignIn(page)
 
     await page.getByRole("link", { name: "دليل العناصر" }).first().click()
+    await page.getByRole("button", { name: "دليل العناصر", exact: true }).click()
     await expect(page.getByRole("heading", { name: "دليل العناصر" })).toBeVisible()
 
     itemName = `صنف فاتورة ${uniqueSuffix()}`
@@ -113,7 +114,8 @@ test.describe("inventory invoice create — header default warehouse persistence
     //    seam: each entry row carries the default warehouse id (looked up by
     //    name) and no project. The DB seam still verifies the created rows.
     const Database = loadDatabaseConstructor()
-    const db = new Database(findE2eDatabase(), { readonly: true })
+    const db = Database(findE2eDatabase())
+    db.pragma("query_only = ON")
     try {
       const warehouseId = db
         .prepare("SELECT id FROM warehouse WHERE name = ?")

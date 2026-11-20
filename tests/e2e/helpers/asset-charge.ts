@@ -65,16 +65,23 @@ export function readPlacement(fixture: TransferFixture) {
 export async function openTransfer(page: Page, fixture: TransferFixture) {
   await page.goto(`/invoices/${fixture.invoiceId}`)
   await expect(page.getByText(fixture.assetName).first()).toBeVisible()
-  await page.getByRole("button", { name: "تحويل الأصل", exact: true }).click()
-  await expect(page.getByRole("dialog")).toBeVisible()
-  return page.getByRole("dialog")
+  // A purchase-group detail proves provenance; movement starts from current stock.
+  const placement = readPlacement(fixture).unit as { warehouseId: string | null; projectId: string | null }
+  await page.goto("/inventory")
+  await page.getByRole("combobox", { name: "الموقع", exact: true }).selectOption(
+    placement.warehouseId ? `WAREHOUSE:${placement.warehouseId}` : `PROJECT:${placement.projectId}`,
+  )
+  await expect(page.getByText(fixture.assetName).first()).toBeVisible()
+  await page.getByRole("button", { name: "تحويل مخزون أو بيع", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "تحويل مخزون أو بيع", exact: true })
+  await dialog.getByRole("combobox", { name: "المخزون المختار", exact: true }).selectOption({ label: fixture.assetName })
+  return dialog
 }
 
 export async function transferToProject(page: Page, fixture: TransferFixture) {
   const dialog = await openTransfer(page, fixture)
-  await dialog.getByLabel("نوع الوجهة").selectOption("PROJECT")
-  await dialog.getByLabel(/^الوجهة/).selectOption(fixture.projectId)
-  await expect(dialog.getByLabel("مبلغ الاحتساب", { exact: true })).toHaveValue("5000")
+  await dialog.getByRole("combobox", { name: "الوجهة", exact: true }).selectOption(`PROJECT:${fixture.projectId}`)
+  await expect(dialog.getByText(/الاحتساب الافتراضي/)).toContainText("5000.00")
   await expect(dialog.getByLabel("النسبة من سعر الشراء")).toHaveValue("0")
   await dialog.getByRole("button", { name: "تأكيد التحويل" }).click()
   await expect(dialog).toBeHidden()
