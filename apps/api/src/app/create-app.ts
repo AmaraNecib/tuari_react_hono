@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import type { AppDependencies } from "./dependencies";
+import type { FreshExactAppDependencies } from "./fresh-exact-dependencies";
 import { isLocalHostname, normalizeOrigin } from "../infrastructure/config/url";
 import {
   createRpcFailureStore,
@@ -124,7 +125,7 @@ type RpcInterceptorOptions = { request: RpcRequestInfo; path?: readonly string[]
 type RpcInterceptorState = [unknown, RpcHandleResult | unknown, boolean]
 
 export function createApp(
-  dependencies: AppDependencies,
+  dependencies: AppDependencies | FreshExactAppDependencies,
   transportSecurity: TransportSecurityConfig,
 ) {
   const app = new Hono();
@@ -393,6 +394,9 @@ export function createApp(
   });
 
   app.post("/api/inventory/invoice-groups/:invoiceGroupId/attachments", async (c) => {
+    if (dependencies.mode === "fresh-exact-selected") {
+      return c.json({ message: "Inventory attachments are unavailable for this application mode." }, 503)
+    }
     try {
       const currentUser = await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers)
       if (!(await dependencies.authBootstrapService.isBootstrapOwner(currentUser.id))) {
@@ -449,6 +453,9 @@ export function createApp(
   })
 
   app.get("/api/inventory/attachments/:attachmentId", async (c) => {
+    if (dependencies.mode === "fresh-exact-selected") {
+      return c.json({ message: "Inventory attachments are unavailable for this application mode." }, 503)
+    }
     try {
       const currentUser = await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers)
       if (!(await dependencies.authBootstrapService.isBootstrapOwner(currentUser.id))) {
