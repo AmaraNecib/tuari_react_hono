@@ -24,6 +24,13 @@ vi.mock("@/hooks/use-notify-app-ready", () => ({
   useNotifyAppReady: vi.fn(),
 }))
 
+vi.mock("@/features/inventory/transfer-history-page", () => ({
+  TransferHistoryPage: () => <h1>transfer-history-page</h1>,
+}))
+vi.mock("@/features/inventory/inventory-exact-page", () => ({
+  ExactInventoryPage: () => <h1>exact-inventory-page</h1>,
+}))
+
 const { approveEmployeeEarningMutate } = vi.hoisted(() => ({ approveEmployeeEarningMutate: vi.fn() }))
 vi.mock("@/features/employees/employee-earnings-queries", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/features/employees/employee-earnings-queries")>()
@@ -77,6 +84,16 @@ afterEach(() => {
 })
 
 describe("HomeView workspace shell", () => {
+  it.each([
+    ["transfer-history", "transfer-history-page", "exact-inventory-page"],
+    ["inventory", "exact-inventory-page", "transfer-history-page"],
+  ] as const)("keeps transfer history separate from inventory for %s", async (page, expectedPage, otherPage) => {
+    renderWorkspace(page, { sessionUser: demoUser })
+
+    expect(await screen.findByRole("heading", { name: expectedPage })).toBeTruthy()
+    expect(screen.queryByRole("heading", { name: otherPage })).toBeNull()
+  })
+
   it("boots on the Arabic RTL sign-in screen", () => {
     renderWorkspace()
 

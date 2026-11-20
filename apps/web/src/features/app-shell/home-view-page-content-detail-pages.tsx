@@ -12,6 +12,7 @@ import { financialClient } from "@/lib/orpc-client"
 import type { HomeViewPageContentProps } from "./home-view-page-content-shared"
 import { MissingRecordState } from "./home-view-page-content-shared"
 
+const TransferHistoryPage = lazy(async () => import("@/features/inventory/transfer-history-page").then((module) => ({ default: module.TransferHistoryPage })))
 const ExactFinancialRoutePage = lazy(async () => import("@/features/shared/exact-financial-route").then((module) => ({ default: module.ExactFinancialRoutePage })))
 const ExternalCounterpartyCreatePage = lazy(async () => import("@/features/externals/external-create-page").then((module) => ({ default: module.ExternalCounterpartyCreatePage })))
 const ExternalCounterpartyDetailsPage = lazy(async () => import("@/features/externals/external-details-page").then((module) => ({ default: module.ExternalCounterpartyDetailsPage })))
@@ -332,11 +333,13 @@ export function HomeViewPageDetailContent({
             />
           )
 
+    case "transfer-history":
+      return renderLazy(<TransferHistoryPage />)
+
     case "inventory":
     case "outbound-transfers":
     case "outbound-transfer-create":
     case "outbound-transfer-create-v2":
-    case "transfer-history":
       return renderLazy(<ExactFinancialRoutePage
         route="inventory"
         parties={derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName, type: "EXTERNAL_COUNTERPARTY" as const }))}

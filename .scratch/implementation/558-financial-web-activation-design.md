@@ -3,7 +3,7 @@
 Base: `e46e37dfc161ca00cf710b38365f0d2bb49e45c5`.
 Worktree: `D:/worktrees/tuari_react_hono/t3-95e2b87e-65cf17ecf5c0eaf0`.
 Mode: focused-local / CI-final-pending. High assurance because authenticated financial commands and recovery-sensitive caller wiring change.
-Authority: WEB and this design only. No backend, contracts, transfer history, pending-intent or payroll-panel edits. Parent owns review, architecture, integration and publication.
+Authority: WEB and this design only. No backend, contracts, transfer-history implementation, pending-intent or payroll-panel edits. The bounded correction restores the existing transfer-history route dispatch only. Parent owns review, architecture, integration and publication.
 
 ## Preserved work
 
@@ -37,8 +37,14 @@ Retired tests of snapshot-derived expected-versus-paid metrics, numeric recent-p
 
 Focused proof also covers exact debts, external list/detail composition, dashboard pending/error states, wide decimal totals, invoices, expenses, inventory and exact-commerce query/i18n behavior. Raw failures and retries stay local under `.scratch/reviews/558-web/`. Initial typecheck exposed missing built contracts; frozen dependency installation and a queued contracts build repaired the prerequisite. No dependency changes ship.
 
+## Bounded transfer-history route correction
+
+Correction base: `7911abc6c4d2f1148beb5956b40917fbb573b52d`. The initial code review found that `transfer-history` incorrectly shared the inventory landing-page dispatch. The dispatcher now lazy-loads the existing `TransferHistoryPage` for that route; actual inventory and other financial routes retain their exact wrappers. No history page, hook, location-history, service or contract source changes are included.
+
+The actual HomeView route test mocks the page modules and checks both directions: transfer-history mounts history, and inventory still mounts exact inventory. With the original alias, the history case fails while inventory passes. This proves route composition only. Parent owns integration with the reviewed exact-history slice at `6cc79e80512d328554532ae987e6c6eb682f0ec4`; the worker's older history implementation is not runtime evidence for that slice. Earlier metadata, salary and financial proof remains unchanged outside this route correction. Parent obtains one fresh combined-delta review rather than restarting the initial lenses.
+
 ## Limits
 
-No browser, server, database, full suite or production web build was run. The browser selector is recorded for parent integration, not executed under this no-browser brief. Matching backend financial handlers mount in another lane. Transfer history remains another lane's responsibility. Hosted CI acceptance and protection activation remain pending. Parent performs independent reviews and scoped architecture review after this committed handoff.
+No browser, server, database, full suite or production web build was run. The browser selector is recorded for parent integration, not executed under this no-browser brief. Matching backend financial handlers mount in another lane. Transfer-history implementation and exact backend query remain another lane's responsibility; the existing history page dispatch is preserved here. Hosted CI acceptance and protection activation remain pending. Parent performs independent reviews and scoped architecture review after this committed handoff.
 
 Applied wisdom: retain centralized aggregate invalidation and granular query vocabulary; never show a financial zero for pending/error data; forward detail IDs explicitly through the HomeView seam. Candidate lesson: complete metadata migrations must update visible widgets and typed direct fixtures together, rather than supplying empty financial collections.
