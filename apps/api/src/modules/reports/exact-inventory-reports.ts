@@ -1,5 +1,4 @@
-import { ExactLine, Money, Quantity, UnitPrice, parseExactLine, sumExactLineHistory } from "@tuari/contracts";
-import { exactInventoryReportSchema, exactMovementReportSchema } from "../../../../../packages/contracts/src/inventory-reports-exact";
+import { ExactLine, Money, Quantity, UnitPrice, parseExactLine, sumExactLineHistory, exactInventoryReportSchema, exactMovementReportSchema } from "@tuari/contracts";
 import { exactInventoryQuantityText } from "../inventory/inventory-exact-quantity";
 import type { ExactInventoryEntryRecord } from "../inventory/inventory-exact.repository";
 import { ExactInventoryReportSource } from "./exact-inventory-report-source";

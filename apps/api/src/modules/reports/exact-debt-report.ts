@@ -1,5 +1,4 @@
-import { Money } from "@tuari/contracts";
-import { exactDebtReportSchema, type ExactDebtReport } from "../../../../../packages/contracts/src/debt-report-exact";
+import { Money, exactDebtReportSchema, type ExactDebtReport } from "@tuari/contracts";
 import { createAlgeriaTimestamp } from "../company/company-time";
 import { MS_PER_DAY, type ReportDateFilter } from "../company/report.helpers";
 import type { SqliteExactDebtReportSnapshot } from "./exact-debt-report-snapshot";

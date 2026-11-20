@@ -51,6 +51,8 @@ it("legacy composition advertises authenticated unavailable financial leaves, no
   const client = createRouterClient(router, { context }) as FinancialClient;
   await expect(client.metadata()).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   await expect(client.debts.create({ requestId: "not-configured", partyType: "INTERNAL_WORKER", workerId: "worker", direction: "PAYABLE" })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  await expect(client.reports.generate({ type: "DEBT" })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   const anonymous = createRouterClient(router, { context: { ...context, resolveCurrentUser: async () => null } }) as FinancialClient;
   await expect(anonymous.metadata()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  await expect(anonymous.reports.generate({ type: "DEBT" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
 });

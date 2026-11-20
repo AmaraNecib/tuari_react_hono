@@ -7,6 +7,7 @@ import { createExactDebtsRouter } from "./debts-exact-router";
 import { createExactInvoicesRouter } from "./invoice-exact-router";
 import { createExactInventoryRouter } from "./inventory-exact-router";
 import { createExactExpensesRouter } from "./expenses-exact-router";
+import { createExactReportsRouter, type ExactReportCapability } from "./exact-reports-router";
 
 /** Bind every advertised leaf even when a caller supplies no financial capability. */
 export function createUnavailableFinancialRouter(middleware: RpcMiddleware): ReturnType<typeof createFinancialRouter> {
@@ -35,6 +36,7 @@ export function createFinancialRouter(
   services: FinancialDependencies,
   getMetadata: () => Promise<WorkspaceMetadata>,
   middleware: RpcMiddleware,
+  reports?: ExactReportCapability,
 ) {
   const os = implement(financialContract).$context<RpcContext>();
   return os.router({
@@ -43,5 +45,6 @@ export function createFinancialRouter(
     invoices: createExactInvoicesRouter(services.invoices, middleware),
     inventory: createExactInventoryRouter(services.inventory, middleware),
     expenses: createExactExpensesRouter(services.expenses, middleware),
+    reports: createExactReportsRouter(reports, middleware),
   });
 }
