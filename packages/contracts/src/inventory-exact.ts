@@ -161,6 +161,8 @@ export const exactInventoryHistoryRowSchema = z.object({
   status: z.enum(["COMPLETED", "PENDING", "CANCELLED"]), note: z.string().nullable(),
 });
 export const exactInventoryHistorySchema = z.object({ items: z.array(exactInventoryHistoryRowSchema), total: z.number().int().nonnegative(), offset: z.number().int().nonnegative(), limit: z.number().int().positive() });
+export const exactInventoryAssetHistoryInputSchema = z.object({ assetUnitId: z.string().min(1) });
+export const exactInventoryAssetHistorySchema = z.object({ assetUnitId: z.string().min(1), items: z.array(exactInventoryChargeSchema) });
 export type ExactInventoryInvoiceInput = z.input<typeof exactInventoryInvoiceCreateSchema>;
 export type ExactInventoryInvoice = z.infer<typeof exactInventoryInvoiceSchema>;
 export type ExactInventoryEntry = z.infer<typeof exactInventoryEntrySchema>;

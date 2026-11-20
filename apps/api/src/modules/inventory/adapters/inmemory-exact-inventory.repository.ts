@@ -45,6 +45,7 @@ export class InMemoryExactInventoryRepository implements ExactInventoryRepositor
   saveMovement(row: InventoryMovement) { this.movements.set(row.id, structuredClone(row)); }
   getCharge(id: string) { return structuredClone(this.charges.get(id) ?? null); }
   listCharges() { return structuredClone([...this.charges.values()]); }
+  listAssetCharges(assetUnitId: string) { return structuredClone([...this.charges.values()].filter(row => row.assetUnitId === assetUnitId).sort((a, b) => b.placementSequence - a.placementSequence)); }
   saveCharge(row: ExactInventoryChargeRecord) { this.charges.set(row.id, structuredClone(row)); }
   getOutbound(id: string) { return structuredClone(this.outbounds.get(id) ?? null); }
   listOutbounds() { return structuredClone([...this.outbounds.values()]); }

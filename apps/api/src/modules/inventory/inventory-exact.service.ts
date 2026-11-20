@@ -392,6 +392,10 @@ export class ExactInventoryService {
         parkedAssets, materialMovements: movements };
     });
   }
+  getAssetChargeHistory(assetUnitId: string) {
+    if (!this.repo.getAsset(assetUnitId)) throw new ExactDebtError("Asset not found", "NOT_FOUND");
+    return { assetUnitId, items: this.repo.listAssetCharges(assetUnitId) };
+  }
   getProjectCharges(projectId: string) {
     if (!this.repo.projectExists(projectId)) throw new ExactDebtError("Project not found", "NOT_FOUND");
     const charges = this.repo.listCharges().filter(row => row.projectId === projectId);
@@ -400,7 +404,7 @@ export class ExactInventoryService {
   getAssetChargeDefault(assetUnitId: string) {
     const asset = this.repo.getAsset(assetUnitId);
     if (!asset) throw new ExactDebtError("Asset not found", "NOT_FOUND");
-    const last = this.repo.listCharges().filter(row => row.assetUnitId === asset.id && row.status === "LIVE").sort((a, b) => b.placementSequence - a.placementSequence)[0];
+    const last = this.repo.listAssetCharges(asset.id).find(row => row.status === "LIVE");
     return { assetUnitId, amountDzd: last?.amountDzd ?? asset.purchasePriceDzd, purchasePriceDzd: asset.purchasePriceDzd, source: last ? "LAST_CHARGE" as const : "PURCHASE_PRICE" as const };
   }
   transferAsset(raw: ExactInventoryAssetTransfer & ExactDebtAudit): ExactInventoryAsset {

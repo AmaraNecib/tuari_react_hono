@@ -28,6 +28,7 @@ export interface ExactInventoryRepository extends ExactTransactionParticipant {
   saveMovement(row: InventoryMovement): void;
   getCharge(id: string): ExactInventoryChargeRecord | null;
   listCharges(): ExactInventoryChargeRecord[];
+  listAssetCharges(assetUnitId: string): ExactInventoryChargeRecord[];
   saveCharge(row: ExactInventoryChargeRecord): void;
   getOutbound(id: string): ExactInventoryOutbound | null;
   listOutbounds(): ExactInventoryOutbound[];

@@ -70,10 +70,13 @@ it.each(["", "526-public-rpc-key"])("purchase/transfer/charge/outbound input-to-
     expect((await client.listOutbounds())[0]?.remainingDebtDzd).toBe("0.00");
     await client.voidCharge({ requestId: "void", chargeId: charge.id, reason: "Wrong placement" });
     expect(await client.projectCharges({ projectId: "project" })).toMatchObject({ totalDzd: "0.00" });
+    expect(await client.assetHistory({ assetUnitId: asset.id })).toMatchObject({ assetUnitId: asset.id, items: [{ id: charge.id, status: "VOID", amountDzd: "0.25", revisions: [{ reason: "Synthetic correction" }, { reason: "Wrong placement" }] }] });
+    await expect(client.assetHistory({ assetUnitId: "missing" })).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(() => JSON.stringify(composition.services.inventory.getInvoiceGroup(purchase.group.id))).not.toThrow();
     await expect(client.recordPayment({ requestId: "invalid", invoiceGroupId: purchase.group.id, amountDzd: "0.001" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     const anonymous = createRouterClient(composition.router.inventory, { context: { ...context, resolveCurrentUser: async () => null } }) as ExactInventoryClient;
     await expect(anonymous.listInvoices()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(anonymous.assetHistory({ assetUnitId: asset.id })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(anonymous.recordOutboundPayment(paymentInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     const nonAdmin = createRouterClient(composition.router.inventory, { context: { ...context, resolveCurrentUser: async () => ({ ...user, id: "not-owner" }) } }) as ExactInventoryClient;
     await expect(nonAdmin.createInvoice(purchaseInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });

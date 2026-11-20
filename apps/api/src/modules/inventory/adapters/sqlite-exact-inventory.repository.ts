@@ -152,6 +152,13 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
     });
   }
   listCharges() { return this.withTransaction(() => this.ids("inventory_asset_charge").map(id => this.getCharge(id)!)); }
+  listAssetCharges(assetUnitId: string) {
+    return this.withTransaction(() => this.boundedIds(this.db.prepare("SELECT id FROM inventory_asset_charge WHERE asset_unit_id=? ORDER BY placement_sequence DESC LIMIT 100001").all(assetUnitId) as { id: string }[]).map(id => {
+      const charge = this.getCharge(id);
+      if (!charge) throw new Error("Selected asset charge is missing");
+      return charge;
+    }));
+  }
   saveCharge(row: ExactInventoryChargeRecord) {
     this.withTransaction(() => {
       this.save("inventory_asset_charge", { ...this.metadata(row, chargeFields), amount_minor: bindMoney(Money.parse(row.amountDzd)) });

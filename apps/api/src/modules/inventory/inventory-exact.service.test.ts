@@ -381,3 +381,30 @@ it.each(["memory", "plain", "keyed"] as const)("%s: retains an agreed 10000 tota
   expect(result.group.grossTotalDzd).toBe("10000.00");
   expect(result.entries[0]).toMatchObject({ unitPriceDzd: null, priceSource: { mode: "agreed-total", total: "10000.00", quantity: "300" } });
 });
+
+it.each(["memory", "plain", "keyed"] as const)("%s: reads only the requested asset charge chain including voids and ordered audit revisions", kind => {
+  const { inventory, repo } = setup(kind);
+  const purchase = inventory.createInvoiceGroup({ requestId: "history-assets", projectId: "project", entries: [{ kind: "ASSET", itemDefinitionId: "asset", assets: [
+    { assetName: "History unit", purchasePriceDzd: "90071992547409.93" }, { assetName: "Other unit", purchasePriceDzd: "0.01" },
+  ] }] });
+  const asset = purchase.entries[0]!.assets[0]!;
+  const first = repo.listCharges().find(row => row.assetUnitId === asset.id)!;
+  inventory.updateAssetCharge({ requestId: "history-correct", chargeId: first.id, amountDzd: "90071992547409.92", reason: "Correction", actorUserId: "actor", actorLabel: "Operator", transactionId: "history-transaction" });
+  inventory.transferAsset({ requestId: "history-away", assetUnitId: asset.id, toWarehouseId: "warehouse" });
+  inventory.transferAsset({ requestId: "history-back", assetUnitId: asset.id, toProjectId: "project" });
+  inventory.voidAssetCharge({ requestId: "history-void", chargeId: first.id, reason: "Duplicate placement", actorUserId: "actor" });
+  const before = JSON.stringify(repo.listCharges());
+  const broad = vi.spyOn(repo, "listCharges").mockImplementation(() => { throw new Error("Broad charge read forbidden"); });
+  const result = inventory.getAssetChargeHistory(asset.id);
+  expect(result.assetUnitId).toBe(asset.id);
+  expect(result.items.map(row => [row.assetUnitId, row.placementSequence, row.status, row.amountDzd])).toEqual([
+    [asset.id, 2, "LIVE", "90071992547409.92"], [asset.id, 1, "VOID", "90071992547409.92"],
+  ]);
+  expect(result.items[1]!.revisions.map(row => [row.revisionSequence, row.previousAmountDzd, row.newAmountDzd, row.reason, row.actorUserId])).toEqual([
+    [1, "90071992547409.93", "90071992547409.92", "Correction", "actor"], [2, "90071992547409.92", null, "Duplicate placement", "actor"],
+  ]);
+  expect(result.items[1]!.revisions[0]).toMatchObject({ actorLabel: "Operator", createdAt: date, transactionId: "history-transaction" });
+  expect(() => inventory.getAssetChargeHistory("missing")).toThrow("Asset not found");
+  broad.mockRestore();
+  expect(JSON.stringify(repo.listCharges())).toBe(before);
+});
