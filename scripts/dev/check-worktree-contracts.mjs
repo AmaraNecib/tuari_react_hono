@@ -1,4 +1,4 @@
-import { realpath, readFile } from 'node:fs/promises';
+import { realpath, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -27,7 +27,7 @@ export async function inspectWorktreeContracts(repositoryRoot = process.cwd()) {
   let metadata;
   try { metadata = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8')); }
   catch (error) { diagnostics.push(`Invalid contracts package metadata: ${error.message}`); return { ok: false, diagnostics }; }
-  if (metadata.name !== '@tuari/contracts' || !metadata.exports || typeof metadata.exports !== 'object' || Array.isArray(metadata.exports)) {
+  if (!metadata || metadata.name !== '@tuari/contracts' || !metadata.exports || typeof metadata.exports !== 'object' || Array.isArray(metadata.exports)) {
     diagnostics.push('Malformed contracts package metadata: expected @tuari/contracts and an exports object');
     return { ok: false, diagnostics };
   }
@@ -37,22 +37,28 @@ export async function inspectWorktreeContracts(repositoryRoot = process.cwd()) {
     return { ok: false, diagnostics };
   }
   for (const [kind, target] of [['import', entry.import], ['types', entry.types]]) {
-    if (path.isAbsolute(target)) { diagnostics.push(`Invalid ${kind} export target: must be package-relative`); continue; }
+    if (!target.startsWith('./') || target.includes('\\') || path.isAbsolute(target)) { diagnostics.push(`Invalid ${kind} export target: must start with ./ and use forward slashes`); continue; }
     const resolved = path.resolve(packageRoot, target);
     if (!within(packageRoot, resolved)) { diagnostics.push(`${kind} export target escapes contracts package: ${target}`); continue; }
     try {
       const actual = await realpath(resolved);
       if (!within(packageRoot, actual)) diagnostics.push(`${kind} export target resolves outside contracts package: ${target}`);
+      else if (!(await stat(actual)).isFile()) diagnostics.push(`Contracts ${kind} build target is not a regular file: ${target}`);
     } catch { diagnostics.push(`Missing contracts ${kind} build target: ${target}`); }
   }
   return { ok: diagnostics.length === 0, diagnostics };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  const json = process.argv.includes('--json');
-  const root = process.argv.slice(2).find(arg => arg !== '--json') ?? process.cwd();
-  const result = await inspectWorktreeContracts(root);
-  if (json) console.log(JSON.stringify(result, null, 2));
-  else console.log(result.ok ? 'Worktree contracts links and build targets are local.' : result.diagnostics.map(item => `ERROR: ${item}`).join('\n'));
-  if (!result.ok) process.exitCode = 1;
+  const args = process.argv.slice(2);
+  const roots = args.filter(arg => arg !== '--json');
+  if (args.filter(arg => arg === '--json').length > 1 || roots.length > 1 || roots.some(arg => arg.startsWith('-'))) {
+    console.error('Usage: node scripts/dev/check-worktree-contracts.mjs [repository-root] [--json]');
+    process.exitCode = 2;
+  } else {
+    const result = await inspectWorktreeContracts(roots[0] ?? process.cwd());
+    if (args.includes('--json')) console.log(JSON.stringify(result, null, 2));
+    else console.log(result.ok ? 'Worktree contracts links and build targets are local.' : result.diagnostics.map(item => `ERROR: ${item}`).join('\n'));
+    if (!result.ok) process.exitCode = 1;
+  }
 }

@@ -12,7 +12,7 @@ Verification mode: focused-local / CI-final-enforced, strict ruleset 26837184, r
 
 ## Domain and design
 
-A contracts workspace package owns the API and web runtime/type entry targets; a package-manager content-addressed store is not the ownership contract. The module keeps resolution, metadata validation, diagnostics, and CLI formatting behind one small exported operation. Its tests exercise real temporary filesystem links, not mocked path helpers. No architecture seam beyond this CLI operation moved.
+A contracts workspace package owns the API and web runtime/type entry targets; a package-manager content-addressed store is not the ownership contract. The module keeps resolution, metadata validation, diagnostics, and CLI formatting behind one small exported operation. Its tests exercise real temporary filesystem links, not mocked path helpers. This adds a developer CLI/filesystem seam, not an application interface. Parent architecture review is scoped to that operation and its test callers.
 
 ## Wisdom applied
 
@@ -20,4 +20,10 @@ Applied stale contracts `dist` and stale installed dependency lessons: successfu
 
 ## Verification and review
 
-Focused test: `node --test tests/worktree-contracts.test.mjs`. Expected-red import failure recorded separately before implementation. Parent handles three review lenses. Changed-file manifest: the two requested scripts, focused test, and this design note only.
+Focused test: `node --test tests/worktree-contracts.test.mjs`. Expected-red import failure recorded separately before implementation. Parent handles three review lenses. Changed-file manifest: the CLI, its usage README, focused test, and this design note only.
+
+## Bounded review corrections
+
+Initial reviews found directory export targets could pass and web-link coverage could be masked by a still-invalid API link. Parent confirmed these, malformed/null metadata behavior and insufficient negative/CLI proof. Export targets now require package-relative forward-slash paths and regular files after canonical containment. Malformed/null metadata returns diagnostics; unsupported/duplicate CLI arguments fail with usage status2. Each sibling case starts with the other app valid. All sibling fixtures live under a uniquely owned temporary sandbox, never a fixed shared sibling directory.
+
+Expanded tests were run against the original module first: 17 passed and 8 failed. Corrected implementation passes 25 ownership/CLI cases plus 5 existing repo-hygiene cases. Cases cover both missing links, independent sibling ownership, missing/type/runtime targets, directories, malformed metadata, lexical/symlink escapes, spaces/root aliases and CLI success/default/failure. No claim of generated freshness or complete dependency-manager resolution. Initial worker exact-head logs were unavailable in its tree; parent preserved fresh expected-red and green logs separately rather than inventing those earlier records. Corrections and committed-head proof require a fresh bounded combined-delta review.
