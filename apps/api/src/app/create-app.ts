@@ -394,9 +394,6 @@ export function createApp(
   });
 
   app.post("/api/inventory/invoice-groups/:invoiceGroupId/attachments", async (c) => {
-    if (dependencies.mode === "fresh-exact-selected") {
-      return c.json({ message: "Inventory attachments are unavailable for this application mode." }, 503)
-    }
     try {
       const currentUser = await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers)
       if (!(await dependencies.authBootstrapService.isBootstrapOwner(currentUser.id))) {
@@ -411,6 +408,11 @@ export function createApp(
       const licenseRefusal = mutationLicenseRefusalMessage(getLicenseInfo().status)
       if (licenseRefusal) {
         return c.json({ success: false, error: { code: "UPGRADE_REQUIRED", message: licenseRefusal } }, 403)
+      }
+
+      // Temporary selected-root limitation, disclosed only after authorization.
+      if (!("inventoryService" in dependencies)) {
+        return c.json({ message: "Inventory attachments are unavailable for this application mode." }, 503)
       }
 
       const { invoiceGroupId } = c.req.param()
@@ -453,13 +455,15 @@ export function createApp(
   })
 
   app.get("/api/inventory/attachments/:attachmentId", async (c) => {
-    if (dependencies.mode === "fresh-exact-selected") {
-      return c.json({ message: "Inventory attachments are unavailable for this application mode." }, 503)
-    }
     try {
       const currentUser = await dependencies.accountService.getCurrentSessionUser(c.req.raw.headers)
       if (!(await dependencies.authBootstrapService.isBootstrapOwner(currentUser.id))) {
         return c.json({ message: "غير مصرح بهذا الإجراء." }, 401)
+      }
+
+      // Selected attachments remain unavailable; never bypass session/owner checks.
+      if (!("inventoryService" in dependencies)) {
+        return c.json({ message: "Inventory attachments are unavailable for this application mode." }, 503)
       }
 
       const { attachmentId } = c.req.param()
