@@ -601,6 +601,23 @@ vi.mock("@/features/inventory/inventory-exact-queries", () => ({
     return { data: [], isPending: false, isError: false }
   },
   useExactInventoryDefinitions: () => ({ data: [], isPending: false, isError: false }),
+  // Keep the real stock page mounted before navigating to the catalog. These
+  // query mocks expose overrides for tests of loading and error states.
+  useExactInventoryOutbounds: vi.fn(() => ({ data: [], isPending: false, isError: false, refetch: vi.fn() })),
+  useExactInventoryDetail: vi.fn(() => ({ data: undefined, isPending: false, isError: false, refetch: vi.fn() })),
+  useExactInventoryLocation: vi.fn(() => ({ data: { assets: [], consumables: [] }, isPending: false, isError: false, refetch: vi.fn() })),
+  useExactProjectCharges: vi.fn((_client: unknown, projectId: string | null) => ({
+    data: projectId ? { projectId, totalDzd: "0.00", charges: [] } : undefined,
+    isPending: false, isError: false, refetch: vi.fn(),
+  })),
+  useExactProjectContribution: vi.fn((_client: unknown, projectId: string | null) => ({
+    data: projectId ? { projectId, chargedMaterialsDzd: "0.00", equipmentChargesDzd: "0.00", totalDzd: "0.00", parkedAssetValueDzd: "0.00", parkedAssets: [], materialMovements: [] } : undefined,
+    isPending: false, isError: false, refetch: vi.fn(),
+  })),
+  useExactInventoryAction: vi.fn(() => ({
+    isPending: false, isError: false, reset: vi.fn(),
+    mutateAsync: vi.fn().mockRejectedValue(new Error("Configure an inventory action for this test")),
+  })),
 }))
 
 // HomeView tests pin composition and route intent. Exact page tests exercise
