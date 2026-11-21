@@ -5,6 +5,8 @@ import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import type { PayrollOpeningReview, PayrollOpeningReviewProvider } from "../payroll-lifecycle";
 import type { PayrollAudit } from "../payroll.service";
 import { assertPreparedPayrollSchema } from "./payroll-schema-integrity";
+import { payrollOpeningReconciliationSchemaStatements } from "./payroll-opening-reconciliation-schema";
+import type { OpeningProposal, OpeningRefund, OpeningResolution } from "../payroll-opening-reconciliation";
 
 export const payrollOpeningSchemaStatements: readonly string[] = [
   `CREATE TABLE employee_opening_review (
@@ -47,6 +49,7 @@ export const payrollOpeningSchemaStatements: readonly string[] = [
     `CREATE TRIGGER ${table}_immutable_delete BEFORE DELETE ON ${table} BEGIN SELECT RAISE(ABORT,'Opening history is immutable'); END`,
     `CREATE TRIGGER ${table}_no_replace BEFORE INSERT ON ${table} WHEN EXISTS(SELECT 1 FROM ${table} WHERE ${table === "employee_opening_review" ? "employee_id=NEW.employee_id" : table === "employee_opening_correction" ? "id=NEW.id OR sequence=NEW.sequence" : "source_id=NEW.source_id OR (employee_id=NEW.employee_id AND kind=NEW.kind) OR debt_entry_id=NEW.debt_entry_id"}) BEGIN SELECT RAISE(ABORT,'Opening identity already exists'); END`,
   ]),
+  ...payrollOpeningReconciliationSchemaStatements,
 ];
 
 /** Immutable review facts only. Debt entries remain the sole balance authority. */
@@ -64,7 +67,7 @@ export class SqlitePayrollOpeningRepository implements PayrollOpeningReviewProvi
     }).immediate());
   }
   countRows(employeeId: string): number {
-    return (this.db.prepare("SELECT (SELECT count(*) FROM employee_opening_review WHERE employee_id=?) + (SELECT count(*) FROM employee_opening_source WHERE employee_id=?) + (SELECT count(*) FROM employee_opening_correction c JOIN employee_opening_source s ON s.source_id=c.source_id WHERE s.employee_id=?) AS count").get(employeeId, employeeId, employeeId) as { count: number }).count;
+    return (this.db.prepare("SELECT (SELECT count(*) FROM employee_opening_review WHERE employee_id=?) + (SELECT count(*) FROM employee_opening_source WHERE employee_id=?) + (SELECT count(*) FROM employee_opening_correction c JOIN employee_opening_source s ON s.source_id=c.source_id WHERE s.employee_id=?) + (SELECT count(*) FROM employee_opening_refund f JOIN employee_opening_proposal p ON p.id=f.proposal_id JOIN employee_opening_source s ON s.source_id=p.source_id WHERE s.employee_id=?) AS count").get(employeeId, employeeId, employeeId, employeeId) as { count: number }).count;
   }
   getReview(employeeId: string): PayrollOpeningReview | null {
     return this.withTransaction(() => {
@@ -79,7 +82,8 @@ export class SqlitePayrollOpeningRepository implements PayrollOpeningReviewProvi
         const audit = this.getReviewAudit(employeeId);
         const initial = row.kind === "WAGE" ? audit?.wages : audit?.advances;
         if (!initial || (initial === "0.00" ? !corrections.some(event => event.id === row.debtEntryId) : initial !== amount.toWire())) throw new Error("Opening original review attribution mismatch");
-        return { ...row, amount: amount.toWire(), correctionIds: corrections.map(event => event.id) };
+        this.assertSourceMovements({ ...row, amount: amount.toWire() });
+        return { ...row, amount: amount.toWire(), correctionIds: corrections.map(event => event.id), refunds: this.listRefunds(employeeId).filter(refund => refund.sourceId === row.sourceId).map(refund => ({ id: refund.id, amount: refund.amount })) };
       }) };
     });
   }
@@ -98,6 +102,67 @@ export class SqlitePayrollOpeningRepository implements PayrollOpeningReviewProvi
     if (count.count >= 10000) throw new RangeError("Opening correction history limit exceeded");
     this.db.prepare("INSERT INTO employee_opening_correction(id,source_id,old_minor,new_minor,actor_user_id,actor_label,transaction_id,created_at,reason) VALUES (?,?,?,?,?,?,?,?,?)")
       .run(event.id, event.sourceId, bindMoney(Money.parse(event.oldAmount)), bindMoney(Money.parse(event.newAmount)), event.actorUserId, event.actorLabel, event.transactionId, event.createdAt, event.reason);
+  }
+  listProposals(employeeId: string): OpeningProposal[] {
+    const rows = this.db.prepare(`SELECT p.id,p.source_id AS sourceId,s.employee_id AS employeeId,s.kind,
+      p.reason,p.actor_user_id AS actorUserId,p.actor_label AS actorLabel,p.transaction_id AS transactionId,p.created_at AS createdAt
+      FROM employee_opening_proposal p JOIN employee_opening_source s ON s.source_id=p.source_id
+      WHERE s.employee_id=? ORDER BY p.rowid LIMIT 1001`).all(employeeId) as Omit<OpeningProposal, "oldAmount" | "newAmount" | "requiredRefund" | "status" | "resolution">[];
+    if (rows.length > 1000) throw new RangeError("Opening proposal limit exceeded");
+    return rows.map(row => {
+      const resolution = this.db.prepare("SELECT id,status,refund_entry_id AS refundEntryId,correction_entry_id AS correctionEntryId,reason,actor_user_id AS actorUserId,actor_label AS actorLabel,transaction_id AS transactionId,created_at AS createdAt FROM employee_opening_resolution WHERE proposal_id=?").get(row.id) as OpeningResolution | undefined;
+      const money = (column: "old_minor" | "new_minor" | "required_refund_minor") => prepareMoneyRead(this.db, `SELECT ${column} AS minor_units FROM employee_opening_proposal WHERE id=?`).get(row.id)!.toWire();
+      return { ...row, oldAmount: money("old_minor"), newAmount: money("new_minor"), requiredRefund: money("required_refund_minor"), status: resolution?.status ?? "PENDING", resolution: resolution ?? null };
+    });
+  }
+  saveProposal(row: OpeningProposal): void {
+    if (this.listProposals(row.employeeId).length >= 1000) throw new RangeError("Opening proposal limit exceeded");
+    this.db.prepare("INSERT INTO employee_opening_proposal(id,source_id,old_minor,new_minor,required_refund_minor,reason,actor_user_id,actor_label,transaction_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+      .run(row.id, row.sourceId, bindMoney(Money.parse(row.oldAmount)), bindMoney(Money.parse(row.newAmount)), bindMoney(Money.parse(row.requiredRefund)), row.reason, row.actorUserId, row.actorLabel, row.transactionId, row.createdAt);
+  }
+  listRefunds(employeeId: string): OpeningRefund[] {
+    const rows = this.db.prepare(`SELECT f.id,f.proposal_id AS proposalId,p.source_id AS sourceId,s.employee_id AS employeeId,s.kind,
+      s.debt_account_id AS debtAccountId,s.debt_entry_id AS debtEntryId,f.direction,f.refund_date AS refundDate,
+      f.actor_user_id AS actorUserId,f.actor_label AS actorLabel,f.transaction_id AS transactionId,f.created_at AS createdAt
+      FROM employee_opening_refund f JOIN employee_opening_proposal p ON p.id=f.proposal_id
+      JOIN employee_opening_source s ON s.source_id=p.source_id WHERE s.employee_id=? ORDER BY f.rowid LIMIT 1001`).all(employeeId) as Omit<OpeningRefund, "amount">[];
+    if (rows.length > 1000) throw new RangeError("Opening refund limit exceeded");
+    return rows.map(row => ({ ...row, amount: prepareMoneyRead(this.db, "SELECT amount_minor AS minor_units FROM employee_opening_refund WHERE id=?").get(row.id)!.toWire() }));
+  }
+  saveRefund(row: OpeningRefund): void {
+    this.db.prepare("INSERT INTO employee_opening_refund(id,proposal_id,amount_minor,direction,refund_date,actor_user_id,actor_label,transaction_id,created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+      .run(row.id, row.proposalId, bindMoney(Money.parse(row.amount)), row.direction, row.refundDate, row.actorUserId, row.actorLabel, row.transactionId, row.createdAt);
+  }
+  saveResolution(proposalId: string, row: OpeningResolution): void {
+    this.db.prepare("INSERT INTO employee_opening_resolution(id,proposal_id,status,refund_entry_id,correction_entry_id,reason,actor_user_id,actor_label,transaction_id,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)")
+      .run(row.id, proposalId, row.status, row.refundEntryId, row.correctionEntryId, row.reason, row.actorUserId, row.actorLabel, row.transactionId, row.createdAt);
+  }
+  latestCashDate(source: PayrollOpeningReview["sources"][number]): string | null {
+    const sql = source.kind === "WAGE"
+      ? "SELECT MAX(c.payment_date) AS latest FROM employee_salary_payment_allocation a JOIN employee_salary_cash c ON c.id=a.cash_id WHERE a.source_kind='OPENING' AND a.source_id=? AND c.employee_id=?"
+      : "SELECT MAX(payment_date) AS latest FROM employee_salary_settlement WHERE source_kind='OPENING_ADVANCE' AND source_id=? AND employee_id=?";
+    return (this.db.prepare(sql).get(source.sourceId, source.employeeId) as { latest: string | null }).latest;
+  }
+  assertSourceMovements(source: PayrollOpeningReview["sources"][number]): void {
+    const receipt = source.kind === "WAGE"
+      ? `EXISTS(SELECT 1 FROM employee_salary_payment_allocation a JOIN employee_salary_cash c ON c.id=a.cash_id
+          WHERE a.payment_entry_id=e.id AND a.source_kind='OPENING' AND a.source_id=? AND c.employee_id=?
+          AND a.debt_entry_id=e.target_entry_id AND a.debt_account_id=e.debt_account_id AND c.currency=e.currency
+          AND e.signed_amount_minor=-a.amount_minor)`
+      : `EXISTS(SELECT 1 FROM employee_salary_settlement a WHERE a.payment_entry_id=e.id
+          AND a.source_kind='OPENING_ADVANCE' AND a.source_id=? AND a.employee_id=?
+          AND a.debt_entry_id=e.target_entry_id AND a.debt_account_id=e.debt_account_id
+          AND a.currency=e.currency AND e.signed_amount_minor=-a.amount_minor)`;
+    const invalid = this.db.prepare(`SELECT 1 FROM debt_entry e WHERE e.target_entry_id=? AND (
+      e.status IS NOT 'LIVE' OR e.correction_of_entry_id IS NOT NULL OR e.payment_method IS NOT 'CASH'
+      OR e.producer_type IS NOT 'PAYROLL_OPENING' OR e.producer_id IS NOT ? OR e.currency IS NOT 'DZD'
+      OR (e.entry_type='PAYMENT' AND NOT ${receipt})
+      OR (e.entry_type='ADJUSTMENT' AND NOT EXISTS(SELECT 1 FROM employee_opening_refund f JOIN employee_opening_proposal p ON p.id=f.proposal_id
+        JOIN employee_opening_resolution r ON r.proposal_id=p.id AND r.status='APPLIED' AND r.refund_entry_id=f.id
+        WHERE f.id=e.id AND p.source_id=? AND f.amount_minor=e.signed_amount_minor))
+      OR e.entry_type NOT IN ('PAYMENT','ADJUSTMENT')) LIMIT 1`)
+      .get(source.debtEntryId, source.sourceId, source.sourceId, source.employeeId, source.sourceId);
+    if (invalid) throw new Error("Opening settlement is missing immutable cash provenance");
   }
   getReviewAudit(employeeId: string) {
     const row = this.db.prepare("SELECT actor_user_id AS actorUserId,actor_label AS actorLabel,transaction_id AS transactionId,created_at AS createdAt FROM employee_opening_review WHERE employee_id=?").get(employeeId) as ({ createdAt: string } & PayrollAudit) | undefined;

@@ -4,16 +4,22 @@ import {
   employeePayrollCashRecordInputSchema,
   payrollOpeningReviewInputSchema,
   payrollOpeningCorrectInputSchema,
+  payrollOpeningReconcileInputSchema,
+  payrollOpeningCancelInputSchema,
   type EmployeePayrollAdvanceOffsetInput,
   type EmployeePayrollAdvanceRepayInput,
   type EmployeePayrollCashRecordInput,
   type PayrollOpeningReviewInput,
   type PayrollOpeningCorrectInput,
+  type PayrollOpeningReconcileInput,
+  type PayrollOpeningCancelInput,
 } from "@tuari/contracts"
 
 export type PayrollAction = "cash" | "repay" | "offset"
-export type DurablePayrollAction = PayrollAction | "opening-review" | "opening-correct"
+export type DurablePayrollAction = PayrollAction | "opening-review" | "opening-correct" | "opening-reconcile" | "opening-cancel"
 export type PayrollPayloadByAction = {
+  "opening-reconcile": PayrollOpeningReconcileInput
+  "opening-cancel": PayrollOpeningCancelInput
   "opening-review": PayrollOpeningReviewInput
   "opening-correct": PayrollOpeningCorrectInput
   cash: EmployeePayrollCashRecordInput
@@ -36,6 +42,8 @@ const schemas = {
   offset: employeePayrollAdvanceOffsetInputSchema,
   "opening-review": payrollOpeningReviewInputSchema,
   "opening-correct": payrollOpeningCorrectInputSchema,
+  "opening-reconcile": payrollOpeningReconcileInputSchema,
+  "opening-cancel": payrollOpeningCancelInputSchema,
 } as const
 
 const storageKey = (action: DurablePayrollAction, identity: PayrollIdentity) =>

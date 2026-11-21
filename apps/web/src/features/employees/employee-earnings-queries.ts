@@ -8,6 +8,8 @@ import type {
   EmployeePayrollCashRecordInput,
   PayrollOpeningReviewInput,
   PayrollOpeningCorrectInput,
+  PayrollOpeningReconcileInput,
+  PayrollOpeningCancelInput,
 } from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/workspace-mutations"
@@ -75,6 +77,13 @@ export function useReviewEmployeeOpeningMutation() {
 }
 export function useCorrectEmployeeOpeningMutation() {
   return usePayrollMutation("opening-correct", (input: PayrollOpeningCorrectInput) => rpcClient.employeePayrollOpeningCorrect(input))
+}
+
+export function useReconcileEmployeeOpeningMutation() {
+  return usePayrollMutation("opening-reconcile", (input: PayrollOpeningReconcileInput) => rpcClient.employeePayrollOpeningReconcile(input))
+}
+export function useCancelEmployeeOpeningProposalMutation() {
+  return usePayrollMutation("opening-cancel", (input: PayrollOpeningCancelInput) => rpcClient.employeePayrollOpeningCancelProposal(input))
 }
 
 function usePayrollMutation<A>(

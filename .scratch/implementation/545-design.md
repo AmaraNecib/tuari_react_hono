@@ -1,5 +1,19 @@
 # #545 opening balances: accepted foundation and audited corrections
 
+## Explicit cash reconciliation for a pending decrease
+
+The final slice preserves a proposed correction below recorded settlement as an immutable pending proposal. It does not reject and forget the user's requested amount, change a current balance, create an advance, or claim a cash refund occurred. One active proposal per source prevents conflicting unresolved requests. Cancellation is a separate immutable resolution.
+
+For opening wages 2,000 with actual payment 1,500 and proposed agreed amount 200, the proposal records required refund 1,300. After the operator explicitly confirms actual cash received from the employee, a narrow opening-producer refund capability appends a positive CASH adjustment targeted to that same original. Then the existing opening correction applies -1,800 within the same aggregate transaction. Remaining is 2,000 - 1,500 + 1,300 - 1,800 = 0, agreed wages are 200, and the original 1,500 payment stays unchanged. For an opening receivable advance, the cash refund direction is reversed: the company returns excess recovery to the employee.
+
+Do not weaken the generic negative-remainder guard. Refund cannot exceed actual net CASH payments to the selected original. Require an explicit actual-cash confirmation, date, exact expected current amount and exact expected refund. Revalidate the source and proposal under the shared FIFO and immediate finance reservation. Save refund, correction, resolution and durable receipt atomically; any failed write rolls all effects back. Retry preserves one refund and correction.
+
+Immutable proposal, refund and resolution rows store provenance, not balances. The lifecycle reader validates and counts attributed positive refund movements. Original cash receipts and allocations remain live and unchanged. Gross historical wageCashPaid keeps its existing meaning; actual refunds are disclosed separately. No unrelated obligation is netted, and project labor cost remains approved earning segments only.
+
+UI distinguishes a saved pending correction from an applied correction. It shows old/requested values and required cash direction/amount, allows explicit cancellation without erasure, and offers the actual refund confirmation only when cash really moved. If cash has not been returned, the proposal remains pending. Forgiveness, write-off and invented cash refunds are not authorized shortcuts.
+
+Proof starts with pending proposal preserving all balances, then actual refund plus correction in both directions, including zero, stale proposal, wrong source, missing cash confirmation, excessive refund, rollback and uncertain replay. Use actual authenticated plain/keyed reopen and the connected employee UI. This slice is now implemented with immutable proposal/refund/resolution tables, actual owner RPC in plain/keyed storage, same-request replay through reopen, lifecycle refund attribution, and employee UI requiring actual-cash checkbox plus final confirmation. Cancellation retains the proposal and resolution reason. Focused negative tests cover stale payment, conflicting pending proposal, wrong employee, missing confirmation, wrong amount/date and rollback of all refund/correction effects when resolution persistence fails. The connected browser exercises pending decrease, explicit actual refund, application and reload. Current-head independent review is still required; implementation and passing checks are not a delivery verdict.
+
 ## Connected employee UI milestone
 
 Employee creation now ends with an optional opening-review step using actual created employee IDs. Leaving the step does not call review or convert unknown to zero. The existing employee payroll panel exposes later review and corrections, exact previous/new values and decrease amount before confirmation, a mandatory reason, immutable original-review attribution, and correction history with current void status. Inputs use existing RTL components and exact localized parsing.
@@ -10,7 +24,7 @@ The payroll cash/repayment controls expose reviewed opening wage and advance sou
 
 Browser selector fails closed to full because shared financial root is critical. Local scope is deliberately limited to the two connected payroll scenarios: existing cash/offset/repayment recovery and new real employee creation, skipped review, later review, two confirmed decreases, response-loss/reload/retry, original/current history and selected opening wage payment. The latter was refreshed after initial-audit output and layout changes. Component and authenticated plain/keyed cases remain separate proof, not substitutes for each other.
 
-Remaining acceptance work: explicit saved reconciliation when proposed correction is below already-settled cash. Existing finance still refuses an invalid negative remainder; the normal confirmed-decrease UI does not yet resolve this case. No complete #545 delivery, publication or merge readiness is claimed.
+The later reconciliation slice above adds pending requests and explicit actual-cash refund resolution. The ordinary-decrease UI remains distinct from that flow. No complete #545 review, publication or merge readiness is claimed from this earlier UI milestone.
 
 ## Connected backend milestone
 

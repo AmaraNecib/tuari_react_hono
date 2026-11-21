@@ -1,5 +1,5 @@
 import { implement, ORPCError } from "@orpc/server";
-import { payrollOpeningContract, payrollOpeningOutputSchema, type payrollOpeningReviewInputSchema, type payrollOpeningCorrectInputSchema } from "@tuari/contracts";
+import { payrollOpeningContract, payrollOpeningOutputSchema, type payrollOpeningReviewInputSchema, type payrollOpeningCorrectInputSchema, type payrollOpeningReconcileInputSchema, type payrollOpeningCancelInputSchema } from "@tuari/contracts";
 import type { z } from "zod";
 import type { PayrollOpeningService } from "../modules/workforce/payroll-opening.service";
 import type { RpcContext } from "./context";
@@ -25,5 +25,7 @@ export function createPayrollOpeningRouter(opening: PayrollOpeningService | unde
     }),
     employeePayrollOpeningReview: os.employeePayrollOpeningReview.handler(write<z.input<typeof payrollOpeningReviewInputSchema>>((input, audit) => { service().review({ ...input, ...audit }); })),
     employeePayrollOpeningCorrect: os.employeePayrollOpeningCorrect.handler(write<z.input<typeof payrollOpeningCorrectInputSchema>>((input, audit) => { service().correct({ ...input, ...audit }); })),
+    employeePayrollOpeningReconcile: os.employeePayrollOpeningReconcile.handler(write<z.input<typeof payrollOpeningReconcileInputSchema>>((input, audit) => { service().reconcile({ ...input, ...audit }); })),
+    employeePayrollOpeningCancelProposal: os.employeePayrollOpeningCancelProposal.handler(write<z.input<typeof payrollOpeningCancelInputSchema>>((input, audit) => { service().cancel({ ...input, ...audit }); })),
   });
 }

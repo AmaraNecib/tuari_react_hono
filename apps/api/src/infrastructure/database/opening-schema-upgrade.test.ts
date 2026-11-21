@@ -37,7 +37,7 @@ describe.each(["", "545-upgrade-public-key"])("opening schema upgrade (%s)", key
     const prior = db.prepare("SELECT * FROM app_schema_state ORDER BY key").all();
     const roles = db.prepare("SELECT * FROM role ORDER BY id").all();
     await ensureFreshExactApplicationSchema(db);
-    expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'employee_opening_%' ORDER BY name").all()).toEqual([{ name: "employee_opening_correction" }, { name: "employee_opening_review" }, { name: "employee_opening_source" }]);
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'employee_opening_%' ORDER BY name").all()).toEqual([{ name: "employee_opening_correction" }, { name: "employee_opening_proposal" }, { name: "employee_opening_refund" }, { name: "employee_opening_resolution" }, { name: "employee_opening_review" }, { name: "employee_opening_source" }]);
     expect(db.prepare("SELECT * FROM app_schema_state WHERE key!='payroll_opening_v1' ORDER BY key").all()).toEqual(prior);
     expect(db.prepare("SELECT * FROM role ORDER BY id").all()).toEqual(roles);
     expect(db.prepare("SELECT * FROM employee WHERE id='preserved-worker'").get()).toEqual(employee);

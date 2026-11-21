@@ -5,14 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { PayrollOpeningOutput } from "@tuari/contracts"
 import { ORPCError } from "@orpc/client"
 const mocks = vi.hoisted(() => ({
-  review: vi.fn(), correct: vi.fn(), refetch: vi.fn(),
-  opening: { employeeId: "employee-1", review: "REVIEWED", wages: "2000.00", advances: "0.00", sources: [{ kind: "WAGE", sourceId: "source-1", amount: "2000.00", currentAmount: "2000.00", remaining: "2000.00", debtAccountId: "account-1", debtEntryId: "entry-1" }], reviewAudit: { wages: "2000.00", advances: "0.00", actorUserId: "original-user", actorLabel: "Original owner", transactionId: "original-txn", createdAt: "2026-11-01T00:00:00.000Z" }, history: [] } as PayrollOpeningOutput,
+  review: vi.fn(), correct: vi.fn(), reconcile: vi.fn(), cancel: vi.fn(), refetch: vi.fn(),
+  opening: { employeeId: "employee-1", review: "REVIEWED", wages: "2000.00", advances: "0.00", sources: [{ kind: "WAGE", sourceId: "source-1", amount: "2000.00", currentAmount: "2000.00", remaining: "2000.00", debtAccountId: "account-1", debtEntryId: "entry-1" }], reviewAudit: { wages: "2000.00", advances: "0.00", actorUserId: "original-user", actorLabel: "Original owner", transactionId: "original-txn", createdAt: "2026-11-01T00:00:00.000Z" }, history: [], proposals: [], refunds: [] } as PayrollOpeningOutput,
 }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: "user-1" } } }) }))
 vi.mock("./employee-earnings-queries", () => ({
   useEmployeeOpeningQuery: () => ({ data: mocks.opening, isPending: false, isError: false, refetch: mocks.refetch }),
   useReviewEmployeeOpeningMutation: () => ({ mutateAsync: mocks.review, isPending: false }),
   useCorrectEmployeeOpeningMutation: () => ({ mutateAsync: mocks.correct, isPending: false }),
+  useReconcileEmployeeOpeningMutation: () => ({ mutateAsync: mocks.reconcile, isPending: false }),
+  useCancelEmployeeOpeningProposalMutation: () => ({ mutateAsync: mocks.cancel, isPending: false }),
 }))
 import { EmployeeOpeningPanel } from "./employee-opening-panel"
 afterEach(() => { cleanup(); localStorage.clear() })
@@ -21,6 +23,24 @@ beforeEach(() => {
   Object.defineProperty(navigator, "locks", { configurable: true, value: { request: (_name: string, callback: () => Promise<unknown>) => callback() } })
 })
 describe("opening correction confirmation", () => {
+  it("requires actual cash refund confirmation before applying a saved pending correction", async () => {
+    const original = structuredClone(mocks.opening)
+    try {
+      mocks.opening.proposals = [{ id: "proposal-1", sourceId: "source-1", employeeId: "employee-1", kind: "WAGE", oldAmount: "2000.00", newAmount: "200.00", requiredRefund: "1300.00", reason: "Verified opening", actorUserId: "user-1", actorLabel: "Owner", transactionId: "txn-1", createdAt: "2026-11-01T00:00:00.000Z", status: "PENDING", resolution: null }]
+      mocks.reconcile.mockResolvedValue(mocks.opening)
+      render(<EmployeeOpeningPanel employeeId="employee-1" />)
+      const prepare = screen.getByRole("button", { name: "مراجعة رد النقد وتطبيق التصحيح" }) as HTMLButtonElement
+      expect(prepare.disabled).toBe(true)
+      expect(mocks.reconcile).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole("checkbox", { name: "أؤكد أن النقد الموضح قد رُد فعلياً" }))
+      await waitFor(() => expect(prepare.disabled).toBe(false))
+      fireEvent.click(prepare)
+      expect(mocks.reconcile).not.toHaveBeenCalled()
+      fireEvent.click(screen.getByRole("button", { name: "تأكيد رد النقد وتطبيق التصحيح" }))
+      await waitFor(() => expect(mocks.reconcile).toHaveBeenCalledTimes(1))
+      expect(mocks.reconcile.mock.calls[0]![0]).toMatchObject({ proposalId: "proposal-1", expectedAmount: "2000.00", refundAmount: "1300.00", confirmCashRefund: true })
+    } finally { Object.assign(mocks.opening, original) }
+  })
   it("does not treat unknown as zero until an explicit review is confirmed", async () => {
     const original = structuredClone(mocks.opening)
     try {

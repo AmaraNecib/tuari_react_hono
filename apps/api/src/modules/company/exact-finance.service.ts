@@ -223,6 +223,24 @@ export class ExactFinanceService {
       return this.append(account, { entryType: "PAYMENT", signedAmountDzd: amount.negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), paymentMethod: input.paymentMethod, note: input.note }, audit);
     });
   }
+  /** Record actual returned cash against an opening original without erasing its payment. */
+  recordOpeningCashRefund(raw: PayExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
+    if (this.producer?.type !== "PAYROLL_OPENING") throw new ExactDebtError("Opening refund requires its producer", "CONFLICT");
+    const input = payExactDebtEntrySchema.parse(raw);
+    const audit = this.audit(raw);
+    return this.command("opening-cash-refund", { ...input, ...audit }, input, () => {
+      const target = this.obligation(input.debtEntryId);
+      this.assertOwner(target);
+      const account = this.getAccount(target.debtAccountId);
+      this.assertCurrency(account, input.currency);
+      if (account.partyType !== "INTERNAL_WORKER" || input.paymentMethod !== "CASH") throw new ExactDebtError("Opening refund requires worker cash provenance");
+      const cash = this.listEntries(account.id).filter(row => row.status === "LIVE" && row.targetEntryId === target.id && row.paymentMethod === "CASH" && (row.entryType === "PAYMENT" || row.entryType === "ADJUSTMENT"));
+      const netPaid = Money.parse(sumMoneyHistory(cash.map(row => Money.parse(row.signedAmountDzd)))).negate();
+      const amount = Money.parse(input.amountDzd);
+      if (amount.compare(netPaid) > 0) throw new ExactDebtError("Refund exceeds actual net cash settled", "CONFLICT");
+      return this.append(account, { entryType: "ADJUSTMENT", signedAmountDzd: amount.toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), paymentMethod: "CASH", note: input.note }, audit);
+    });
+  }
   /** Trusted producers may settle part of one original without recording cash. */
   recordSettlement(raw: Omit<PayExactDebtEntry, "paymentMethod"> & ExactDebtAudit): ExactDebtEntry {
     if (!this.producer) throw new ExactDebtError("Original settlement requires a producer", "CONFLICT");
