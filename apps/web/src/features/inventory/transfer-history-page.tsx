@@ -117,7 +117,7 @@ export function TransferHistoryPage() {
             },
             {
               label: t("inventory.transferHistory.totalValue"),
-              value: summaryValue(<CurrencyRun amount={totalValue === undefined ? "�" : formatCurrency(totalValue, true)} currencyLabel="دج" />),
+              value: summaryValue(<CurrencyRun amount={totalValue === undefined ? "�" : formatCurrency(totalValue, true)} currencyLabel="دج" />),
             },
           ]}
         />
@@ -285,13 +285,15 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
             >
               <span className="font-medium">{item.name}</span>
               <span className="text-ink-4">×{item.quantity}</span>
+              {item.to && <a className="text-primary hover:underline" href={item.to.type === "WAREHOUSE" ? `/warehouses/${item.to.id}` : `/projects/${item.to.id}`}>{item.to.name}</a>}
             </span>
           ))}
         </div>
       )}
 
-      {/* Payment Info (for sales) */}
-      {(transfer.type === "SALE" || transfer.type === "RETURN" || transfer.type === "GIFT") && transfer.totalAmountDzd !== null && (
+      {transfer.type === "PURCHASE" && <p className="text-xs text-ink-4">{t("inventory.transferHistory.wholeInvoiceAmounts")}</p>}
+      {/* Payment information */}
+      {(transfer.type === "PURCHASE" || transfer.type === "SALE" || transfer.type === "RETURN" || transfer.type === "GIFT") && transfer.totalAmountDzd !== null && (
         <div className="flex items-center justify-between border-t border-line/50 pt-3">
           <div className="flex items-center gap-4">
             <div>

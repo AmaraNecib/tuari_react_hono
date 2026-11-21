@@ -144,6 +144,7 @@ function LocationTransferItem({
   locationId: string
   locationType: "WAREHOUSE" | "PROJECT"
 }) {
+  const { t } = useTranslation()
   const direction = getMovementDirection(transfer, locationId, locationType)
 
   // Determine the other location
@@ -193,6 +194,7 @@ function LocationTransferItem({
       {transfer.totalAmountDzd !== null && (
         <span className="text-xs font-medium tabular-nums min-w-[80px] text-start">
           <CurrencyRun amount={transfer.totalAmountDzd!} currencyLabel="دج" />
+          {transfer.type === "PURCHASE" && <span className="block font-normal">{t("inventory.transferHistory.wholeInvoiceAmounts")}</span>}
         </span>
       )}
     </div>

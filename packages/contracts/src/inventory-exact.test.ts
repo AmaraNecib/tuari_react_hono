@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { exactInventoryHistoryInputSchema, exactInventoryHistorySchema, exactInventoryInvoiceCreateSchema } from "./inventory-exact";
+import { exactInventoryHistoryInputSchema, exactInventoryHistoryItemSchema, exactInventoryHistorySchema, exactInventoryInvoiceCreateSchema } from "./inventory-exact";
 
 it("validates exact history filters, pagination, source operands, and wide monetary strings", () => {
   expect(exactInventoryHistoryInputSchema.parse({ transferType: "RETURN", projectId: "project-1" })).toMatchObject({ offset: 0, limit: 50 });
@@ -13,6 +13,14 @@ it("validates exact history filters, pagination, source operands, and wide monet
   expect(exactInventoryHistorySchema.safeParse({ ...page, summary: { ...page.summary, totalAmountDzd: 0 } }).success).toBe(false);
   expect(page.items[0]!.items[0]!.priceSource).toMatchObject({ mode: "agreed-total", total: "9007199254740993.07" });
   expect(exactInventoryHistorySchema.safeParse({ ...page, items: [{ ...page.items[0], totalAmountDzd: 9007199254740993.07 }] }).success).toBe(false);
+});
+
+it("keeps absent and null item destinations compatible without inventing a location", () => {
+  const item = { id: "entry", name: "Material", quantity: 2, type: "CONSUMABLE", priceSource: null };
+  expect(exactInventoryHistoryItemSchema.parse(item)).not.toHaveProperty("to");
+  expect(exactInventoryHistoryItemSchema.parse({ ...item, to: null }).to).toBeNull();
+  expect(exactInventoryHistoryItemSchema.parse({ ...item, to: { type: "PROJECT", id: "same", name: "Site" } }).to).toEqual({ type: "PROJECT", id: "same", name: "Site" });
+  expect(exactInventoryHistoryItemSchema.safeParse({ ...item, to: { type: "SUPPLIER", id: "same", name: "Site" } }).success).toBe(false);
 });
 
 it("accepts price4 and independent fractional stock without a client rounded line total", () => {

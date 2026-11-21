@@ -150,7 +150,7 @@ export const exactInventoryHistoryInputSchema = z.object({
 }).superRefine((input, ctx) => {
   if (input.warehouseId && input.projectId) ctx.addIssue({ code: "custom", message: "Choose one location" });
 });
-export const exactInventoryHistoryItemSchema = z.object({ id: z.string().min(1), name: z.string(), quantity: z.number().nonnegative(), type: z.enum(["ASSET", "CONSUMABLE"]), priceSource: exactInventoryLineSchema.nullable() });
+export const exactInventoryHistoryItemSchema = z.object({ id: z.string().min(1), name: z.string(), quantity: z.number().nonnegative(), type: z.enum(["ASSET", "CONSUMABLE"]), priceSource: exactInventoryLineSchema.nullable(), to: z.object({ type: z.enum(["WAREHOUSE", "PROJECT"]), id: z.string(), name: z.string() }).nullable().optional() });
 export const exactInventoryHistoryRowSchema = z.object({
   id: z.string().min(1), date: z.string().datetime(), type: z.enum(["PURCHASE", "INTERNAL", "SALE", "GIFT", "RETURN"]),
   from: z.object({ type: z.enum(["WAREHOUSE", "PROJECT"]), id: z.string(), name: z.string() }).nullable(),

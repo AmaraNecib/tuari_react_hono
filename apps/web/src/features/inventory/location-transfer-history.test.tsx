@@ -38,6 +38,13 @@ const purchase = {
 }
 
 describe("mounted location transfer history", () => {
+  it("labels location subset money as whole invoice money", () => {
+    mocks.history.mockReturnValue({ data: { items: [{ ...purchase, totalAmountDzd: "30.00" }] }, isPending: false, isError: false })
+    render(<LocationTransferHistory locationId="source" locationType="WAREHOUSE" />)
+    expect(screen.getByText("مبالغ الفاتورة كاملة، وليست قيمة الأصناف المعروضة")).toBeTruthy()
+    expect(screen.getByText("وارد")).toBeTruthy()
+  })
+
   it("shows each item's own exact movement quantity and the other location", () => {
     mocks.history.mockReturnValue({
       data: { items: [transfer, purchase] },

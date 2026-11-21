@@ -1,4 +1,4 @@
-import { absoluteHistoryAmount, type HistoryCandidate, type HistoryKey } from "./inventory-history-read";
+import { absoluteHistoryAmount, commonHistoryDestination, type HistoryCandidate, type HistoryKey } from "./inventory-history-read";
 import { createHash } from "node:crypto";
 import {
   Money, UnitPrice, Quantity, ExactLine, finalizeLines, parseExactLine, sumMoney, sumMoneyHistory, sumExactLineHistory, sumMoneyReports,
@@ -65,16 +65,21 @@ export class ExactInventoryService {
       const fromBound = historyDayBound(input.dateFrom, "start");
       const toBound = historyDayBound(input.dateTo, "end");
       const matches = (row: HistoryCandidate) => {
+        if (row.source === "purchase" && (input.warehouseId || input.projectId || input.locationType && input.locationType !== "ALL") &&
+          !row.destinations?.some(place =>
+            (!input.warehouseId || place?.type === "WAREHOUSE" && place.id === input.warehouseId) &&
+            (!input.projectId || place?.type === "PROJECT" && place.id === input.projectId) &&
+            (!input.locationType || input.locationType === "ALL" || place?.type === input.locationType))) return false;
         const stamp = Date.parse(row.date);
         if (fromBound && stamp < Date.parse(fromBound)) return false;
         if (toBound && stamp > Date.parse(toBound)) return false;
-        if (input.warehouseId && ![row.from, row.to].some(place => place?.type === "WAREHOUSE" && place.id === input.warehouseId)) return false;
-        if (input.projectId && ![row.from, row.to].some(place => place?.type === "PROJECT" && place.id === input.projectId)) return false;
-        if (input.locationType && input.locationType !== "ALL" && row.from?.type !== input.locationType && row.to?.type !== input.locationType) return false;
+        if (input.warehouseId && ![row.from, ...(row.destinations ?? [row.to])].some(place => place?.type === "WAREHOUSE" && place.id === input.warehouseId)) return false;
+        if (input.projectId && ![row.from, ...(row.destinations ?? [row.to])].some(place => place?.type === "PROJECT" && place.id === input.projectId)) return false;
+        if (input.locationType && input.locationType !== "ALL" && ![row.from, ...(row.destinations ?? [row.to])].some(place => place?.type === input.locationType)) return false;
         if (input.transferType && input.transferType !== "ALL" && row.type !== input.transferType) return false;
         if (input.search) {
           const needle = input.search.toLocaleLowerCase();
-          const haystack = [row.id, row.note, row.counterparty?.name, row.from?.name, row.to?.name, ...row.itemNames].filter(Boolean).join(" ").toLocaleLowerCase();
+          const haystack = [row.id, row.note, row.counterparty?.name, row.from?.name, row.to?.name, ...(row.destinations ?? []).map(place => place?.name), ...row.itemNames].filter(Boolean).join(" ").toLocaleLowerCase();
           if (!haystack.includes(needle)) return false;
         }
         return true;
@@ -88,12 +93,12 @@ export class ExactInventoryService {
         if (row.debtEntryId && row.debtAccountId) row.totalAmountDzd = absoluteHistoryAmount(this.finance.historyOriginal(row.debtAccountId, row.debtEntryId));
       }
       const filtered = candidates.filter(matches).sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
-      return { items: this.hydrateHistory(filtered.slice(input.offset, input.offset + input.limit)), total: filtered.length, offset: input.offset, limit: input.limit,
+      return { items: this.hydrateHistory(filtered.slice(input.offset, input.offset + input.limit), input), total: filtered.length, offset: input.offset, limit: input.limit,
         summary: { total: filtered.length, sales: filtered.filter(row => row.type === "SALE").length, internal: filtered.filter(row => row.type === "INTERNAL").length,
           totalAmountDzd: sumMoneyHistory(filtered.flatMap(row => row.totalAmountDzd === null ? [] : [Money.parse(row.totalAmountDzd)])) } };
     });
   }
-  private hydrateHistory(keys: HistoryKey[]): ExactInventoryHistoryRow[] {
+  private hydrateHistory(keys: HistoryKey[], input: ExactInventoryHistoryInput): ExactInventoryHistoryRow[] {
     const required = <T,>(value: T | null): T => { if (value === null) throw new ExactDebtError("History source not found", "NOT_FOUND"); return value; };
     const groups = keys.filter(key => key.source === "purchase").map(key => required(this.repo.getGroup(key.id)));
     const movements = keys.filter(key => key.source === "movement").map(key => required(this.repo.getMovement(key.id)));
@@ -103,9 +108,13 @@ export class ExactInventoryService {
     const location = (type: "WAREHOUSE" | "PROJECT" | null, id: string | null) => type && id ? { type, id, name: this.repo.locationLabel(type === "WAREHOUSE" ? id : null, type === "PROJECT" ? id : null) } : null;
     const rows: ExactInventoryHistoryRow[] = [];
     for (const group of groups) {
-      const lines = this.repo.listEntries(group.id).map(entry => ({ id: entry.id, name: entry.itemName, quantity: entry.quantity, type: entry.itemType, priceSource: entry.priceSource }));
+      const lines = this.repo.listEntries(group.id).map(entry => ({ id: entry.id, name: entry.itemName, quantity: entry.quantity, type: entry.itemType, priceSource: entry.priceSource,
+        to: location(entry.warehouseId ? "WAREHOUSE" : entry.projectId ? "PROJECT" : null, entry.warehouseId ?? entry.projectId) })).filter(item =>
+          (!input.warehouseId || item.to?.type === "WAREHOUSE" && item.to.id === input.warehouseId) &&
+          (!input.projectId || item.to?.type === "PROJECT" && item.to.id === input.projectId) &&
+          (!input.locationType || input.locationType === "ALL" || item.to?.type === input.locationType));
       rows.push({ id: group.id, date: group.invoiceDate ?? group.createdAt, type: "PURCHASE", from: null,
-        to: location(group.warehouseId ? "WAREHOUSE" : group.projectId ? "PROJECT" : null, group.warehouseId ?? group.projectId),
+        to: commonHistoryDestination(lines.map(item => item.to)),
         counterparty: group.externalCounterpartyId ? { id: group.externalCounterpartyId, name: group.supplierName ?? this.repo.counterpartyLabel(group.externalCounterpartyId) } : null,
         items: lines, totalAmountDzd: group.grossTotalDzd, paidAmountDzd: group.paidAmountDzd, remainingDebtDzd: group.remainingDebtDzd,
         currency: group.currency, paymentStatus: group.remainingDebtDzd === "0.00" ? "PAID" : group.paidAmountDzd === "0.00" ? "UNPAID" : "PARTIAL", status: "COMPLETED", note: group.note });

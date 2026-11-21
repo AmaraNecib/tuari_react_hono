@@ -22,7 +22,7 @@ const dependencies = { id: randomUUID, now: () => date };
 const closes: (() => void)[] = [];
 afterEach(() => { for (const close of closes.splice(0)) close(); });
 function setup(kind: "memory" | "plain" | "keyed") {
-  const references = { warehouses: [{ id: "warehouse", name: "Synthetic warehouse" }], projects: [{ id: "project", name: "Synthetic project" }, { id: "project-two", name: "Second project" }], definitions: [
+  const references = { warehouses: [{ id: "warehouse", name: "Synthetic warehouse" }], projects: [{ id: "warehouse", name: "Collision project" }, { id: "project", name: "Synthetic project" }, { id: "project-two", name: "Second project" }], definitions: [
     { id: "material", name: "Synthetic material", itemType: "CONSUMABLE" as const, unit: "m", description: null, isActive: true, createdAt: date, updatedAt: date },
     { id: "asset", name: "Synthetic equipment", itemType: "ASSET" as const, unit: null, description: null, isActive: true, createdAt: date, updatedAt: date },
   ] };
@@ -40,7 +40,7 @@ function setup(kind: "memory" | "plain" | "keyed") {
     nativeDb = db;
     closes.push(() => db.close());
     db.pragma("foreign_keys=ON");
-    db.exec(`CREATE TABLE employee(id TEXT PRIMARY KEY); CREATE TABLE external_counterparty(id TEXT PRIMARY KEY); CREATE TABLE warehouse(id TEXT PRIMARY KEY,name TEXT NOT NULL); CREATE TABLE project(id TEXT PRIMARY KEY,name TEXT NOT NULL); INSERT INTO external_counterparty VALUES ('${partyId}'); INSERT INTO warehouse VALUES ('warehouse','Synthetic warehouse'); INSERT INTO project VALUES ('project','Synthetic project'),('project-two','Second project')`);
+    db.exec(`CREATE TABLE employee(id TEXT PRIMARY KEY); CREATE TABLE external_counterparty(id TEXT PRIMARY KEY); CREATE TABLE warehouse(id TEXT PRIMARY KEY,name TEXT NOT NULL); CREATE TABLE project(id TEXT PRIMARY KEY,name TEXT NOT NULL); INSERT INTO external_counterparty VALUES ('${partyId}'); INSERT INTO warehouse VALUES ('warehouse','Synthetic warehouse'); INSERT INTO project VALUES ('warehouse','Collision project'),('project','Synthetic project'),('project-two','Second project')`);
     for (const sql of exactInvoiceSchemaStatements) db.exec(sql);
     for (const sql of exactDebtSchemaStatements) db.exec(sql);
     for (const sql of exactInventorySchemaStatements) db.exec(sql);
@@ -79,6 +79,40 @@ it.each(["memory", "plain", "keyed"] as const)("%s: loads each shared outbound d
   expect(remaining()).toEqual({ [first.id]: "50.00", [second.id]: "80.00", [returned.id]: "80.00", [gift.id]: "0.00" });
   expect(reads).toHaveBeenCalledTimes(2);
 });
+it.each(["memory", "plain", "keyed"] as const)("%s: purchase destinations follow saved entries with whole invoice money", kind => {
+  const { inventory, repo, ledger } = setup(kind);
+  const allB = inventory.createInvoiceGroup({ requestId: "all-b", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", projectId: "project", itemDefinitionId: "material", quantity: 3, unitPriceDzd: "2.0000" }] });
+  expect(inventory.transferHistory({ warehouseId: "warehouse" }).total).toBe(0);
+  expect(inventory.transferHistory({}).items[0]).toMatchObject({ to: { type: "PROJECT", id: "project" }, items: [{ quantity: 3, to: { type: "PROJECT", id: "project" } }] });
+  const mixed = inventory.createInvoiceGroup({ requestId: "mixed", warehouseId: "warehouse", createDebt: true, externalCounterpartyId: partyId, paymentInputType: "AMOUNT", paidAmountDzd: "1.00", entries: [
+    { kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 2, unitPriceDzd: "5.0000" },
+    { kind: "CONSUMABLE", projectId: "project", itemDefinitionId: "material", quantity: 4, unitPriceDzd: "5.0000" },
+  ] });
+  const reads = vi.spyOn(ledger, "listEntries");
+  const global = inventory.transferHistory({});
+  expect(global.items.find(row => row.id === mixed.group.id)).toMatchObject({ to: null, totalAmountDzd: "30.00", paidAmountDzd: "1.00", remainingDebtDzd: "29.00" });
+  expect(global.total).toBe(2);
+  expect(global.summary.totalAmountDzd).toBe("36.00");
+  const local = inventory.transferHistory({ warehouseId: "warehouse" });
+  expect(local.items).toHaveLength(1);
+  expect(local.items[0]).toMatchObject({ to: { type: "WAREHOUSE", id: "warehouse" }, totalAmountDzd: "30.00", paidAmountDzd: "1.00", remainingDebtDzd: "29.00", items: [{ quantity: 2, to: { type: "WAREHOUSE", id: "warehouse" } }] });
+  expect(local.items[0]!.items).toHaveLength(1);
+  expect(inventory.transferHistory({ warehouseId: "warehouse", locationType: "PROJECT" }).total).toBe(0);
+  expect(inventory.transferHistory({ locationType: "PROJECT" }).items.find(row => row.id === mixed.group.id)!.items.map(item => item.quantity)).toEqual([4]);
+  expect(inventory.transferHistory({ search: "Synthetic project", limit: 1 }).summary.totalAmountDzd).toBe("36.00");
+  expect(inventory.transferHistory({ projectId: "project", offset: 1, limit: 1 }).summary.totalAmountDzd).toBe("36.00");
+  expect(reads).not.toHaveBeenCalled();
+  // A typed ID collision in persisted inputs must not turn a project into a warehouse.
+  const entry = repo.listEntries(allB.group.id)[0]!;
+  repo.saveEntry({ ...entry, projectId: "warehouse" });
+  expect(inventory.transferHistory({ warehouseId: "warehouse" }).total).toBe(1);
+  expect(inventory.transferHistory({ projectId: "warehouse" }).items[0]!.id).toBe(allB.group.id);
+  const mixedProject = repo.listEntries(mixed.group.id).find(row => row.projectId)!;
+  repo.saveEntry({ ...mixedProject, projectId: "warehouse" });
+  expect(inventory.transferHistory({}).items.find(row => row.id === mixed.group.id)!.to).toBeNull();
+  expect(inventory.transferHistory({ projectId: "warehouse" }).items.find(row => row.id === mixed.group.id)!.items.map(row => row.quantity)).toEqual([4]);
+});
+
 it("returns exact purchase, internal, and outbound history with bounded filters and pagination", () => {
   const { inventory } = setup("memory");
   inventory.createInvoiceGroup({ requestId: "history-purchase", warehouseId: "warehouse", createDebt: true, externalCounterpartyId: partyId,

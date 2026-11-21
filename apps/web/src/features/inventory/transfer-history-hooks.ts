@@ -1,7 +1,7 @@
 import { createORPCClient } from "@orpc/client"
 import { useInfiniteQuery } from "@tanstack/react-query"
 import { useSessionQuery } from "@/features/session/use-session-query"
-import type { ExactInventoryClient } from "@tuari/contracts"
+import type { ExactInventoryClient, ExactInventoryHistoryRow } from "@tuari/contracts"
 
 import { rpcLink } from "@/lib/orpc-client"
 
@@ -21,22 +21,7 @@ export type TransferHistoryFilters = {
   search?: string
 }
 
-export type TransferHistoryItem = {
-  id: string
-  date: string
-  type: "PURCHASE" | "INTERNAL" | "SALE" | "GIFT" | "RETURN"
-  from: { type: "WAREHOUSE" | "PROJECT"; id: string; name: string } | null
-  to: { type: "WAREHOUSE" | "PROJECT"; id: string; name: string } | null
-  counterparty: { id: string; name: string } | null
-  items: Array<{ id: string; name: string; quantity: number; type: "CONSUMABLE" | "ASSET"; priceSource: unknown }>
-  totalAmountDzd: string | null
-  paidAmountDzd: string | null
-  remainingDebtDzd: string | null
-  currency: "DZD" | null
-  paymentStatus: "PAID" | "PARTIAL" | "UNPAID" | "N/A"
-  status: "COMPLETED" | "PENDING" | "CANCELLED"
-  note: string | null
-}
+export type TransferHistoryItem = ExactInventoryHistoryRow
 
 function useHistoryPages(input: Parameters<ExactInventoryClient["transferHistory"]>[0], key: (owner: string | null) => readonly unknown[], limit: number, enabled = true) {
   const session = useSessionQuery()
