@@ -1,4 +1,4 @@
-import { installManagedApiLifecycle, expect, test } from "./helpers/test"
+import { installManagedApiLifecycle, expect, test, type Page } from "./helpers/test"
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 import { findE2eDatabase, loadDatabaseConstructor } from "./helpers/db-seed"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
@@ -9,6 +9,10 @@ test.describe.configure({ mode: "serial" })
 let itemName = ""
 let warehouseName = ""
 let counterpartyName = ""
+let mixedItemA = ""
+let mixedItemB = ""
+let alternateWarehouse = ""
+const wholeInvoiceDisclosure = "مبالغ الفاتورة كاملة، وليست قيمة الأصناف المعروضة"
 const sections = ["تسجيل الشراء كدين على الشركة", "الطرف الخارجي", "الوجهة الافتراضية", "ملاحظات"]
 
 test.describe("inventory invoice create — progressive disclosure", () => {
@@ -149,4 +153,122 @@ test.describe("inventory invoice create — progressive disclosure", () => {
     }
     await expect(page.getByRole("button", { name: "العودة إلى الفواتير", exact: true })).toBeVisible()
   })
+
+  test("create distinct mixed-history items and a second destination through the real forms", async ({ page }) => {
+    await bootstrapOrSignIn(page)
+    mixedItemA = `صنف مختلط أ ${uniqueSuffix()}`
+    mixedItemB = `صنف مختلط ب ${uniqueSuffix()}`
+    for (const name of [mixedItemA, mixedItemB]) {
+      await page.getByRole("link", { name: "دليل العناصر" }).first().click()
+      await page.getByRole("button", { name: "دليل العناصر", exact: true }).click()
+      await page.getByLabel("اسم العنصر").fill(name)
+      await page.getByLabel("وحدة القياس").fill("قطعة")
+      await page.getByRole("button", { name: "إنشاء التعريف" }).first().click()
+      await expect(page.getByText(name, { exact: true })).toBeVisible()
+    }
+    alternateWarehouse = `مستودع مختلط ب ${uniqueSuffix()}`
+    await page.getByRole("link", { name: "المستودعات", exact: true }).first().click()
+    await page.getByRole("button", { name: "إضافة مستودع" }).first().click()
+    await page.getByLabel("اسم المستودع", { exact: true }).fill(alternateWarehouse)
+    await page.getByRole("button", { name: "حفظ المستودع" }).click()
+    await expect(page.getByRole("heading", { name: alternateWarehouse, exact: true })).toBeVisible()
+  })
+
+  test("saved mixed purchase owns both global destinations but only each location's incoming units", async ({ page }) => {
+    await bootstrapOrSignIn(page)
+    const number = `MIXED-${uniqueSuffix()}`
+    await saveHistoryInvoice(page, number, false)
+    await page.getByRole("link", { name: "سجل التحويلات", exact: true }).first().click()
+    await expect(page.getByText("يتضمن الإجمالي مبالغ فواتير الشراء كاملة، لا قيمة أصناف الموقع فقط", { exact: true })).toBeVisible()
+    // The unique user-entered note belongs directly to the purchase card.
+    const row = page.getByText(number, { exact: true }).locator("..")
+    await expect(row).toHaveCount(1)
+    await expect(row).toContainText("شراء")
+    await expect(row.getByText(wholeInvoiceDisclosure, { exact: true })).toBeVisible()
+    for (const [name, quantity, destination] of [[mixedItemA, "×2", warehouseName], [mixedItemB, "×4", alternateWarehouse]]) {
+      const item = row.getByText(name!, { exact: true }).locator("..")
+      await expect(item.getByText(quantity!, { exact: true })).toBeVisible()
+      const link = item.getByRole("link", { name: destination!, exact: true })
+      await expect(link).toHaveAttribute("href", /^\/warehouses\/[^/]+$/)
+    }
+    await expect(row.getByRole("link")).toHaveCount(2)
+    for (const [label, amount] of [["الإجمالي", "30"], ["المدفوع", "1"], ["الدين", "29"]]) {
+      const money = row.getByText(label!, { exact: true }).locator("..")
+      await expect(money.locator('bdi[dir="ltr"]')).toHaveText(amount!)
+    }
+    const destinationA = await row.getByRole("link", { name: warehouseName, exact: true }).getAttribute("href")
+    const destinationB = await row.getByRole("link", { name: alternateWarehouse, exact: true }).getAttribute("href")
+    expect(destinationA).not.toBe(destinationB)
+    for (const [destination, ownItem, otherItem, quantity] of [
+      [warehouseName, mixedItemA, mixedItemB, "×2"],
+      [alternateWarehouse, mixedItemB, mixedItemA, "×4"],
+    ]) {
+      await openWarehouseHistory(page, destination!)
+      const local = page.getByTestId("location-transfer-history-row").filter({ hasText: ownItem! })
+      await expect(local).toHaveCount(1)
+      await expect(local).toContainText("شراء")
+      await expect(local.getByText("وارد", { exact: true })).toBeVisible()
+      await expect(local).not.toContainText(otherItem!)
+      await expect(local.locator('bdi[dir="ltr"]')).toHaveText([quantity!, "30.00"])
+      await expect(local.getByText(wholeInvoiceDisclosure, { exact: true })).toBeVisible()
+    }
+  })
+
+  test("a header default with every entry overridden does not create a phantom local purchase", async ({ page }) => {
+    await bootstrapOrSignIn(page)
+    const number = `OVERRIDE-${uniqueSuffix()}`
+    await saveHistoryInvoice(page, number, true)
+    await page.getByRole("link", { name: "سجل التحويلات", exact: true }).first().click()
+    const global = page.getByText(number, { exact: true }).locator("..")
+    await expect(global).toHaveCount(1)
+    await expect(global.getByRole("link", { name: warehouseName, exact: true })).toHaveCount(0)
+    // The single destination appears once in the route and once per entry.
+    await expect(global.getByRole("link", { name: `مستودع: ${alternateWarehouse}`, exact: true })).toBeVisible()
+    await expect(global.getByRole("link", { name: alternateWarehouse, exact: true })).toHaveCount(2)
+    await openWarehouseHistory(page, alternateWarehouse)
+    const purchasesB = page.getByTestId("location-transfer-history-row").filter({ hasText: mixedItemA })
+    await expect(purchasesB).toHaveCount(1)
+    await expect(purchasesB).toContainText(mixedItemB)
+    await expect(purchasesB.getByText("وارد", { exact: true })).toBeVisible()
+    await expect(purchasesB.locator('bdi[dir="ltr"]')).toHaveText(["×2", "×4", "30.00"])
+    await expect(purchasesB.getByText(wholeInvoiceDisclosure, { exact: true })).toBeVisible()
+    await openWarehouseHistory(page, warehouseName)
+    // A still has the earlier mixed purchase, not a second purchase from the header.
+    const purchasesA = page.getByTestId("location-transfer-history-row").filter({ hasText: mixedItemA })
+    await expect(purchasesA).toHaveCount(1)
+    await expect(purchasesA).not.toContainText(mixedItemB)
+    await expect(purchasesA.locator('bdi[dir="ltr"]')).toHaveText(["×2", "30.00"])
+    await expect(page.getByTestId("location-transfer-history-row").filter({ hasText: mixedItemB })).toHaveCount(0)
+  })
 })
+
+async function openWarehouseHistory(page: Page, name: string) {
+  await page.getByRole("link", { name: "المستودعات", exact: true }).first().click()
+  const warehouse = page.getByRole("row").filter({ hasText: name })
+  await warehouse.getByRole("button", { name: "عرض", exact: true }).click()
+  await expect(page.getByRole("heading", { name, exact: true })).toBeVisible()
+  await page.getByRole("tab", { name: "سجل التحويلات", exact: true }).click()
+}
+
+async function saveHistoryInvoice(page: Page, number: string, allEntriesAtB: boolean) {
+  await page.goto("/invoices/create")
+  const editor = page.getByRole("dialog", { name: "فاتورة مخزون جديدة", exact: true })
+  await editor.getByLabel("رقم الفاتورة، اختياري", { exact: true }).fill(number)
+  for (const name of sections) await editor.getByRole("button", { name, exact: true }).click()
+  await editor.getByRole("checkbox", { name: sections[0], exact: true }).check()
+  await editor.getByRole("combobox", { name: "إدخال الدفعة الأولى", exact: true }).selectOption("AMOUNT")
+  await editor.getByLabel("الدفعة الأولى، اختياري", { exact: true }).fill("1")
+  await editor.getByRole("combobox", { name: "الطرف الخارجي", exact: true }).selectOption({ label: counterpartyName })
+  await editor.getByRole("combobox", { name: "الوجهة الافتراضية", exact: true }).selectOption({ label: warehouseName })
+  await editor.getByLabel("ملاحظة", { exact: true }).fill(number)
+  await editor.getByRole("button", { name: "إضافة بند مخزون", exact: true }).click()
+  for (const [index, name] of [mixedItemA, mixedItemB].entries()) {
+    await editor.getByRole("combobox", { name: "العنصر", exact: true }).nth(index).selectOption({ label: `${name} · مادة` })
+    await editor.getByLabel("كمية المخزون", { exact: true }).nth(index).fill(index === 0 ? "2" : "4")
+    await editor.getByLabel("سعر الوحدة", { exact: true }).nth(index).fill("5.0000")
+    if (index === 1 || allEntriesAtB) await editor.getByRole("combobox", { name: "وجهة البند", exact: true }).nth(index).selectOption({ label: alternateWarehouse })
+  }
+  await editor.getByRole("button", { name: "حفظ الفاتورة والمخزون", exact: true }).click()
+  await expect(editor).toBeHidden()
+  await expect(page.getByRole("heading", { name: `تفاصيل ${number}`, exact: true })).toBeVisible()
+}
