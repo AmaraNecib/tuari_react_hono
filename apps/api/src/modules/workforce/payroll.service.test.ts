@@ -56,6 +56,29 @@ function fixture(key: string) {
 }
 
 describe.each([["plain", ""], ["keyed", "558-command-public-key"]])("payroll command integration %s", (_driver, key) => {
+  it("refuses offset commands when offset storage is not configured", () => {
+    const f = fixture(key);
+    expect(() => f.service.offsetAdvance({ ...f.audit, requestId: "no-offset-store", employeeId: f.employeeId, amount: "1", settlementDate: paidAt, wageSource: { kind: "EARNING", id: "missing" }, advanceSource: { kind: "ADVANCE", id: "missing" } })).toThrow(/persistence is not configured/);
+    expect(f.finance.listAccounts()).toEqual([]);
+  });
+
+  it("refuses registering or paying missing earnings without creating debt", () => {
+    const f = fixture(key);
+    expect(() => f.service.registerEarning({ ...f.audit, requestId: "missing-earning", earningId: "missing" })).toThrow(/not found/);
+    expect(() => f.service.recordCash({ ...f.audit, requestId: "pay-missing", employeeId: f.employeeId, amount: "1", paymentDate: paidAt, wages: [{ earningId: "missing", amount: "1" }] })).toThrow(/not found/);
+    expect(f.finance.listAccounts()).toEqual([]);
+    expect(f.cash.listCash(f.employeeId)).toEqual([]);
+  });
+
+  it("refuses missing opening sources without creating cash or settlements", () => {
+    const f = fixture(key);
+    expect(() => f.service.recordCash({ ...f.audit, requestId: "missing-opening-wage", employeeId: f.employeeId, amount: "1", paymentDate: paidAt, wages: [{ openingId: "missing", amount: "1" }] })).toThrow(/Reviewed opening source/);
+    expect(() => f.service.repayAdvance({ ...f.audit, requestId: "missing-opening-advance", employeeId: f.employeeId, openingAdvanceId: "missing", amount: "1", paymentDate: paidAt })).toThrow(/Reviewed opening source/);
+    expect(f.cash.listCash(f.employeeId)).toEqual([]);
+    expect(f.cash.listSettlements(f.employeeId)).toEqual([]);
+    expect(f.finance.listAccounts()).toEqual([]);
+  });
+
   it("confirms only rolled-back absent-receipt refusals and accepts a corrected request", () => {
     const f = fixture(key); const earning = f.earning("100.00");
     const input = { ...f.audit, requestId: "stale-balance", employeeId: f.employeeId, amount: "101.00", paymentDate: paidAt, wages: [{ earningId: earning.id, amount: "101.00" }] };

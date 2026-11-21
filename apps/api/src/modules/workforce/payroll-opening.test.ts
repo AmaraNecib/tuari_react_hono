@@ -13,6 +13,45 @@ function fixture(key = "") {
 }
 
 describe.each(["", "545-opening-public-test-key"])("opening review and attributable correction (%s)", key => {
+  it("rejects a repository belonging to a different transaction", () => {
+    const f = fixture(key); const other = fixture(key);
+    expect(() => new PayrollOpeningService(f.finance, other.repository, { id: randomUUID, now: () => now })).toThrow(/same connection/);
+  });
+
+  it("refuses voided opening originals and unattributed corrections on public reads", () => {
+    const f = fixture(key);
+    const review = f.opening.review({ ...f.audit, requestId: "read-integrity", employeeId: f.employeeId, wages: "10", advances: "0" });
+    const source = review.sources[0]!;
+    const producer = f.finance.forProducer({ type: "PAYROLL_OPENING", id: source.sourceId });
+    producer.correctOpeningEntry({ ...f.audit, requestId: "unattributed", entryId: source.debtEntryId, amountDzd: "9", currency: "DZD", reason: "Correction outside opening workflow" });
+    expect(() => f.opening.get(f.employeeId)).toThrow(/missing immutable audit history/);
+    producer.voidEntry({ ...f.audit, requestId: "void-original", entryId: source.debtEntryId, voidReason: "Invalid opening document" });
+    expect(() => f.opening.get(f.employeeId)).toThrow(/ledger mismatch/);
+  });
+
+  it("rejects invalid money before persisting review intent", () => {
+    const f = fixture(key);
+    for (const wages of ["invalid", "-0.01", "9".repeat(97)]) {
+      expect(() => f.opening.review({ ...f.audit, requestId: "invalid-review", employeeId: f.employeeId, wages, advances: "0" })).toThrow();
+      expect(f.repository.getReview(f.employeeId)).toBeNull();
+    }
+    expect(f.finance.listAccounts()).toEqual([]);
+  });
+
+  it("refuses corrections before review and stale or unchanged zero corrections", () => {
+    const f = fixture(key);
+    const input = { ...f.audit, requestId: "correct-unreviewed", employeeId: f.employeeId, kind: "ADVANCE" as const, expectedAmount: "0", amount: "1", reason: "Checked document" };
+    expect(() => f.opening.correct(input)).toThrow(/Review the opening/);
+    f.opening.review({ ...f.audit, requestId: "review-zero", employeeId: f.employeeId, wages: "0", advances: "0" });
+    expect(() => f.opening.correct({ ...input, requestId: "stale-zero", expectedAmount: "1" })).toThrow(/changed/);
+    expect(() => f.opening.correct({ ...input, requestId: "unchanged-zero", amount: "0" })).toThrow(/must change/);
+    expect(() => f.opening.review({ ...f.audit, requestId: "second-review", employeeId: f.employeeId, wages: "0", advances: "0" })).toThrow(/already reviewed/);
+    expect(() => f.opening.cancel({ ...f.audit, requestId: "missing-cancel", employeeId: f.employeeId, proposalId: "missing", reason: "No proposal" })).toThrow(/Pending opening correction/);
+    expect(f.opening.correct({ ...input, requestId: "create-advance" })).toMatchObject({ oldAmount: "0.00", newAmount: "1.00" });
+    expect(f.opening.get(f.employeeId)).toMatchObject({ wages: "0.00", advances: "1.00" });
+    expect(f.opening.history(f.employeeId)).toHaveLength(1);
+  });
+
   it("persists explicit reviewed zero without creating obligations", () => {
     const f = fixture(key);
     const input = { ...f.audit, requestId: "zero-review", employeeId: f.employeeId, wages: "0.00", advances: "0.00" };
