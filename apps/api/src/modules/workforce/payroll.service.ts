@@ -17,7 +17,7 @@ export class PayrollDomainError extends Error {
 
 export class PayrollNotCommittedError extends PayrollDomainError {}
 
-function confirmedRefusal(cause: unknown): unknown {
+export function confirmedRefusal(cause: unknown): unknown {
   return cause instanceof PayrollDomainError || cause instanceof ExactDebtError
     ? new PayrollNotCommittedError(cause.message, cause.code)
     : cause;

@@ -1,5 +1,17 @@
 # #545 opening balances: accepted foundation and audited corrections
 
+## Connected employee UI milestone
+
+Employee creation now ends with an optional opening-review step using actual created employee IDs. Leaving the step does not call review or convert unknown to zero. The existing employee payroll panel exposes later review and corrections, exact previous/new values and decrease amount before confirmation, a mandatory reason, immutable original-review attribution, and correction history with current void status. Inputs use existing RTL components and exact localized parsing.
+
+Opening intents reuse the existing user/workspace/employee-scoped durable payroll storage and shared Web Lock, with distinct review/correction action keys. Persist the confirmed payload before dispatch. Uncertain responses keep it frozen across reload and retry the same request. Only an explicit rolled-back NOT_COMMITTED refusal for the same dispatch attempt permits discard and editing. Server opening aggregates now use the existing refusal classifier; confirmed outcomes do not imply that an arbitrary conflict is safe to discard.
+
+The payroll cash/repayment controls expose reviewed opening wage and advance sources without changing explicit offset semantics. Opening recovery never implicitly reduces wages. Cache invalidation refreshes opening, lifecycle and exact debt views. Initial reviewed amounts and audit facts are now immutable native provenance columns, exposed separately from current balances. This also lets the native provider reject a source introduced after reviewed zero unless its first positive original has an attributed correction event.
+
+Browser selector fails closed to full because shared financial root is critical. Local scope is deliberately limited to the two connected payroll scenarios: existing cash/offset/repayment recovery and new real employee creation, skipped review, later review, two confirmed decreases, response-loss/reload/retry, original/current history and selected opening wage payment. The latter was refreshed after initial-audit output and layout changes. Component and authenticated plain/keyed cases remain separate proof, not substitutes for each other.
+
+Remaining acceptance work: explicit saved reconciliation when proposed correction is below already-settled cash. Existing finance still refuses an invalid negative remainder; the normal confirmed-decrease UI does not yet resolve this case. No complete #545 delivery, publication or merge readiness is claimed.
+
 ## Connected backend milestone
 
 Accepted opening storage now upgrades only an exactly attested #558 database, transactionally and without rebuilding existing financial tables. Plain/keyed upgrade tests preserve employee fields, markers, roles and financial entries through reopen. Partial, damaged and marker-only opening states fail closed.
@@ -8,7 +20,7 @@ The selected exact root now wires one native opening provider and command module
 
 Existing cash and repayment procedures accept explicit reviewed opening sources in addition to prior earning/advance inputs. The existing finance writer and cash storage remain authoritative. Authenticated plain/keyed tests prove repeated unreviewed payments retain the reminder, then 5,000 opening + 35,000 approved - 30,000 paid = 10,000 owed, cost35,000, separate opening advance recovery, wrong-worker rejection, replay and persisted reopen. These new procedures are not yet exposed in employee UI.
 
-Still unfinished: optional employee-creation entry and later review/correction UI with confirmation/history, selected browser proof, and explicit reconciliation for a correction below cash already settled. No complete #545 verdict or publication is claimed. The core and startup reviews are scoped to earlier milestones; complete new backend behavior needs current-head review.
+At this earlier backend milestone, employee-creation entry, later review/correction UI, browser proof and below-settled reconciliation were unfinished. The UI milestone above supersedes that inventory; below-settled reconciliation remains unfinished. No complete #545 verdict or publication is claimed. The core and startup reviews are scoped to earlier milestones; complete new backend behavior needs current-head review.
 
 ## Approved continuation
 

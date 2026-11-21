@@ -9,6 +9,8 @@ import { assertPreparedPayrollSchema } from "./payroll-schema-integrity";
 export const payrollOpeningSchemaStatements: readonly string[] = [
   `CREATE TABLE employee_opening_review (
     employee_id TEXT PRIMARY KEY NOT NULL REFERENCES employee(id) ON DELETE RESTRICT,
+    wages_minor INTEGER NOT NULL CHECK(typeof(wages_minor)='integer' AND wages_minor BETWEEN 0 AND 9223372036854775807),
+    advances_minor INTEGER NOT NULL CHECK(typeof(advances_minor)='integer' AND advances_minor BETWEEN 0 AND 9223372036854775807),
     actor_user_id TEXT, actor_label TEXT, transaction_id TEXT, created_at TEXT NOT NULL)`,
   `CREATE TABLE employee_opening_source (
     source_id TEXT PRIMARY KEY NOT NULL, employee_id TEXT NOT NULL REFERENCES employee_opening_review(employee_id) ON DELETE RESTRICT,
@@ -74,6 +76,9 @@ export class SqlitePayrollOpeningRepository implements PayrollOpeningReviewProvi
         if (!amount) throw new Error("Opening source amount missing");
         const corrections = this.db.prepare("SELECT id FROM employee_opening_correction WHERE source_id=? ORDER BY sequence LIMIT 10001").all(row.sourceId) as { id: string }[];
         if (corrections.length > 10000) throw new RangeError("Opening correction limit exceeded");
+        const audit = this.getReviewAudit(employeeId);
+        const initial = row.kind === "WAGE" ? audit?.wages : audit?.advances;
+        if (!initial || (initial === "0.00" ? !corrections.some(event => event.id === row.debtEntryId) : initial !== amount.toWire())) throw new Error("Opening original review attribution mismatch");
         return { ...row, amount: amount.toWire(), correctionIds: corrections.map(event => event.id) };
       }) };
     });
@@ -94,8 +99,17 @@ export class SqlitePayrollOpeningRepository implements PayrollOpeningReviewProvi
     this.db.prepare("INSERT INTO employee_opening_correction(id,source_id,old_minor,new_minor,actor_user_id,actor_label,transaction_id,created_at,reason) VALUES (?,?,?,?,?,?,?,?,?)")
       .run(event.id, event.sourceId, bindMoney(Money.parse(event.oldAmount)), bindMoney(Money.parse(event.newAmount)), event.actorUserId, event.actorLabel, event.transactionId, event.createdAt, event.reason);
   }
+  getReviewAudit(employeeId: string) {
+    const row = this.db.prepare("SELECT actor_user_id AS actorUserId,actor_label AS actorLabel,transaction_id AS transactionId,created_at AS createdAt FROM employee_opening_review WHERE employee_id=?").get(employeeId) as ({ createdAt: string } & PayrollAudit) | undefined;
+    if (!row) return null;
+    return { ...row,
+      wages: prepareMoneyRead(this.db, "SELECT wages_minor AS minor_units FROM employee_opening_review WHERE employee_id=?").get(employeeId)!.toWire(),
+      advances: prepareMoneyRead(this.db, "SELECT advances_minor AS minor_units FROM employee_opening_review WHERE employee_id=?").get(employeeId)!.toWire(),
+    };
+  }
   save(review: PayrollOpeningReview, audit: PayrollAudit, createdAt: string): void {
-    this.db.prepare("INSERT INTO employee_opening_review(employee_id,actor_user_id,actor_label,transaction_id,created_at) VALUES (?,?,?,?,?)").run(review.employeeId, audit.actorUserId, audit.actorLabel, audit.transactionId, createdAt);
+    const amount = (kind: "WAGE" | "ADVANCE") => bindMoney(Money.parse(review.sources.find(source => source.kind === kind)?.amount ?? "0.00"));
+    this.db.prepare("INSERT INTO employee_opening_review(employee_id,wages_minor,advances_minor,actor_user_id,actor_label,transaction_id,created_at) VALUES (?,?,?,?,?,?,?)").run(review.employeeId, amount("WAGE"), amount("ADVANCE"), audit.actorUserId, audit.actorLabel, audit.transactionId, createdAt);
     for (const row of review.sources) this.saveSource(row);
   }
   saveSource(row: PayrollOpeningReview["sources"][number]): void {

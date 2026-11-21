@@ -3,6 +3,7 @@ import type { Role } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { EmployeeOpeningPanel } from "./employee-opening-panel"
 import {
   AppMutationError,
   useCreateEmployeesBatchMutation,
@@ -253,6 +254,8 @@ export function EmployeeBatchCreatePage({
     setRowErrors((current) => current.filter((_, rowIndex) => rowIndex !== index))
   }
 
+  const [createdEmployees, setCreatedEmployees] = useState<Array<{ id: string; name: string }> | null>(null)
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -276,7 +279,7 @@ export function EmployeeBatchCreatePage({
 
       setRows([createEmptyEmployeeDraft(defaultRoleId)])
       setRowErrors([{}])
-      onDone()
+      setCreatedEmployees(result.employees.map(employee => ({ id: employee.id, name: `${employee.firstName} ${employee.lastName}` })))
     } catch (error) {
       if (error instanceof AppMutationError) {
         const serverErrors = mapServerErrors(error, rows.length)
@@ -295,6 +298,13 @@ export function EmployeeBatchCreatePage({
       showErrorToast(error instanceof Error ? error.message : t("toasts.addWorkerError"))
     }
   }
+
+  if (createdEmployees) return <section className="space-y-5" dir="rtl">
+    <h2 className="text-xl font-semibold">{t("employeeOpening.creationTitle")}</h2>
+    <p className="text-sm text-muted-foreground">{t("employeeOpening.creationHint")}</p>
+    {createdEmployees.map(employee => <div key={employee.id} className="space-y-2"><h3 className="font-medium">{employee.name}</h3><EmployeeOpeningPanel employeeId={employee.id} /></div>)}
+    <Button type="button" onClick={onDone}>{t("employeeOpening.finishCreation")}</Button>
+  </section>
 
   return (
     <div className="space-y-6">

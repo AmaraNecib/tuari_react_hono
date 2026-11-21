@@ -2,19 +2,26 @@ import {
   employeePayrollAdvanceOffsetInputSchema,
   employeePayrollAdvanceRepayInputSchema,
   employeePayrollCashRecordInputSchema,
+  payrollOpeningReviewInputSchema,
+  payrollOpeningCorrectInputSchema,
   type EmployeePayrollAdvanceOffsetInput,
   type EmployeePayrollAdvanceRepayInput,
   type EmployeePayrollCashRecordInput,
+  type PayrollOpeningReviewInput,
+  type PayrollOpeningCorrectInput,
 } from "@tuari/contracts"
 
 export type PayrollAction = "cash" | "repay" | "offset"
+export type DurablePayrollAction = PayrollAction | "opening-review" | "opening-correct"
 export type PayrollPayloadByAction = {
+  "opening-review": PayrollOpeningReviewInput
+  "opening-correct": PayrollOpeningCorrectInput
   cash: EmployeePayrollCashRecordInput
   repay: EmployeePayrollAdvanceRepayInput
   offset: EmployeePayrollAdvanceOffsetInput
 }
 export type PayrollIdentity = { userId: string; workspaceId: string; employeeId: string }
-export type PayrollPendingIntent<A extends PayrollAction = PayrollAction> = A extends PayrollAction ? {
+export type PayrollPendingIntent<A extends DurablePayrollAction = PayrollAction> = A extends DurablePayrollAction ? {
   version: 1
   attemptId?: string
   action: A
@@ -27,9 +34,11 @@ const schemas = {
   cash: employeePayrollCashRecordInputSchema,
   repay: employeePayrollAdvanceRepayInputSchema,
   offset: employeePayrollAdvanceOffsetInputSchema,
+  "opening-review": payrollOpeningReviewInputSchema,
+  "opening-correct": payrollOpeningCorrectInputSchema,
 } as const
 
-const storageKey = (action: PayrollAction, identity: PayrollIdentity) =>
+const storageKey = (action: DurablePayrollAction, identity: PayrollIdentity) =>
   `employee-payroll-pending:v1:${action}:${encodeURIComponent(identity.userId)}:${encodeURIComponent(identity.workspaceId)}:${encodeURIComponent(identity.employeeId)}`
 
 function matchesIdentity(value: unknown, identity: PayrollIdentity): value is PayrollIdentity {
@@ -40,7 +49,7 @@ function matchesIdentity(value: unknown, identity: PayrollIdentity): value is Pa
 
 export type PayrollPendingLoad = { ok: true; pending: PayrollPendingIntent | null } | { ok: false }
 
-export function loadPayrollPendingIntent<A extends PayrollAction>(
+export function loadPayrollPendingIntent<A extends DurablePayrollAction>(
   action: A,
   identity: PayrollIdentity,
   storage: PayrollStorage,
@@ -59,7 +68,7 @@ export function loadPayrollPendingIntent<A extends PayrollAction>(
   }
 }
 
-export function savePayrollPendingIntent<A extends PayrollAction>(
+export function savePayrollPendingIntent<A extends DurablePayrollAction>(
   action: A,
   identity: PayrollIdentity,
   payload: PayrollPayloadByAction[A],
@@ -73,16 +82,16 @@ export function savePayrollPendingIntent<A extends PayrollAction>(
 }
 
 /** Mark each dispatch under the Web Lock so refusals cannot outlive a later retry. */
-export function markPayrollIntentAttempt(intent: PayrollPendingIntent, storage: PayrollStorage): PayrollPendingIntent {
+export function markPayrollIntentAttempt<A extends DurablePayrollAction>(intent: PayrollPendingIntent<A>, storage: PayrollStorage): PayrollPendingIntent<A> {
   const current = loadPayrollPendingIntent(intent.action, intent.identity, storage)
   if (!current.ok || current.pending?.payload.requestId !== intent.payload.requestId) throw new Error("STORAGE_UNAVAILABLE")
   const attempted = { ...current.pending, attemptId: crypto.randomUUID() }
   storage.setItem(storageKey(intent.action, intent.identity), JSON.stringify(attempted))
-  return attempted
+  return attempted as PayrollPendingIntent<A>
 }
 
 /** Remove only the intent whose write received this response. */
-export function clearPayrollPendingIntent<A extends PayrollAction>(
+export function clearPayrollPendingIntent<A extends DurablePayrollAction>(
   action: A,
   identity: PayrollIdentity,
   requestId: string,

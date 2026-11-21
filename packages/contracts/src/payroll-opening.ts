@@ -12,12 +12,22 @@ export const payrollOpeningReviewInputSchema = z.object({ requestId, employeeId:
 export const payrollOpeningCorrectInputSchema = z.object({ requestId, employeeId: id, kind, expectedAmount: amount, amount, reason: z.string().trim().min(1).max(1000) }).strict();
 export const payrollOpeningOutputSchema = z.object({
   employeeId: id, review: z.enum(["UNREVIEWED", "REVIEWED"]),
+  reviewAudit: z.object({ ...actor, transactionId: id.nullable(), wages: amount, advances: amount }).strict().nullable(),
   wages: amount.nullable(), advances: amount.nullable(),
   sources: z.array(z.object({ kind, sourceId: id, amount, currentAmount: amount, remaining: amount, debtAccountId: id, debtEntryId: id }).strict()).max(2),
   history: z.array(z.object({ id, kind, sourceId: id, oldAmount: amount, newAmount: amount, ...actor, reason: z.string().max(1000), status: z.enum(["LIVE", "VOIDED"]), voidedAt: timestampSchema.nullable(), voidedBy: id.nullable(), voidReason: z.string().nullable() }).strict()).max(10000),
 }).strict();
+export type PayrollOpeningReviewInput = z.input<typeof payrollOpeningReviewInputSchema>;
+export type PayrollOpeningCorrectInput = z.input<typeof payrollOpeningCorrectInputSchema>;
+export type PayrollOpeningOutput = z.infer<typeof payrollOpeningOutputSchema>;
+
+const openingWrite = oc.errors({
+  BAD_REQUEST: { data: z.object({ payrollOutcome: z.literal("NOT_COMMITTED") }).optional() },
+  NOT_FOUND: { data: z.object({ payrollOutcome: z.literal("NOT_COMMITTED") }).optional() },
+  CONFLICT: { data: z.object({ payrollOutcome: z.literal("NOT_COMMITTED") }).optional() },
+});
 export const payrollOpeningContract = {
   employeePayrollOpeningGet: oc.input(z.object({ employeeId: id }).strict()).output(payrollOpeningOutputSchema),
-  employeePayrollOpeningReview: oc.input(payrollOpeningReviewInputSchema).output(payrollOpeningOutputSchema),
-  employeePayrollOpeningCorrect: oc.input(payrollOpeningCorrectInputSchema).output(payrollOpeningOutputSchema),
+  employeePayrollOpeningReview: openingWrite.input(payrollOpeningReviewInputSchema).output(payrollOpeningOutputSchema),
+  employeePayrollOpeningCorrect: openingWrite.input(payrollOpeningCorrectInputSchema).output(payrollOpeningOutputSchema),
 } as const;

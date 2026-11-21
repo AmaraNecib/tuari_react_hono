@@ -12,6 +12,7 @@ import { formatAlgeriaDate } from "@/lib/algeria-time"
 
 const mocks = vi.hoisted(() => ({
   cash: vi.fn(), repay: vi.fn(), offset: vi.fn(), refetch: vi.fn(),
+  openingSources: [] as Array<{ kind: "WAGE" | "ADVANCE"; sourceId: string; remaining: string }>,
   payroll: {
     employeeId: "employee-1", currency: "DZD",
     earnings: [{ earning: { id: "earning-1", employeeId: "employee-1", currencyCode: "DZD", referenceSalary: null, actorUserId: null, transactionId: null, createdAt: "2026-11-03T00:00:00.000Z", totalAmount: "10000.00", unallocatedAmount: "0.00", segments: [], periodStart: "2026-11-01T00:00:00.000Z", periodEnd: "2026-11-02T00:00:00.000Z", approvedAt: "2026-11-03T00:00:00.000Z" }, registration: "POSTED", remaining: "10000.00" }],
@@ -22,8 +23,10 @@ const mocks = vi.hoisted(() => ({
   } as z.infer<typeof employeePayrollOutputSchema>,
 }))
 
+vi.mock("./employee-opening-panel", () => ({ EmployeeOpeningPanel: () => null }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: "user-1" } } }) }))
 vi.mock("@/features/employees/employee-earnings-queries", () => ({
+  useEmployeeOpeningQuery: () => ({ data: { sources: mocks.openingSources } }),
   useEmployeePayrollQuery: () => ({ data: mocks.payroll, isPending: false, isError: false, refetch: mocks.refetch }),
   useRecordEmployeePayrollCashMutation: () => ({ mutateAsync: mocks.cash, isPending: false }),
   useRepayEmployeePayrollAdvanceMutation: () => ({ mutateAsync: mocks.repay, isPending: false }),
@@ -56,6 +59,29 @@ beforeEach(() => {
 })
 
 describe("employee payroll controls", () => {
+  it("settles selected opening wages and advances through the existing payment controls", async () => {
+    mocks.openingSources = [{ kind: "WAGE", sourceId: "opening-wage", remaining: "2000.00" }, { kind: "ADVANCE", sourceId: "opening-advance", remaining: "300.00" }]
+    mocks.cash.mockResolvedValue({ id: "opening-payment" })
+    mocks.repay.mockResolvedValue({ id: "opening-repayment" })
+    try {
+      renderPanel()
+      const wageOption = screen.getByRole("option", { name: /أجور سابقة مستحقة للموظف/ }) as HTMLOptionElement
+      fireEvent.change(wageOption.closest("select")!, { target: { value: wageOption.value } })
+      fireEvent.change(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" }), { target: { value: "100" } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفع" }))
+      await waitFor(() => expect(mocks.cash).toHaveBeenCalledTimes(1))
+      expect(mocks.cash.mock.calls[0]![0].wages).toEqual([{ openingId: "opening-wage", amount: "100.00" }])
+      await waitFor(() => expect(localStorage.length).toBe(0))
+      fireEvent.click(screen.getByRole("button", { name: "سداد سلفة", pressed: false }))
+      const advanceOption = screen.getByRole("option", { name: /سلف سابقة مستحقة للشركة/ }) as HTMLOptionElement
+      fireEvent.change(advanceOption.closest("select")!, { target: { value: advanceOption.value } })
+      fireEvent.change(screen.getByRole("textbox", { name: "مبلغ السداد النقدي" }), { target: { value: "50" } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل السداد" }))
+      await waitFor(() => expect(mocks.repay).toHaveBeenCalledTimes(1))
+      expect(mocks.repay.mock.calls[0]![0]).toMatchObject({ openingAdvanceId: "opening-advance", amount: "50.00" })
+      expect(mocks.repay.mock.calls[0]![0]).not.toHaveProperty("advanceId")
+    } finally { mocks.openingSources = [] }
+  })
   it("renders the selected Algeria day for cash, offset and repayment history", () => {
     const original = structuredClone(mocks.payroll)
     const day = "2026-11-19"

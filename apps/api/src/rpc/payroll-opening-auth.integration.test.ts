@@ -38,11 +38,11 @@ describe.each(["", "545-opening-auth-public-key"])("authenticated persisted open
       expect(await client.employeePayrollOpeningCorrect(input)).toEqual(saved);
     }
     await client.employeePayrollOpeningCorrect({ requestId: "advance", employeeId, kind: "ADVANCE", expectedAmount: "0.00", amount: "300.00", reason: "Verified independent opening advance" });
-    await expect(client.employeePayrollOpeningCorrect({ requestId: "stale", employeeId, kind: "WAGE", expectedAmount: "2000.00", amount: "150.00", reason: "Stale confirmation" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(client.employeePayrollOpeningCorrect({ requestId: "stale", employeeId, kind: "WAGE", expectedAmount: "2000.00", amount: "150.00", reason: "Stale confirmation" })).rejects.toMatchObject({ code: "CONFLICT", data: { payrollOutcome: "NOT_COMMITTED" } });
     await expect(client.employeePayrollOpeningCorrect({ requestId: "invalid-amount", employeeId, kind: "WAGE", expectedAmount: "200.00", amount: "-1.00", reason: "Invalid amount" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     await expect(client.employeePayrollOpeningCorrect({ requestId: "missing-reason", employeeId, kind: "WAGE", expectedAmount: "200.00", amount: "100.00", reason: " " })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     const before = await client.employeePayrollOpeningGet({ employeeId });
-    expect(before).toMatchObject({ wages: "200.00", advances: "300.00" });
+    expect(before).toMatchObject({ wages: "200.00", advances: "300.00", reviewAudit: { wages: "0.00", advances: "0.00", actorUserId: owner.item.id } });
     expect(before.history.map(row => [row.kind, row.oldAmount, row.newAmount])).toEqual([["WAGE", "0.00", "2000.00"], ["WAGE", "2000.00", "1900.00"], ["WAGE", "1900.00", "200.00"], ["ADVANCE", "0.00", "300.00"]]);
     expect(before.history.every(row => row.actorUserId === owner.item.id && row.createdAt.length > 0 && row.reason.length > 0)).toBe(true);
     expect((await client.employeePayrollGet({ employeeId })).summary).toMatchObject({ approvedEarnings: "0.00", wagesOwed: "200.00", advancesOwed: "300.00" });
