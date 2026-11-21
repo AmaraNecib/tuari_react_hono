@@ -1,0 +1,72 @@
+import { createHash } from "node:crypto";
+import { z } from "zod";
+import { Money, auditActorUserIdSchema, auditTransactionIdSchema, timestampSchema } from "@tuari/contracts";
+import type { ExactFinanceService } from "../company/exact-finance.service";
+import type { SqlitePayrollOpeningRepository } from "./adapters/sqlite-payroll-opening.repository";
+import type { PayrollOpeningReview } from "./payroll-lifecycle";
+import { PayrollDomainError } from "./payroll.service";
+
+const id = z.string().trim().min(1).max(128);
+const money = z.string().max(96).transform((value, context) => {
+  try { return Money.parse(value, "DZD").toWire(); }
+  catch { context.addIssue({ code: "custom", message: "Invalid bounded exact DZD amount" }); return z.NEVER; }
+}).refine(value => Money.parse(value).compare(Money.parse("0")) >= 0, "Opening amount must be nonnegative");
+const audit = { actorUserId: auditActorUserIdSchema, actorLabel: z.string().max(1000).nullable(), transactionId: auditTransactionIdSchema };
+const common = { ...audit, requestId: z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/), employeeId: id };
+const reviewSchema = z.object({ ...common, wages: money, advances: money }).strict();
+const correctionSchema = z.object({ ...common, kind: z.enum(["WAGE", "ADVANCE"]), expectedAmount: money, amount: money, reason: z.string().trim().min(1).max(1000) }).strict();
+const key = (...parts: string[]) => `opening:${createHash("sha256").update(JSON.stringify(parts)).digest("hex")}`;
+
+/** Opening intent and linked corrections share the finance reservation and receipts. */
+export class PayrollOpeningService {
+  constructor(private readonly finance: ExactFinanceService, private readonly repository: SqlitePayrollOpeningRepository, private readonly dependencies: { id(): string; now(): string }) {
+    if (finance.transactionIdentity.connection !== repository.transactionIdentity.connection || finance.transactionIdentity.lock !== repository.transactionIdentity.lock) throw new TypeError("Opening participants require the same connection and FIFO");
+  }
+  review(raw: z.input<typeof reviewSchema>): PayrollOpeningReview {
+    const input = reviewSchema.parse(raw);
+    const { requestId, employeeId, wages, advances, ...actor } = input;
+    return this.finance.runAggregate({ requestId, producer: { type: "PAYROLL_OPENING", id: key(employeeId, "review") }, intent: { employeeId, wages, advances }, ...actor }, this.repository, () => {
+      this.finance.requireParty("INTERNAL_WORKER", employeeId);
+      if (this.repository.getReview(employeeId)) throw new PayrollDomainError("Opening is already reviewed; record a correction", "CONFLICT");
+      const sources: PayrollOpeningReview["sources"][number][] = [];
+      for (const [kind, amount] of [["WAGE", wages], ["ADVANCE", advances]] as const) {
+        if (amount === "0.00") continue;
+        const sourceId = this.dependencies.id();
+        const producer = this.finance.forProducer({ type: "PAYROLL_OPENING", id: sourceId });
+        const account = producer.createAccount({ requestId: key(requestId, kind, "account"), partyType: "INTERNAL_WORKER", workerId: employeeId, direction: kind === "WAGE" ? "PAYABLE" : "RECEIVABLE", currency: "DZD", ...actor });
+        const original = producer.postEntry({ requestId: key(requestId, kind, "original"), debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: amount, currency: "DZD", ...actor });
+        sources.push({ kind, amount, employeeId, currency: "DZD", sourceId, debtAccountId: account.id, debtEntryId: original.id });
+      }
+      const result: PayrollOpeningReview = { employeeId, state: "REVIEWED", sources };
+      this.repository.save(result, actor, timestampSchema.parse(this.dependencies.now()));
+      return result;
+    });
+  }
+  history(employeeId: string) {
+    return this.repository.withTransaction(() => {
+      const reviewed = this.repository.getReview(employeeId);
+      return (reviewed?.sources ?? []).flatMap(source => {
+        let previous = Money.parse(source.amount);
+        return this.finance.listEntries(source.debtAccountId).filter(row => row.correctionOfEntryId === source.debtEntryId && row.status === "LIVE").map(row => {
+          const oldAmount = previous.toWire();
+          previous = previous.add(Money.parse(row.signedAmountDzd));
+          return { id: row.id, kind: source.kind, sourceId: source.sourceId, oldAmount, newAmount: previous.toWire(), actorUserId: row.actorUserId, actorLabel: row.actorLabel, createdAt: row.createdAt, reason: row.note };
+        });
+      });
+    });
+  }
+  correct(raw: z.input<typeof correctionSchema>) {
+    const input = correctionSchema.parse(raw);
+    const { requestId, employeeId, kind, expectedAmount, amount, reason, ...actor } = input;
+    return this.finance.runAggregate({ requestId, producer: { type: "PAYROLL_OPENING", id: key(employeeId, "correction") }, intent: { employeeId, kind, expectedAmount, amount, reason }, ...actor }, this.repository, () => {
+      const source = this.repository.getReview(employeeId)?.sources.find(row => row.kind === kind);
+      if (!source) throw new PayrollDomainError("Opening source was not found", "NOT_FOUND");
+      const entries = this.finance.listEntries(source.debtAccountId);
+      const current = entries.filter(row => row.status === "LIVE" && (row.id === source.debtEntryId || row.correctionOfEntryId === source.debtEntryId)).reduce((sum, row) => sum.add(Money.parse(row.signedAmountDzd)), Money.parse("0"));
+      if (current.toWire() !== expectedAmount) throw new PayrollDomainError("Opening amount changed; refresh before confirming", "CONFLICT");
+      const producer = this.finance.forProducer({ type: "PAYROLL_OPENING", id: source.sourceId });
+      const saved = producer.correctEntry({ requestId: key(requestId, "ledger"), entryId: source.debtEntryId, amountDzd: amount, currency: "DZD", reason, ...actor });
+      return { id: saved.id, oldAmount: current.toWire(), newAmount: amount };
+    });
+  }
+}

@@ -1,4 +1,18 @@
-# #545 opening balances: inventory and dependency-bound delivery
+# #545 opening balances: accepted foundation and audited corrections
+
+## Approved continuation
+
+The owner confirmed #558 merge and approved extending financial schema and payroll contracts in this lane. Accepted develop ede97c99 is integrated non-destructively at be43dc6b; prior preservation commits remain. Earlier inventory below describes the old base, not current implementation authority.
+
+The owner explicitly approved immutable corrections, including decreases from 2,000 to 1,900 or 200. Each correction retains original source identity, previous/new exact amount, authenticated actor, time and reason. Confirmation must disclose the actual delta. No historical event is overwritten or deleted. Corrections below already settled cash require explicit reconciliation, not a silent new advance or negative remaining balance. Ordinary downward corrections above the settled amount are allowed.
+
+Implement persisted review metadata and source links behind PayrollOpeningReviewProvider, using existing ExactFinanceService aggregate receipts and producer-owned originals/corrections. Read history from immutable ledger entries, not a second balance store. Add authenticated opening review and correction procedures to existing payroll composition. Extend existing cash and repayment selection for reviewed opening sources; never introduce another payment writer. Opening values do not become employee earnings or labor cost. No automatic advance netting.
+
+Agreed proof seam: current authenticated application procedures and actual employee/payroll UI, backed by plain/keyed persisted SQLite. Work vertically with focused failures before implementation. First core scenario: review wages 2,000 and advances 300, correct wages to 1,900 then 200, retain original and both audited corrections. Separate direction and zero-review coverage follow. Integration must prove 5,000 + 35,000 - 30,000 = 10,000 with cost 35,000.
+
+Mode remains focused-local / CI-final-pending; High-assurance money/schema/contract scope. Prior clean reviews at 54dafc0f do not establish readiness of this continuation. Obtain three initial lenses on complete new committed scope. Shared interfaces now belong to this lane after merged #558; preserved #427 remains read-only.
+
+---
 
 ## Revision and authority
 
