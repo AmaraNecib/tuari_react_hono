@@ -114,7 +114,15 @@ test.describe("inventory invoice create — header default warehouse persistence
     }
     await page.getByRole("button", { name: "العودة إلى الفواتير", exact: true }).click()
     await expect(page).toHaveURL(/\/invoices(?:\?.*)?$/)
-    await expect(page.getByRole("heading", { name: "الفواتير والدفعات", exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "المخزون والمشتريات", exact: true })).toBeVisible()
+    const list = page.getByRole("region", { name: "جدول فواتير المخزون", exact: true })
+    const returnedPurchase = list.getByRole("row").filter({ has: page.getByRole("cell", { name: number, exact: true }) })
+    await expect(returnedPurchase).toHaveCount(1)
+    await expect(returnedPurchase).toBeVisible()
+    await expect(returnedPurchase.getByRole("button", { name: `تفاصيل ${number}`, exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: `تفاصيل ${number}`, exact: true })).toHaveCount(0)
+    await expect(page.getByRole("region", { name: "سجل الحركات", exact: true })).toHaveCount(0)
+    await expect(page.getByRole("dialog", { name: "فاتورة مخزون جديدة", exact: true })).toHaveCount(0)
   })
 
   test("minimum one direct-selection line explains invalid save and rejects unsupported attachment by name", async ({ page }) => {

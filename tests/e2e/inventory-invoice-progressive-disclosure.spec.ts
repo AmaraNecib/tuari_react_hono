@@ -81,7 +81,10 @@ test.describe("inventory invoice create — progressive disclosure", () => {
     const defaults = editor.getByRole("combobox", { name: "الوجهة الافتراضية", exact: true })
     await defaults.selectOption({ label: warehouseName })
     await expect(defaults.locator("option:checked")).toHaveText(warehouseName)
-    await editor.getByLabel("ملاحظة", { exact: true }).fill("ملاحظة إفصاح تدريجي")
+    const notes = editor.getByRole("region", { name: "ملاحظات", exact: true })
+    const note = notes.getByRole("textbox", { name: "ملاحظة", exact: true })
+    await note.fill("ملاحظة إفصاح تدريجي")
+    await expect(note).toHaveValue("ملاحظة إفصاح تدريجي")
     await editor.getByLabel("ملفات الفاتورة", { exact: true }).setInputFiles({
       name: "invoice-note.png", mimeType: "image/png",
       buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"),
@@ -91,7 +94,8 @@ test.describe("inventory invoice create — progressive disclosure", () => {
     await expect(debt).toBeChecked()
     await expect(editor.getByLabel("الدفعة الأولى، اختياري", { exact: true })).toHaveValue("500")
     await expect(supplier).toHaveValue(counterpartyName)
-    await expect(editor.getByLabel("ملاحظة", { exact: true })).toHaveValue("ملاحظة إفصاح تدريجي")
+    await expect(notes).toBeVisible()
+    await expect(note).toHaveValue("ملاحظة إفصاح تدريجي")
     const items = editor.getByRole("combobox", { name: "العنصر", exact: true })
     await expect(items).toHaveCount(2)
     for (let index = 0; index < 2; index++) {

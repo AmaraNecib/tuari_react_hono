@@ -32,9 +32,12 @@ restoration is assigned separately. Parent relayed the production author's imple
 interface: button العودة إلى الفواتير; labelled region سجل الحركات with per-movement
 articles, owned-item h4, literal شراء, directional exact quantity and typed warehouse.
 Tests discriminate entry h3 from history h4, scope each article by item/quantity/
-destination and require visibility. The dedicated back action from the detail
-alias calls goToInvoices, so assert /invoices and its actual الفواتير والدفعات
-heading rather than assuming the inventory-purchase table mounts there.
+destination and require visibility. The dedicated back action from the detail alias calls goToInvoices. The first
+migration incorrectly inferred that /invoices renders الفواتير والدفعات from a
+standalone component name instead of following the actual HomeView case. Browser
+execution at e10fa1f4 disproved that claim: /invoices mounts ExactInventoryPage,
+heading المخزون والمشتريات and the inventory-purchase table. The bounded
+correction below fixes this test provenance error, not production navigation.
 The tests must remain blocked if those required surfaces are absent. Their
 compiler pass cannot establish rendering or implementation completion.
 
@@ -88,3 +91,40 @@ Browser UI and read-only persistence remain the existing seams; no new runtime
 interface is introduced. Historical group identity and current typed placement
 are distinct facts. Existing API/contracts unchanged proof is carried honestly,
 not replayed as this lane's native execution. Parent fresh review is required.
+
+## Bounded selectors after the real nine-case run
+
+The parent authorized this two-selector correction after preserving the complete
+native1 execution at e10fa1f4: six passed, two failed, one serial-blocked, zero
+retries. All three debt cases passed and must not be rerun merely for a new label.
+Original traces/results remain under C:/Users/sensei57/AppData/Local/Temp/579-final-union-e10fa1f4-20261121-024325-165/browser-20261121-025021-682.
+
+A clean local merge of e10fa1f4a070121e194dde66197332f87e9663eb into own
+54a1d4d06596f0513beae087f2c709a24e16efb1 produced effective base
+bf8a45f1d5bc1f5cbb37b4c46554728cdb997700 without conflicts. Actual restoration
+markup is now in this tree. Parent remains untouched and frozen during edits.
+
+Back click and URL were already successful. Replace only the wrong destination
+heading with the actual canonical list heading and a unique visible row whose
+exact cell is this invoice number. Require its owned detail action, no lingering
+detail heading/history region and no editor. All earlier purchase placement,
+SQL and history assertions remain unchanged.
+
+The note failure was an exact getByLabel text mismatch, not observed draft loss.
+Saved snapshot shows the actual textbox name and retained value. Trace DOM after
+the successful fill contains the controlled TEXTAREA value as descendant text
+inside its wrapping LABEL. Installed Playwright1.58.2 getElementLabels delegates
+to elementText, which recursively includes that descendant text when matching
+label text. Exact label text therefore changes although the accessible textbox
+name remains ملاحظة. Use the actual Notes region's exact textbox role/name;
+assert the typed value before and after adding a line and require its region
+visible. Final group SQL note equality remains unchanged. No production ARIA
+change is needed or claimed. A small C-only DOM probe may demonstrate this
+matcher behavior; it is not a browser result or a replacement for the future
+six-case invoice run.
+
+Only the two specs and this minimal design correction change. Keep normal hooks,
+focused compiler and exact source fingerprints; no new skips, waits, retries,
+helper refactor or production edit. Browser remains unrun for the correction
+until parent fresh bounded review and clean integration. Existing issue591 and
+559 scope and all owner-accepted financial/presentation obligations persist.
