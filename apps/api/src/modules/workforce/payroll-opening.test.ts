@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { payrollFixture, now } from "./__test-utils__/payroll-native";
 import { PayrollOpeningService } from "./payroll-opening.service";
 import { SqlitePayrollOpeningRepository, payrollOpeningSchemaStatements } from "./adapters/sqlite-payroll-opening.repository";
@@ -27,6 +27,28 @@ describe.each(["", "545-opening-public-test-key"])("opening review and attributa
     expect(() => f.opening.get(f.employeeId)).toThrow(/missing immutable audit history/);
     producer.voidEntry({ ...f.audit, requestId: "void-original", entryId: source.debtEntryId, voidReason: "Invalid opening document" });
     expect(() => f.opening.get(f.employeeId)).toThrow(/ledger mismatch/);
+  });
+
+  it("fails closed when the opening port loses review attribution", () => {
+    const f = fixture(key);
+    const review = f.opening.review({ ...f.audit, requestId: "review-port", employeeId: f.employeeId, wages: "10", advances: "0" });
+    const reviewLookup = vi.spyOn(f.repository, "getReview").mockReturnValue(review);
+    const lookup = vi.spyOn(f.repository, "getReviewAudit").mockReturnValue(null);
+    try { expect(() => f.opening.get(f.employeeId)).toThrow(/attribution mismatch/); }
+    finally { lookup.mockRestore(); reviewLookup.mockRestore(); }
+    expect(f.opening.get(f.employeeId).wages).toBe("10.00");
+    expect(f.finance.remaining(review.sources[0]!.debtEntryId)).toBe("10.00");
+  });
+
+  it("fails closed when a correction port loses its reviewed source", () => {
+    const f = fixture(key);
+    f.opening.review({ ...f.audit, requestId: "review-history-port", employeeId: f.employeeId, wages: "10", advances: "0" });
+    f.opening.correct({ ...f.audit, requestId: "correct-history-port", employeeId: f.employeeId, kind: "WAGE", expectedAmount: "10", amount: "9", reason: "Verified document" });
+    const lookup = vi.spyOn(f.repository, "getReview").mockReturnValue(null);
+    try { expect(() => f.opening.history(f.employeeId)).toThrow(/history ledger mismatch/); }
+    finally { lookup.mockRestore(); }
+    expect(f.opening.get(f.employeeId).wages).toBe("9.00");
+    expect(f.opening.history(f.employeeId)).toHaveLength(1);
   });
 
   it("rejects invalid money before persisting review intent", () => {
