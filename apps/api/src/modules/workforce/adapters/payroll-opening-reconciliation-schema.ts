@@ -36,7 +36,7 @@ export const payrollOpeningReconciliationSchemaStatements: readonly string[] = [
       AND e.debt_account_id=a.id AND e.target_entry_id=s.debt_entry_id AND e.correction_of_entry_id IS NULL
       AND e.currency='DZD' AND e.producer_type='PAYROLL_OPENING' AND e.producer_id=s.source_id
       AND e.entry_type='ADJUSTMENT' AND e.payment_method='CASH' AND e.status='LIVE'
-      AND e.signed_amount_minor=NEW.amount_minor AND NEW.amount_minor=p.required_refund_minor AND e.note=p.reason
+      AND e.signed_amount_minor=NEW.amount_minor AND NEW.amount_minor=p.required_refund_minor AND e.note=p.reason AND e.entry_date=NEW.refund_date
       AND e.actor_user_id IS NEW.actor_user_id AND e.actor_label IS NEW.actor_label
       AND e.transaction_id IS NEW.transaction_id AND e.created_at=NEW.created_at)
     BEGIN SELECT RAISE(ABORT,'Opening refund ledger mismatch'); END`,
