@@ -260,25 +260,6 @@ const workspace: DemoWorkspace = {
       updatedAt: "2026-03-13T10:00:00.000Z",
     },
   ],
-  debtAccounts: [],
-  debtEntries: [],
-  salaryPayments: [
-    {
-      id: "salary-payment-1",
-      employeeId: "worker-1",
-      paymentDate: "2026-03-18T08:00:00.000Z",
-      expectedAmountDzd: 4500,
-      actualAmountDzd: 4500,
-      periodType: "DAILY",
-      days: 1,
-      projectSplits: [],
-      note: null,
-      actorUserId: null,
-      transactionId: null,
-      createdAt: "2026-03-18T08:00:00.000Z",
-      updatedAt: "2026-03-18T08:00:00.000Z",
-    },
-  ],
 }
 
 describe("buildHomeViewDerived composition (single public seam)", () => {

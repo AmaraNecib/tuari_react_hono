@@ -10,7 +10,7 @@
  * link target (unit: record-page-frame-empty-state.test.tsx) and presence.
  */
 
-import { cleanup, configure, screen } from "@testing-library/react"
+import { cleanup, configure, fireEvent, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
@@ -169,6 +169,10 @@ describe("employee work-history tab empty state (issue #27)", () => {
 describe("items catalog empty state (issue #27)", () => {
   it("renders a one-line hint above the existing create CTA", async () => {
     renderWorkspace("inventory", { sessionUser: demoUser })
+
+    // /inventory now opens the exact stock view; the catalog is a separate
+    // section, so select its real route control before asserting catalog UI.
+    fireEvent.click(await screen.findByRole("button", { name: "دليل العناصر" }))
 
     expect(await screen.findByText(ITEM_DEFINITIONS_HINT)).toBeTruthy()
     // The catalog empty state reuses the same create button as the form;

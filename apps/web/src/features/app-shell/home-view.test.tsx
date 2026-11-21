@@ -8,7 +8,6 @@ import {
   demoUser,
   getInvoiceGroupQueryState,
   getSearchQueryState,
-  makeInvoiceGroupDetail,
   makeWorkspaceData,
   mockAllMutations,
   renderWorkspace,
@@ -18,11 +17,16 @@ import type { WorkspaceMocks } from "./__test-utils__/workspace-fixtures"
 import { HomeView } from "./home-view"
 import * as workspaceQueries from "./workspace-queries"
 import { AppPreferencesProvider } from "@/features/preferences/preferences"
+import { i18n } from "@/i18n"
 
 // Spy on the splashscreen-readiness hook so the wiring seam between the
 // shell and the Tauri reveal can be asserted without invoking IPC.
 vi.mock("@/hooks/use-notify-app-ready", () => ({
   useNotifyAppReady: vi.fn(),
+}))
+
+vi.mock("@/features/inventory/transfer-history-page", () => ({
+  TransferHistoryPage: () => <h1>transfer-history-page</h1>,
 }))
 
 const { approveEmployeeEarningMutate } = vi.hoisted(() => ({ approveEmployeeEarningMutate: vi.fn() }))
@@ -78,6 +82,28 @@ afterEach(() => {
 })
 
 describe("HomeView workspace shell", () => {
+  it.each([
+    ["transfer-history", "transfer-history-page", "exact-purchases"],
+    ["inventory", "exact-purchases", "transfer-history-page"],
+  ] as const)("keeps transfer history separate from inventory for %s", async (page, expectedPage, otherPage) => {
+    renderWorkspace(page, { sessionUser: demoUser })
+
+    expect(await screen.findByRole("heading", { name: expectedPage })).toBeTruthy()
+    expect(screen.queryByRole("heading", { name: otherPage })).toBeNull()
+    const inventoryNavigation = screen.queryByRole("navigation", { name: i18n.t("exactCommerce.navigation") })
+    if (page === "inventory") {
+      expect(inventoryNavigation).toBeTruthy()
+      const catalogLabel = i18n.t("inventoryPage.itemDefinitions.title")
+      fireEvent.click(within(inventoryNavigation!).getByRole("button", { name: catalogLabel }))
+      expect(await screen.findByRole("heading", { name: catalogLabel })).toBeTruthy()
+      expect(screen.queryByRole("heading", { name: expectedPage })).toBeNull()
+      fireEvent.click(within(inventoryNavigation!).getByRole("button", { name: i18n.t("exactCommerce.inventoryTitle") }))
+      expect(await screen.findByRole("heading", { name: expectedPage })).toBeTruthy()
+    } else {
+      expect(inventoryNavigation).toBeNull()
+    }
+  })
+
   it("boots on the Arabic RTL sign-in screen", () => {
     renderWorkspace()
 
@@ -425,32 +451,13 @@ describe("HomeView workspace shell", () => {
     expect(mocks.navigateMock).toHaveBeenCalledWith({ to: "/warehouses" })
   })
 
-  it("shows no-notes fallback in the employee finance table when a salary payment note is missing", async () => {
-    const noNotePayment = {
-      id: "salary-payment-2",
-      employeeId: "employee-worker-1",
-      paymentDate: "2026-03-19T08:00:00.000Z",
-      expectedAmountDzd: 4500,
-      actualAmountDzd: 4500,
-      periodType: "DAILY" as const,
-      days: 1,
-      projectSplits: [],
-      note: null,
-      actorUserId: null,
-      transactionId: null,
-      createdAt: "2026-03-19T08:00:00.000Z",
-      updatedAt: "2026-03-19T08:00:00.000Z",
-    }
-
+  it("loads employee finance from metadata without the retired salary-payment table", async () => {
     renderWorkspace("employee-details", {
-      sessionUser: demoUser,
-      detailTab: "finance",
-      employeeId: "employee-worker-1",
-      workspaceData: makeWorkspaceData({ salaryPayments: [noNotePayment] }),
+      sessionUser: demoUser, detailTab: "finance", employeeId: "employee-worker-1",
+      workspaceData: makeWorkspaceData(),
     })
-
-    const legacyHistory = await screen.findByRole("table", { name: "سجل الرواتب" })
-    expect(within(legacyHistory).getByText("لا توجد ملاحظات.")).toBeTruthy()
+    expect(await screen.findByRole("heading", { name: "سجل الأجور المعتمدة" })).toBeTruthy()
+    expect(screen.queryByRole("table", { name: "سجل الرواتب" })).toBeNull()
   })
 
   it("routes earnings approval to its dedicated page instead of the removed cash-payment form", async () => {
@@ -489,56 +496,17 @@ describe("HomeView workspace shell", () => {
     expect(screen.getByText("العمال المرتبطون")).toBeTruthy()
   })
 
-  it("renders the created invoice details once the route id is provided (issue #30)", async () => {
-    renderWorkspace("invoice-details", {
-      sessionUser: demoUser,
-      invoiceId: "invoice-1",
-      invoiceGroupDetail: makeInvoiceGroupDetail(),
-    })
-
-    // The details view must mount the inventory invoice group query and
-    // render the fetched invoice — invoice number, line items (both
-    // CONSUMABLE and ASSET), totals, movements and attachments surfaces.
-    // Before issue #30 the id never reached HomeViewPageContent, so the
-    // main stayed empty.
-    expect(await screen.findByRole("heading", { name: "FAC-2026-001" })).toBeTruthy()
-    expect((await screen.findAllByText("أسمنت")).length).toBeGreaterThan(0)
-    const invoiceTotal = screen.getAllByText("الإجمالي:").find(element =>
-      element.querySelector('bdi[dir="ltr"]')?.textContent === "1500.00",
-    )
-    expect(invoiceTotal).toBeTruthy()
-    expect(invoiceTotal?.querySelector("bdi")?.previousElementSibling?.textContent).toBe("دج")
-    // ASSET entry branch: renders the asset count label and the asset row
-    // (entry line name and the asset row both carry the asset name).
-    expect(screen.getByText("عدد الأصول: 1")).toBeTruthy()
-    expect(screen.getAllByText("حاسوب محمول").length).toBeGreaterThan(0)
-    // Movement + attachment entry content (proves the entries render, not
-    // just the section headers).
-    expect(screen.getAllByText(/شراء - مادة/).length).toBeGreaterThan(0)
-    expect(screen.getByText("فاتورة-المورد.pdf")).toBeTruthy()
-    expect(screen.getByRole("button", { name: "العودة إلى الفواتير" })).toBeTruthy()
+  it("forwards purchase detail IDs through HomeView into the exact inventory page", async () => {
+    renderWorkspace("invoice-details", { sessionUser: demoUser, invoiceId: "invoice-1" })
+    expect(await screen.findByRole("heading", { name: "invoice-1" })).toBeTruthy()
+    expect(getInvoiceGroupQueryState()).toEqual({ invoiceId: "invoice-1", enabled: true })
   })
 
-  it("routes the invoice route param into the inventory invoice group query (issue #30)", async () => {
-    renderWorkspace("invoice-details", {
-      sessionUser: demoUser,
-      invoiceId: "invoice-1",
-      invoiceGroupDetail: makeInvoiceGroupDetail(),
-    })
-
-    await screen.findByRole("heading", { name: "FAC-2026-001" })
-    expect(getInvoiceGroupQueryState().invoiceId).toBe("invoice-1")
-  })
-
-  it("shows the missing-record fallback for an id-less invoice details route (issue #30)", () => {
+  it("shows a missing record for an id-less purchase details route", async () => {
     renderWorkspace("invoice-details", { sessionUser: demoUser })
-
-    expect(
-      screen.getByText("تعذر العثور على هذا السجل أو لم يعد متاحًا ضمن البيانات الحالية."),
-    ).toBeTruthy()
-    fireEvent.click(screen.getByRole("button", { name: "العودة" }))
-
-    expect(mocks.navigateMock).toHaveBeenCalledWith({ to: "/invoices" })
+    expect(await screen.findByRole("heading", { name: "الفواتير" })).toBeTruthy()
+    expect(await screen.findByText("تعذر العثور على هذا السجل أو لم يعد متاحًا ضمن البيانات الحالية.")).toBeTruthy()
+    expect(getInvoiceGroupQueryState().enabled).toBe(false)
   })
 
   it("opens a dedicated project create page and navigates to the new record", async () => {
@@ -717,11 +685,12 @@ describe("HomeView workspace shell", () => {
     }
   })
 
-  it("renders the salaries page with recent payments and worker shortcuts", async () => {
+  it("renders the salaries page with actual earnings and metadata worker shortcuts", async () => {
     renderWorkspace("salaries", { sessionUser: demoUser })
 
     expect(await screen.findByRole("heading", { name: "الرواتب" })).toBeTruthy()
-    expect(screen.getAllByText("آخر دفعات الرواتب").length).toBeGreaterThan(0)
+    expect(screen.getByRole("tab", { name: "سجل الأجور المعتمدة" })).toBeTruthy()
+    fireEvent.click(screen.getByRole("tab", { name: "مراجع أجور العاملين" }))
     expect(screen.getAllByText("علي بن حميد").length).toBeGreaterThan(0)
     expect(screen.getAllByRole("button", { name: "اعتماد الأجر" }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole("button", { name: "تعديل الأجر" }).length).toBeGreaterThan(0)
@@ -730,7 +699,9 @@ describe("HomeView workspace shell", () => {
   it("navigates from salaries page to the worker edit page", async () => {
     renderWorkspace("salaries", { sessionUser: demoUser })
 
-    fireEvent.click((await screen.findAllByRole("button", { name: "تعديل الأجر" }))[0]!)
+    fireEvent.click(await screen.findByRole("tab", { name: "مراجع أجور العاملين" }))
+    const workerRow = screen.getByText("علي بن حميد").closest("tr")!
+    fireEvent.click(within(workerRow).getByRole("button", { name: "تعديل الأجر" }))
 
     expect(mocks.navigateMock).toHaveBeenCalledWith({
       to: "/employees/$employeeId/edit",
@@ -980,7 +951,7 @@ describe("debts pages surface feature-query errors", () => {
     renderWorkspace("debts", { sessionUser: demoUser, debtsSummaryError: true })
 
     expect(
-      await screen.findByText("تعذر تحميل بيانات الديون. حاول مرة أخرى."),
+      await screen.findByText("تعذر تحميل الحسابات."),
     ).toBeTruthy()
     expect(screen.getByRole("button", { name: "إعادة المحاولة" })).toBeTruthy()
   })
@@ -1001,7 +972,7 @@ describe("debts pages show a loading state while the summary query is pending", 
 
     // The skeleton fallback (animate-pulse shimmer) replaces the hub until
     // the feature-scoped summary query resolves — no zero-balance flash.
-    expect(document.querySelector(".animate-pulse")).toBeTruthy()
+    expect(await screen.findByRole("status")).toHaveProperty("textContent", "جار تحميل الحسابات…")
     expect(screen.queryByText("مركز الديون")).toBeNull()
   })
 })
@@ -1017,6 +988,43 @@ describe("global search (Ctrl+K) — debounced and lazy (issue #280)", () => {
     // renders it, so its presence proves the category corpus is shown.
     expect(screen.getAllByText("الصفحات").length).toBeGreaterThan(0)
     expect(screen.getAllByText("المستودعات").length).toBeGreaterThan(0)
+  })
+
+  it("searches directional debt states with exact unsigned magnitudes and stable account ids", async () => {
+    const debtSearchAccounts = [
+      { id: "payable-positive", direction: "PAYABLE", currentBalance: "50.00", externalCounterpartyId: "p1" },
+      { id: "payable-negative", direction: "PAYABLE", currentBalance: "-50.00", externalCounterpartyId: "p1" },
+      { id: "payable-zero", direction: "PAYABLE", currentBalance: "0.00", externalCounterpartyId: "p1" },
+      { id: "receivable-positive", direction: "RECEIVABLE", currentBalance: "50.00", externalCounterpartyId: "p1" },
+      { id: "receivable-negative", direction: "RECEIVABLE", currentBalance: "-50.00", externalCounterpartyId: "p1" },
+      { id: "receivable-zero", direction: "RECEIVABLE", currentBalance: "-0.00", externalCounterpartyId: "p1" },
+      { id: "wide", direction: "PAYABLE", currentBalance: "184467440737095516.14", externalCounterpartyId: "p1" },
+    ]
+    renderWorkspace("projects", {
+      sessionUser: demoUser,
+      debtSearchAccounts,
+      workspaceData: makeWorkspaceData({ externalCounterparties: [{ id: "p1", fullName: "شركة الاختبار", phoneNumber: "", note: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }] }),
+    })
+    fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+    fireEvent.change(screen.getByPlaceholderText("بحث..."), { target: { value: "شركة الاختبار" } })
+    await waitFor(() => expect(screen.getAllByText("شركة الاختبار")).toHaveLength(8))
+    const expectedRows = [
+      ["payable-positive", "مستحق علينا", "50"],
+      ["payable-negative", "رصيد مستحق لنا", "50"],
+      ["payable-zero", "مسوّى", "0"],
+      ["receivable-positive", "مستحق لنا", "50"],
+      ["receivable-negative", "رصيد مستحق لهم", "50"],
+      ["receivable-zero", "مسوّى", "0"],
+      ["wide", "مستحق علينا", "184,467,440,737,095,516.14"],
+    ] as const
+    for (const [id, phrase, magnitude] of expectedRows) {
+      const row = document.getElementById(`search-option-debt-${id}`)
+      expect(row, `missing result identity for ${id}`).toBeTruthy()
+      const text = (row?.textContent ?? "").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim()
+      expect(text).toContain(`${phrase} دج ${magnitude}`)
+      expect(text).not.toContain(`${phrase} دج -${magnitude}`)
+      expect(text).not.toContain(`${phrase} دج −${magnitude}`)
+    }
   })
 
   it("fetches the seven search-corpus queries only while the dialog is open", () => {

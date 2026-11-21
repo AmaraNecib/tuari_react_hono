@@ -184,7 +184,6 @@ export function HomeViewPageSectionContent({
     case "salaries":
       return renderSection(
         <SalariesSection
-          recentPayments={derived.recentSalaryPayments}
           workers={derived.salariedEmployees}
           employees={derived.employeeRows}
           projects={derived.salaryProjects}

@@ -13,6 +13,7 @@ vi.mock("@/lib/orpc-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/orpc-client")>()
   return { ...actual, rpcClient: { ...actual.rpcClient, employeeEarningsList: mocks.earningsList } }
 })
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: () => null }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: mocks.session }))
 
 import { EmployeeEarningsHistory } from "./employee-earnings-history"
@@ -102,14 +103,12 @@ describe("EmployeeEarningsHistory", () => {
           employees={[{ id: "employee-1", name: "عامل الرواتب" }]}
           onEditSalary={vi.fn()}
           projects={[{ id: "project-a", name: "مشروع ألف" }, { id: "project-b", name: "مشروع باء" }]}
-          recentPayments={[]}
           workers={[{
             employeeId: "employee-1",
             employeeName: "عامل الرواتب",
             employeePhone: "0555000001",
             employeeRole: "عامل",
             salaryReference: { period: "MONTHLY", amount: "50000.00" },
-            lastPaymentDate: null,
             projectAssignments: [],
           }]}
         />

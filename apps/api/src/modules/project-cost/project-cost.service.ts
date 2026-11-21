@@ -1,9 +1,11 @@
 import {
+  ExactLine,
   Money,
   Quantity,
   UnitPrice,
   finalizeLines,
-  priceLine,
+  parseExactLine,
+  sumExactLineHistory,
   sumMoneyReports,
   type ProjectCostInput,
   type ProjectCostMaterialDirection,
@@ -17,6 +19,12 @@ export class ProjectCostService {
   constructor(private readonly repository: ProjectCostRepository) {}
 
   getProjectCost(input: ProjectCostInput) {
+    return this.repository.withReadConsistency
+      ? this.repository.withReadConsistency(() => this.getProjectCostFromSnapshot(input))
+      : this.getProjectCostFromSnapshot(input);
+  }
+
+  private getProjectCostFromSnapshot(input: ProjectCostInput) {
     const project = this.repository.getProject(input.projectId);
     if (!project) throw new ProjectCostError("NOT_FOUND", "تعذر العثور على المشروع المطلوب.");
 
@@ -36,16 +44,21 @@ export class ProjectCostService {
       row => row.placedAt,
       row => row.id,
     );
-    const materialMovements = sortByDateDesc(
+    const valuedMaterialMovements = sortByDateDesc(
       this.repository.listProjectMaterialMovements(project.id).map(valueMaterialMovement),
       row => row.occurredAt,
       row => row.id,
     );
+    const materialMovements = valuedMaterialMovements.map(({ exactLine, priceSource, ...row }) => {
+      void exactLine;
+      void priceSource;
+      return row;
+    });
 
     const expensesAmount = sumAmounts(expenses.map(row => row.amount));
     const salariesAmount = sumAmounts(salaries.map(row => row.amount));
     const stockAmount = sumAmounts(stock.map(row => row.amount));
-    const chargedMaterialsAmount = netMaterialCost(materialMovements);
+    const chargedMaterialsAmount = netMaterialCost(valuedMaterialMovements);
     const totalAmount = sumMoneyReports([
       expensesAmount,
       salariesAmount,
@@ -71,13 +84,29 @@ export class ProjectCostService {
 }
 
 function valueMaterialMovement(row: ProjectCostMaterialMovementRecord) {
-  const valueAmount = row.unitPrice === null
+  const source = row.priceSource === undefined
+    ? row.unitPrice === null ? null : ExactLine.fromPrice(UnitPrice.parse(row.unitPrice), Quantity.inventory(row.quantity))
+    : parseExactLine(row.priceSource);
+  const valueAmount = source === null
     ? "0.00"
-    : finalizeLines([priceLine(UnitPrice.parse(row.unitPrice), Quantity.inventory(row.quantity))]).toWire();
-  return { ...row, valueAmount };
+    : finalizeLines([lineForMovement(source, row.quantity)]).toWire();
+  return { ...row, unitPrice: source?.source.mode === "unit-price" ? source.source.price : null, valueAmount, exactLine: source };
 }
 
-function netMaterialCost(rows: Array<{ direction: ProjectCostMaterialDirection; valueAmount: string }>): string {
+function lineForMovement(source: ExactLine, quantity: string): ExactLine {
+  const movementQuantity = Quantity.inventory(quantity);
+  if (source.source.mode === "unit-price") return ExactLine.fromPrice(UnitPrice.parse(source.source.price), movementQuantity);
+  if (source.source.mode === "agreed-total") return ExactLine.fromDerived(Money.parse(source.source.total), Quantity.inventory(source.source.quantity), movementQuantity);
+  return ExactLine.fromDerived(Money.parse(source.source.total), Quantity.inventory(source.source.originalQuantity), movementQuantity);
+}
+
+function netMaterialCost(rows: Array<{ direction: ProjectCostMaterialDirection; quantity: string; valueAmount: string; exactLine?: ExactLine | null }>): string {
+  if (rows.some(row => row.exactLine !== undefined)) {
+    return sumExactLineHistory(rows.flatMap(row => {
+      if (!row.exactLine) return [];
+      return [lineForMovement(row.exactLine, row.direction === "OUT" ? `-${row.quantity}` : row.quantity)];
+    }));
+  }
   return sumMoneyReports(rows.map(row => row.direction === "IN" ? row.valueAmount : negate(row.valueAmount)));
 }
 

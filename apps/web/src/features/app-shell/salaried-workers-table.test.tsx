@@ -18,7 +18,6 @@ function makeWorkers(count: number, period: "MONTHLY" | "DAILY", idOffset = 0): 
       employeePhone: `055500${String(number).padStart(4, "0")}`,
       employeeRole: "عامل",
       salaryReference: { period, amount: period === "DAILY" ? "30000.0000" : "30000.00" },
-      lastPaymentDate: null,
       projectAssignments: [] as Array<{ projectId: string; startDate: string; endDate: string | null }>,
     }
   })
@@ -43,13 +42,12 @@ describe("SalariedWorkersTable (#453)", () => {
     cleanup()
   })
 
-  it("lists each worker's wage with its own period label and last payment", () => {
+  it("lists each worker's wage with its own period label", () => {
     renderTable([
       {
         ...makeWorkers(1, "MONTHLY")[0]!,
         employeeId: "w-monthly",
         employeeName: "عامل شهري",
-        lastPaymentDate: "2026-03-31T00:00:00.000Z",
       },
       {
         ...makeWorkers(1, "DAILY")[0]!,
@@ -71,12 +69,7 @@ describe("SalariedWorkersTable (#453)", () => {
     expect(screen.getByText("/ يومي")).toBeTruthy()
     expect(within(screen.getByText("عامل يومي").closest("tr")!).getByText("30,000")).toBeTruthy()
     expect(within(screen.getByText("عامل شهري").closest("tr")!).getByText("30,000")).toBeTruthy()
-    // The last payment date renders for the worker who has one, not only a dash.
-    const monthlyRow = screen.getByText("عامل شهري").closest("tr")!
-    expect(within(monthlyRow).getByText(/2026/)).toBeTruthy()
-    // A worker without a wage renders the placeholder rather than a zero wage.
-    // Scope to that worker's row: every row has a dash in the last-payment
-    // column, so an unscoped dash check would pass even if the wage rendered 0.
+    // Missing reference remains distinct from zero.
     const noWageRow = screen.getByText("عامل بلا أجر").closest("tr")!
     expect(within(noWageRow).getAllByText("—").length).toBeGreaterThan(0)
     expect(within(noWageRow).queryByText(/[0-9]/)).toBeNull()
@@ -116,7 +109,7 @@ describe("SalariedWorkersTable (#453)", () => {
     const zeroRow = screen.getByText("عامل بصفر").closest("tr")!
     expect(within(zeroRow).getByText("0")).toBeTruthy()
     const noReferenceRow = screen.getByText("عامل بلا مرجع").closest("tr")!
-    expect(within(noReferenceRow).getAllByText("—")).toHaveLength(2)
+    expect(within(noReferenceRow).getAllByText("—")).toHaveLength(1)
     expect(within(noReferenceRow).queryByText("0")).toBeNull()
 
     fireEvent.change(screen.getByLabelText(/الدورية/), { target: { value: "DAILY" } })

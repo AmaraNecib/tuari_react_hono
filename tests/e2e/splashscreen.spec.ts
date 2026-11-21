@@ -1,4 +1,7 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
+
+installManagedApiLifecycle()
 
 // The desktop shell shows a static splashscreen.html window while the API
 // sidecar boots and React mounts behind the hidden main window. The page

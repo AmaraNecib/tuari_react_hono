@@ -41,6 +41,8 @@ export type ProjectCostMaterialMovementRecord = {
   unit: string | null;
   quantity: string;
   unitPrice: string | null;
+  /** Original inventory valuation operands; absent on the legacy REAL-schema reader. */
+  priceSource?: unknown;
   direction: ProjectCostMaterialDirection;
   occurredAt: string;
 };
@@ -52,6 +54,8 @@ export type ProjectCostParkedAssetRecord = {
 };
 
 export interface ProjectCostRepository {
+  /** Optional shared-connection read snapshot; legacy adapters remain unchanged. */
+  withReadConsistency?<T>(work: () => T): T;
   getProject(projectId: string): ProjectCostProjectRecord | null;
   listProjectExpenses(projectId: string): ProjectCostExpenseRecord[];
   listProjectSalarySplits(projectId: string): ProjectCostSalarySplitRecord[];

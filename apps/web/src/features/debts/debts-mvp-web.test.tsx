@@ -6,7 +6,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
-import type { DebtAccount, DebtEntry } from "@tuari/contracts"
+import type { DebtAccount, DebtEntry, ExactDebtsClient } from "@tuari/contracts"
 
 import { ConsolidationDialog } from "@/features/debts/consolidation-dialog"
 import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
@@ -66,6 +66,8 @@ vi.mock("@/features/session/use-session-query", () => ({
   useSessionQuery: () => ({ data: { user: { id: "user-1" } } }),
 }))
 
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: () => null }))
+
 vi.mock("@/features/employees/employee-earnings-queries", async (importActual) => ({
   ...(await importActual<typeof import("@/features/employees/employee-earnings-queries")>()),
   useApproveEmployeeEarningMutation: () => ({ isPending: false, mutateAsync: vi.fn(async () => ({})) }),
@@ -84,6 +86,11 @@ vi.mock("@/features/app-shell/mock-dashboard", () => ({
   useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useDebtEntriesConsolidateMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }))
+
+const exactDebtClient = {
+  summary: vi.fn(async () => ({ accounts: [], grossPayableDzd: "0.00", grossReceivableDzd: "0.00" })),
+  detail: vi.fn(), create: vi.fn(), post: vi.fn(), pay: vi.fn(), correct: vi.fn(), void: vi.fn(), settle: vi.fn(),
+} as unknown as ExactDebtsClient
 
 function renderWithProviders(ui: ReactNode) {
   const queryClient = new QueryClient({
@@ -165,8 +172,8 @@ describe("debts MVP web UI", () => {
     })
   })
 
-  it("manages a unified external counterparty debt account", async () => {
-    render(
+  it("keeps external-counterparty metadata on the exact debt detail page", async () => {
+    renderWithProviders(
       <ExternalCounterpartyDetailsPage
         counterparty={{
           createdAt: "2026-03-27T10:00:00.000Z",
@@ -176,62 +183,12 @@ describe("debts MVP web UI", () => {
           phoneNumber: "0555000000",
           updatedAt: "2026-03-27T10:00:00.000Z",
         }}
-        debtAccounts={[
-          {
-            actorLabel: null,
-            actorUserId: null,
-            createdAt: "2026-03-27T10:00:00.000Z",
-            currentBalance: -700,
-            externalCounterpartyId: "external-1",
-            id: "debt-2",
-            note: "حساب موحد",
-            direction: "PAYABLE",
-            partyType: "EXTERNAL_COUNTERPARTY",
-            settledAt: null,
-            status: "OPEN",
-            transactionId: null,
-            updatedAt: "2026-03-27T10:00:00.000Z",
-            workerId: null,
-          },
-        ]}
-        debtEntriesByAccountId={{ "debt-2": [] }}
+        debtClient={exactDebtClient}
       />,
     )
 
-    // PAYABLE -700 means we overpaid, so the credit is ours.
-    expect(screen.getAllByText("رصيد مستحق لنا").length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/700/).length).toBeGreaterThan(0)
-
-    fireEvent.change(screen.getByPlaceholderText("مثال: 2 500.50"), { target: { value: "500" } })
-    fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[1]!)
-
-    expect(createDebtEntryMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ debtAccountId: "debt-2", entryType: "PAYMENT", signedAmountDzd: -500 }),
-      expect.objectContaining({ onSuccess: expect.any(Function) }),
-    )
-
-    fireEvent.click(screen.getByRole("button", { name: "تسوية إلى صفر" }))
-
-    expect(settleDebtAccountMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ debtAccountId: "debt-2" }),
-    )
-
-    fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "-1200" } })
-    fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), { target: { value: "دفعة شراء جديدة" } })
-    fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
-
-    // #459: the account exists on the chosen ledger, so the form must post a
-    // payment entry on it — not open a second account.
-    await waitFor(() => {
-      expect(createDebtEntryMutate).toHaveBeenCalledWith(
-        expect.objectContaining({
-          debtAccountId: "debt-2",
-          entryType: "PAYMENT",
-          signedAmountDzd: -1200,
-        }),
-      )
-    })
-    expect(createDebtAccountMutateAsync).not.toHaveBeenCalled()
+    expect(screen.getAllByText("شركة المورد").length).toBeGreaterThan(0)
+    expect(await screen.findByText("لا توجد حسابات ديون بعد.")).toBeTruthy()
   })
 
   describe("DebtCasesPanel sends the chosen direction with a positive opening", () => {
@@ -529,53 +486,11 @@ describe("debts MVP web UI", () => {
     })
   })
 
-  it("renders worker debt tab on employee detail page", () => {
+  it("renders worker debt tab on employee detail page", async () => {
     renderWithProviders(
       <EmployeeDetailsPage
         activeTab="debts"
-        debtAccounts={[
-          {
-            actorLabel: null,
-            actorUserId: null,
-            createdAt: "2026-03-27T10:00:00.000Z",
-            currentBalance: 300,
-            externalCounterpartyId: null,
-            id: "debt-worker-1",
-            note: "حساب العامل",
-            direction: "PAYABLE",
-            partyType: "INTERNAL_WORKER",
-            settledAt: null,
-            status: "OPEN",
-            transactionId: null,
-            updatedAt: "2026-03-27T10:00:00.000Z",
-            workerId: "worker-1",
-          },
-        ]}
-        debtEntriesByAccountId={{
-          "debt-worker-1": [
-            {
-              actorLabel: null,
-              actorUserId: null,
-              balanceAfterDzd: 300,
-              createdAt: "2026-03-27T10:00:00.000Z",
-              debtAccountId: "debt-worker-1",
-              entryDate: "2026-03-27T10:00:00.000Z",
-              entryType: "OPENING",
-              id: "entry-1",
-              note: "رصيد افتتاحي",
-              signedAmountDzd: 300,
-              transactionId: null,
-              updatedAt: "2026-03-27T10:00:00.000Z",
-              reasonCategory: "INVOICE_DRIVEN",
-              reasonDetail: null,
-              paymentMethod: null,
-              status: "LIVE",
-              voidedAt: null,
-              voidedBy: null,
-              voidReason: null,
-            },
-          ],
-        }}
+        debtClient={exactDebtClient}
         employee={{
           canDelete: false,
           canLeave: false,
@@ -608,16 +523,12 @@ describe("debts MVP web UI", () => {
         managedProjects={[]}
         managedWarehouses={[]}
         onTabChange={vi.fn()}
-        salaryPayments={[]}
         workHistory={[]}
       />,
     )
 
-    expect(screen.getByText(/ديون العامل/)).toBeTruthy()
-    expect(screen.getAllByText("رصيد افتتاحي").length).toBeGreaterThan(0)
-    // A positive PAYABLE account reads "مستحق علينا" with a positive amount.
-    expect(screen.getAllByText("مستحق علينا").length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/300/).length).toBeGreaterThan(0)
+    expect(screen.getByRole("tab", { name: "الديون" })).toBeTruthy()
+    expect(await screen.findByText("لا توجد حسابات ديون بعد.")).toBeTruthy()
   })
 
   it("routes employee earnings approval without recording a salary payment", async () => {
@@ -625,8 +536,7 @@ describe("debts MVP web UI", () => {
     renderWithProviders(
       <EmployeeDetailsPage
         activeTab="finance"
-        debtAccounts={[]}
-        debtEntriesByAccountId={{}}
+        debtClient={exactDebtClient}
         employee={{
           canDelete: false,
           canLeave: false,
@@ -660,7 +570,6 @@ describe("debts MVP web UI", () => {
         managedWarehouses={[]}
         onApproveEarning={onApproveEarning}
         onTabChange={vi.fn()}
-        salaryPayments={[]}
         workHistory={[]}
       />,
     )

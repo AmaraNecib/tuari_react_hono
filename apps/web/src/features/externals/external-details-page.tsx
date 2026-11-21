@@ -1,24 +1,22 @@
 /**
  * External counterparty details page.
  */
-import type { DebtAccount, DebtEntry, ExternalCounterparty } from "@tuari/contracts"
+import type { ExactDebtsClient, ExternalCounterparty } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 
 import { RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shared/record-page-frame"
 
-import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
+import { ExactDebtsPage } from "@/features/debts/debts-exact-page"
 
 /**
  * @description Component
  */
 export function ExternalCounterpartyDetailsPage({
   counterparty,
-  debtAccounts,
-  debtEntriesByAccountId,
+  debtClient,
 }: {
   counterparty: ExternalCounterparty & { phone?: string }
-  debtAccounts: DebtAccount[]
-  debtEntriesByAccountId: Record<string, DebtEntry[]>
+  debtClient: ExactDebtsClient
 }) {
   const { t } = useTranslation()
   return (
@@ -34,12 +32,7 @@ export function ExternalCounterpartyDetailsPage({
         <RecordInfoCard label={t("externals.details.notes")} value={counterparty.note?.trim() || t("common.noNotes")} />
       </RecordInfoGrid>
 
-      <DebtCasesPanel
-        accounts={debtAccounts}
-        debtEntriesByAccountId={debtEntriesByAccountId}
-        externalCounterpartyId={counterparty.id}
-        title={t("externals.details.ledger")}
-      />
+      <ExactDebtsPage client={debtClient} scopedParty={{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }} parties={[{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }]} />
     </RecordPageFrame>
   )
 }

@@ -30,4 +30,12 @@ export const workspaceSnapshotSchema = z.object({
   salaryPayments: z.array(employeeSalaryPaymentSchema),
 });
 
+/** Organizational state is independent of exact financial balance and cash reads. */
+export const workspaceMetadataSchema = workspaceSnapshotSchema.omit({
+  debtAccounts: true,
+  debtEntries: true,
+  salaryPayments: true,
+}).strict();
+
+export type WorkspaceMetadata = z.infer<typeof workspaceMetadataSchema>;
 export type WorkspaceSnapshot = z.infer<typeof workspaceSnapshotSchema>;

@@ -66,6 +66,21 @@ describe("ProjectCostService exact read model", () => {
     expect(result.materialMovements.map(row => row.valueAmount)).toEqual(["0.30", "0.10"]);
   });
 
+  it("conserves an agreed source total across split movements and reversals", () => {
+    const source = { mode: "agreed-total", total: "10.00", quantity: "3" };
+    const result = read(createRepository({
+      listProjectMaterialMovements: () => [
+        { id: "in-1", itemDefinitionId: null, itemName: null, unit: null, quantity: "1", unitPrice: null, priceSource: source, direction: "IN", occurredAt: NOW },
+        { id: "in-2", itemDefinitionId: null, itemName: null, unit: null, quantity: "2", unitPrice: null, priceSource: source, direction: "IN", occurredAt: NOW },
+        { id: "out-1", itemDefinitionId: null, itemName: null, unit: null, quantity: "1", unitPrice: null, priceSource: source, direction: "OUT", occurredAt: NOW },
+      ],
+    }));
+    expect(result.materialMovements.map(row => row.unitPrice)).toEqual([null, null, null]);
+    expect(result.materialMovements.map(row => row.valueAmount)).toEqual(["3.33", "6.67", "3.33"]);
+    expect(result.parts.chargedMaterialsAmount).toBe("6.67");
+    expect(result.materialMovements[0]).not.toHaveProperty("priceSource");
+  });
+
   it("keeps aggregate precision above JavaScript's safe integer range", () => {
     const result = read(createRepository({
       listProjectExpenses: () => ["90071992547409.93", "90071992547409.93"].map((amount, index) => ({
@@ -125,6 +140,50 @@ describe("ProjectCostService exact read model", () => {
     });
     expect(result.totalAmount).toBe("0.00");
     expect(result.parkedInventory.totalAmount).toBe("0.00");
+  });
+
+  it("reads through the repository's consistent snapshot when available", () => {
+    const calls: string[] = [];
+    let insideSnapshot = false;
+    const result = read(createRepository({
+      withReadConsistency: callback => {
+        calls.push("snapshot-start");
+        insideSnapshot = true;
+        const value = callback();
+        insideSnapshot = false;
+        calls.push("snapshot-end");
+        return value;
+      },
+      listProjectExpenses: () => {
+        expect(insideSnapshot).toBe(true);
+        calls.push("read-expenses");
+        return [{
+          id: "expense-snapshot", expenseDate: NOW, whatFor: null, amount: "12.34",
+          responsibleWorkerId: null, responsibleWorkerName: null, sellerId: null, sellerName: null,
+        }];
+      },
+    }));
+
+    expect(calls).toEqual(["snapshot-start", "read-expenses", "snapshot-end"]);
+    expect(result.expenses.map(row => row.id)).toEqual(["expense-snapshot"]);
+    expect(result.totalAmount).toBe("12.34");
+  });
+
+  it("values derived material rates using original quantity and ignores unpriced movements", () => {
+    const result = read(createRepository({
+      listProjectMaterialMovements: () => [
+        { id: "derived-in", itemDefinitionId: null, itemName: null, unit: null, quantity: "2", unitPrice: null, priceSource: { mode: "derived-price", total: "10.00", originalQuantity: "3", quantity: "1" }, direction: "IN", occurredAt: NOW },
+        { id: "derived-out", itemDefinitionId: null, itemName: null, unit: null, quantity: "1", unitPrice: null, priceSource: { mode: "derived-price", total: "10.00", originalQuantity: "3", quantity: "1" }, direction: "OUT", occurredAt: NOW },
+        { id: "unpriced", itemDefinitionId: null, itemName: null, unit: null, quantity: "99", unitPrice: null, direction: "IN", occurredAt: NOW },
+      ],
+    }));
+    // Two thirds in, one third out leaves one third of the original 10 DZD.
+    expect(result.parts.chargedMaterialsAmount).toBe("3.33");
+    expect(result.totalAmount).toBe("3.33");
+    expect(result.materialMovements.map(row => [row.id, row.valueAmount, row.unitPrice])).toEqual([
+      ["derived-in", "6.67", null], ["derived-out", "3.33", null], ["unpriced", "0.00", null],
+    ]);
+    expect(result.materialMovements.every(row => !("priceSource" in row))).toBe(true);
   });
 
   it("rejects a missing project", () => {

@@ -1,4 +1,5 @@
 import type { ExactInvoicesClient, ExactInvoiceCreate, ExactInvoiceUpdate, ExactInvoiceCommand, ExactInvoiceVoid, ExactPaymentCreate, ExactPaymentAllocate } from "@tuari/contracts"
+import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
 import { useInfiniteQuery } from "@tanstack/react-query"
 import { useSessionQuery } from "@/features/session/use-session-query"
 import { exactCommercePrefix, useExactCommerceMutation } from "@/features/shared/exact-commerce-queries"
@@ -17,6 +18,9 @@ export function useExactInvoices(client: ExactInvoicesClient) {
     queryFn: ({ pageParam }) => client.listInvoices({ limit: 100, cursor: pageParam }),
     getNextPageParam: page => page.hasMore ? page.nextCursor ?? undefined : undefined,
   })
+}
+export function useExactInvoice(client: ExactInvoicesClient, id?: string) {
+  return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "invoice", id], enabled: Boolean(id), queryFn: () => client.getInvoice({ id: id! }) })
 }
 export function useExactPayments(client: ExactInvoicesClient) {
   const session = useSessionQuery()

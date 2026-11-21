@@ -2,6 +2,8 @@
  * External counterparties listing page.
  */
 import { CurrencyRun } from "@/features/shared/money-value"
+import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts"
+import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -18,7 +20,6 @@ import {
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
 
-import { formatDebtAmount, getNetDebtBalanceDisplay } from "@/features/debts/debt-utils"
 
 const DEFAULT_PAGE_SIZE = 25
 
@@ -34,10 +35,10 @@ export function ExternalCounterpartiesPage({
     id: string
     fullName: string
     note: string | null
-    openCaseCount: number
+    openAccountCount: number
     phone: string
-    totalBalanceDzd: number
-    totalCaseCount: number
+    totalBalanceDzd: string
+    totalAccountCount: number
   }>
   onCreate: () => void
   onOpen: (counterpartyId: string) => void
@@ -61,7 +62,7 @@ export function ExternalCounterpartiesPage({
               <TableHead>{t("columns.name")}</TableHead>
               <TableHead>{t("columns.phone")}</TableHead>
               <TableHead>{t("columns.totalBalance")}</TableHead>
-              <TableHead>{t("columns.cases")}</TableHead>
+              <TableHead>{t("externalsPage.accounts")}</TableHead>
               <TableHead>{t("columns.notes")}</TableHead>
               <TableHead>{t("common.actions")}</TableHead>
             </TableRow>
@@ -69,7 +70,13 @@ export function ExternalCounterpartiesPage({
           <TableBody>
             {pagedCounterparties.length > 0 ? (
               pagedCounterparties.map((counterparty) => {
-                const balance = getNetDebtBalanceDisplay(counterparty.totalBalanceDzd)
+                const display = formatExactMoney(counterparty.totalBalanceDzd, { aggregate: true, grouped: true })
+                const comparison = display.zero ? 0 : counterparty.totalBalanceDzd.startsWith("-") ? -1 : 1
+                const balance = {
+                  phrase: comparison === 0 ? DEBT_BALANCE_STATE_PHRASE.settled : comparison > 0 ? DEBT_BALANCE_STATE_PHRASE.owedToUs : DEBT_BALANCE_STATE_PHRASE.owedByUs,
+                  amount: display.text.replace(/^-/, ""),
+                  textClassName: comparison === 0 ? "text-muted-foreground" : comparison > 0 ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300",
+                }
 
                 return (
                   <TableRow key={counterparty.id}>
@@ -79,10 +86,10 @@ export function ExternalCounterpartiesPage({
                     </TableCell>
                     <TableCell className={balance.textClassName}>
                       <span className="block text-xs font-medium">{balance.phrase}</span>
-                      <span className="font-mono" dir="ltr"><CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel="دج" /></span>
+                      <span className="font-mono" dir="ltr"><CurrencyRun amount={balance.amount} currencyLabel="دج" /></span>
                     </TableCell>
                     <TableCell>
-                      {counterparty.totalCaseCount} {t("externalsPage.caseUnit")}{counterparty.openCaseCount ? `، ${counterparty.openCaseCount} ${t("externalsPage.openCases")}` : ""}
+                      {counterparty.totalAccountCount} {t("externalsPage.accountUnit")}{counterparty.openAccountCount ? `، ${counterparty.openAccountCount} ${t("externalsPage.openAccounts")}` : ""}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{counterparty.note?.trim() || "—"}</TableCell>
                     <TableCell>

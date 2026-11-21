@@ -1,9 +1,12 @@
+import { installManagedApiLifecycle } from "./helpers/test"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 
-import { expect, test, type Locator, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "./helpers/test"
 
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 const evidenceDir = join(process.cwd(), ".scratch", "reviews", "543-browser")
 const suffix = uniqueSuffix()

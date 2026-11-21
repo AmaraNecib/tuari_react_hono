@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import type { AppDependencies } from "./dependencies";
+import type { FreshExactAppDependencies } from "./fresh-exact-dependencies";
 import { isLocalHostname, normalizeOrigin } from "../infrastructure/config/url";
 import {
   createRpcFailureStore,
@@ -124,7 +125,7 @@ type RpcInterceptorOptions = { request: RpcRequestInfo; path?: readonly string[]
 type RpcInterceptorState = [unknown, RpcHandleResult | unknown, boolean]
 
 export function createApp(
-  dependencies: AppDependencies,
+  dependencies: AppDependencies | FreshExactAppDependencies,
   transportSecurity: TransportSecurityConfig,
 ) {
   const app = new Hono();
@@ -409,6 +410,9 @@ export function createApp(
         return c.json({ success: false, error: { code: "UPGRADE_REQUIRED", message: licenseRefusal } }, 403)
       }
 
+      const attachmentsService = "inventoryService" in dependencies
+        ? dependencies.inventoryService : dependencies.inventoryAttachmentService
+
       const { invoiceGroupId } = c.req.param()
       const formData = await c.req.formData()
       const files = formData.getAll("files").filter((value): value is File => value instanceof File)
@@ -424,7 +428,7 @@ export function createApp(
         bytes: () => file.arrayBuffer().then((buffer) => new Uint8Array(buffer)),
       }))
 
-      const attachments = await dependencies.inventoryService.addInvoiceAttachments(
+      const attachments = await attachmentsService.addInvoiceAttachments(
         invoiceGroupId,
         normalizedFiles,
         {
@@ -455,8 +459,11 @@ export function createApp(
         return c.json({ message: "غير مصرح بهذا الإجراء." }, 401)
       }
 
+      const attachmentsService = "inventoryService" in dependencies
+        ? dependencies.inventoryService : dependencies.inventoryAttachmentService
+
       const { attachmentId } = c.req.param()
-      const { attachment, body } = await dependencies.inventoryService.getAttachmentDownload(attachmentId)
+      const { attachment, body } = await attachmentsService.getAttachmentDownload(attachmentId)
       c.header("Content-Type", attachment.mimeType)
       c.header("Content-Length", String(attachment.byteSize))
       c.header("Content-Disposition", `inline; filename="${encodeURIComponent(attachment.originalName)}"`)

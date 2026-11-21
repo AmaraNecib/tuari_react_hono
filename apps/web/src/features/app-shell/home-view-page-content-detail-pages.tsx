@@ -4,42 +4,25 @@
  */
 import { lazy, Suspense, type ReactNode } from "react"
 
-import { LoadErrorSurface } from "@/features/shared/load-error-surface"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { workspaceRoutes } from "@/router/navigation"
-import {
-  buildDebtsHubRows,
-  buildExternalCounterpartyRows,
-  useDebtPartyDetailQuery,
-  useDebtsSummaryQuery,
-} from "@/features/debts/debts-queries"
-import type { DebtsSummary } from "@tuari/contracts"
+import { ExternalCounterpartiesRoute } from "@/features/externals/external-counterparties-route"
+import { financialClient } from "@/lib/orpc-client"
 
 import type { HomeViewPageContentProps } from "./home-view-page-content-shared"
 import { MissingRecordState } from "./home-view-page-content-shared"
 
-const EMPTY_DEBTS_SUMMARY: DebtsSummary = { parties: [], debtAccounts: [] }
-
-const DebtsHubPage = lazy(async () => import("@/features/debts/debts-hub-page").then((module) => ({ default: module.DebtsHubPage })))
-const DebtCreatePage = lazy(async () => import("@/features/debts/debt-create-page").then((module) => ({ default: module.DebtCreatePage })))
-const ExpensesPage = lazy(async () => import("@/features/expenses/expenses-page").then((module) => ({ default: module.ExpensesPage })))
+const ExactInventoryPage = lazy(async () => import("@/features/inventory/inventory-exact-page").then(module => ({ default: module.ExactInventoryPage })))
+const TransferHistoryPage = lazy(async () => import("@/features/inventory/transfer-history-page").then((module) => ({ default: module.TransferHistoryPage })))
+const ExactFinancialRoutePage = lazy(async () => import("@/features/shared/exact-financial-route").then((module) => ({ default: module.ExactFinancialRoutePage })))
 const ExternalCounterpartyCreatePage = lazy(async () => import("@/features/externals/external-create-page").then((module) => ({ default: module.ExternalCounterpartyCreatePage })))
 const ExternalCounterpartyDetailsPage = lazy(async () => import("@/features/externals/external-details-page").then((module) => ({ default: module.ExternalCounterpartyDetailsPage })))
-const ExternalCounterpartiesPage = lazy(async () => import("@/features/externals/externals-page").then((module) => ({ default: module.ExternalCounterpartiesPage })))
 const EmployeeDetailsPage = lazy(async () => import("@/features/employees/employee-details-page").then((module) => ({ default: module.EmployeeDetailsPage })))
 const EmployeeEditPage = lazy(async () => import("@/features/employees/employee-edit-page").then((module) => ({ default: module.EmployeeEditPage })))
 const EmployeeEarningApprovalPage = lazy(async () => import("@/features/employees/employee-earning-approval-page").then((module) => ({ default: module.EmployeeEarningApprovalPage })))
 const ProjectDetailsPage = lazy(async () => import("@/features/projects/project-details-page").then((module) => ({ default: module.ProjectDetailsPage })))
 const ProjectCreatePage = lazy(async () => import("@/features/projects/project-create-page").then((module) => ({ default: module.ProjectCreatePage })))
 const ProjectEditPage = lazy(async () => import("@/features/projects/project-edit-page").then((module) => ({ default: module.ProjectEditPage })))
-const InventoryItemDefinitionsPage = lazy(async () => import("@/features/inventory/inventory-item-definitions-page").then((module) => ({ default: module.InventoryItemDefinitionsPage })))
-const InventoryInvoiceCreatePage = lazy(async () => import("@/features/inventory/inventory-invoice-create-page").then((module) => ({ default: module.InventoryInvoiceCreatePage })))
-const InventoryInvoiceDetailsPage = lazy(async () => import("@/features/inventory/inventory-invoice-details-page").then((module) => ({ default: module.InventoryInvoiceDetailsPage })))
-const InventoryInvoicesPage = lazy(async () => import("@/features/inventory/inventory-invoices-page").then((module) => ({ default: module.InventoryInvoicesPage })))
-const OutboundTransfersPage = lazy(async () => import("@/features/inventory/outbound-transfers-page").then((module) => ({ default: module.OutboundTransfersPage })))
-const OutboundTransferCreatePage = lazy(async () => import("@/features/inventory/outbound-transfer-create-page").then((module) => ({ default: module.OutboundTransferCreatePage })))
-const OutboundTransferCreatePageV2 = lazy(async () => import("@/features/inventory/outbound-transfer-create-page-v2").then((module) => ({ default: module.OutboundTransferCreatePageV2 })))
-const TransferHistoryPage = lazy(async () => import("@/features/inventory/transfer-history-page").then((module) => ({ default: module.TransferHistoryPage })))
 const WarehouseDetailsPage = lazy(async () => import("@/features/warehouses/warehouse-details-page").then((module) => ({ default: module.WarehouseDetailsPage })))
 const WarehouseCreatePage = lazy(async () => import("@/features/warehouses/warehouse-create-page").then((module) => ({ default: module.WarehouseCreatePage })))
 const WarehouseEditPage = lazy(async () => import("@/features/warehouses/warehouse-edit-page").then((module) => ({ default: module.WarehouseEditPage })))
@@ -110,77 +93,38 @@ export function HomeViewPageDetailContent({
   const projectManagerRoleId = derived.roles.find((role) => role.key === "project_manager")?.id ?? ""
   const warehouseManagerRoleId = derived.roles.find((role) => role.key === "warehouse_manager")?.id ?? ""
 
-  // Debts-domain queries are feature-scoped (@/features/debts/debts-queries)
-  // so the hub/detail pages stay fresh under the debts mutations' key
-  // invalidation instead of the stale composite snapshot (issue #177 Phase 4).
-  const debtsSummaryQuery = useDebtsSummaryQuery({
-    enabled: page === "debts" || page === "externals",
-  })
-  const employeeDebtsDetailQuery = useDebtPartyDetailQuery(
-    "INTERNAL_WORKER",
-    selectedEmployee?.id,
-    { enabled: page === "employee-details" && (detailTab ?? "personal") === "debts" },
-  )
-  const externalDebtsDetailQuery = useDebtPartyDetailQuery(
-    "EXTERNAL_COUNTERPARTY",
-    selectedCounterparty?.id,
-    { enabled: page === "external-details" && Boolean(selectedCounterparty) },
-  )
-  const debtsSummary = debtsSummaryQuery.data ?? EMPTY_DEBTS_SUMMARY
-
   switch (page) {
     case "debts":
-      if (debtsSummaryQuery.isPending) {
-        return renderLazy(detailPageFallback)
-      }
-      if (debtsSummaryQuery.isError) {
-        return renderLazy(<LoadErrorSurface message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void debtsSummaryQuery.refetch()} />)
-      }
-      {
-        const hub = buildDebtsHubRows(debtsSummary, derived.externalCounterparties)
-        return renderLazy(
-          <DebtsHubPage
-            rows={hub.rows}
-            totals={hub.totals}
-            onCreateDebt={() => void navigation.goToDebtCreate()}
-            onOpenExternalCounterparty={(counterpartyId) => void navigation.goToExternalDetails(counterpartyId)}
-            onOpenWorker={(employeeId) => void navigation.goToEmployeeDebts(employeeId)}
-          />,
-        )
-      }
-
     case "debt-create":
-      return renderLazy(
-        <DebtCreatePage
-          employees={derived.employeeRows}
-          externalCounterparties={derived.externalCounterparties}
-          navigation={navigation}
-        />,
-      )
+      return renderLazy(<ExactFinancialRoutePage
+        route="debts"
+        parties={[
+          ...derived.employeeRows.filter(employee => employee.isWorker).map(employee => ({ id: employee.id, label: employee.name, type: "WORKER" as const })),
+          ...derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName, type: "EXTERNAL_COUNTERPARTY" as const })),
+        ]}
+        locations={[]}
+        expenses={{ projects: [], employees: [], sellers: [] }}
+      />)
 
     case "expenses":
-      return renderLazy(
-        <ExpensesPage
-          projects={derived.projects.map((project) => ({ id: project.id, label: project.name }))}
-          employees={derived.employeeRows.map((employee) => ({ id: employee.id, label: employee.name }))}
-          sellers={derived.externalCounterparties.map((seller) => ({ id: seller.id, label: seller.fullName }))}
-        />,
-      )
+      return renderLazy(<ExactFinancialRoutePage
+        route="expenses"
+        parties={[]}
+        locations={[]}
+        expenses={{
+          projects: derived.projects.map(project => ({ id: project.id, label: project.name })),
+          employees: derived.employeeRows.map(employee => ({ id: employee.id, label: employee.name })),
+          sellers: derived.externalCounterparties.map(seller => ({ id: seller.id, label: seller.fullName })),
+        }}
+      />)
 
     case "externals":
-      if (debtsSummaryQuery.isPending) {
-        return renderLazy(detailPageFallback)
-      }
-      if (debtsSummaryQuery.isError) {
-        return renderLazy(<LoadErrorSurface message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void debtsSummaryQuery.refetch()} />)
-      }
-      return renderLazy(
-        <ExternalCounterpartiesPage
-          counterparties={buildExternalCounterpartyRows(debtsSummary, derived.externalCounterparties)}
-          onCreate={() => void navigation.goToExternalCreate()}
-          onOpen={(counterpartyId) => void navigation.goToExternalDetails(counterpartyId)}
-        />,
-      )
+      return renderLazy(<ExternalCounterpartiesRoute
+        client={financialClient.debts}
+        counterparties={derived.externalCounterparties}
+        onCreate={() => void navigation.goToExternalCreate()}
+        onOpen={(counterpartyId) => void navigation.goToExternalDetails(counterpartyId)}
+      />)
 
     case "employee-details":
       if (earningApproval) {
@@ -204,28 +148,16 @@ export function HomeViewPageDetailContent({
           />,
         )
       }
-      if (selectedEmployee && (detailTab ?? "personal") === "debts") {
-        if (employeeDebtsDetailQuery.isPending) {
-          return renderLazy(detailPageFallback)
-        }
-        if (employeeDebtsDetailQuery.isError) {
-          return renderLazy(
-            <LoadErrorSurface message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void employeeDebtsDetailQuery.refetch()} />,
-          )
-        }
-      }
       return selectedEmployee
         ? renderLazy(
             <EmployeeDetailsPage
               activeTab={detailTab ?? "personal"}
-              debtAccounts={employeeDebtsDetailQuery.data?.accounts ?? []}
-              debtEntriesByAccountId={employeeDebtsDetailQuery.data?.entriesByAccountId ?? {}}
+              debtClient={financialClient.debts}
               employee={selectedEmployee}
               managedProjects={derived.managedProjectsByEmployeeId[selectedEmployee.id] ?? []}
               managedWarehouses={derived.managedWarehousesByEmployeeId[selectedEmployee.id] ?? []}
               projects={derived.salaryProjects}
               projectAssignments={derived.projectAssignmentsByEmployeeId[selectedEmployee.id] ?? []}
-              salaryPayments={derived.salaryPaymentsByEmployeeId[selectedEmployee.id] ?? []}
               workHistory={derived.workHistoryByEmployeeId[selectedEmployee.id] ?? []}
               onApproveEarning={(employeeId) => void navigation.goToEmployeeEarningCreate(employeeId, "employee-finance")}
               onTabChange={(tabId) => void navigation.setEmployeeTab(selectedEmployee.id, tabId)}
@@ -247,22 +179,11 @@ export function HomeViewPageDetailContent({
       )
 
     case "external-details":
-      if (selectedCounterparty) {
-        if (externalDebtsDetailQuery.isPending) {
-          return renderLazy(detailPageFallback)
-        }
-        if (externalDebtsDetailQuery.isError) {
-          return renderLazy(
-            <LoadErrorSurface message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void externalDebtsDetailQuery.refetch()} />,
-          )
-        }
-      }
       return selectedCounterparty
         ? renderLazy(
             <ExternalCounterpartyDetailsPage
               counterparty={selectedCounterparty}
-              debtAccounts={externalDebtsDetailQuery.data?.accounts ?? []}
-              debtEntriesByAccountId={externalDebtsDetailQuery.data?.entriesByAccountId ?? {}}
+              debtClient={financialClient.debts}
             />,
           )
         : (
@@ -413,64 +334,37 @@ export function HomeViewPageDetailContent({
             />
           )
 
-    case "inventory":
-      return renderLazy(<InventoryItemDefinitionsPage />)
-
-    case "invoices":
-      return renderLazy(
-        <InventoryInvoicesPage
-          onCreate={() => void navigation.goToInvoiceCreate()}
-          onOpen={(invoiceId) => void navigation.goToInvoiceDetails(invoiceId)}
-        />,
-      )
-
-    case "invoice-create":
-      return renderLazy(
-        <InventoryInvoiceCreatePage onCreated={(invoiceId) => void navigation.goToInvoiceDetails(invoiceId)} />,
-      )
-
-    case "invoice-details":
-      return selectedInvoiceId
-        ? renderLazy(
-            <InventoryInvoiceDetailsPage
-              invoiceId={selectedInvoiceId}
-              onBack={() => void navigation.goToInvoices()}
-            />,
-          )
-        : (
-            <MissingRecordState
-              backLabel={detailCopy.shared.back}
-              description={detailCopy.shared.missingRecordDescription}
-              navigation={navigation}
-              target={workspaceRoutes.invoices()}
-              title="تفاصيل الفاتورة"
-            />
-          )
-
-    case "outbound-transfers":
-      return renderLazy(
-        <OutboundTransfersPage
-          onCreate={() => void navigation.goToOutboundTransferCreate()}
-          onCreateV2={() => void navigation.goToOutboundTransferCreateV2()}
-        />,
-      )
-
-    case "outbound-transfer-create":
-      return renderLazy(
-        <OutboundTransferCreatePage
-          onBack={() => void navigation.goToOutboundTransfers()}
-        />,
-      )
-
-    case "outbound-transfer-create-v2":
-      return renderLazy(
-        <OutboundTransferCreatePageV2
-          onBack={() => void navigation.goToOutboundTransfers()}
-        />,
-      )
-
     case "transfer-history":
       return renderLazy(<TransferHistoryPage />)
+
+    case "inventory":
+    case "outbound-transfers":
+    case "outbound-transfer-create":
+    case "outbound-transfer-create-v2":
+      return renderLazy(<ExactFinancialRoutePage
+        route="inventory"
+        parties={derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName, type: "EXTERNAL_COUNTERPARTY" as const }))}
+        locations={[
+          ...derived.warehouses.map(row => ({ id: row.id, label: row.name, type: "WAREHOUSE" as const })),
+          ...derived.projects.map(row => ({ id: row.id, label: row.name, type: "PROJECT" as const })),
+        ]}
+        expenses={{ projects: [], employees: [], sellers: [] }}
+        initialInventoryMovement={page === "outbound-transfer-create" || page === "outbound-transfer-create-v2"}
+      />)
+
+    case "invoices":
+      return renderLazy(<ExactInventoryPage client={financialClient.inventory} locations={[
+        ...derived.warehouses.map(row => ({ id: row.id, label: row.name, type: "WAREHOUSE" as const })),
+        ...derived.projects.map(row => ({ id: row.id, label: row.name, type: "PROJECT" as const })),
+      ]} parties={derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName }))} />)
+
+    case "invoice-create":
+    case "invoice-details":
+      if (page === "invoice-details" && !selectedInvoiceId) return <MissingRecordState backLabel={t("exactCommerce.backToInvoices")} description={detailCopy.shared.missingRecordDescription} navigation={navigation} target={workspaceRoutes.invoices()} title={t("inventoryPage.invoices.title")} />
+      return renderLazy(<ExactInventoryPage key={page === "invoice-create" ? "create" : selectedInvoiceId} client={financialClient.inventory} initialCreate={page === "invoice-create"} onReturnToInvoices={() => void navigation.goToInvoices()} initialInvoiceId={page === "invoice-details" ? selectedInvoiceId : undefined} locations={[
+        ...derived.warehouses.map(row => ({ id: row.id, label: row.name, type: "WAREHOUSE" as const })),
+        ...derived.projects.map(row => ({ id: row.id, label: row.name, type: "PROJECT" as const })),
+      ]} parties={derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName }))} />)
 
     default:
       return null

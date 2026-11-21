@@ -3,7 +3,9 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: ["src/index.ts"],
   format: ["cjs"],
-  dts: true,
+  // This entry is an executable, not an importable library. Typecheck source
+  // separately; emitting declarations traverses the complete composition graph.
+  dts: false,
   clean: true,
   platform: "node",
   target: "es2022",

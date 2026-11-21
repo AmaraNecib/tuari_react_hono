@@ -1,6 +1,9 @@
-import { expect, test, type Page } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test, type Page } from "./helpers/test"
 
 import { bootstrapOrSignIn, dismissUserJourneyTour } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 test.describe.configure({ mode: "serial" })
 
@@ -46,28 +49,34 @@ test("debts hub record-payment dialog renders Arabic, no raw keys", async ({ pag
   await page.getByLabel("رقم الهاتف").first().fill(`07${String(Date.now()).slice(-8)}`)
   await page.getByRole("button", { name: /حفظ الطرف الخارجي/ }).first().click()
   await expect(page.getByRole("heading", { name: counterpartyName })).toBeVisible({ timeout: 10_000 })
-  await page.getByPlaceholder("0 أو 2500").fill("5000")
-  await page.getByRole("button", { name: "تسجيل دين" }).click()
-  await expect(page.getByRole("heading", { name: "تسجيل دفعة على الحساب" })).toBeVisible({ timeout: 15_000 })
+  await page.getByLabel("الرصيد الافتتاحي، اختياري", { exact: true }).fill("5000.00")
+  await page.getByLabel("سبب الدين", { exact: true }).fill("رصيد افتتاحي لاختبار ترجمة الدفعة")
+  await page.getByRole("button", { name: "حفظ الحساب", exact: true }).click()
+  await expect(page.getByRole("status")).toContainText("تم حفظ الحركة وتحديث الرصيد.")
 
   // The debts hub renders translated panel copy — no raw keys.
   await page.getByRole("link", { name: "الديون" }).first().click()
-  await expect(page.getByRole("heading", { name: "مركز الديون" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "الديون", exact: true })).toBeVisible()
+  await page.getByLabel("بحث عن حساب", { exact: true }).fill(counterpartyName)
   await expectNoRawKeys(page)
 
-  // Open the party's ledger and its record-payment dialog (per-entry “دفعة” button).
-  const openButtons = page.getByRole("button", { name: /فتح التفاصيل/ })
+  // Select the exact party account and open payment on its opening entry.
+  const openButtons = page.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button").filter({ hasText: counterpartyName })
   await expect(openButtons.first()).toBeVisible({ timeout: 10_000 })
   await openButtons.first().click()
 
-  const entryPaymentButton = page.getByRole("button", { name: "دفعة", exact: true }).first()
+  const openingRow = page.getByRole("row").filter({ hasText: "رصيد افتتاحي" })
+  await expect(openingRow).toContainText("5,000")
+  const entryPaymentButton = openingRow.getByRole("button", { name: "تسجيل دفعة", exact: true })
   await expect(entryPaymentButton).toBeVisible({ timeout: 10_000 })
   await entryPaymentButton.click()
 
-  // The dialog shows translated copy (debts.payment.*), not raw keys.
+  // The active exact-ledger dialog must show Arabic copy, not raw keys.
   const dialog = page.getByRole("dialog")
-  await expect(dialog.getByRole("heading", { name: "تسديد دفعة" })).toBeVisible()
-  await expect(dialog.getByText("سجل دفعة مقابل حركة الفتح هذه")).toBeVisible()
+  await expect(dialog.getByRole("heading", { name: "تسجيل دفعة", exact: true })).toBeVisible()
+  await expect(dialog.getByText("تُحفظ الحركة في سجل الحساب مع توثيق الطرف والمبلغ.")).toBeVisible()
+  await expect(dialog.getByRole("textbox", { name: "مبلغ الدفعة", exact: true })).toBeVisible()
+  await expect(dialog.getByRole("combobox", { name: "طريقة الدفع", exact: true })).toHaveValue("CASH")
   await expectNoRawKeys(page)
 })
 

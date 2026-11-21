@@ -9,24 +9,14 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { SalariesSection } from "./salaries-section"
 import { parseSalariesSearch, patchSalariesSearch, type SalariesRouteSearch } from "./salaries-route-search"
 
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: () => null }))
+vi.mock("@/features/employees/employee-earnings-history", () => ({ EmployeeEarningsHistory: () => <div>approved-history</div> }))
+
 const projects = [{ id: "project-1", name: "مشروع" }]
-const workers = [{
-  employeeId: "worker-1", employeeName: "العامل", employeePhone: "0555000001", employeeRole: "عامل",
-  salaryReference: { period: "MONTHLY" as const, amount: "30000.00" }, lastPaymentDate: null,
-  projectAssignments: [],
-}]
-const payments = Array.from({ length: 25 }, (_, index) => ({
-  id: `payment-${index + 1}`,
-  employeeId: "worker-1",
-  employeeName: `العامل ${index + 1}`,
-  employeePhone: "0555000001",
-  employeeRole: "عامل",
-  paymentDate: "2026-03-31T00:00:00.000Z",
-  days: 1,
-  expectedAmountDzd: 100,
-  actualAmountDzd: 100,
-  projectSplits: [],
-  note: null,
+const workers = Array.from({ length: 25 }, (_, index) => ({
+  employeeId: `worker-${index}`, employeeName: `العامل ${String(index + 1).padStart(2, "0")}`,
+  employeePhone: "0555000001", employeeRole: "عامل",
+  salaryReference: { period: "MONTHLY" as const, amount: "30000.00" }, projectAssignments: [],
 }))
 
 afterEach(cleanup)
@@ -56,27 +46,27 @@ describe("salaries route search", () => {
   })
 
   it("records tab and pagination changes in history and restores them with back/forward", async () => {
-    const { router } = renderSalariesRoute("/salaries?tab=recent&page=1&pageSize=10&keep=source")
-    await screen.findAllByText("العامل 1")
+    const { router } = renderSalariesRoute("/salaries?tab=workers&page=1&pageSize=10&keep=source")
+    await screen.findAllByText("العامل 01")
 
     clickNextPage("1 / 3")
-    await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "recent", page: 2, keep: "source" }))
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "workers", page: 2, keep: "source" }))
     expect(screen.getAllByText("العامل 11")).toBeTruthy()
 
     await act(async () => { router.history.back() })
     await waitFor(() => expect(router.state.location.search.page).toBe(1))
-    expect(screen.getAllByText("العامل 1")).toBeTruthy()
+    expect(screen.getAllByText("العامل 01")).toBeTruthy()
 
     await act(async () => { router.history.forward() })
     await waitFor(() => expect(router.state.location.search.page).toBe(2))
     expect(screen.getAllByText("العامل 11")).toBeTruthy()
 
-    fireEvent.click(screen.getAllByRole("tab")[1]!)
-    await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "workers", page: 1, pageSize: 10, keep: "source" }))
+    fireEvent.click(screen.getByRole("tab", { name: "سجل الأجور المعتمدة" }))
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "earnings", page: 1, pageSize: 10, keep: "source" }))
   })
 
   it("resets the URL page when a filter or page size changes", async () => {
-    const { router } = renderSalariesRoute("/salaries?tab=recent&page=2&pageSize=10&keep=source")
+    const { router } = renderSalariesRoute("/salaries?tab=workers&page=2&pageSize=10&keep=source")
     await screen.findAllByText("العامل 11")
 
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "missing worker" } })
@@ -84,7 +74,7 @@ describe("salaries route search", () => {
     expect(router.state.location.search.keep).toBe("source")
 
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "" } })
-    await screen.findAllByText("العامل 1")
+    await screen.findAllByText("العامل 01")
     clickNextPage("1 / 3")
     await waitFor(() => expect(router.state.location.search.page).toBe(2))
     fireEvent.change(getPageSizeSelect()!, { target: { value: "25" } })
@@ -99,7 +89,6 @@ function renderSalariesRoute(initialEntry: string) {
     const navigate = salariesRoute.useNavigate()
     return (
       <SalariesSection
-        recentPayments={payments}
         workers={workers}
         employees={[]}
         projects={projects}

@@ -2,10 +2,11 @@ import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { PageHeader } from "@/features/shared/page-primitives"
+import { NativeSelect } from "@/components/ui/form-controls"
+import { EmployeePayrollPanel } from "@/features/employees/employee-payroll-panel"
 import { RecordTabs } from "@/features/shared/record-page-frame"
 import { EmployeeEarningsHistory } from "@/features/employees/employee-earnings-history"
 
-import { SalaryPaymentsTable, type SalaryPaymentRow } from "./salary-payments-table"
 import { SalariedWorkersTable, type SalariedWorkerRow } from "./salaried-workers-table"
 import { patchSalariesSearch, type SalariesRouteSearch } from "./salaries-route-search"
 import type { SalaryRoutePagination } from "./salary-route-pagination"
@@ -14,7 +15,6 @@ const DEFAULT_SEARCH: SalariesRouteSearch = { tab: "recent", page: 1, pageSize: 
 
 /** Salary tabs share route-backed pagination; each table keeps its own filters. */
 export function SalariesSection({
-  recentPayments,
   workers,
   employees,
   projects,
@@ -23,7 +23,6 @@ export function SalariesSection({
   routeSearch,
   onRouteSearchChange,
 }: {
-  recentPayments: SalaryPaymentRow[]
   workers: SalariedWorkerRow[]
   employees: Array<{ id: string; name: string }>
   projects: Array<{ id: string; name: string }>
@@ -34,7 +33,10 @@ export function SalariesSection({
 }) {
   const { t } = useTranslation()
   const [localSearch, setLocalSearch] = useState(DEFAULT_SEARCH)
-  const search = routeSearch ?? localSearch
+  const [payrollEmployeeId, setPayrollEmployeeId] = useState(() => workers[0]?.employeeId ?? "")
+  const rawSearch = routeSearch ?? localSearch
+  // Old recent-payment URLs now open the actual approved-earnings lifecycle.
+  const search = { ...rawSearch, tab: rawSearch.tab === "recent" ? "earnings" : rawSearch.tab }
   const updateSearch = (patch: Partial<Pick<SalariesRouteSearch, "tab" | "page" | "pageSize">>) => {
     if (onRouteSearchChange) {
       onRouteSearchChange(patch)
@@ -67,23 +69,11 @@ export function SalariesSection({
       <RecordTabs
         activeTab={search.tab}
         tabs={[
-          { id: "recent", label: t("salaries.recentTitle") },
           { id: "workers", label: t("salaries.workersTitle") },
           { id: "earnings", label: t("earnings.historyTitle") },
         ]}
         onChange={(tab) => updateSearch({ tab: tab as SalariesRouteSearch["tab"], page: 1 })}
       />
-
-      <div hidden={search.tab !== "recent"}>
-        <SalaryPaymentsTable
-          payments={recentPayments}
-          projects={projects}
-          onAddPayment={onAddPayment}
-          onEditSalary={onEditSalary}
-          routePagination={search.tab === "recent" ? routePagination : undefined}
-          onFilterChange={resetPageForFilter}
-        />
-      </div>
 
       <div hidden={search.tab !== "workers"}>
         <SalariedWorkersTable
@@ -97,11 +87,25 @@ export function SalariesSection({
       </div>
 
       {search.tab === "earnings" ? (
-        <EmployeeEarningsHistory
-          employeeNames={employeeNames}
-          projectNames={projectNames}
-          routePagination={routePagination}
-        />
+        <div className="space-y-6">
+          <EmployeeEarningsHistory
+            employeeNames={employeeNames}
+            projectNames={projectNames}
+            routePagination={routePagination}
+          />
+          {workers.length ? (
+            <section className="space-y-4 border-t border-border/60 pt-5" aria-labelledby="salary-payroll-heading">
+              <h2 id="salary-payroll-heading" className="text-lg font-semibold">{t("payroll.salarySurfaceTitle")}</h2>
+              <label className="block max-w-md space-y-1 text-sm">
+                <span>{t("payroll.employee")}</span>
+                <NativeSelect aria-label={t("payroll.employee")} value={workers.some(worker => worker.employeeId === payrollEmployeeId) ? payrollEmployeeId : workers[0]!.employeeId} onChange={event => setPayrollEmployeeId(event.target.value)}>
+                  {workers.map(worker => <option key={worker.employeeId} value={worker.employeeId}>{worker.employeeName}</option>)}
+                </NativeSelect>
+              </label>
+              <EmployeePayrollPanel employeeId={workers.some(worker => worker.employeeId === payrollEmployeeId) ? payrollEmployeeId : workers[0]!.employeeId} />
+            </section>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )

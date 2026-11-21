@@ -35,23 +35,7 @@ export function createInventoryHandlers(
   inventoryService: InventoryService,
 ) {
   return {
-    inventoryItemDefinitionsList: os.inventoryItemDefinitionsList.handler(m.queryAuth(async ({ input }) =>
-      inventoryService.listItemDefinitions(input as InventoryItemDefinitionListInput)
-    )),
-    inventoryItemDefinitionOptions: os.inventoryItemDefinitionOptions.handler(m.queryAuth(async ({ input }) =>
-      inventoryService.listItemDefinitionOptions(input as InventoryItemDefinitionOptionsInput)
-    )),
-    inventoryItemDefinitionsGet: os.inventoryItemDefinitionsGet.handler(m.queryAuth(async ({ input }) =>
-      inventoryService.getItemDefinition((input as IdInput).id)
-    )),
-    inventoryItemDefinitionsCreate: os.inventoryItemDefinitionsCreate.handler(m.mutationAudit(
-      ({ input, auditContext }) => inventoryService.createItemDefinition(input as InventoryItemDefinitionCreateInput, auditContext),
-      toInventoryFailureResult,
-    )),
-    inventoryItemDefinitionsUpdate: os.inventoryItemDefinitionsUpdate.handler(m.mutationAudit(
-      ({ input, auditContext }) => inventoryService.updateItemDefinition(input as InventoryItemDefinitionUpdateInput, auditContext),
-      toInventoryFailureResult,
-    )),
+    ...createCatalogHandlers(os, m, inventoryService),
     inventoryInvoiceGroupsList: os.inventoryInvoiceGroupsList.handler(m.queryAuth(async ({ input }) =>
       inventoryService.listInvoiceGroups(input as InventoryInvoiceGroupListInput)
     )),
@@ -112,6 +96,32 @@ export function createInventoryHandlers(
     )),
     inventoryTransferHistoryList: os.inventoryTransferHistoryList.handler(m.queryAuth(async ({ input }) =>
       inventoryService.listTransferHistory(input as InventoryTransferHistoryInput)
+    )),
+  };
+}
+
+export function createCatalogHandlers(
+  os: ReturnType<typeof implement>,
+  m: RpcMiddleware,
+  inventoryService: Pick<InventoryService, "listItemDefinitions" | "listItemDefinitionOptions" | "getItemDefinition" | "createItemDefinition" | "updateItemDefinition">,
+) {
+  return {
+    inventoryItemDefinitionsList: os.inventoryItemDefinitionsList.handler(m.queryAuth(async ({ input }) =>
+      inventoryService.listItemDefinitions(input as InventoryItemDefinitionListInput)
+    )),
+    inventoryItemDefinitionOptions: os.inventoryItemDefinitionOptions.handler(m.queryAuth(async ({ input }) =>
+      inventoryService.listItemDefinitionOptions(input as InventoryItemDefinitionOptionsInput)
+    )),
+    inventoryItemDefinitionsGet: os.inventoryItemDefinitionsGet.handler(m.queryAuth(async ({ input }) =>
+      inventoryService.getItemDefinition((input as IdInput).id)
+    )),
+    inventoryItemDefinitionsCreate: os.inventoryItemDefinitionsCreate.handler(m.mutationAudit(
+      ({ input, auditContext }) => inventoryService.createItemDefinition(input as InventoryItemDefinitionCreateInput, auditContext),
+      toInventoryFailureResult,
+    )),
+    inventoryItemDefinitionsUpdate: os.inventoryItemDefinitionsUpdate.handler(m.mutationAudit(
+      ({ input, auditContext }) => inventoryService.updateItemDefinition(input as InventoryItemDefinitionUpdateInput, auditContext),
+      toInventoryFailureResult,
     )),
   };
 }
