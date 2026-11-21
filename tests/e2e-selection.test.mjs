@@ -27,6 +27,29 @@ test('CI builds contracts and runs connected-exact only with its dedicated confi
   assert.match(e2eJob, /playwright test --config=playwright\.connected-exact\.config\.ts tests\/e2e\/payroll-connected-exact\.spec\.ts/);
 });
 
+test('CI E2E shell runs full and affected scopes without silently dropping coverage', () => {
+  const workflow = readFileSync(path.join(rootDir, '.github/workflows/ci.yml'), 'utf8');
+  const job = workflow.slice(workflow.indexOf('  test-e2e:'), workflow.indexOf('\n  build:'));
+  const script = job.slice(job.indexOf('          pnpm --filter @tuari/contracts build'), job.indexOf('\n      - name: Upload'))
+    .split('\n').map(line => line.replace(/^          /, '')).join('\n');
+  const run = (mode, specs) => execFileSync('bash', ['-c', 'set -euo pipefail\npnpm() { printf "%s\\n" "$*"; }\n' + script], {
+    cwd: rootDir, encoding: 'utf8', env: { ...process.env, E2E_MODE: mode, E2E_SPECS: specs },
+  }).trim().split('\n');
+  const dedicated = 'exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts';
+  const full = run('full', '');
+  assert.equal(full[0], '--filter @tuari/contracts build');
+  const generic = full.find(line => line.startsWith('test:e2e '));
+  assert.ok(generic, 'full scope must execute generic tests');
+  for (const spec of readdirSync(specDir).filter(name => name.endsWith('.spec.ts') && name !== 'payroll-connected-exact.spec.ts')) {
+    assert.ok(generic.split(' ').includes(`tests/e2e/${spec}`), spec);
+  }
+  assert.ok(!generic.includes('payroll-connected-exact.spec.ts'));
+  assert.equal(full.filter(line => line === dedicated).length, 1);
+  const affected = run('affected', 'tests/e2e/expenses.spec.ts tests/e2e/payroll-connected-exact.spec.ts');
+  assert.deepEqual(affected.slice(2), ['test:e2e tests/e2e/expenses.spec.ts', dedicated]);
+  assert.deepEqual(run('affected', 'tests/e2e/payroll-connected-exact.spec.ts').slice(2), [dedicated]);
+});
+
 test('globToRegExp: ** crosses directories, * does not, ? is one char', () => {
   assert.ok(globToRegExp('apps/web/src/lib/**').test('apps/web/src/lib/a/b.ts'));
   assert.ok(globToRegExp('apps/web/src/lib/**').test('apps/web/src/lib.ts') === false);

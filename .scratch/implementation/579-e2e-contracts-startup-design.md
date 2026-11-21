@@ -21,6 +21,12 @@ The selector dependency registers `payroll-connected-exact.spec.ts`, but its tes
 
 No production financial, schema, or API behavior changes. No dependency changes, generated output commits, selector semantic changes, policy weakening, publication, or merge.
 
-## Proof status
+## Full-scope correction
 
-Pending: run focused selector/workflow regression, clean-output managed API startup, and one dedicated connected-exact browser case using the shared heavy-work queue. Record exact commands, native exit codes, counts, durations, logs, fingerprints and cleanup before handoff. Do not claim hosted acceptance or full E2E completion from local smoke.
+Execution review exposed a concrete orchestration defect. `selectCiScope` represents full scope with an empty specs string. Partitioning that string alone executed neither browser command. Pass the existing selector mode into the shell and expand `tests/e2e/*.spec.ts` for full scope before partitioning. A shell-execution regression stubs only pnpm, executes the actual workflow block, and checks every generic spec plus exactly one dedicated invocation. It also checks mixed affected and dedicated-only selection. The regression first failed with `full scope must execute generic tests`.
+
+The agreed seam is the existing CI shell command and its selector environment. No financial vocabulary or runtime interfaces change. Architecture: no seam moved. Keep the orchestration local to its one caller rather than introduce a second runner module.
+
+## Proof boundary
+
+Local execution records live under ignored `.scratch/reviews/579-proof`. The owned contracts output was absent before its serialized build. Managed API startup reached health 200 and closed through owned IPC. The dedicated connected-exact case executed without a skip. Full browser execution remains CI-final; the shell regression proves full-scope routing without running the matrix. Hosted acceptance, protection and the parent's combined-delta review remain separate requirements.

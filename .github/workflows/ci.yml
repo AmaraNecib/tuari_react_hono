@@ -292,11 +292,16 @@ jobs:
           # Passed through the environment, not interpolated into the script:
           # map-derived, but never splice shipped data into shell source.
           E2E_SPECS: ${{ needs.detect.outputs.e2e_specs }}
+          E2E_MODE: ${{ needs.detect.outputs.e2e_mode }}
         run: |
           pnpm --filter @tuari/contracts build
           pnpm exec playwright install --with-deps chromium
           # The connected-exact config owns its isolated API, web server, and run directory.
-          read -r -a selected_specs <<< "$E2E_SPECS"
+          if [ "$E2E_MODE" = full ]; then
+            selected_specs=(tests/e2e/*.spec.ts)
+          else
+            read -r -a selected_specs <<< "$E2E_SPECS"
+          fi
           generic_specs=()
           connected_exact=false
           for spec in "${selected_specs[@]}"; do
