@@ -38,7 +38,7 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
   const correctMutation = useCorrectEmployeeOpeningMutation()
   const reconcileMutation = useReconcileEmployeeOpeningMutation()
   const cancelMutation = useCancelEmployeeOpeningProposalMutation()
-  const [cashConfirmed, setCashConfirmed] = useState(false)
+  const [cashConfirmedProposalId, setCashConfirmedProposalId] = useState<string | null>(null)
   const [refundDate, setRefundDate] = useState(getAlgeriaDateInputValue())
   const [kind, setKind] = useState<"WAGE" | "ADVANCE">("WAGE")
   const [wages, setWages] = useState("0")
@@ -91,8 +91,11 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
       else if (attempted.action === "opening-correct") await correctMutation.mutateAsync(attempted.payload)
       else if (attempted.action === "opening-reconcile") await reconcileMutation.mutateAsync(attempted.payload)
       else await cancelMutation.mutateAsync(attempted.payload)
-      if (!clearPayrollPendingIntent(attempted.action, identity, attempted.payload.requestId, storage)) throw new Error("Stored intent changed")
-      if (alive.current) { setPending(null); setError(""); setAmount(""); setReason(""); setCashConfirmed(false) }
+      if (!clearPayrollPendingIntent(attempted.action, identity, attempted.payload.requestId, storage)) {
+        if (alive.current) { setPending(null); setError(""); setReady(false); void query.refetch() }
+        return
+      }
+      if (alive.current) { setPending(null); setError(""); setAmount(""); setReason(""); setCashConfirmedProposalId(null) }
     } catch (cause) {
       if (!alive.current) return
       if (cause instanceof ORPCError && ["BAD_REQUEST", "NOT_FOUND", "CONFLICT"].includes(cause.code) && cause.data?.payrollOutcome === "NOT_COMMITTED") setRefusedAttempt(attempted.attemptId ?? null)
@@ -114,7 +117,22 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
           setPending(saved)
           setPreview(null)
           await send(saved)
-        } else await send(intent)
+        } else {
+          const storage = getPayrollStorage()
+          if (!storage) throw new Error("Missing storage")
+          const current = loadPayrollPendingIntent(intent.action, identity, storage)
+          if (!current.ok) throw new Error("Invalid stored intent")
+          if (!current.pending || current.pending.payload.requestId !== intent.payload.requestId) {
+            const results = actions.map(action => loadPayrollPendingIntent(action, identity, storage))
+            if (results.some(result => !result.ok)) throw new Error("Invalid stored intent")
+            const saved = results.flatMap(result => result.ok && result.pending ? [result.pending] : [])
+            if (saved.length > 1) throw new Error("Conflicting opening intents")
+            setPending(saved[0] ?? null); setPreview(null); setReady(true); setError("")
+            await query.refetch()
+            return
+          }
+          await send(current.pending)
+        }
       })
     } catch { if (alive.current) setStorageError(true) }
     finally { if (alive.current) setDispatching(false) }
@@ -160,7 +178,7 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
         setPreview({ version: 1, action: "opening-cancel", identity, payload: { ...common, reason: reason.trim() } })
       } else {
         const date = toAlgeriaDayBoundaryIso(refundDate, "start")
-        if (!date || !cashConfirmed) throw new Error("Actual cash confirmation required")
+        if (!date || cashConfirmedProposalId !== proposal.id) throw new Error("Actual cash confirmation required")
         setPreview({ version: 1, action: "opening-reconcile", identity, payload: { ...common, expectedAmount: proposal.oldAmount, refundAmount: proposal.requiredRefund, refundDate: date, confirmCashRefund: true } })
       }
       setError("")
@@ -182,8 +200,8 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
         <p>{t("employeeOpening.pendingProposal")}</p><p><bdi>{proposal.oldAmount}</bdi> ← <bdi>{proposal.newAmount}</bdi> · {proposal.reason}</p>
         <p>{t(proposal.kind === "WAGE" ? "employeeOpening.refundIn" : "employeeOpening.refundOut")}: <MoneyValue exact value={proposal.requiredRefund} currencyLabel={t("detailPages.salary.currency")} /></p>
         <label>{t("employeeOpening.refundDate")}<DatePicker value={refundDate} onChange={setRefundDate} disabled={busy || preview !== null} /></label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={cashConfirmed} onChange={event => setCashConfirmed(event.target.checked)} disabled={busy || preview !== null} />{t("employeeOpening.confirmActualCash")}</label>
-        <Button type="button" disabled={busy || preview !== null || !cashConfirmed || !ready || storageError} onClick={() => prepareProposal(proposal.id)}>{t("employeeOpening.prepareRefund")}</Button>
+        <label className="flex items-center gap-2"><input type="checkbox" checked={cashConfirmedProposalId === proposal.id} onChange={event => setCashConfirmedProposalId(event.target.checked ? proposal.id : null)} disabled={busy || preview !== null} />{t("employeeOpening.confirmActualCash")}</label>
+        <Button type="button" disabled={busy || preview !== null || cashConfirmedProposalId !== proposal.id || !ready || storageError} onClick={() => prepareProposal(proposal.id)}>{t("employeeOpening.prepareRefund")}</Button>
         <label className="block">{t("employeeOpening.cancelReason")}<Textarea value={reason} onChange={event => setReason(event.target.value)} maxLength={1000} disabled={busy || preview !== null} /></label>
         <Button type="button" variant="outline" disabled={busy || preview !== null || !reason.trim() || !ready || storageError} onClick={() => prepareProposal(proposal.id, true)}>{t("employeeOpening.cancelProposal")}</Button>
       </div>)}</div> : null}

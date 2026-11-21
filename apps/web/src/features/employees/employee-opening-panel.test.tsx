@@ -41,6 +41,17 @@ describe("opening correction confirmation", () => {
       expect(mocks.reconcile.mock.calls[0]![0]).toMatchObject({ proposalId: "proposal-1", expectedAmount: "2000.00", refundAmount: "1300.00", confirmCashRefund: true })
     } finally { Object.assign(mocks.opening, original) }
   })
+  it("keeps actual-cash confirmation scoped to each pending proposal", async () => {
+    const original = structuredClone(mocks.opening)
+    try {
+      mocks.opening.proposals = ["WAGE", "ADVANCE"].map((kind, index) => ({ id: `proposal-${index}`, sourceId: `source-${index}`, employeeId: "employee-1", kind: kind as "WAGE" | "ADVANCE", oldAmount: "2000.00", newAmount: "200.00", requiredRefund: "1300.00", reason: "Verified opening", actorUserId: "user-1", actorLabel: "Owner", transactionId: `txn-${index}`, createdAt: "2026-11-01T00:00:00.000Z", status: "PENDING" as const, resolution: null }))
+      render(<EmployeeOpeningPanel employeeId="employee-1" />)
+      const checkboxes = screen.getAllByRole("checkbox")
+      fireEvent.click(checkboxes[0]!)
+      expect(checkboxes[0]!.checked).toBe(true)
+      expect(checkboxes[1]!.checked).toBe(false)
+    } finally { Object.assign(mocks.opening, original) }
+  })
   it("does not treat unknown as zero until an explicit review is confirmed", async () => {
     const original = structuredClone(mocks.opening)
     try {
