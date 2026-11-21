@@ -107,6 +107,25 @@ test('selectSpecs: always_specs join an affected run but not a skip', () => {
   assert.deepEqual(skip.specs, []);
 });
 
+test('selectSpecs: payroll UI and workforce API changes route payroll regressions without unrelated feature specs', () => {
+  for (const file of [
+    'apps/web/src/features/employees/payroll-panel.tsx',
+    'apps/api/src/modules/workforce/payroll.module.ts',
+  ]) {
+    const scope = selectSpecs([file]);
+    assert.equal(scope.mode, 'affected', file);
+    assert.ok(scope.specs.includes('payroll-connected-exact.spec.ts'), file);
+    assert.ok(scope.specs.includes('payroll-recovery.spec.ts'), file);
+    assert.ok(!scope.specs.includes('expenses.spec.ts'), file);
+  }
+});
+
+test('selectSpecs: cross-cutting managed API lifecycle coverage joins affected runs', () => {
+  const scope = selectSpecs(['apps/web/src/features/expenses/expenses-page.tsx']);
+  assert.equal(scope.mode, 'affected');
+  assert.ok(scope.specs.includes('managed-api-isolation.spec.ts'));
+});
+
 test('selectSpecs: api module maps to the owning feature specs', () => {
   const scope = selectSpecs(['apps/api/src/modules/workforce/employee.module.ts']);
   assert.equal(scope.mode, 'affected');

@@ -73,7 +73,8 @@
     "foundation-smoke.spec.ts",
     "fonts.spec.ts",
     "splashscreen.spec.ts",
-    "web-hygiene.spec.ts"
+    "web-hygiene.spec.ts",
+    "managed-api-isolation.spec.ts"
   ],
 
   "features": [
@@ -130,6 +131,8 @@
         "employees.spec.ts",
         "employees-search.spec.ts",
         "employee-earnings.spec.ts",
+        "payroll-connected-exact.spec.ts",
+        "payroll-recovery.spec.ts",
         "salaries.spec.ts",
         "worker-assignment.spec.ts"
       ]
