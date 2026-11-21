@@ -1356,6 +1356,7 @@ export const ar = {
         totalInternal: "التحويلات الداخلية",
         totalValue: "القيمة الإجمالية",
         wholeInvoiceAmounts: "مبالغ الفاتورة كاملة، وليست قيمة الأصناف المعروضة",
+        purchaseSummaryScope: "يتضمن الإجمالي مبالغ فواتير الشراء كاملة، لا قيمة أصناف الموقع فقط",
         filters: "التصفية",
         dateFrom: "من تاريخ",
         dateTo: "إلى تاريخ",

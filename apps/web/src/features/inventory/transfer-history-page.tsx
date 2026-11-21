@@ -123,6 +123,10 @@ export function TransferHistoryPage() {
         />
       </Surface>
 
+      {(!filters.transferType || filters.transferType === "PURCHASE") && (
+        <p className="text-sm text-ink-4">{t("inventory.transferHistory.purchaseSummaryScope")}</p>
+      )}
+
       {/* Filters */}
       <Surface variant="panel">
         <PageSurfaceContent>

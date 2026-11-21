@@ -22,6 +22,13 @@ describe("transfer history exact display", () => {
     expect(screen.getByText("29")).toBeTruthy()
   })
 
+  it("discloses whole purchase invoice totals even when purchases are outside the visible page", () => {
+    mocks.history.mockReturnValue({ data: { summary: { total: 51, sales: 50, internal: 0, totalAmountDzd: "130.00" }, items: [] }, isPending: false, isError: false })
+    render(<TransferHistoryPage />)
+    expect(screen.getByText("يتضمن الإجمالي مبالغ فواتير الشراء كاملة، لا قيمة أصناف الموقع فقط")).toBeTruthy()
+    expect(screen.getByText("130")).toBeTruthy()
+  })
+
   it.each(["00", "01"])("renders a wide aggregate with cents %s and actual history rows", cents => {
     mocks.history.mockReturnValue({ data: { summary: { total: 100, sales: 100, internal: 0, totalAmountDzd: `120000000000000000.${cents}` }, items: [`60000000000000000.${cents}`].map((totalAmountDzd, id) => ({
       id: String(id), date: "2026-11-10T10:00:00.000Z", type: "SALE", from: null, to: null, counterparty: null,

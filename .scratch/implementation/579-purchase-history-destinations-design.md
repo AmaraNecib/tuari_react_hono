@@ -26,6 +26,10 @@ Contract generation writes only this tree's ignored dist. Absent dependency dire
 
 No full suite, browser, production build, schema, form or payroll changes. Contracts compilation is the affected tests' prerequisite and uses the heavy queue. Final checks, exact source fingerprints and failure boundaries live under ignored `.scratch/reviews/579-destinations-sol/`. Review and integration proof remain parent-owned.
 
+## Summary disclosure correction
+
+The partial review identified a valid P2: row disclosure alone does not explain whole-invoice purchase amounts in the global summary. Show a translated notice beside the summary whenever the selected transfer type permits purchases. Do not infer this from visible rows: a purchase may contribute beyond the current page. A mounted regression with no visible rows and a full-filter total first failed (3 passed, 1 failed). The notice changes no monetary calculation. Complete independent review remains required; the partial report is not acceptance.
+
 ## Wisdom
 
 Applied aggregate-read lesson: retain granular hooks and existing invalidation vocabulary. Applied location-history design: retain per-item quantities and typed direction rather than summing incompatible units. Exact aggregate bounds remain wide and unchanged; no narrowing or monetary allocation is introduced. Ownership-history helper duplication lesson does not justify unrelated adapter refactoring here. No repeated-lesson candidate.
