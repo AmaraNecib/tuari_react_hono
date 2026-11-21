@@ -247,7 +247,7 @@ test("warehouse manager and native invoice supplier preserve human-readable sele
   await expect(supplier).toHaveJSProperty("readOnly", true)
   await invoice.getByRole("button", { name: "تسجيل الشراء كدين على الشركة", exact: true }).click()
   await invoice.getByRole("checkbox", { name: "تسجيل الشراء كدين على الشركة" }).check()
-  await expect(invoice.getByLabel("إدخال الدفعة الأولى", { exact: true })).toBeVisible()
+  await expect(invoice.getByRole("combobox", { name: "إدخال الدفعة الأولى", exact: true })).toBeVisible()
   await expect(party).toHaveValue(fixtures.counterpartyIds[0])
   await expect(supplier).toHaveValue(fixtures.counterparties[0])
 })
