@@ -16,10 +16,42 @@ describe("transfer history exact display", () => {
     }] }, isPending: false, isError: false })
     render(<TransferHistoryPage />)
     expect(screen.getByText("مبالغ الفاتورة كاملة، وليست قيمة الأصناف المعروضة")).toBeTruthy()
+    expect(screen.getByText("Supplier").parentElement?.textContent).toBe("Supplier→الوجهات موضحة لكل صنف")
     expect(screen.getByText("Depot").getAttribute("href")).toBe("/warehouses/same")
     expect(screen.getByText("Site").getAttribute("href")).toBe("/projects/same")
     expect(screen.getByText("30")).toBeTruthy()
     expect(screen.getByText("29")).toBeTruthy()
+  })
+
+  it("keeps uniform purchase destinations as a typed route and shows unknown item destinations", () => {
+    mocks.history.mockReturnValue({ data: { items: [{
+      id: "uniform", date: "2026-11-10T10:00:00.000Z", type: "PURCHASE", from: null,
+      to: { type: "WAREHOUSE", id: "all-b", name: "Warehouse B" }, counterparty: { id: "supplier", name: "Supplier" },
+      items: [{ id: "unknown-item", name: "Mystery", quantity: 1, to: null }],
+      totalAmountDzd: "1.00", paidAmountDzd: null, remainingDebtDzd: null, paymentStatus: "PAID",
+    }] }, isPending: false, isError: false })
+    render(<TransferHistoryPage />)
+    expect(screen.getByText("مستودع: Warehouse B").getAttribute("href")).toBe("/warehouses/all-b")
+    expect(screen.getByText("Supplier").parentElement?.textContent).toBe("Supplier→مستودع: Warehouse B")
+  })
+
+  it.each([{ items: [] }, { items: [{ id: "unknown", name: "Unknown", quantity: 1, to: null }] }])("shows unknown receiving destination without reversing the supplier for %j", ({ items }) => {
+    mocks.history.mockReturnValue({ data: { items: [{
+      id: "unknown", date: "2026-11-10T10:00:00.000Z", type: "PURCHASE", from: null, to: null,
+      counterparty: { id: "supplier", name: "Supplier" }, items, totalAmountDzd: "1.00", paidAmountDzd: null, remainingDebtDzd: null, paymentStatus: "PAID",
+    }] }, isPending: false, isError: false })
+    render(<TransferHistoryPage />)
+    expect(screen.getByText("Supplier").parentElement?.textContent).toBe("Supplier→وجهة غير معروفة")
+  })
+
+  it("keeps supplier counterparty as the destination for non-purchases", () => {
+    mocks.history.mockReturnValue({ data: { items: [{
+      id: "sale", date: "2026-11-10T10:00:00.000Z", type: "SALE", from: null, to: null,
+      counterparty: { id: "customer", name: "Customer" }, items: [], totalAmountDzd: "1.00",
+      paidAmountDzd: null, remainingDebtDzd: null, paymentStatus: "PAID",
+    }] }, isPending: false, isError: false })
+    render(<TransferHistoryPage />)
+    expect(screen.getByText("Customer").parentElement?.textContent).toBe("—→Customer")
   })
 
   it("discloses whole purchase invoice totals even when purchases are outside the visible page", () => {

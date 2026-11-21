@@ -184,6 +184,8 @@ test.describe("inventory invoice create — progressive disclosure", () => {
     const row = page.getByText(number, { exact: true }).locator("..")
     await expect(row).toHaveCount(1)
     await expect(row).toContainText("شراء")
+    const route = row.getByText(counterpartyName, { exact: true }).locator("..")
+    await expect(route).toHaveText(`${counterpartyName}→الوجهات موضحة لكل صنف`)
     await expect(row.getByText(wholeInvoiceDisclosure, { exact: true })).toBeVisible()
     for (const [name, quantity, destination] of [[mixedItemA, "×2", warehouseName], [mixedItemB, "×4", alternateWarehouse]]) {
       const item = row.getByText(name!, { exact: true }).locator("..")

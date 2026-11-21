@@ -254,7 +254,9 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
 
       {/* Route */}
       <div className="flex items-center gap-2 text-sm">
-        {transfer.from ? (
+        {transfer.type === "PURCHASE" && transfer.counterparty ? (
+          <span className="text-ink-3">{transfer.counterparty.name}</span>
+        ) : transfer.from ? (
           <a
             href={transfer.from.type === "WAREHOUSE" ? `/warehouses/${transfer.from.id}` : `/projects/${transfer.from.id}`}
             className="text-primary hover:underline"
@@ -272,6 +274,12 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
           >
             {transfer.to.type === "WAREHOUSE" ? "مستودع" : "مشروع"}: {transfer.to.name}
           </a>
+        ) : transfer.type === "PURCHASE" ? (
+          <span className="text-ink-4">
+            {t(transfer.items.some(item => item.to)
+              ? "inventory.transferHistory.itemDestinations"
+              : "inventory.transferHistory.unknownDestination")}
+          </span>
         ) : transfer.counterparty ? (
           <span className="text-ink-3">{transfer.counterparty.name}</span>
         ) : (

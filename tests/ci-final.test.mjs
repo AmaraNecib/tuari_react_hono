@@ -1,8 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, globSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { selectCiScope } from '../scripts/ci/ci-scope.mjs';
 import { acceptanceErrors } from '../scripts/ci/ci-acceptance.mjs';
+
+test('connected failure upload maps only the dedicated artifact directory including hidden scratch paths', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const step = ci.split('      - name: Upload connected payroll failure artifacts\n')[1]?.split('\n      - name:')[0];
+  assert.ok(step, 'connected artifacts need a dedicated upload');
+  assert.match(step, /if: needs\.detect\.outputs\.e2e_mode != 'skip' && !cancelled\(\)/);
+  assert.match(step, /uses: actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  assert.match(step, /include-hidden-files: true/);
+  assert.match(step, /retention-days: 7/);
+  assert.match(step, /if-no-files-found: ignore/);
+  const pattern = step.match(/^          path: (.+)$/m)?.[1];
+  assert.equal(pattern, '.scratch/reviews/558-connected/run-*/artifacts/**');
+  const config = readFileSync(new URL('../playwright.connected-exact.config.ts', import.meta.url), 'utf8');
+  assert.match(config, /mkdtempSync\(resolve\("\.scratch\/reviews\/558-connected\/run-"\)\)/);
+  assert.match(config, /outputDir: resolve\(run, "artifacts"\)/);
+  assert.match(config, /trace: "retain-on-failure"/);
+  const fixture = mkdtempSync(join(tmpdir(), '579-upload-'));
+  for (const file of ['artifacts/case/trace.zip', 'artifacts/case/screenshot.png', 'exact.sqlite',
+    'config.json', 'attachments/invoice.png', 'backups/backup.sqlite', 'session/auth.json']) {
+    const target = join(fixture, '.scratch/reviews/558-connected/run-fixture', file);
+    mkdirSync(join(target, '..'), { recursive: true });
+    writeFileSync(target, 'synthetic');
+  }
+  const selected = [...globSync(pattern, { cwd: fixture })].filter(file => /\.(zip|png|sqlite|json)$/.test(file)).map(file => file.replaceAll('\\', '/')).sort();
+  assert.deepEqual(selected, ['.scratch/reviews/558-connected/run-fixture/artifacts/case/screenshot.png',
+    '.scratch/reviews/558-connected/run-fixture/artifacts/case/trace.zip']);
+});
 
 const success = (outputs = { api: 'false', web: 'false', rust: 'false', encryption: 'false', e2e_mode: 'skip', e2e_specs: '' }) => ({
   detect: { result: 'success', outputs },
