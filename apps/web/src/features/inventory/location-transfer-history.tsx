@@ -153,7 +153,7 @@ function LocationTransferItem({
   const counterparty = transfer.counterparty
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-line/50 px-3 py-2 text-sm">
+    <div data-testid="location-transfer-history-row" className="flex items-center gap-3 rounded-lg border border-line/50 px-3 py-2 text-sm">
       {/* Direction indicator */}
       <span className={`text-xs font-medium ${getMovementColor(direction)}`}>
         {getMovementLabel(direction)}
@@ -170,7 +170,11 @@ function LocationTransferItem({
       {/* Items summary */}
       <div className="flex-1 min-w-0">
         <div className="truncate">
-          {transfer.items.map((item) => item.name).join("، ")}
+          {transfer.items.map((item, index) => (
+            <span key={item.id}>
+              {index > 0 && "، "}{item.name} <bdi dir="ltr">×{String(item.quantity)}</bdi>
+            </span>
+          ))}
         </div>
       </div>
 

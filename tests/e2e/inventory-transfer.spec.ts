@@ -140,12 +140,17 @@ test.describe("inventory transfer — critical path", () => {
     await warehouse.getByRole("button", { name: "عرض", exact: true }).click()
     await page.getByRole("tab", { name: "سجل التحويلات", exact: true }).click()
 
-    // The internal transfer row shows the type and the transferred quantity.
-    // (getByText("تحويل داخلي") alone would match the transfer-type filter's
-    // hidden <option> first, so anchor on the quantity-bearing row.)
-    const quantityBadge = page.getByText("×5").first()
-    await expect(quantityBadge).toBeVisible({ timeout: 10_000 })
-    const transferCard = quantityBadge.locator("xpath=ancestor::div[contains(@class, 'rounded-xl')][1]")
-    await expect(transferCard).toContainText("تحويل داخلي")
+    // Match the unique row for this created item and destination. The exact
+    // quantity selector prevents ×50 (or another item) from satisfying ×5.
+    const transferRow = page.getByTestId("location-transfer-history-row")
+      .filter({ hasText: createdItemName })
+      .filter({ hasText: warehouseBName })
+    await expect(transferRow).toHaveCount(1)
+    const exactQuantity = transferRow.locator('bdi[dir="ltr"]').filter({ hasText: /^×5$/ })
+    await expect(exactQuantity).toHaveCount(1)
+    await expect(exactQuantity).toBeVisible()
+    await expect(transferRow).toContainText("تحويل داخلي")
+    await expect(transferRow).toContainText("صادر")
+    await expect(transferRow).toContainText(warehouseBName)
   })
 })
