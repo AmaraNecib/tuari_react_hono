@@ -99,6 +99,18 @@ test('selectSpecs: a shared UI control routes its callers, warehouses included',
   assert.ok(scope.specs.includes('warehouses.spec.ts'));
 });
 
+test('selectSpecs: shared controls and exact money inputs route both payroll regressions', () => {
+  for (const file of [
+    'apps/web/src/components/ui/form-controls.tsx',
+    'apps/web/src/features/shared/exact-money-input.tsx',
+  ]) {
+    const scope = selectSpecs([file]);
+    assert.equal(scope.mode, 'affected', file);
+    assert.ok(scope.specs.includes('payroll-connected-exact.spec.ts'), file);
+    assert.ok(scope.specs.includes('payroll-recovery.spec.ts'), file);
+  }
+});
+
 test('selectSpecs: both sides of a rename are honoured', () => {
   // The hook and CI pass --no-renames so a rename reports source and
   // destination. A feature moved out of apps/web (destination inert) must still

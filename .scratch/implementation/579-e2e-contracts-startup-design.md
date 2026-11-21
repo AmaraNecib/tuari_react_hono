@@ -27,6 +27,10 @@ Execution review exposed a concrete orchestration defect. `selectCiScope` repres
 
 The agreed seam is the existing CI shell command and its selector environment. No financial vocabulary or runtime interfaces change. Architecture: no seam moved. Keep the orchestration local to its one caller rather than introduce a second runner module.
 
+## Shared-control review correction
+
+The complete review found that shared controls and exact-money inputs could change the payroll panel without selecting either payroll regression. Add both specs to the existing shared-UI rule, with literal path assertions for a shared form control and an exact-money input. The new regression failed before the map correction (24 passed, 1 failed); selector and CI acceptance tests then passed together (36 passed). This widens affected coverage without changing full-mode orchestration or executing browsers again. Raw logs remain at `D:/temp/579-ci-shared-payroll-{red,green}.log`.
+
 ## Proof boundary
 
 Local execution records live under ignored `.scratch/reviews/579-proof`. The owned contracts output was absent before its serialized build. Managed API startup reached health 200 and closed through owned IPC. The dedicated connected-exact case executed without a skip. Full browser execution remains CI-final; the shell regression proves full-scope routing without running the matrix. Hosted acceptance, protection and the parent's combined-delta review remain separate requirements.

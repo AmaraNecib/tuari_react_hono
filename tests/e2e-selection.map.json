@@ -194,6 +194,8 @@
         "table-query-states.spec.ts",
         "legacy-password-recovery.spec.ts",
         "mobile-drawer.spec.ts",
+        "payroll-connected-exact.spec.ts",
+        "payroll-recovery.spec.ts",
         "projects.spec.ts",
         "recovery-keys.spec.ts",
         "salaries.spec.ts",
