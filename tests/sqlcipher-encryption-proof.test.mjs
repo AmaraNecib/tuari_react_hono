@@ -13,6 +13,8 @@ import {
   SQLITE_HEADER_MAGIC,
   WRITE_ROW_PROBE_SOURCE,
   assertNotPlaintextDatabase,
+  assertFreshApplicationDatabase,
+  assertApplicationRows,
   cleanupAfterProof,
   cleanupProofWorkspace,
   findSnapshotDatabase,
@@ -20,6 +22,7 @@ import {
   trackProofChild,
   isPlaintextSqliteFile,
   parseArgs,
+  proofDatabasePaths,
   readFileHeader,
   requiredRuntimeFiles,
   waitForHealth,
@@ -33,6 +36,31 @@ const withTempDir = (run) => {
     rmSync(dir, { recursive: true, force: true });
   }
 };
+
+test("binding round-trip and fresh application startup use separate database files", () => {
+  const { roundTripDb, liveDb } = proofDatabasePaths("/proof/workspace");
+  assert.equal(roundTripDb, path.join("/proof/workspace", "roundtrip.sqlite"));
+  assert.equal(liveDb, path.join("/proof/workspace", "data", "tuari.sqlite"));
+  assert.notEqual(roundTripDb, liveDb);
+});
+
+test("reusing the written binding database for app startup is rejected", () => {
+  withTempDir((dir) => {
+    const { roundTripDb, liveDb } = proofDatabasePaths(dir);
+    writeFileSync(roundTripDb, "foreign binding proof data");
+    assert.doesNotThrow(() => assertFreshApplicationDatabase(liveDb));
+    assert.throws(() => assertFreshApplicationDatabase(roundTripDb), /requires a fresh database path/);
+  });
+});
+
+test("application and backup data proof rejects empty, missing, and altered startup rows", () => {
+  const rows = ["debt", "expenses", "inventory", "invoice", "workforce"]
+    .map((slice) => ({ slice, version: 1 }));
+  assert.doesNotThrow(() => assertApplicationRows(rows, "live"));
+  for (const bad of [[], rows.slice(1), rows.map((row) => ({ ...row, version: 2 }))]) {
+    assert.throws(() => assertApplicationRows(bad, "backup"), /expected persisted application rows/);
+  }
+});
 
 test("waitForHealth cancels a stalled response at its deadline", { timeout: 2_000 }, async () => {
   const sockets = new Set();

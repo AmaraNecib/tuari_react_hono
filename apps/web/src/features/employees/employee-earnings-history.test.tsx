@@ -13,6 +13,7 @@ vi.mock("@/lib/orpc-client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/orpc-client")>()
   return { ...actual, rpcClient: { ...actual.rpcClient, employeeEarningsList: mocks.earningsList } }
 })
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: () => null }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: mocks.session }))
 
 import { EmployeeEarningsHistory } from "./employee-earnings-history"
@@ -85,8 +86,12 @@ describe("EmployeeEarningsHistory", () => {
     expect(entries[1]?.textContent).toMatch(/37,?500/)
     expect(within(entries[2]!).getByText("مشروع ألف")).toBeTruthy()
     expect(entries[2]?.textContent).toMatch(/15,?000/)
-    expect(within(row).getByText("المبلغ غير الموزع بالدينار الجزائري")).toBeTruthy()
+    expect(within(table).getByRole("columnheader", { name: "دون مشروع" })).toBeTruthy()
+    expect(within(row).queryByText("دون مشروع")).toBeNull()
+    expect(within(row).queryByText("المبلغ غير الموزع بالدينار الجزائري")).toBeNull()
     expect(within(row).queryByText(/50,?000/)).toBeNull()
+    expect(screen.queryByText("ما الذي يسجله هذا السجل؟")).toBeNull()
+    expect(screen.queryByText("يعرض السجل الأجور المكتسبة المعتمدة، ولا يثبت دفعًا نقديًا.")).toBeNull()
     expect(mocks.earningsList).toHaveBeenCalledTimes(1)
   })
 
@@ -98,14 +103,12 @@ describe("EmployeeEarningsHistory", () => {
           employees={[{ id: "employee-1", name: "عامل الرواتب" }]}
           onEditSalary={vi.fn()}
           projects={[{ id: "project-a", name: "مشروع ألف" }, { id: "project-b", name: "مشروع باء" }]}
-          recentPayments={[]}
           workers={[{
             employeeId: "employee-1",
             employeeName: "عامل الرواتب",
             employeePhone: "0555000001",
             employeeRole: "عامل",
             salaryReference: { period: "MONTHLY", amount: "50000.00" },
-            lastPaymentDate: null,
             projectAssignments: [],
           }]}
         />

@@ -1,6 +1,9 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { bootstrapOrSignIn } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 /**
  * #278 — validation failures must surface the zod field message (attached to
@@ -15,6 +18,7 @@ test("validation failure shows the field message, not the fallback toast", async
   await bootstrapOrSignIn(page)
 
   await page.getByRole("link", { name: "دليل العناصر" }).first().click()
+  await page.getByRole("button", { name: "دليل العناصر", exact: true }).click()
   await expect(page.getByRole("heading", { name: "دليل العناصر" })).toBeVisible()
 
   const tooLongName = "x".repeat(161)

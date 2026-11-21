@@ -1,8 +1,6 @@
-import { AppDate } from "@/components/app-date"
 import { CurrencyRun } from "@/features/shared/money-value"
 import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
-import { formatExactMoney } from "@/features/shared/exact-money-display"
-import { parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
+import { formatSalaryReferenceAmount } from "@/features/shared/exact-salary-reference-display"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -18,9 +16,9 @@ import {
   AppShellTableHead,
   AppShellTableHeaderCell,
   AppShellTableRow,
-  usePaginatedRows,
 } from "@/features/shared/table-primitives"
 
+import { useSalaryRoutePagination, type SalaryRoutePagination } from "./salary-route-pagination"
 import {
   SalaryPeriodFilterField,
   SalaryProjectFilterField,
@@ -37,22 +35,7 @@ export type SalariedWorkerRow = {
   employeePhone: string
   employeeRole: string
   salaryReference: { period: SalaryPeriodType; amount: string } | null
-  lastPaymentDate: string | null
   projectAssignments: SalaryProjectAssignmentWindow[]
-}
-
-function formatSalaryReferenceAmount(
-  reference: NonNullable<SalariedWorkerRow["salaryReference"]>,
-  grouped: boolean,
-): string {
-  if (reference.period !== "DAILY") {
-    return formatExactMoney(reference.amount, { grouped }).text
-  }
-
-  const formatted = parseLocalizedUnitPriceInput(reference.amount).format()
-  if (!grouped) return formatted
-  const [whole = "", fraction] = formatted.split(".")
-  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${fraction ? `.${fraction}` : ""}`
 }
 
 /**
@@ -64,11 +47,15 @@ export function SalariedWorkersTable({
   projects,
   onAddPayment,
   onEditSalary,
+  routePagination,
+  onFilterChange,
 }: {
   workers: SalariedWorkerRow[]
   projects: Array<{ id: string; name: string }>
   onAddPayment: (employeeId: string, employeeName: string) => void
   onEditSalary: (employeeId: string) => void
+  routePagination?: SalaryRoutePagination
+  onFilterChange?: () => void
 }) {
   const { t } = useTranslation()
   const [query, setQuery] = useState("")
@@ -105,22 +92,19 @@ export function SalariedWorkersTable({
     [sortedWorkers, normalizedQuery, projectFilter, periodFilter],
   )
 
-  const rows = usePaginatedRows({
-    rows: filteredWorkers,
-    resetPageDeps: [normalizedQuery, projectFilter, periodFilter],
-  })
+  const rows = useSalaryRoutePagination(filteredWorkers, routePagination, true, [normalizedQuery, projectFilter, periodFilter])
 
   return (
     <div className="space-y-4">
       {workers.length > 0 ? (
         <AppShellFilterShell>
-          <SalarySearchField value={query} onChange={setQuery} />
+          <SalarySearchField value={query} onChange={(value) => { setQuery(value); onFilterChange?.() }} />
           <SalaryProjectFilterField
             value={projectFilter}
             options={projectOptions}
-            onChange={setProjectFilter}
+            onChange={(value) => { setProjectFilter(value); onFilterChange?.() }}
           />
-          <SalaryPeriodFilterField value={periodFilter} onChange={setPeriodFilter} />
+          <SalaryPeriodFilterField value={periodFilter} onChange={(value) => { setPeriodFilter(value); onFilterChange?.() }} />
         </AppShellFilterShell>
       ) : null}
 
@@ -130,7 +114,6 @@ export function SalariedWorkersTable({
             <tr>
               <AppShellTableHeaderCell>{t("columns.name")}</AppShellTableHeaderCell>
               <AppShellTableHeaderCell>{t("salaries.currentSalary")}</AppShellTableHeaderCell>
-              <AppShellTableHeaderCell>{t("salaries.lastPaymentDate")}</AppShellTableHeaderCell>
               <AppShellTableHeaderCell className="text-end">{t("common.actions")}</AppShellTableHeaderCell>
             </tr>
           </AppShellTableHead>
@@ -156,11 +139,6 @@ export function SalariedWorkersTable({
                       <span className="text-[12.5px] text-ink-4">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-start text-[13px] text-ink-3">
-                    {worker.lastPaymentDate
-                      ? <AppDate value={worker.lastPaymentDate} />
-                      : <span className="text-ink-4">—</span>}
-                  </td>
                   <td className="px-4 py-3 text-end">
                     <AppShellActionGroup className="justify-end">
                       <Button size="xs" onClick={() => onAddPayment(worker.employeeId, worker.employeeName)}>
@@ -174,7 +152,7 @@ export function SalariedWorkersTable({
                 </AppShellTableRow>
               ))
             ) : (
-              <AppShellEmptyStateRow colSpan={4}>
+              <AppShellEmptyStateRow colSpan={3}>
                 {workers.length === 0 ? t("salaries.workersEmpty") : t("search.noResults")}
               </AppShellEmptyStateRow>
             )}
@@ -188,10 +166,7 @@ export function SalariedWorkersTable({
           pageSize={rows.pageSize}
           totalCount={filteredWorkers.length}
           onPageChange={rows.setPage}
-          onPageSizeChange={(nextPageSize) => {
-            rows.setPage(1)
-            rows.setPageSize(nextPageSize)
-          }}
+          onPageSizeChange={rows.setPageSize}
         />
       ) : null}
     </div>

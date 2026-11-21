@@ -21,22 +21,75 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class TuariWindowsPaths
+{
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern uint GetLongPathName(string shortPath, StringBuilder longPath, uint bufferLength);
+    [DllImport("shell32.dll", SetLastError = true)]
+    private static extern IntPtr CommandLineToArgvW([MarshalAs(UnmanagedType.LPWStr)] string commandLine, out int argumentCount);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr LocalFree(IntPtr memory);
+
+    public static string[] ParseCommandLine(string commandLine)
+    {
+        int count;
+        IntPtr arguments = CommandLineToArgvW(commandLine, out count);
+        if (arguments == IntPtr.Zero)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "CommandLineToArgvW failed");
+        try
+        {
+            string[] parsed = new string[count];
+            for (int i = 0; i < count; i++)
+                parsed[i] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(arguments, i * IntPtr.Size));
+            return parsed;
+        }
+        finally
+        {
+            LocalFree(arguments);
+        }
+    }
+}
+'@
+
+function ConvertTo-CanonicalWindowsPath {
+  param([string]$Path)
+  $fullPath = [System.IO.Path]::GetFullPath($Path)
+  $longPath = New-Object System.Text.StringBuilder 32768
+  $longLength = [TuariWindowsPaths]::GetLongPathName($fullPath, $longPath, [uint32]$longPath.Capacity)
+  if ($longLength -eq 0) {
+    throw "GetLongPathName failed for '$Path' (Win32 error $([Runtime.InteropServices.Marshal]::GetLastWin32Error()))"
+  }
+  $canonical = $longPath.ToString()
+  if ($canonical.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) {
+    $canonical = '\\' + $canonical.Substring(8)
+  } elseif ($canonical.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
+    $canonical = $canonical.Substring(4)
+  }
+  return $canonical.TrimEnd('\').ToLowerInvariant()
+}
+
 function Get-SidecarProcesses {
   param([string]$Root)
-  # Command lines can carry either separator (Rust passes backslashes, but a
-  # node-launched probe may pass forward slashes), so compare on a normalized
-  # form with one separator.
-  $rootLower = $Root.ToLowerInvariant().Replace('\', '/')
+  $expectedEntry = ConvertTo-CanonicalWindowsPath (Join-Path $Root 'bin\api-runtime\dist\index.cjs')
   $result = @()
-  $candidates = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue
+  $candidates = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction Stop
   foreach ($candidate in $candidates) {
     $commandLine = [string]$candidate.CommandLine
-    if ([string]::IsNullOrEmpty($commandLine)) { continue }
-    $lower = $commandLine.ToLowerInvariant().Replace('\', '/')
-    # Same identity contract as the Rust shell: our child always runs
-    # `<root>/bin/api-runtime/dist/index.cjs`, so require the extract dir plus
-    # both layout markers. A pid-by-port guess would match unrelated servers.
-    if ($lower.Contains($rootLower) -and $lower.Contains('api-runtime') -and $lower.Contains('index.cjs')) {
+    if ([string]::IsNullOrEmpty($commandLine) -or [string]::IsNullOrEmpty([string]$candidate.ExecutablePath)) { continue }
+    $arguments = [TuariWindowsPaths]::ParseCommandLine($commandLine)
+    if ($arguments.Length -lt 2 -or -not [System.IO.Path]::IsPathRooted($arguments[0]) -or $arguments[1].StartsWith('-') -or -not [System.IO.Path]::IsPathRooted($arguments[1])) { continue }
+    if (-not [System.IO.File]::Exists($arguments[1])) { continue }
+
+    # The process executable is argv[0]; Node's main script is argv[1].
+    # Compare complete canonical paths, never substrings or later arguments.
+    $commandExecutable = ConvertTo-CanonicalWindowsPath $arguments[0]
+    $processExecutable = ConvertTo-CanonicalWindowsPath ([string]$candidate.ExecutablePath)
+    $mainScript = ConvertTo-CanonicalWindowsPath $arguments[1]
+    if ($commandExecutable -eq $processExecutable -and $mainScript -eq $expectedEntry) {
       $result += [pscustomobject]@{
         pid            = [int]$candidate.ProcessId
         commandLine    = $commandLine

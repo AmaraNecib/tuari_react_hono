@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs"
 import { dirname } from "node:path"
+import { createRequire } from "node:module"
 import Database from "better-sqlite3"
 import type { BetterSqliteDatabase } from "../../types/sqlite"
 
@@ -27,8 +28,9 @@ function resolveDatabaseConstructor(key: string | null): typeof Database {
   if (!key) return Database
 
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    return require("better-sqlite3-multiple-ciphers") as typeof Database
+    // Source startup is ESM; the packaged sidecar is CJS.
+    const load = createRequire(typeof __filename === "string" ? __filename : import.meta.url)
+    return load("better-sqlite3-multiple-ciphers") as typeof Database
   } catch {
     throw new Error(
       "Database encryption requires better-sqlite3-multiple-ciphers, which is not installed. "
@@ -44,10 +46,12 @@ function resolveDatabaseConstructor(key: string | null): typeof Database {
  *                       the env-resolved path is used.
  * @param dbKey - SQLCipher encryption key. When omitted, falls back to
  *                `process.env.APP_DB_KEY` (then plain better-sqlite3).
+ * @param options - Exact startup preserves persistent journal mode until schema acceptance.
  */
 export function createDatabaseConnection(
   databasePath?: string,
   dbKey?: string | null,
+  options: { journalMode?: "wal" | "preserve" } = {},
 ): BetterSqliteDatabase {
   const resolvedPath = databasePath ?? resolveDatabaseEnv().databasePath
   const resolvedKey = dbKey ?? process.env.APP_DB_KEY ?? null
@@ -63,7 +67,7 @@ export function createDatabaseConnection(
       sqlite.pragma(`key = '${escapedKey}'`)
     }
 
-    sqlite.pragma("journal_mode = WAL")
+    if (options.journalMode !== "preserve") sqlite.pragma("journal_mode = WAL")
     sqlite.pragma("foreign_keys = ON")
     // Wait (rather than fail immediately) when ANOTHER process holds the
     // SQLite write lock. Single-process today, but the transaction model

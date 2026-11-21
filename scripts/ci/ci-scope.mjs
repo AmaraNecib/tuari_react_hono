@@ -16,8 +16,12 @@ export function selectCiScope(files, { event = 'pull_request', full = false } = 
   ].map(globToRegExp);
   const encryptionPaths = [
     'apps/desktop/**', 'apps/api/**', 'packages/contracts/**', 'infrastructure/**',
-    'tests/sqlcipher-encryption-proof.test.mjs', 'pnpm-workspace.yaml',
-    'pnpm-lock.yaml', 'package.json', '.github/workflows/ci.yml',
+    'tests/sqlcipher-encryption-proof.test.mjs',
+    'scripts/smoke/portable-shell-entry-names.ps1',
+    'scripts/smoke/portable-shell-entry-names.test.ps1',
+    'scripts/smoke/check-portable-zip-shell.ps1',
+    'pnpm-workspace.yaml',
+    'pnpm-lock.yaml', 'package.json', '.github/workflows/ci.yml', '.github/workflows/nightly.yml',
   ].map(globToRegExp);
   return {
     api: areas.api === '1' ? 'true' : 'false',

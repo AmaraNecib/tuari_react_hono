@@ -33,8 +33,9 @@ import {
 } from "@/features/app-shell/workspace-keys"
 import { desktopApiFetch } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
-import { createRpcHeaders, resolveRpcCredentials, rpcClient } from "@/lib/orpc-client"
+import { createRpcHeaders, financialClient, resolveRpcCredentials, rpcClient } from "@/lib/orpc-client"
 import { buildErrorMessage } from "@/lib/rpc-error-handling"
+import { exactCommercePrefix } from "@/features/shared/exact-commerce-queries"
 import { resolveApiUrl } from "@/lib/runtime-config"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 
@@ -153,7 +154,10 @@ export function useItemDefinitionOptionsQuery({
  * `OUTBOUND_PICK`'s `inStockAt` rule makes the usage-scoped options read a
  * function of where stock sits, so any mutation that moves or consumes stock
  * (a receipt, a location transfer, an outbound) invalidates that answer
- * immediately rather than at the end of the 30s stale window. The options read
+ * immediately rather than at the end of the 30s stale window. Exact inventory
+ * definitions also feed mounted movement and purchase forms, so catalog creates
+ * and stock-dependent refreshes reach that client's definition family here.
+ * The options read
  * is keyed under the `inventoryItems` prefix for exactly this reason: one
  * invalidation reaches every source, search and page variant, so the mutation
  * does not need to know which source moved.
@@ -162,7 +166,13 @@ function invalidateStockDependentItemReads(
   queryClient: Pick<QueryClient, "invalidateQueries">,
   userId: string | null,
 ): Promise<void> {
-  return invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryItems)
+  return Promise.all([
+    invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryItems),
+    queryClient.invalidateQueries({
+      queryKey: exactCommercePrefix(financialClient.inventory),
+      predicate: query => query.queryKey[5] === "definitions" && (userId === null || query.queryKey[4] === userId),
+    }),
+  ]).then(() => {})
 }
 
 /**
@@ -288,7 +298,7 @@ export function useCreateInventoryItemDefinitionMutation() {
     mutationKey: ["inventory", "item-definitions", "create"],
     mutationFn: async (input: InventoryItemDefinitionCreateInput) => requireEntitySuccess(await rpcClient.inventoryItemDefinitionsCreate(input)),
     onSuccess: async ({ message }) => {
-      await invalidateUserScopedQuery(queryClient, getCachedSessionUserId(queryClient), workspaceQueryKeys.inventoryItems)
+      await invalidateStockDependentItemReads(queryClient, getCachedSessionUserId(queryClient))
       showSuccessToast(message)
     },
     onError: (error) => {

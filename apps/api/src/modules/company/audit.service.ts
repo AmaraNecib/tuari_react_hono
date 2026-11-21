@@ -17,13 +17,11 @@ import type { SystemLogListFilters } from "./company.types";
 export class AuditService {
   constructor(private readonly repository: CompanyRepository) {}
 
-  getWorkspaceSnapshot() {
+  getWorkspaceMetadata() {
     return {
       roles: this.repository.listRoles(),
       employees: this.repository.listEmployees(),
       externalCounterparties: this.repository.listExternalCounterparties(),
-      debtAccounts: this.repository.listDebtAccounts(),
-      debtEntries: this.repository.listAllDebtEntries(),
       projects: this.repository.listProjects(),
       warehouses: this.repository.listWarehouses(),
       managerAssignments: this.repository.listManagerAssignments(),
@@ -32,6 +30,14 @@ export class AuditService {
       employeeStateHistory: this.repository.listEmployeeStateHistory(),
       projectManagerOwnershipHistory: this.repository.listProjectManagerOwnershipHistory(),
       warehouseManagerOwnershipHistory: this.repository.listWarehouseManagerOwnershipHistory(),
+    };
+  }
+
+  getWorkspaceSnapshot() {
+    return {
+      ...this.getWorkspaceMetadata(),
+      debtAccounts: this.repository.listDebtAccounts(),
+      debtEntries: this.repository.listAllDebtEntries(),
       salaryPayments: this.repository.listSalaryPayments(),
     };
   }

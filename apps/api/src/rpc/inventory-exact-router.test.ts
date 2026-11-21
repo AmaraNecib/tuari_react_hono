@@ -58,6 +58,8 @@ it.each(["", "526-public-rpc-key"])("purchase/transfer/charge/outbound input-to-
     const option = purchase.consumableBalances[0]!;
     const outbound = await client.createOutbound({ requestId: "sale", fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: "party", transferType: "SALE", debtAmountDzd: "0.30", firstPaymentAmountDzd: "0.10", items: [{ itemId: "material", optionId: option.id, quantity: 0.1, unitPriceDzd: "3.0000" }] });
     expect(outbound).toMatchObject({ actorUserId: user.id, actorLabel: user.name, currency: "DZD" });
+    const history = await client.transferHistory({ transferType: "SALE", warehouseId: "warehouse", limit: 10, offset: 0 });
+    expect(history.items).toMatchObject([{ id: outbound.id, type: "SALE", totalAmountDzd: "0.30", paidAmountDzd: "0.10", remainingDebtDzd: "0.20", currency: "DZD", from: { id: "warehouse", name: "Synthetic warehouse" }, items: [{ name: "Synthetic material", priceSource: { mode: "unit-price", price: "3.0000" } }] }]);
     expect(composition.services.finance.remaining(outbound.debtEntryId!)).toBe("0.20");
     expect((await client.getOutbound({ id: outbound.id })).items[0]).toMatchObject({ optionId: option.id, unitPriceDzd: "3.0000", priceSource: { mode: "unit-price", price: "3.0000", quantity: "0.1" } });
     const paymentInput = { requestId: "outbound-balance", transferId: outbound.id, amountDzd: "0.20" };
@@ -68,10 +70,13 @@ it.each(["", "526-public-rpc-key"])("purchase/transfer/charge/outbound input-to-
     expect((await client.listOutbounds())[0]?.remainingDebtDzd).toBe("0.00");
     await client.voidCharge({ requestId: "void", chargeId: charge.id, reason: "Wrong placement" });
     expect(await client.projectCharges({ projectId: "project" })).toMatchObject({ totalDzd: "0.00" });
+    expect(await client.assetHistory({ assetUnitId: asset.id })).toMatchObject({ assetUnitId: asset.id, items: [{ id: charge.id, status: "VOID", amountDzd: "0.25", revisions: [{ reason: "Synthetic correction" }, { reason: "Wrong placement" }] }] });
+    await expect(client.assetHistory({ assetUnitId: "missing" })).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(() => JSON.stringify(composition.services.inventory.getInvoiceGroup(purchase.group.id))).not.toThrow();
     await expect(client.recordPayment({ requestId: "invalid", invoiceGroupId: purchase.group.id, amountDzd: "0.001" })).rejects.toMatchObject({ code: "BAD_REQUEST" });
     const anonymous = createRouterClient(composition.router.inventory, { context: { ...context, resolveCurrentUser: async () => null } }) as ExactInventoryClient;
     await expect(anonymous.listInvoices()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(anonymous.assetHistory({ assetUnitId: asset.id })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(anonymous.recordOutboundPayment(paymentInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     const nonAdmin = createRouterClient(composition.router.inventory, { context: { ...context, resolveCurrentUser: async () => ({ ...user, id: "not-owner" }) } }) as ExactInventoryClient;
     await expect(nonAdmin.createInvoice(purchaseInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });

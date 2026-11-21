@@ -1,7 +1,10 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { BOOTSTRAP_SETUP_KEY } from "./helpers/session"
 import { apiBaseUrl } from "./helpers/urls"
+
+installManagedApiLifecycle()
 
 test.describe.configure({ mode: "serial" })
 

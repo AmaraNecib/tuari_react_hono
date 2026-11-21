@@ -13,7 +13,7 @@ import { DebtCreatePage } from "@/features/debts/debt-create-page"
 import { getDebtAccountBalanceDisplay } from "@/features/debts/debt-utils"
 import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
 import { RecordPaymentDialog } from "@/features/debts/record-payment-dialog"
-import { AddSalaryPaymentDialog } from "@/features/employees/add-salary-payment-dialog"
+import { EmployeeEarningApprovalForm } from "@/features/employees/employee-earning-approval-form"
 import { TransferItemDialog } from "@/features/inventory/transfer-item-dialog"
 
 /**
@@ -114,17 +114,20 @@ const ACCOUNT: DebtAccount = {
   updatedAt: "2026-01-01T00:00:00.000Z",
 }
 
-/** Opens the nth DatePicker on screen and selects the 15th of the current month. */
-function pickDate(index = 0) {
-  const triggers = document.querySelectorAll<HTMLElement>('[data-slot="popover-trigger"]')
-  const trigger = triggers[index]
-  expect(trigger, `date picker #${index} not found`).toBeTruthy()
-  fireEvent.click(trigger!)
-
+/** Opens a date picker trigger and selects the 15th of the current month. */
+function pickDateFrom(trigger: HTMLElement) {
+  fireEvent.click(trigger)
   const cell = document.querySelector(`[data-day="${PICKED_DAY}"]`)
   expect(cell, `day ${PICKED_DAY} not found`).toBeTruthy()
   const button = cell?.querySelector("button") ?? (cell as HTMLElement)
   fireEvent.click(button)
+}
+
+function pickDate(index = 0) {
+  const triggers = document.querySelectorAll<HTMLElement>('[data-slot="popover-trigger"]')
+  const trigger = triggers[index]
+  expect(trigger, `date picker #${index} not found`).toBeTruthy()
+  pickDateFrom(trigger!)
 }
 
 beforeEach(() => {
@@ -172,22 +175,23 @@ describe("RecordPaymentDialog submits the picked day for a debt payment (#428)",
   })
 })
 
-describe("AddSalaryPaymentDialog approval period date controls", () => {
+describe("earned-wage approval page period date controls", () => {
   it("keeps the selected canonical day in the approval start-date control", () => {
     render(
-      <AddSalaryPaymentDialog
+      <EmployeeEarningApprovalForm
         employeeId="employee-1"
         employeeName="عامل"
         salaryReference={{ period: "MONTHLY", amount: "30000.00" }}
         projects={[]}
-        open
-        onOpenChange={vi.fn()}
+        onCancel={vi.fn()}
+        onComplete={vi.fn()}
       />,
     )
 
-    pickDate()
     const startDateLabel = screen.getByText("بداية فترة العمل").closest("label")!
-    expect(startDateLabel.querySelector('[data-slot="popover-trigger"]')?.textContent).toContain("15")
+    const startDateTrigger = startDateLabel.querySelector<HTMLElement>('[data-slot="popover-trigger"]')!
+    pickDateFrom(startDateTrigger)
+    expect(startDateLabel.querySelector('[data-slot="popover-trigger"]')?.textContent).toContain(PICKED_DAY.slice(-2))
     expect(mocks.createSalaryPayment).not.toHaveBeenCalled()
   })
 })

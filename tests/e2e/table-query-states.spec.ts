@@ -1,9 +1,12 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 import { bootstrapOrSignIn } from "./helpers/session"
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 
+installManagedApiLifecycle()
+
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
-test.beforeAll(() => { resetE2eDatabase() })
+test.beforeAll(async () => { await resetE2eDatabase() })
 
 // Delay a real catalog read, fail it, then let the retry reach the API.
 // The empty database is synthetic and belongs to this Playwright run.
@@ -23,6 +26,7 @@ test("catalog loading and API failure never claim an empty result, and retry rec
 
   await bootstrapOrSignIn(page)
   await page.getByRole("link", { name: "دليل العناصر", exact: true }).first().click()
+  await page.getByRole("button", { name: "دليل العناصر", exact: true }).click()
   await expect(page.getByRole("status").filter({ hasText: "جارٍ تحميل دليل العناصر" })).toBeVisible()
   await expect(page.getByText("لا توجد تعريفات عناصر حتى الآن.", { exact: true })).toBeHidden()
   const catalog = page.locator("section").filter({ has: page.getByRole("heading", { name: "العناصر الحالية", exact: true }) })

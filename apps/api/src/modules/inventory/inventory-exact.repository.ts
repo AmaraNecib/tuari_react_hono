@@ -1,15 +1,19 @@
-import type { ExactInventoryInvoice, ExactInventoryEntry, ExactInventoryAsset, ExactInventoryCharge, ExactInventoryOutbound, InventoryItemDefinition, InventoryConsumableBalance, InventoryMovement } from "@tuari/contracts";
+import type { InventoryInvoiceAttachment, ExactInventoryInvoice, ExactInventoryEntry, ExactInventoryAsset, ExactInventoryCharge, ExactInventoryOutbound, InventoryItemDefinition, InventoryConsumableBalance, InventoryMovement } from "@tuari/contracts";
 import type { ExactTransactionParticipant } from "../company/exact-finance.repository";
 import type { ExactDebtAudit } from "../company/exact-finance.service";
 
 export type ExactInventoryEntryRecord = Omit<ExactInventoryEntry, "assets">;
 export type ExactInventoryChargeRecord = ExactInventoryCharge & ExactDebtAudit;
 export interface ExactInventoryRepository extends ExactTransactionParticipant {
+  listHistoryCandidates(): import("./inventory-history-read").HistoryCandidate[];
+  getMovement(id: string): InventoryMovement | null;
   getDefinition(id: string): InventoryItemDefinition | null;
   listDefinitions(): InventoryItemDefinition[];
   warehouseExists(id: string): boolean;
   projectExists(id: string): boolean;
   locationLabel(warehouseId: string | null, projectId: string | null): string;
+  counterpartyLabel(id: string): string;
+  listAttachmentsByInvoiceGroupId(id: string): InventoryInvoiceAttachment[];
   getGroup(id: string): ExactInventoryInvoice | null;
   listGroups(): ExactInventoryInvoice[];
   saveGroup(row: ExactInventoryInvoice): void;
@@ -26,6 +30,7 @@ export interface ExactInventoryRepository extends ExactTransactionParticipant {
   saveMovement(row: InventoryMovement): void;
   getCharge(id: string): ExactInventoryChargeRecord | null;
   listCharges(): ExactInventoryChargeRecord[];
+  listAssetCharges(assetUnitId: string): ExactInventoryChargeRecord[];
   saveCharge(row: ExactInventoryChargeRecord): void;
   getOutbound(id: string): ExactInventoryOutbound | null;
   listOutbounds(): ExactInventoryOutbound[];

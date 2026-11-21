@@ -10,10 +10,12 @@ async function loadDesktopAuthSessionModule() {
 describe("desktop auth session bootstrap", () => {
   beforeEach(() => {
     vi.resetModules()
+    vi.unstubAllGlobals()
     window.localStorage.clear()
   })
 
-  it("recognizes the Tauri runtime host", async () => {
+  it("recognizes the official Tauri runtime marker on the production host", async () => {
+    vi.stubGlobal("isTauri", true)
     const desktopAuthSession = await loadDesktopAuthSessionModule()
 
     expect(desktopAuthSession.isDesktopRuntime()).toBe(true)

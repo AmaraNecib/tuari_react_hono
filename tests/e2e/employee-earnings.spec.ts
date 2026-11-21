@@ -1,9 +1,12 @@
+import { installManagedApiLifecycle } from "./helpers/test"
 import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 
-import { expect, test, type Locator, type Page } from "@playwright/test"
+import { expect, test, type Locator, type Page } from "./helpers/test"
 
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 const evidenceDir = join(process.cwd(), ".scratch", "reviews", "543-browser")
 const suffix = uniqueSuffix()
@@ -119,41 +122,53 @@ test("employee earnings approval keeps exact references, retries one committed r
   await expect(page.getByText("12,345.67")).toBeVisible()
   const financeHeader = page.getByRole("heading", { name: "سجل الرواتب" }).locator("xpath=../..")
   await financeHeader.getByRole("button", { name: "اعتماد الأجر" }).click()
-  const dialog = page.getByRole("dialog")
-  await expect(dialog).toBeVisible()
+  await expect(page).toHaveURL(/\/employees\/[^/]+\/earnings\/new\?returnTo=employee-finance/)
+  await expect(page.getByRole("heading", { name: "اعتماد الأجر المكتسب" })).toBeVisible()
+  const approvalForm = page.getByRole("main").locator("form")
+  await expect(approvalForm).toBeVisible()
   const periodStart = "2026-06-01"
   const periodEnd = "2026-06-25"
   // The browser clock is fixed in Africa/Algiers. These API boundaries are
   // independently specified in UTC, with the period end inclusive.
   const expectedPeriodStart = "2026-05-31T23:00:00.000Z"
   const expectedPeriodEnd = "2026-06-25T22:59:59.999Z"
-  await dialog.getByLabel("بداية فترة العمل").click()
-  await page.locator(`[data-day="${periodStart}"] button`).click()
-  await dialog.getByLabel("نهاية فترة العمل").click()
-  await page.locator(`[data-day="${periodEnd}"] button`).click()
-  await dialog.getByLabel("إجمالي الأجر المعتمد بالدينار الجزائري").fill("62500")
-  await dialog.getByLabel("المبلغ غير الموزع بالدينار الجزائري").fill("0")
-  await dialog.getByRole("button", { name: "إضافة بند مشروع" }).click()
-  await dialog.getByRole("button", { name: "إضافة بند مشروع" }).click()
-  await dialog.getByRole("button", { name: "إضافة بند مشروع" }).click()
+  const selectPeriodDay = async (label: string, day: string) => {
+    const trigger = approvalForm.getByLabel(label)
+    await trigger.click()
+    await expect(trigger).toHaveAttribute("aria-expanded", "true")
+    const calendarId = await trigger.getAttribute("aria-controls")
+    if (!calendarId) throw new Error(`Date picker ${label} has no controlled calendar`)
+    const calendar = page.locator(`[id="${calendarId}"]`)
+    await expect(calendar).toBeVisible()
+    await calendar.locator(`[data-day="${day}"] button`).click()
+    await expect(trigger).toHaveAttribute("aria-expanded", "false")
+  }
+  await selectPeriodDay("بداية فترة العمل", periodStart)
+  await selectPeriodDay("نهاية فترة العمل", periodEnd)
+  await approvalForm.getByLabel("إجمالي الأجر المعتمد").fill("62500")
+  await approvalForm.getByRole("button", { name: "إضافة بند مشروع" }).click()
+  await approvalForm.getByRole("button", { name: "إضافة بند مشروع" }).click()
+  await approvalForm.getByRole("button", { name: "إضافة بند مشروع" }).click()
 
   const setSegment = async (index: number, project: string, days: string, amount: string) => {
-    await dialog.getByLabel(`المشروع ${index}`).selectOption({ label: project })
-    await dialog.getByLabel(`أيام العمل ${index}`).fill(days)
-    await dialog.getByLabel(`المبلغ بالدينار الجزائري ${index}`).fill(amount)
+    await approvalForm.getByLabel(`المشروع ${index}`).selectOption({ label: project })
+    await approvalForm.getByLabel(`أيام العمل ${index}`).fill(days)
+    await approvalForm.getByLabel(`المبلغ ${index}`).fill(amount)
   }
   await setSegment(1, projectA, "5", "10000")
   await setSegment(2, projectB, "15", "37500")
   await setSegment(3, projectA, "5", "15000")
 
   // Editing B leaves both A rows and the declared total intact.
-  await dialog.getByLabel("المبلغ بالدينار الجزائري 2").fill("37000")
-  await dialog.getByLabel("المبلغ بالدينار الجزائري 2").fill("37500")
-  await expect(dialog.getByLabel("المبلغ بالدينار الجزائري 1")).toHaveValue("10000")
-  await expect(dialog.getByLabel("المبلغ بالدينار الجزائري 3")).toHaveValue("15000")
-  await expect(dialog.getByLabel("إجمالي الأجر المعتمد بالدينار الجزائري")).toHaveValue("62500")
+  await approvalForm.getByLabel("المبلغ 2").fill("37000")
+  await expect(approvalForm.getByLabel("دون مشروع")).toContainText("500")
+  await approvalForm.getByLabel("المبلغ 2").fill("37500")
+  await expect(approvalForm.getByLabel("المبلغ 1")).toHaveValue("10000")
+  await expect(approvalForm.getByLabel("المبلغ 3")).toHaveValue("15000")
+  await expect(approvalForm.getByLabel("إجمالي الأجر المعتمد")).toHaveValue("62500")
+  await expect(approvalForm.getByLabel("دون مشروع")).toContainText("0")
 
-  // Invalid decimal precision must stay on the dialog and send no approval request.
+  // Invalid decimal precision must stay on the approval page and send no approval request.
   const requests: string[] = []
   let shouldDropResponse = false
   let droppedResponse = false
@@ -170,26 +185,26 @@ test("employee earnings approval keeps exact references, retries one committed r
     }
     await route.continue()
   })
-  const invalidAmount = dialog.getByLabel("المبلغ بالدينار الجزائري 1")
+  const invalidAmount = approvalForm.getByLabel("المبلغ 1")
   await invalidAmount.fill("10000.001")
-  await dialog.getByRole("button", { name: "اعتماد الأجر" }).click()
+  await approvalForm.getByRole("button", { name: "اعتماد الأجر" }).click()
   await expect(invalidAmount).toHaveAttribute("aria-invalid", "true")
-  await expect(dialog.getByText("يجب أن يكون المبلغ قيمة عشرية دقيقة لا تتجاوز منزلتين.")).toBeVisible()
+  await expect(approvalForm.getByText("يجب أن يكون المبلغ قيمة عشرية دقيقة لا تتجاوز منزلتين.")).toBeVisible()
   expect(requests).toHaveLength(0)
   await invalidAmount.fill("10000")
-  await expect(dialog.getByText("يجب أن يساوي مجموع الموزع وغير الموزع إجمالي الأجر المعتمد.")).toHaveCount(0)
+  await expect(approvalForm.getByText("يجب أن يساوي مجموع الموزع وغير الموزع إجمالي الأجر المعتمد.")).toHaveCount(0)
 
-  const dialogShot = join(evidenceDir, `approval-${suffix}.png`)
-  await dialog.screenshot({ path: dialogShot })
+  const approvalFormShot = join(evidenceDir, `approval-${suffix}.png`)
+  await approvalForm.screenshot({ path: approvalFormShot })
 
   // The first response is dropped only after route.fetch has received the real
   // authenticated API response. The exact frozen request is then retried.
   shouldDropResponse = true
-  await dialog.getByRole("button", { name: "اعتماد الأجر" }).click()
-  await expect(dialog.getByRole("status")).toBeVisible()
-  await expect(dialog.getByRole("button", { name: "إعادة محاولة الاعتماد نفسه" })).toBeEnabled()
-  await dialog.getByRole("button", { name: "إعادة محاولة الاعتماد نفسه" }).click()
-  await expect(dialog).toBeHidden({ timeout: 15_000 })
+  await approvalForm.getByRole("button", { name: "اعتماد الأجر" }).click()
+  await expect(page.getByRole("status").filter({ hasText: "هناك اعتماد معلّق محفوظ." })).toBeVisible()
+  await expect(approvalForm.getByRole("button", { name: "إعادة محاولة الاعتماد نفسه" })).toBeEnabled()
+  await approvalForm.getByRole("button", { name: "إعادة محاولة الاعتماد نفسه" }).click()
+  await expect(page.getByRole("heading", { name: "سجل الأجور المعتمدة" })).toBeVisible({ timeout: 15_000 })
   expect(firstCommittedStatus).toBe(200)
   expect(requests).toHaveLength(2)
   const approvalRequest = JSON.parse(requests[0]) as { json: { periodStart: string; periodEnd: string } }

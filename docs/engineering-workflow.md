@@ -118,15 +118,75 @@ The tier follows the named reachable failure, not line count or a path alone.
 Record the tier and reason in the design note. Lightweight is reserved for
 truly non-reviewable files; code, tests, docs, config and skills are reviewable.
 
-This repository retains three distinct initial sessions: `debate`,
-`test-audit`, then `code-review`. High-assurance applies to reachable money,
-stock, debt-direction, auth/session/secrets, crypto, recovery, dependency,
-schema, CI/release/merge-policy and unresolved integration risks. Do not
-silently import Dockan's repository-specific routine-review exception.
+Use three distinct initial sessions in order: `debate`, `test-audit`, then
+`code-review`, for all other reviewable work outside the eligible routine
+classes below. This includes reachable money, stock, debt-direction,
+auth/session/secrets, security, crypto, recovery, schema, dependency,
+CI/release/merge-policy and unresolved integration risks. This policy change
+itself uses that deeper route; it cannot approve its own lighter review.
 
 A bounded correction needs one fresh review of the combined delta and direct
 affected callers, not a restart of every lens. Read prior findings as claims,
 verify source, record what remains valid and expose any new risk.
+
+### Narrow routine review
+
+The owner approved preparing adoption after the completed eight-task trial.
+The trial covered four narrow factual-documentation changes and four related
+visual-unit changes. It established feasibility, not measured cost savings,
+and is not evidence of equal defect-detection sensitivity. It does not justify
+lighter routing for broader runtime or domain changes.
+
+Activation requires a separate explicit owner adoption decision after governance
+review. Approval to prepare and review the proposal does not satisfy that gate.
+Record the adoption decision, merge the reviewed repository instructions, then
+apply the matching reviewed higher-priority instruction alignment. Until that
+sequence is complete, retain the three-session default. The adoption design
+records each gate without treating a pending decision as granted. Reviewer
+approval alone cannot activate this exception. The completed trial does not restart or
+authorize additional trial slots.
+
+After activation, one fresh combined independent reviewer may replace the
+three initial sessions only for:
+- Narrow source-backed factual corrections with direct current-source proof,
+  no accepted-authority conflict, and no broad guidance rewrite or removal.
+- Small reversible visual-only changes whose actual rendering evidence and
+  relevant interaction tests establish unchanged behavior and domain contracts.
+
+Record eligibility, rationale and the complete changed-file manifest in the
+existing design note before outcomes. Account for direct callers, reachable
+consequences, uncertainty and reversibility; disposition every file. Labels,
+line count, docs-only or tests-only status never establish eligibility.
+Mixed scope or unresolved eligibility uses the three-session default.
+
+Exclude the elevated risks listed above, consequential test weakening without
+proved equivalent detection, authoritative-source conflicts and broad guidance
+changes. A cosmetic change in a business caller is not automatically a domain
+change, but unchanged semantics must be proved, not assumed from a CSS-only
+label. State/event/contract changes are outside the visual class.
+
+The combined reviewer covers applicable standards, specification and proof
+adequacy at the committed frozen HEAD. Review execution remains independent
+of authorship. A success label, class-string assertion or screenshot alone
+does not establish actual CSS behavior or interaction correctness. The parent
+checks exact-tree execution evidence and failed-attempt boundaries. Missing
+required proof blocks readiness; never relabel it as a passing run.
+
+This exception changes only local initial review depth. Tests, UI, negative
+and integration proof, current-head hosted verdicts, CI acceptance, effective
+protection, reviewer independence, finding resolution and owner-only gates
+remain unchanged. It changes no elevated scheduling. A consequential miss,
+misclassification or evidence failure pauses lighter routing for reassessment.
+Correct incomplete attempts before accepting their evidence; preserve failures
+and escalate if eligibility or required proof remains uncertain.
+
+Use the existing design/handoff and ignored execution records, not a new
+mandatory per-task report, classifier child or automatic retrospective.
+Record actual review/execution counts, confirmed defects and disposition;
+measure parent/reviewer active and elapsed time when available. Tokens and
+currency remain unknown unless observed. Separate setup, checking and CI wait
+costs; never infer savings from fewer sessions alone. Do not manufacture tasks
+or a new quota to measure the route.
 
 Select `openai-codex/gpt-6-luna` explicitly for ordinary workers and reviewers.
 Use the currently enabled routes. OpenCode is opt-in, never a quota fallback.

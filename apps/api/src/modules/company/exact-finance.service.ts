@@ -31,7 +31,7 @@ export class ExactFinanceService {
 
   get transactionIdentity() { return this.repository.transactionIdentity; }
 
-  runAggregate<T>(input: ExactDebtAudit & { requestId: string; producer: ExactFinanceAggregateOwner; intent: unknown }, participant: ExactTransactionParticipant, work: () => T): T {
+  runAggregate<T>(input: ExactDebtAudit & { requestId: string; producer: ExactFinanceAggregateOwner; intent: unknown }, participant: ExactTransactionParticipant, work: () => T, rolledBack?: (cause: unknown) => unknown): T {
     if (work.constructor.name === "AsyncFunction") throw new ExactDebtError("Aggregate work must be synchronous JSON work");
     const producer = exactFinanceAggregateOwnerSchema.parse(input.producer);
     if (!/^[A-Za-z0-9:_-]{1,128}$/.test(input.requestId)) throw new ExactDebtError("Invalid aggregate request id");
@@ -39,17 +39,24 @@ export class ExactFinanceService {
     if (participant.transactionIdentity.connection !== identity.connection || participant.transactionIdentity.lock !== identity.lock) throw new ExactDebtError("Aggregate participants require the same connection and shared FIFO");
     const id = JSON.stringify([producer.type, producer.id, input.requestId]);
     const fingerprint = aggregateJson({ producer, intent: input.intent, actorUserId: input.actorUserId ?? null, actorLabel: input.actorLabel ?? null });
-    return participant.withTransaction(() => this.repository.withTransaction(() => {
-      const previous = this.repository.getAggregateCommand(id);
-      if (previous) {
-        if (previous.fingerprint !== fingerprint) throw new ExactDebtError("Aggregate command replay conflict", "CONFLICT");
-        return JSON.parse(previous.resultJson) as T;
-      }
-      const result = work();
-      const resultJson = aggregateJson(result);
-      this.repository.saveAggregateCommand({ id, fingerprint, resultJson });
-      return JSON.parse(resultJson) as T;
-    }));
+    let beganWork = false;
+    try {
+      return participant.withTransaction(() => this.repository.withTransaction(() => {
+        const previous = this.repository.getAggregateCommand(id);
+        if (previous) {
+          if (previous.fingerprint !== fingerprint) throw new ExactDebtError("Aggregate command replay conflict", "CONFLICT");
+          return JSON.parse(previous.resultJson) as T;
+        }
+        beganWork = true;
+        const result = work();
+        const resultJson = aggregateJson(result);
+        this.repository.saveAggregateCommand({ id, fingerprint, resultJson });
+        return JSON.parse(resultJson) as T;
+      }));
+    } catch (cause) {
+      // Both transaction wrappers have unwound before classifying a refusal.
+      throw beganWork && rolledBack ? rolledBack(cause) : cause;
+    }
   }
 
   /** Trusted domain composition only. This capability is not exposed by the debt RPC. */
@@ -96,6 +103,13 @@ export class ExactFinanceService {
     const rows = this.repository.listEntries(id);
     if (rows.length > limit) throw new ExactDebtError("Debt entry read limit exceeded");
     return rows;
+  }
+  /** Original signed operand for history totals; no allocation graph is needed. */
+  historyOriginal(accountId: string, entryId: string): string {
+    this.getAccount(accountId);
+    const entry = this.repository.getEntry(entryId);
+    if (!entry || entry.debtAccountId !== accountId || entry.status !== "LIVE" || entry.targetEntryId || entry.correctionOfEntryId) throw new ExactDebtError("Live outbound obligation not found", "NOT_FOUND");
+    return entry.signedAmountDzd;
   }
   detail(id: string) {
     return this.repository.withTransaction(() => {
@@ -207,6 +221,23 @@ export class ExactFinanceService {
       const remaining = this.remainingFrom(target, this.listEntries(account.id));
       if (remaining.compare(zero()) <= 0 || amount.compare(remaining) > 0) throw new ExactDebtError("Payment exceeds remaining obligation");
       return this.append(account, { entryType: "PAYMENT", signedAmountDzd: amount.negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), paymentMethod: input.paymentMethod, note: input.note }, audit);
+    });
+  }
+  /** Trusted producers may settle part of one original without recording cash. */
+  recordSettlement(raw: Omit<PayExactDebtEntry, "paymentMethod"> & ExactDebtAudit): ExactDebtEntry {
+    if (!this.producer) throw new ExactDebtError("Original settlement requires a producer", "CONFLICT");
+    const { actorUserId, actorLabel, transactionId, ...domain } = raw;
+    const input = payExactDebtEntrySchema.omit({ paymentMethod: true }).strict().parse(domain);
+    const audit = this.audit({ actorUserId, actorLabel, transactionId });
+    return this.command("settle-original", { ...input, ...audit }, input, () => {
+      const target = this.obligation(input.debtEntryId);
+      this.assertOwner(target);
+      const account = this.getAccount(target.debtAccountId);
+      this.assertCurrency(account, input.currency);
+      const amount = Money.parse(input.amountDzd, input.currency);
+      const remaining = this.remainingFrom(target, this.listEntries(account.id));
+      if (remaining.compare(zero()) <= 0 || amount.compare(remaining) > 0) throw new ExactDebtError("Settlement exceeds remaining obligation");
+      return this.append(account, { entryType: "SETTLEMENT", signedAmountDzd: amount.negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), note: input.note }, audit);
     });
   }
   correctEntry(raw: CorrectExactDebtEntry & ExactDebtAudit): ExactDebtEntry {

@@ -7,11 +7,14 @@ import {
   exactInventoryOutboundCreateSchema, exactInventoryOutboundSchema, exactInventoryOutboundViewSchema, exactInventoryOutboundPaymentSchema, exactInventoryAssetSchema, exactInventoryChargeSchema,
   exactInventoryChargeUpdateSchema, exactInventoryChargeVoidSchema, exactInventoryProjectContributionSchema,
   exactInventoryProjectChargesSchema, exactInventoryChargeDefaultSchema, exactInventoryDefinitionsSchema,
+  exactInventoryHistoryInputSchema, exactInventoryHistorySchema, exactInventoryAssetHistoryInputSchema, exactInventoryAssetHistorySchema,
 } from "./inventory-exact";
 const id = z.object({ id: entityIdSchema });
 /** Standalone opt-in contract. Does not activate numeric inventory routes. */
 export const exactInventoryContract = {
   definitions: oc.output(exactInventoryDefinitionsSchema),
+  transferHistory: oc.input(exactInventoryHistoryInputSchema).output(exactInventoryHistorySchema),
+  assetHistory: oc.input(exactInventoryAssetHistoryInputSchema).output(exactInventoryAssetHistorySchema),
   listInvoices: oc.output(z.array(exactInventoryInvoiceSchema)),
   getInvoice: oc.input(id).output(exactInventoryDetailSchema),
   createInvoice: oc.input(exactInventoryInvoiceCreateSchema).output(exactInventoryDetailSchema),

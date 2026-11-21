@@ -1,4 +1,5 @@
-import type { ExactInventoryInvoice, ExactInventoryAsset, ExactInventoryOutbound, InventoryItemDefinition, InventoryConsumableBalance, InventoryMovement } from "@tuari/contracts";
+import { memoryHistoryCandidates } from "../inventory-history-read";
+import type { InventoryInvoiceAttachment, ExactInventoryInvoice, ExactInventoryAsset, ExactInventoryOutbound, InventoryItemDefinition, InventoryConsumableBalance, InventoryMovement } from "@tuari/contracts";
 import type { ExactTransactionIdentity } from "../../company/exact-finance.repository";
 import type { ExactInventoryRepository, ExactInventoryEntryRecord, ExactInventoryChargeRecord } from "../inventory-exact.repository";
 
@@ -12,7 +13,7 @@ export class InMemoryExactInventoryRepository implements ExactInventoryRepositor
   private charges = new Map<string, ExactInventoryChargeRecord>();
   private outbounds = new Map<string, ExactInventoryOutbound>();
   constructor(readonly transactionIdentity: ExactTransactionIdentity, private readonly references: {
-    definitions: InventoryItemDefinition[]; warehouses: { id: string; name: string }[]; projects: { id: string; name: string }[];
+    attachments?: InventoryInvoiceAttachment[]; definitions: InventoryItemDefinition[]; warehouses: { id: string; name: string }[]; projects: { id: string; name: string }[];
   }) {}
   withTransaction<T>(work: () => T): T {
     const before = structuredClone([this.groups, this.entries, this.assets, this.balances, this.movements, this.charges, this.outbounds] as const);
@@ -22,11 +23,13 @@ export class InMemoryExactInventoryRepository implements ExactInventoryRepositor
       return result;
     } catch (error) { [this.groups, this.entries, this.assets, this.balances, this.movements, this.charges, this.outbounds] = before; throw error; }
   }
+  listAttachmentsByInvoiceGroupId(id: string) { return structuredClone((this.references.attachments ?? []).filter(row => row.invoiceGroupId === id)); }
   getDefinition(id: string) { return structuredClone(this.references.definitions.find(row => row.id === id) ?? null); }
   listDefinitions() { return structuredClone(this.references.definitions); }
   warehouseExists(id: string) { return this.references.warehouses.some(row => row.id === id); }
   projectExists(id: string) { return this.references.projects.some(row => row.id === id); }
   locationLabel(warehouseId: string | null, projectId: string | null) { return this.references.warehouses.find(row => row.id === warehouseId)?.name ?? this.references.projects.find(row => row.id === projectId)?.name ?? "Unlocated"; }
+  counterpartyLabel(id: string) { return id; }
   getGroup(id: string) { return structuredClone(this.groups.get(id) ?? null); }
   listGroups() { return structuredClone([...this.groups.values()]); }
   saveGroup(row: ExactInventoryInvoice) { this.groups.set(row.id, structuredClone(row)); }
@@ -41,8 +44,11 @@ export class InMemoryExactInventoryRepository implements ExactInventoryRepositor
   deleteBalance(id: string) { this.balances.delete(id); }
   listMovements() { return structuredClone([...this.movements.values()]); }
   saveMovement(row: InventoryMovement) { this.movements.set(row.id, structuredClone(row)); }
+  listHistoryCandidates() { return memoryHistoryCandidates(this); }
+  getMovement(id: string) { return structuredClone(this.movements.get(id) ?? null); }
   getCharge(id: string) { return structuredClone(this.charges.get(id) ?? null); }
   listCharges() { return structuredClone([...this.charges.values()]); }
+  listAssetCharges(assetUnitId: string) { return structuredClone([...this.charges.values()].filter(row => row.assetUnitId === assetUnitId).sort((a, b) => b.placementSequence - a.placementSequence)); }
   saveCharge(row: ExactInventoryChargeRecord) { this.charges.set(row.id, structuredClone(row)); }
   getOutbound(id: string) { return structuredClone(this.outbounds.get(id) ?? null); }
   listOutbounds() { return structuredClone([...this.outbounds.values()]); }

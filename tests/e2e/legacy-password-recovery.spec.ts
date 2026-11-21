@@ -1,8 +1,11 @@
-import { expect, test, type Page } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test, type Page } from "./helpers/test"
 
 import { seedLegacyPasswordUser } from "./helpers/db-seed"
 import { dismissUserJourneyTour, signIn } from "./helpers/session"
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
+
+installManagedApiLifecycle()
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 

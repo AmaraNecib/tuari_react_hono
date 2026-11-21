@@ -8,9 +8,9 @@ import {
   AppShellTableHeaderCell,
   AppShellTableRow,
   TableQueryState,
-  usePaginatedRows,
 } from "@/features/shared/table-primitives"
 import { useEmployeeEarningsQuery } from "@/features/employees/employee-earnings-queries"
+import { useSalaryRoutePagination, type SalaryRoutePagination } from "@/features/app-shell/salary-route-pagination"
 import type { EmployeeEarning } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 
@@ -19,14 +19,15 @@ export type EmployeeEarningsHistoryProps = {
   /** Known display names. Missing identities render as their IDs, never guessed labels. */
   employeeNames?: Readonly<Record<string, string>>
   projectNames?: Readonly<Record<string, string>>
+  routePagination?: SalaryRoutePagination
 }
 
 /** Read-only view of server-approved earnings. Segment order and exact amounts come from the approval record. */
-export function EmployeeEarningsHistory({ employeeId, employeeNames, projectNames }: EmployeeEarningsHistoryProps) {
+export function EmployeeEarningsHistory({ employeeId, employeeNames, projectNames, routePagination }: EmployeeEarningsHistoryProps) {
   const { t } = useTranslation()
   const query = useEmployeeEarningsQuery(employeeId)
   const earnings = query.data?.items ?? []
-  const rows = usePaginatedRows({ rows: earnings })
+  const rows = useSalaryRoutePagination(earnings, routePagination, query.data !== undefined)
   const currencyLabel = t("detailPages.salary.currency")
   const showEmployeeIdentity = !employeeId
   const columnCount = showEmployeeIdentity ? 5 : 4
@@ -62,10 +63,7 @@ export function EmployeeEarningsHistory({ employeeId, employeeNames, projectName
           pageSize={rows.pageSize}
           totalCount={earnings.length}
           onPageChange={rows.setPage}
-          onPageSizeChange={(nextPageSize) => {
-            rows.setPage(1)
-            rows.setPageSize(nextPageSize)
-          }}
+          onPageSizeChange={rows.setPageSize}
         />
       ) : null}
     </div>
@@ -99,7 +97,6 @@ function EarningHistoryRow({ earning, currencyLabel, showEmployeeIdentity, emplo
       </td>
       <td className="px-4 py-3 text-start">
         <div className="space-y-1">
-          <p className="text-[11px] text-ink-3">{t("earnings.unallocated")}</p>
           <MoneyValue exact value={earning.unallocatedAmount} currencyLabel={currencyLabel} />
         </div>
       </td>

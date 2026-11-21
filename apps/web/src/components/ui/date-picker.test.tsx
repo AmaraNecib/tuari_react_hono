@@ -34,6 +34,12 @@ describe("DatePicker value contract", () => {
     expect(screen.getByRole("button").textContent).toContain("01/10/2026")
   })
 
+  it("forwards required semantics to the date trigger", () => {
+    render(<DatePicker value="2026-10-01" onChange={vi.fn()} aria-required="true" />)
+
+    expect(screen.getByRole("button").getAttribute("aria-required")).toBe("true")
+  })
+
   it("updates its display order without changing canonical submission or calendar selection", () => {
     const onChange = vi.fn()
     render(<DatePicker value="2026-04-23" name="businessDay" onChange={onChange} />)

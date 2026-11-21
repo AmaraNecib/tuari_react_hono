@@ -292,10 +292,41 @@ jobs:
           # Passed through the environment, not interpolated into the script:
           # map-derived, but never splice shipped data into shell source.
           E2E_SPECS: ${{ needs.detect.outputs.e2e_specs }}
+          E2E_MODE: ${{ needs.detect.outputs.e2e_mode }}
         run: |
+          pnpm --filter @tuari/contracts build
           pnpm exec playwright install --with-deps chromium
-          # shellcheck disable=SC2086  # E2E_SPECS is an intentional space-separated list
-          pnpm test:e2e $E2E_SPECS
+          # The connected-exact config owns its isolated API, web server, and run directory.
+          if [ "$E2E_MODE" = full ]; then
+            selected_specs=(tests/e2e/*.spec.ts)
+          else
+            read -r -a selected_specs <<< "$E2E_SPECS"
+          fi
+          generic_specs=()
+          connected_exact=false
+          for spec in "${selected_specs[@]}"; do
+            if [ "$spec" = "tests/e2e/payroll-connected-exact.spec.ts" ]; then
+              connected_exact=true
+            else
+              generic_specs+=("$spec")
+            fi
+          done
+          if [ "${#generic_specs[@]}" -gt 0 ]; then
+            pnpm test:e2e "${generic_specs[@]}"
+          fi
+          if [ "$connected_exact" = true ]; then
+            pnpm exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts
+          fi
+
+      - name: Upload connected payroll failure artifacts
+        if: needs.detect.outputs.e2e_mode != 'skip' && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 (immutable SHA, matching the cache action pinning practice)
+        with:
+          name: connected-payroll-failure-artifacts
+          path: .scratch/reviews/558-connected/run-*/artifacts/**
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload Playwright HTML report
         if: needs.detect.outputs.e2e_mode != 'skip' && !cancelled()
@@ -343,6 +374,10 @@ jobs:
         if: needs.detect.outputs.encryption == 'true'
         with:
           persist-credentials: false
+      - name: Test Windows Shell ZIP file identity
+        if: needs.detect.outputs.encryption == 'true'
+        shell: powershell
+        run: ./scripts/smoke/portable-shell-entry-names.test.ps1
       - uses: pnpm/action-setup@v4
         if: needs.detect.outputs.encryption == 'true'
       - uses: actions/setup-node@v4
@@ -353,6 +388,12 @@ jobs:
       - name: Install dependencies
         if: needs.detect.outputs.encryption == 'true'
         run: pnpm install --frozen-lockfile
+      - name: Test Windows portable proof lifecycle
+        if: needs.detect.outputs.encryption == 'true'
+        run: node --test --test-name-pattern="closes a separate proof process before publishing" apps/desktop/scripts/build-portable.test.mjs
+      - name: Test Windows ZIP identity and workflow output
+        if: needs.detect.outputs.encryption == 'true'
+        run: node --test --test-name-pattern="creates a Windows Explorer-visible ZIP" apps/desktop/scripts/build-portable.test.mjs
       - name: Build shared contracts
         if: needs.detect.outputs.encryption == 'true'
         run: pnpm --filter @tuari/contracts build

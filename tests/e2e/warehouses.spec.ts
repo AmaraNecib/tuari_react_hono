@@ -1,6 +1,9 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 test.describe.configure({ mode: "serial" })
 
