@@ -17,6 +17,7 @@ import type { WorkspaceMocks } from "./__test-utils__/workspace-fixtures"
 import { HomeView } from "./home-view"
 import * as workspaceQueries from "./workspace-queries"
 import { AppPreferencesProvider } from "@/features/preferences/preferences"
+import { i18n } from "@/i18n"
 
 // Spy on the splashscreen-readiness hook so the wiring seam between the
 // shell and the Tauri reveal can be asserted without invoking IPC.
@@ -26,9 +27,6 @@ vi.mock("@/hooks/use-notify-app-ready", () => ({
 
 vi.mock("@/features/inventory/transfer-history-page", () => ({
   TransferHistoryPage: () => <h1>transfer-history-page</h1>,
-}))
-vi.mock("@/features/inventory/inventory-exact-page", () => ({
-  ExactInventoryPage: () => <h1>exact-inventory-page</h1>,
 }))
 
 const { approveEmployeeEarningMutate } = vi.hoisted(() => ({ approveEmployeeEarningMutate: vi.fn() }))
@@ -85,13 +83,25 @@ afterEach(() => {
 
 describe("HomeView workspace shell", () => {
   it.each([
-    ["transfer-history", "transfer-history-page", "exact-inventory-page"],
-    ["inventory", "exact-inventory-page", "transfer-history-page"],
+    ["transfer-history", "transfer-history-page", "exact-purchases"],
+    ["inventory", "exact-purchases", "transfer-history-page"],
   ] as const)("keeps transfer history separate from inventory for %s", async (page, expectedPage, otherPage) => {
     renderWorkspace(page, { sessionUser: demoUser })
 
     expect(await screen.findByRole("heading", { name: expectedPage })).toBeTruthy()
     expect(screen.queryByRole("heading", { name: otherPage })).toBeNull()
+    const inventoryNavigation = screen.queryByRole("navigation", { name: i18n.t("exactCommerce.navigation") })
+    if (page === "inventory") {
+      expect(inventoryNavigation).toBeTruthy()
+      const catalogLabel = i18n.t("inventoryPage.itemDefinitions.title")
+      fireEvent.click(within(inventoryNavigation!).getByRole("button", { name: catalogLabel }))
+      expect(await screen.findByRole("heading", { name: catalogLabel })).toBeTruthy()
+      expect(screen.queryByRole("heading", { name: expectedPage })).toBeNull()
+      fireEvent.click(within(inventoryNavigation!).getByRole("button", { name: i18n.t("exactCommerce.inventoryTitle") }))
+      expect(await screen.findByRole("heading", { name: expectedPage })).toBeTruthy()
+    } else {
+      expect(inventoryNavigation).toBeNull()
+    }
   })
 
   it("boots on the Arabic RTL sign-in screen", () => {

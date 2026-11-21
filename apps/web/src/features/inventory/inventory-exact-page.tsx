@@ -74,7 +74,7 @@ function PurchaseDetail({ client, id, locations }: { client: ExactInventoryClien
 function PurchaseMovementHistory({ detail, locations }: { detail: Awaited<ReturnType<ExactInventoryClient["getInvoice"]>>; locations: ExactInventoryLocation[] }) {
   const { t } = useTranslation()
   function endpoint(warehouseId: string | null, projectId: string | null) {
-    return ([{ id: warehouseId, type: "WAREHOUSE" as const }, { id: projectId, type: "PROJECT" as const }]).filter(row => row.id !== null).map(row => `${row.type === "WAREHOUSE" ? t("inventory.transfer.warehouse") : t("inventory.transfer.project")}: ${locations.find(location => location.type === row.type && location.id === row.id)?.label ?? row.id}`).join("، ") || t("common.none")
+    return ([{ id: warehouseId, type: "WAREHOUSE" as const }, { id: projectId, type: "PROJECT" as const }]).filter(row => row.id !== null).map(row => `${row.type === "WAREHOUSE" ? t("inventory.transfer.warehouse") : t("inventory.transfer.project")}: ${locations.find(location => location.type === row.type && location.id === row.id)?.label ?? row.id}`).join(", ") || t("common.none")
   }
   return <section role="region" aria-label={t("exactCommerce.purchaseMovementHistory")} className="space-y-4 border-t border-border py-4">
     <h3 className="text-lg font-semibold">{t("exactCommerce.purchaseMovementHistory")}</h3>
