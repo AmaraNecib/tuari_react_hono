@@ -110,7 +110,6 @@ describe("exact-money import inventory", () => {
       "apps/api/src/modules/workforce/payroll.service.ts",
       "apps/web/src/components/ui/currency-amount-input.tsx",
       "apps/web/src/features/app-shell/dashboard-section.tsx",
-      "apps/web/src/features/app-shell/home-view-signed-in-shell.tsx",
       "apps/web/src/features/debts/debts-exact-page.tsx",
       "apps/web/src/features/debts/debts-queries.ts",
       "apps/web/src/features/employees/employee-earning-allocation.ts",
