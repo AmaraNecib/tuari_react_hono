@@ -24,7 +24,7 @@ function deferred<T>() {
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
   return { promise, resolve, reject }
 }
-function setup(definitions: () => Promise<unknown>, contents: (input: unknown) => Promise<unknown>) {
+function setup(definitions: () => Promise<unknown>, contents: (input: unknown) => Promise<unknown>, chargeDefault: (input: unknown) => Promise<unknown> = async () => { throw new Error("Unexpected charge default") }) {
   exactInventoryLocationSchema.parse(stock)
   exactInventoryLocationSchema.parse(empty)
   const transport = vi.spyOn(rpcLink, "call").mockImplementation(async (path, input) => {
@@ -32,6 +32,7 @@ function setup(definitions: () => Promise<unknown>, contents: (input: unknown) =
       case "session": return { user: { id: "operator" } }
       case "financial.inventory.definitions": return definitions()
       case "financial.inventory.locationContents": return contents(input)
+      case "financial.inventory.chargeDefault": return chargeDefault(input)
       case "financial.inventory.listInvoices":
       case "financial.inventory.listOutbounds": return []
       default: throw new Error(`Unexpected call ${path.join(".")}`)
@@ -51,6 +52,61 @@ function LiveForm({ project = false, submit }: { project?: boolean; submit: Para
   const contents = useExactInventoryLocation(client, project ? { projectId: "same" } : { warehouseId: "same" })
   return <ExactInventoryMovementForm client={client} contents={contents.data ?? empty} definitions={definitions.data ?? []} locations={locations} parties={parties} source={project ? "PROJECT:same" : "WAREHOUSE:same"} pending={false} error={null} close={() => {}} submit={submit} />
 }
+it.each(["stock removal", "inactive definition", "exhaustion", "manual choice"] as const)("clears asset-specific overrides after %s but preserves a same-asset quantity refresh", async reason => {
+  const assets = exactInventoryLocationSchema.parse({ assets: ["a", "b"].map(id => ({ id, inventoryEntryId: `producer-${id}`, itemDefinitionId: `pump-${id}`, assetName: `Pump ${id}`, assetTag: null, serialNumber: null, condition: null, purchaseDate: null, currentWarehouseId: "same", currentProjectId: null, currentLocationLabel: "Warehouse", note: null, purchasePriceDzd: "71.29", createdAt: date, updatedAt: date })), consumables: stock.consumables })
+  const definitions = ["a", "b"].map(id => inventoryItemDefinitionSchema.parse({ ...definition, id: `pump-${id}`, name: `Pump ${id}`, itemType: "ASSET", unit: null }))
+  const nextDefault = deferred<unknown>()
+  const chargeDefault = vi.fn().mockImplementation(async input => {
+    if (input.assetUnitId === "a") return { assetUnitId: "a", amountDzd: "71.29", purchasePriceDzd: "71.29", source: "PURCHASE_PRICE" }
+    return nextDefault.promise
+  })
+  const { wrapper, query } = setup(async () => definitions, async () => assets, chargeDefault)
+  const submit = vi.fn().mockResolvedValue(undefined)
+  render(<LiveForm submit={submit} />, { wrapper })
+  await waitFor(() => expect(pick().value).toBe("a"))
+  fireEvent.change(screen.getByRole("combobox", { name: "الوجهة" }), { target: { value: "PROJECT:same" } })
+  await screen.findByText("71.29")
+  const override = () => screen.getByRole("checkbox", { name: "تحديد احتساب مختلف على المشروع" }) as HTMLInputElement
+  fireEvent.click(override())
+  fireEvent.change(screen.getByRole("textbox", { name: "احتساب المشروع، صفر يعني مجانًا" }), { target: { value: "٠" } })
+  await act(async () => { query.setQueriesData({ predicate: q => q.queryKey.includes("location") }, { ...assets, consumables: assets.consumables.map(row => ({ ...row, quantity: 2 })) }) })
+  expect(pick().value).toBe("a")
+  expect(override().checked).toBe(true)
+  expect(confirm().disabled).toBe(false)
+  fireEvent.click(confirm())
+  await waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
+  expect(submit.mock.calls[0]![0]).toEqual({ kind: "transferAsset", input: { requestId: "pending", assetUnitId: "a", toWarehouseId: undefined, toProjectId: "same", chargeAmountDzd: "0.00", note: null } })
+  if (reason === "manual choice") fireEvent.change(pick(), { target: { value: "b" } })
+  else if (reason === "inactive definition") {
+    await act(async () => { query.setQueriesData({ predicate: q => q.queryKey.includes("definitions") }, [{ ...definitions[0]!, isActive: false }, definitions[1]!]) })
+  } else {
+    if (reason === "exhaustion") {
+      await act(async () => { query.setQueriesData({ predicate: q => q.queryKey.includes("location") }, empty) })
+      await waitFor(() => expect(pick().value).toBe(""))
+      expect(confirm().disabled).toBe(true)
+    }
+    await act(async () => { query.setQueriesData({ predicate: q => q.queryKey.includes("location") }, { assets: [assets.assets[1]!], consumables: [] }) })
+  }
+  await waitFor(() => expect(pick().value).toBe("b"))
+  expect(override().checked).toBe(false)
+  expect(screen.queryByRole("textbox", { name: "احتساب المشروع، صفر يعني مجانًا" })).toBeNull()
+  expect(confirm().disabled).toBe(true)
+  fireEvent.click(confirm())
+  expect(submit).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(chargeDefault).toHaveBeenCalledWith({ assetUnitId: "b" }))
+  if (reason === "stock removal") {
+    await act(async () => nextDefault.reject(new Error("default offline")))
+    await screen.findByRole("alert")
+    expect(confirm().disabled).toBe(true)
+    expect(override().checked).toBe(false)
+    chargeDefault.mockResolvedValueOnce({ assetUnitId: "b", amountDzd: "99.00", purchasePriceDzd: "99.00", source: "PURCHASE_PRICE" })
+    fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }))
+  } else await act(async () => nextDefault.resolve({ assetUnitId: "b", amountDzd: "99.00", purchasePriceDzd: "99.00", source: "PURCHASE_PRICE" }))
+  await waitFor(() => expect(confirm().disabled).toBe(false))
+  fireEvent.click(confirm())
+  await waitFor(() => expect(submit).toHaveBeenCalledTimes(2))
+  expect(submit.mock.calls[1]![0]).toEqual({ kind: "transferAsset", input: { requestId: "pending", assetUnitId: "b", toWarehouseId: undefined, toProjectId: "same", chargeAmountDzd: undefined, note: null } })
+})
 it.each([true, false])("reconciles real query arrivals, definitions first=%s, without losing explicit selection", async definitionsFirst => {
   const defs = deferred<typeof definition[]>()
   const rows = deferred<Contents>()

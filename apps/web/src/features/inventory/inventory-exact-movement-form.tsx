@@ -21,9 +21,6 @@ export function ExactInventoryMovementForm({ client, contents, definitions, loca
     ...contents.assets.map(row => ({ id: row.id, itemId: row.itemDefinitionId, label: row.assetName, quantity: 1, asset: row, entryId: row.inventoryEntryId })),
   ].filter(row => definitions.some(definition => definition.id === row.itemId && definition.isActive)), [contents, definitions])
   const [pick, setPick] = useState(options[0]?.id ?? "")
-  useEffect(() => {
-    if (!options.some(row => row.id === pick)) setPick(options[0]?.id ?? "")
-  }, [options, pick])
   const [mode, setMode] = useState<"TRANSFER" | "SALE" | "GIFT" | "RETURN">("TRANSFER")
   const [quantity, setQuantity] = useState("1")
   const [destination, setDestination] = useState("")
@@ -37,6 +34,14 @@ export function ExactInventoryMovementForm({ client, contents, definitions, loca
   const [chargeOverride, setChargeOverride] = useState(false)
   const [chargeValue, setChargeValue] = useState("")
   const [note, setNote] = useState("")
+  useEffect(() => {
+    if (options.some(row => row.id === pick)) return
+    const nextPick = options[0]?.id ?? ""
+    if (nextPick === pick) return
+    setPick(nextPick)
+    setChargeOverride(false)
+    setChargeValue("")
+  }, [options, pick])
   const selected = options.find(row => row.id === pick)
   const target = locationInput(destination, locations)
   const from = locationInput(source, locations)
