@@ -5,6 +5,7 @@ import { exactExpenseSchemaStatements } from "../../modules/expenses/expenses.ex
 import { payrollCashSchemaStatements } from "../../modules/workforce/adapters/payroll-cash-schema";
 import { payrollOffsetSchemaStatements } from "../../modules/workforce/adapters/payroll-offset-schema";
 import { schemaStatements } from "./schema-definitions";
+import { payrollOpeningSchemaStatements } from "../../modules/workforce/adapters/sqlite-payroll-opening.repository";
 
 const retiredTables = new Set(["employee_salary_payment", "employee_salary_payment_split"]);
 const marker = /^CREATE TABLE IF NOT EXISTS exact_money_schema\b/i;
@@ -63,8 +64,8 @@ for (const statement of schemaStatements) {
   if (!retiredTables.has(target) && !exactOwnedTables.has(target)) baseIndexesAndTriggers.push(statement);
 }
 
-/** Fresh exact schema DDL without additive migrations or legacy money DDL. */
-export const freshExactSchemaPlan: readonly string[] = Object.freeze([
+/** Accepted #558 baseline, retained for exact physical attestation before upgrade. */
+export const freshExactSchemaPlanV1: readonly string[] = Object.freeze([
   ...baseTables.values(),
   ...baseIndexesAndTriggers,
   "CREATE TABLE IF NOT EXISTS exact_money_schema(slice TEXT PRIMARY KEY, version INTEGER NOT NULL)",
@@ -73,9 +74,14 @@ export const freshExactSchemaPlan: readonly string[] = Object.freeze([
   "INSERT INTO exact_money_schema(slice,version) VALUES ('workforce',1)",
 ]);
 
+/** Additive opening provenance does not rewrite accepted #558 financial history. */
+export const freshExactSchemaPlan: readonly string[] = Object.freeze([
+  ...freshExactSchemaPlanV1, ...payrollOpeningSchemaStatements,
+]);
+
 /** Ownership record for plan consumers and focused composition tests. */
 export const freshExactSchemaOwnership = Object.freeze({
   replacedBaseTables: Object.freeze([...exactOwnedTables].filter((table) => baseTableNames.has(table)).sort()),
   retiredLegacyTables: Object.freeze([...retiredTables].sort()),
-  exactTables: Object.freeze([...exactOwnedTables].sort()),
+  exactTables: Object.freeze([...exactOwnedTables, ...payrollOpeningSchemaStatements.map(tableCreatedBy).filter((table): table is string => table !== undefined)].sort()),
 });
