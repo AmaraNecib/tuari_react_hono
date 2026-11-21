@@ -58,7 +58,7 @@ test("payroll fixture UI retains an uncertain advance across native tabs and rel
   }
   // Bypass Playwright's click wait so a storage event cannot turn the second
   // simultaneous submit into an unrelated timeout on a disabled button.
-  await Promise.all([panel, secondPanel].map(view => view.locator("form").filter({ has: view.getByRole("textbox", { name: "سلفة نقدية إضافية، اختيارية", exact: true }) }).evaluate(form => (form as HTMLFormElement).requestSubmit())))
+  await Promise.all([panel, secondPanel].map(view => view.locator("form").filter({ has: view.page().getByRole("textbox", { name: "سلفة نقدية إضافية، اختيارية", exact: true }) }).evaluate(form => (form as HTMLFormElement).requestSubmit())))
   await expect.poll(() => requests.length).toBe(1)
   const first = requests[0] as { json: { amount: string; wages: unknown[]; advanceAmount: string } }
   expect(first.json).toMatchObject({ amount: "5000.00", wages: [], advanceAmount: "5000.00" })
@@ -82,7 +82,7 @@ test("payroll fixture UI retains an uncertain advance across native tabs and rel
   await expect(secondPanel.getByRole("button", { name: "تسجيل الدفع", exact: true })).toBeEnabled()
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(panel).toBeVisible()
-  await panel.locator("form").filter({ has: panel.getByRole("textbox", { name: "سلفة نقدية إضافية، اختيارية", exact: true }) }).screenshot({ path: test.info().outputPath("payroll-mobile-form.png") })
+  await panel.locator("form").filter({ has: page.getByRole("textbox", { name: "سلفة نقدية إضافية، اختيارية", exact: true }) }).screenshot({ path: test.info().outputPath("payroll-mobile-form.png") })
   await panel.getByRole("group", { name: "عمليات حساب الأجور" }).screenshot({ path: test.info().outputPath("payroll-mobile-actions.png") })
   const layout = await panel.evaluate(element => {
     const bounds = element.getBoundingClientRect()
