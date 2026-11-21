@@ -360,8 +360,8 @@ export function HomeViewPageDetailContent({
 
     case "invoice-create":
     case "invoice-details":
-      if (page === "invoice-details" && !selectedInvoiceId) return <MissingRecordState backLabel={detailCopy.shared.back} description={detailCopy.shared.missingRecordDescription} navigation={navigation} target={workspaceRoutes.invoices()} title={t("inventoryPage.invoices.title")} />
-      return renderLazy(<ExactInventoryPage key={page === "invoice-create" ? "create" : selectedInvoiceId} client={financialClient.inventory} initialCreate={page === "invoice-create"} initialInvoiceId={page === "invoice-details" ? selectedInvoiceId : undefined} locations={[
+      if (page === "invoice-details" && !selectedInvoiceId) return <MissingRecordState backLabel={t("exactCommerce.backToInvoices")} description={detailCopy.shared.missingRecordDescription} navigation={navigation} target={workspaceRoutes.invoices()} title={t("inventoryPage.invoices.title")} />
+      return renderLazy(<ExactInventoryPage key={page === "invoice-create" ? "create" : selectedInvoiceId} client={financialClient.inventory} initialCreate={page === "invoice-create"} onReturnToInvoices={() => void navigation.goToInvoices()} initialInvoiceId={page === "invoice-details" ? selectedInvoiceId : undefined} locations={[
         ...derived.warehouses.map(row => ({ id: row.id, label: row.name, type: "WAREHOUSE" as const })),
         ...derived.projects.map(row => ({ id: row.id, label: row.name, type: "PROJECT" as const })),
       ]} parties={derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName }))} />)

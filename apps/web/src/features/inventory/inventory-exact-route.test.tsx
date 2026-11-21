@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, expect, it, vi } from "vitest"
 import { exactInventoryInvoiceCreateSchema, exactInventoryDetailSchema, inventoryItemDefinitionSchema, type ExactInventoryClient } from "@tuari/contracts"
 import { HomeViewPageDetailContent } from "@/features/app-shell/home-view-page-content-detail-pages"
+import { workspaceRoutes } from "@/router/navigation"
 import { sessionQueryKey } from "@/features/app-shell/workspace-keys"
 import { buildHomeViewCopy } from "@/features/app-shell/home-view-copy"
 const mocks = vi.hoisted(() => ({ inventory: {} as Record<string, ReturnType<typeof vi.fn>>, generic: vi.fn(), upload: vi.fn(), download: vi.fn(), desktop: false }))
@@ -34,15 +35,107 @@ async function openPurchase(number: string) {
   await screen.findByRole("heading", { name: `تفاصيل ${number}` })
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(query => query.clear()); vi.clearAllMocks(); mocks.desktop = false })
-function mount(page: "invoice-details" | "invoice-create" | "invoices" = "invoice-details") {
+function mount(page: "invoice-details" | "invoice-create" | "invoices" = "invoice-details", invoiceId: string | null = group.id) {
   const query = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(query)
   query.setQueryData(sessionQueryKey, { user: { id: "operator", name: "Operator", phone: "0612345678", version: "0.0.0" } })
-  const props = { page, selectedInvoiceId: group.id, copy: buildHomeViewCopy(i18n.t.bind(i18n)), derived: { roles: [], warehouses: [{ id: "warehouse", name: "Warehouse" }], projects: [], employeeRows: [], externalCounterparties: [{ id: "party", fullName: "Supplier" }] }, navigation: {}, t: i18n.t.bind(i18n) } as unknown as Parameters<typeof HomeViewPageDetailContent>[0]
-  return render(<QueryClientProvider client={query}><HomeViewPageDetailContent {...props} /></QueryClientProvider>)
+  const goToInvoices = vi.fn(() => view.rerender(<QueryClientProvider client={query}><HomeViewPageDetailContent {...props} page="invoices" /></QueryClientProvider>))
+  const goToRoute = vi.fn(() => goToInvoices())
+  const props = { page, selectedInvoiceId: invoiceId ?? undefined, copy: buildHomeViewCopy(i18n.t.bind(i18n)), derived: { roles: [], warehouses: [{ id: "warehouse", name: "Warehouse" }], projects: [], employeeRows: [], externalCounterparties: [{ id: "party", fullName: "Supplier" }] }, navigation: { goToInvoices, goToRoute }, t: i18n.t.bind(i18n) } as unknown as Parameters<typeof HomeViewPageDetailContent>[0]
+  const view = render(<QueryClientProvider client={query}><HomeViewPageDetailContent {...props} /></QueryClientProvider>)
+  return { ...view, goToInvoices, goToRoute }
 }
 function setup() {
   Object.assign(mocks.inventory, { listInvoices: vi.fn().mockResolvedValue([group]), getInvoice: vi.fn().mockResolvedValue(detail()), definitions: vi.fn().mockResolvedValue([material]), listOutbounds: vi.fn().mockResolvedValue([]), locationContents: vi.fn().mockResolvedValue({ assets: [], consumables: [] }), createInvoice: vi.fn().mockResolvedValue(detail()) } satisfies Partial<Record<keyof ExactInventoryClient, unknown>>)
 }
+function movementDetail(id = group.id, name = "Owned material", quantity = 0.000003) {
+  return exactInventoryDetailSchema.parse({ ...detail(), group: { ...group, id, invoiceNumber: id === group.id ? "PUR-7" : "PUR-B" }, entries: [{ id: `${id}-entry`, invoiceGroupId: id, itemDefinitionId: "material", warehouseId: "warehouse", projectId: null, itemType: "CONSUMABLE", itemName: name, unit: "m", quantity: 100, unitPriceDzd: "1.0000", priceSource: { mode: "unit-price", price: "1.0000", quantity: "100" }, note: null, createdAt: date, updatedAt: date, assets: [] }], movements: [{ id: `${id}-movement`, movementType: "PURCHASE", itemType: "CONSUMABLE", inventoryEntryId: `${id}-entry`, assetUnitId: null, quantity, fromWarehouseId: null, fromProjectId: null, toWarehouseId: "warehouse", toProjectId: null, note: "receipt note", occurredAt: date, createdAt: date }] })
+}
+it("returns a missing direct ID to the inventory invoice list without requesting a generic invoice", () => {
+  setup()
+  const view = mount("invoice-details", null)
+  expect(screen.queryByRole("region", { name: "سجل الحركات" })).toBeNull()
+  expect(mocks.inventory.getInvoice).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole("button", { name: "العودة إلى الفواتير" }))
+  expect(view.goToRoute).toHaveBeenCalledWith(workspaceRoutes.invoices())
+  expect(screen.queryByRole("dialog")).toBeNull()
+  expect(mocks.generic).not.toHaveBeenCalled()
+})
+it("keeps typed endpoint IDs and missing entry metadata truthful without repricing or history fanout", async () => {
+  setup()
+  const dto = movementDetail()
+  mocks.inventory.getInvoice!.mockResolvedValue(exactInventoryDetailSchema.parse({ ...dto, movements: [
+    { ...dto.movements[0], id: "transfer-row", movementType: "TRANSFER", fromProjectId: "warehouse", quantity: 2 },
+    { ...dto.movements[0], id: "sale-row", movementType: "OUTBOUND_SALE", itemType: "ASSET", inventoryEntryId: null, assetUnitId: "archived-asset", toWarehouseId: null, toProjectId: "archived-project", quantity: 1 },
+  ] }))
+  mount()
+  const rows = within(await screen.findByRole("region", { name: "سجل الحركات" })).getAllByRole("article")
+  expect(rows).toHaveLength(2)
+  expect(rows[0]!.textContent).toContain("تحويل")
+  expect(rows[0]!.textContent).toContain("مشروع: warehouse")
+  expect(rows[0]!.textContent).toContain("مستودع: Warehouse")
+  expect(rows[1]!.textContent).toContain("بيع خارجي")
+  expect(within(rows[1]!).getByRole("heading").textContent).toBe("archived-asset")
+  expect(rows[1]!.textContent).toContain("مشروع: archived-project")
+  expect(within(rows[1]!).getByText("×1")).toBeTruthy()
+  expect(mocks.inventory.getInvoice).toHaveBeenCalledTimes(1)
+})
+it("shows owned exact movement rows and returns from the direct detail route to the purchase list", async () => {
+  setup(); mocks.inventory.getInvoice!.mockResolvedValue(movementDetail())
+  const view = mount()
+  const history = await screen.findByRole("region", { name: "سجل الحركات" })
+  const row = within(history).getByRole("article")
+  expect(row.textContent).toContain("Owned material")
+  expect(row.textContent).toContain("شراء")
+  expect(row.textContent).toContain("Warehouse")
+  expect(row.textContent).toContain("receipt note")
+  expect(within(row).getByText("×0.000003").tagName).toBe("BDI")
+  expect(row.querySelector("time")?.getAttribute("dateTime")).toBe(date)
+  expect(row.textContent).toContain(`${group.id}-entry`)
+  fireEvent.click(screen.getByRole("button", { name: "العودة إلى الفواتير" }))
+  expect(view.goToInvoices).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(screen.queryByRole("region", { name: "سجل الحركات" })).toBeNull())
+  expect(screen.getByRole("region", { name: "جدول فواتير المخزون" })).toBeTruthy()
+  expect(screen.queryByRole("dialog")).toBeNull()
+  expect(mocks.generic).not.toHaveBeenCalled()
+})
+it("clears inline detail without navigation and isolates movement history across cached groups", async () => {
+  setup()
+  const b = movementDetail("purchase-b", "B material", 7)
+  mocks.inventory.listInvoices!.mockResolvedValue([group, b.group])
+  mocks.inventory.getInvoice!.mockImplementation(({ id }) => Promise.resolve(id === group.id ? movementDetail() : b))
+  const view = mount("invoices")
+  await screen.findByRole("button", { name: "تفاصيل PUR-B" })
+  await openPurchase("PUR-7")
+  await screen.findByRole("region", { name: "سجل الحركات" })
+  await openPurchase("PUR-B")
+  const history = screen.getByRole("region", { name: "سجل الحركات" })
+  expect(within(history).getByText("B material")).toBeTruthy()
+  expect(within(history).queryByText("Owned material")).toBeNull()
+  expect(within(history).getByText("×7")).toBeTruthy()
+  await openPurchase("PUR-7")
+  expect(within(screen.getByRole("region", { name: "سجل الحركات" })).queryByText("B material")).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "العودة إلى الفواتير" }))
+  expect(view.goToInvoices).not.toHaveBeenCalled()
+  expect(screen.queryByRole("region", { name: "سجل الحركات" })).toBeNull()
+  expect(screen.queryByRole("dialog")).toBeNull()
+})
+it("keeps detail loading and failure distinct from empty history and allows retry", async () => {
+  setup()
+  const request = deferred<ReturnType<typeof detail>>()
+  mocks.inventory.getInvoice!.mockReturnValueOnce(request.promise).mockResolvedValueOnce(detail())
+  mount()
+  await screen.findByText(i18n.t("exactCommerce.loadingInvoiceDetails"))
+  expect(screen.queryByRole("region", { name: "سجل الحركات" })).toBeNull()
+  expect(screen.getByRole("button", { name: "العودة إلى الفواتير" })).toBeTruthy()
+  await act(async () => request.reject(new Error("missing purchase")))
+  const alert = await screen.findByRole("alert")
+  expect(alert.textContent).toContain(i18n.t("exactCommerce.loadDetailsError"))
+  expect(screen.queryByRole("region", { name: "سجل الحركات" })).toBeNull()
+  fireEvent.click(within(alert).getByRole("button", { name: i18n.t("common.retry") }))
+  const history = await screen.findByRole("region", { name: "سجل الحركات" })
+  expect(within(history).queryAllByRole("article")).toHaveLength(0)
+  expect(history.textContent).toContain("لا توجد حركات لهذه الفاتورة.")
+})
 it("mounts search purchase IDs on the inventory detail source, never generic invoices, and lists/downloads after remount", async () => {
   setup(); mocks.inventory.getInvoice!.mockResolvedValue({ ...detail(), attachments: [file] })
   const view = mount()
@@ -60,7 +153,7 @@ it.each([false, true])("mounts create, freezes the created group on failed uploa
   mocks.inventory.createInvoice!.mockResolvedValue(created)
   mocks.inventory.listInvoices!.mockResolvedValue([created.group])
   mocks.inventory.getInvoice!.mockResolvedValue(created)
-  mount("invoice-create")
+  const view = mount("invoice-create")
   const dialog = await screen.findByRole("dialog")
   fireEvent.change(within(dialog).getByRole("textbox", { name: "سعر الوحدة" }), { target: { value: "1.2345" } })
   for (const name of ["تسجيل الشراء كدين على الشركة", "الطرف الخارجي", "الوجهة الافتراضية", "ملاحظات"]) fireEvent.click(within(dialog).getByRole("button", { name }))
@@ -96,6 +189,10 @@ it.each([false, true])("mounts create, freezes the created group on failed uploa
   expect(mocks.upload).toHaveBeenNthCalledWith(2, group.id, [receipt])
   expect(await screen.findByRole("link", { name: "invoice.pdf" })).toBeTruthy()
   expect(screen.getByText("0.93")).toBeTruthy()
+  fireEvent.click(screen.getByRole("button", { name: "العودة إلى الفواتير" }))
+  expect(view.goToInvoices).toHaveBeenCalledTimes(1)
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  expect(screen.queryByRole("region", { name: "سجل الحركات" })).toBeNull()
 })
 it("uploads from mounted detail, retries against the same group, and refetches its attachment list", async () => {
   setup(); mocks.upload.mockRejectedValueOnce(new Error("retry upload")).mockResolvedValueOnce([])
