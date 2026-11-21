@@ -18,6 +18,7 @@ const correctionSchema = z.object({ ...common, kind: z.enum(["WAGE", "ADVANCE"])
 const reconcileSchema = z.object({ ...common, proposalId: id, expectedAmount: money, refundAmount: money.refine(value => Money.parse(value).compare(Money.parse("0")) > 0, "Refund must be positive"), refundDate: timestampSchema.transform(value => new Date(value).toISOString()), confirmCashRefund: z.literal(true) }).strict();
 const cancelSchema = z.object({ ...common, proposalId: id, reason: z.string().trim().min(1).max(1000) }).strict();
 const key = (...parts: string[]) => `opening:${createHash("sha256").update(JSON.stringify(parts)).digest("hex")}`;
+const algeriaCalendarDay = (value: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Algiers", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(value));
 
 /** Opening intent and linked corrections share the finance reservation and receipts. */
 export class PayrollOpeningService {
@@ -99,7 +100,7 @@ export class PayrollOpeningService {
       if (required.toWire() !== proposal.requiredRefund || refundAmount !== proposal.requiredRefund) throw new PayrollDomainError("Cash settlement changed; cancel and review the proposal", "CONFLICT");
       const persistedSource = this.repository.getReview(employeeId)!.sources.find(row => row.sourceId === source.sourceId)!;
       const latestCashDate = this.repository.latestCashDate(persistedSource);
-      if (!latestCashDate || refundDate < latestCashDate) throw new PayrollDomainError("Refund date cannot precede the recorded cash settlement", "BAD_REQUEST");
+      if (!latestCashDate || algeriaCalendarDay(refundDate) < algeriaCalendarDay(latestCashDate)) throw new PayrollDomainError("Refund date cannot precede the recorded cash settlement", "BAD_REQUEST");
       const producer = this.finance.forProducer({ type: "PAYROLL_OPENING", id: source.sourceId });
       const refund = producer.recordOpeningCashRefund({ requestId: key(requestId, "refund"), debtEntryId: source.debtEntryId, amountDzd: refundAmount, currency: "DZD", paymentMethod: "CASH", refundDate, note: proposal.reason, ...actor });
       this.repository.saveRefund({ id: refund.id, proposalId, sourceId: source.sourceId, employeeId, kind: source.kind, amount: refundAmount, direction: source.kind === "WAGE" ? "IN" : "OUT", refundDate, ...actor, createdAt: refund.createdAt, debtAccountId: source.debtAccountId, debtEntryId: source.debtEntryId });

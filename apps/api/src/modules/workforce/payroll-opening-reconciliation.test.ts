@@ -86,6 +86,22 @@ describe.each(["", "545-refund-public-test-key"])("opening cash reconciliation (
     expect(f.opening.get(f.employeeId).sources[0]!.currentAmount).toBe("0.00");
   });
 
+  it.each(["WAGE", "ADVANCE"] as const)("accepts a same-Algeria-day refund after a later UTC settlement for %s and rejects the previous local day", kind => {
+    const f = fixture(key);
+    const source = f.opening.review({ ...f.audit, requestId: `calendar-${kind}`, employeeId: f.employeeId, wages: kind === "WAGE" ? "2000.00" : "0.00", advances: kind === "ADVANCE" ? "2000.00" : "0.00" }).sources[0]!;
+    const settlementDate = "2026-11-18T09:00:00.000Z";
+    if (kind === "WAGE") f.payroll.recordCash({ ...f.audit, requestId: `calendar-paid-${kind}`, employeeId: f.employeeId, amount: "1500.00", paymentDate: settlementDate, wages: [{ openingId: source.sourceId, amount: "1500.00" }] });
+    else f.payroll.repayAdvance({ ...f.audit, requestId: `calendar-paid-${kind}`, employeeId: f.employeeId, openingAdvanceId: source.sourceId, amount: "1500.00", paymentDate: settlementDate });
+    f.opening.correct({ ...f.audit, requestId: `calendar-proposal-${kind}`, employeeId: f.employeeId, kind, expectedAmount: "2000.00", amount: "200.00", reason: "Verified" });
+    const proposal = f.opening.get(f.employeeId).proposals[0]!;
+    const input = { ...f.audit, requestId: `calendar-refund-${kind}`, employeeId: f.employeeId, proposalId: proposal.id, expectedAmount: "2000.00", refundAmount: "1300.00", confirmCashRefund: true as const };
+    expect(() => f.opening.reconcile({ ...input, refundDate: "2026-11-17T22:59:00.000Z" })).toThrow(/cannot precede/i);
+    const accepted = f.opening.reconcile({ ...input, refundDate: "2026-11-17T23:00:00.000Z" });
+    const refund = f.finance.listEntries(source.debtAccountId).find(row => row.id === accepted.refundEntryId)!;
+    expect(refund.entryDate).toBe("2026-11-17T23:00:00.000Z");
+    expect(refund.createdAt).toBe(now);
+  });
+
   it.each(["WAGE", "ADVANCE"] as const)("retains a pending %s correction until an explicitly recorded cash refund makes it applicable", kind => {
     const f = fixture(key);
     const reviewed = f.opening.review({ ...f.audit, requestId: "opening", employeeId: f.employeeId, wages: kind === "WAGE" ? "2000.00" : "0.00", advances: kind === "ADVANCE" ? "2000.00" : "0.00" });
