@@ -46,12 +46,18 @@ export class PayrollOpeningService {
     return this.repository.withTransaction(() => {
       this.finance.requireParty("INTERNAL_WORKER", employeeId);
       const review = this.repository.getReview(employeeId);
+      const history = this.history(employeeId);
       const sources = (review?.sources ?? []).map(source => {
+        const account = this.finance.getAccount(source.debtAccountId);
         const entries = this.finance.listEntries(source.debtAccountId);
+        const original = entries.find(row => row.id === source.debtEntryId);
+        if (source.employeeId !== employeeId || source.currency !== "DZD" || account.partyType !== "INTERNAL_WORKER" || account.workerId !== employeeId || account.direction !== (source.kind === "WAGE" ? "PAYABLE" : "RECEIVABLE") || account.currency !== "DZD" || !original || original.status !== "LIVE" || original.targetEntryId || original.correctionOfEntryId || original.producerType !== "PAYROLL_OPENING" || original.producerId !== source.sourceId || original.currency !== "DZD" || original.signedAmountDzd !== Money.parse(source.amount).toWire()) throw new Error("Opening source ledger mismatch");
+        const attributed = new Set(history.filter(event => event.sourceId === source.sourceId).map(event => event.id));
+        if (entries.some(row => row.correctionOfEntryId === source.debtEntryId && !attributed.has(row.id))) throw new Error("Opening correction is missing immutable audit history");
         const current = entries.filter(row => row.status === "LIVE" && (row.id === source.debtEntryId || row.correctionOfEntryId === source.debtEntryId)).reduce((sum, row) => sum.add(Money.parse(row.signedAmountDzd)), Money.parse("0"));
         return { kind: source.kind, sourceId: source.sourceId, amount: source.amount, currentAmount: current.toWire(), remaining: this.finance.forProducer({ type: "PAYROLL_OPENING", id: source.sourceId }).remaining(source.debtEntryId), debtAccountId: source.debtAccountId, debtEntryId: source.debtEntryId };
       });
-      return { employeeId, review: review ? "REVIEWED" as const : "UNREVIEWED" as const, wages: review ? sources.find(row => row.kind === "WAGE")?.currentAmount ?? "0.00" : null, advances: review ? sources.find(row => row.kind === "ADVANCE")?.currentAmount ?? "0.00" : null, sources, history: this.history(employeeId) };
+      return { employeeId, review: review ? "REVIEWED" as const : "UNREVIEWED" as const, wages: review ? sources.find(row => row.kind === "WAGE")?.currentAmount ?? "0.00" : null, advances: review ? sources.find(row => row.kind === "ADVANCE")?.currentAmount ?? "0.00" : null, sources, history };
     });
   }
   history(employeeId: string) {
@@ -70,6 +76,7 @@ export class PayrollOpeningService {
     const input = correctionSchema.parse(raw);
     const { requestId, employeeId, kind, expectedAmount, amount, reason, ...actor } = input;
     return this.finance.runAggregate({ requestId, producer: { type: "PAYROLL_OPENING", id: key(employeeId, "correction") }, intent: { employeeId, kind, expectedAmount, amount, reason }, ...actor }, this.repository, () => {
+      this.get(employeeId);
       const review = this.repository.getReview(employeeId);
       if (!review) throw new PayrollDomainError("Review the opening before correcting it", "NOT_FOUND");
       const source = review.sources.find(row => row.kind === kind);

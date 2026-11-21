@@ -90,5 +90,10 @@ describe.each(["", "545-opening-auth-public-key"])("authenticated persisted open
     expect(await finalClient.employeePayrollCashRecord(openingPayment)).toEqual(savedPayment);
     expect(await finalClient.employeePayrollAdvanceRepay(repayment)).toEqual(savedRepayment);
     expect(await finalClient.employeePayrollOpeningGet({ employeeId })).toEqual(before);
+    // Trusted producer access alone must not authorize missing opening audit facts.
+    finalRoot.financial.services.finance.forProducer({ type: "PAYROLL_OPENING", id: wageSource.sourceId }).correctOpeningEntry({ requestId: "unattributed-opening-correction", entryId: wageSource.debtEntryId, amountDzd: "4900.00", currency: "DZD", reason: "Bypassed opening audit event", actorUserId: owner.item.id });
+    await expect(finalClient.employeePayrollOpeningGet({ employeeId: secondId })).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    await expect(finalClient.employeePayrollOpeningCorrect({ requestId: "corrupt-history-write", employeeId: secondId, kind: "WAGE", expectedAmount: "4900.00", amount: "4800.00", reason: "Must not hide missing history" })).rejects.toMatchObject({ code: "INTERNAL_SERVER_ERROR" });
+    expect(finalRoot.financial.services.finance.remaining(wageSource.debtEntryId)).toBe("2900.00");
   }, 60000);
 });
