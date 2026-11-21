@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, expect, it, vi } from "vitest"
 import { exactInventoryLocationSchema, inventoryItemDefinitionSchema, type ExactInventoryClient } from "@tuari/contracts"
 import { financialClient, rpcLink } from "@/lib/orpc-client"
+import { exactCommercePrefix } from "@/features/shared/exact-commerce-queries"
 import { sessionQueryKey } from "@/features/app-shell/workspace-keys"
 import { ExactInventoryPage } from "./inventory-exact-page"
 import { ExactInventoryMovementForm } from "./inventory-exact-movement-form"
@@ -33,6 +34,10 @@ function setup(definitions: () => Promise<unknown>, contents: (input: unknown) =
       case "financial.inventory.definitions": return definitions()
       case "financial.inventory.locationContents": return contents(input)
       case "financial.inventory.chargeDefault": return chargeDefault(input)
+      case "financial.inventory.projectCharges": return { charges: [] }
+      case "financial.inventory.projectContribution": return { equipmentChargesDzd: "0.00", chargedMaterialsDzd: "0.00", totalDzd: "0.00", parkedAssetValueDzd: "0.00" }
+      case "financial.inventory.createOutbound":
+      case "financial.inventory.transferConsumable": return {}
       case "financial.inventory.listInvoices":
       case "financial.inventory.listOutbounds": return []
       default: throw new Error(`Unexpected call ${path.join(".")}`)
@@ -52,7 +57,9 @@ function LiveForm({ project = false, submit }: { project?: boolean; submit: Para
   const contents = useExactInventoryLocation(client, project ? { projectId: "same" } : { warehouseId: "same" })
   return <ExactInventoryMovementForm client={client} contents={contents.data ?? empty} definitions={definitions.data ?? []} locations={locations} parties={parties} source={project ? "PROJECT:same" : "WAREHOUSE:same"} pending={false} error={null} close={() => {}} submit={submit} />
 }
-it.each(["stock removal", "inactive definition", "exhaustion", "manual choice"] as const)("clears asset-specific overrides after %s but preserves a same-asset quantity refresh", async reason => {
+it.each((["stock removal", "inactive definition", "exhaustion", "manual choice"] as const).flatMap(reason => [
+  { reason, entered: "٠", wire: "0.00" }, { reason, entered: "23.47", wire: "23.47" },
+]))("clears $entered asset overrides after $reason but preserves a same-asset refresh", async ({ reason, entered, wire }) => {
   const assets = exactInventoryLocationSchema.parse({ assets: ["a", "b"].map(id => ({ id, inventoryEntryId: `producer-${id}`, itemDefinitionId: `pump-${id}`, assetName: `Pump ${id}`, assetTag: null, serialNumber: null, condition: null, purchaseDate: null, currentWarehouseId: "same", currentProjectId: null, currentLocationLabel: "Warehouse", note: null, purchasePriceDzd: "71.29", createdAt: date, updatedAt: date })), consumables: stock.consumables })
   const definitions = ["a", "b"].map(id => inventoryItemDefinitionSchema.parse({ ...definition, id: `pump-${id}`, name: `Pump ${id}`, itemType: "ASSET", unit: null }))
   const nextDefault = deferred<unknown>()
@@ -68,14 +75,14 @@ it.each(["stock removal", "inactive definition", "exhaustion", "manual choice"] 
   await screen.findByText("71.29")
   const override = () => screen.getByRole("checkbox", { name: "تحديد احتساب مختلف على المشروع" }) as HTMLInputElement
   fireEvent.click(override())
-  fireEvent.change(screen.getByRole("textbox", { name: "احتساب المشروع، صفر يعني مجانًا" }), { target: { value: "٠" } })
+  fireEvent.change(screen.getByRole("textbox", { name: "احتساب المشروع، صفر يعني مجانًا" }), { target: { value: entered } })
   await act(async () => { query.setQueriesData({ predicate: q => q.queryKey.includes("location") }, { ...assets, consumables: assets.consumables.map(row => ({ ...row, quantity: 2 })) }) })
   expect(pick().value).toBe("a")
   expect(override().checked).toBe(true)
   expect(confirm().disabled).toBe(false)
   fireEvent.click(confirm())
   await waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
-  expect(submit.mock.calls[0]![0]).toEqual({ kind: "transferAsset", input: { requestId: "pending", assetUnitId: "a", toWarehouseId: undefined, toProjectId: "same", chargeAmountDzd: "0.00", note: null } })
+  expect(submit.mock.calls[0]![0]).toEqual({ kind: "transferAsset", input: { requestId: "pending", assetUnitId: "a", toWarehouseId: undefined, toProjectId: "same", chargeAmountDzd: wire, note: null } })
   if (reason === "manual choice") fireEvent.change(pick(), { target: { value: "b" } })
   else if (reason === "inactive definition") {
     await act(async () => { query.setQueriesData({ predicate: q => q.queryKey.includes("definitions") }, [{ ...definitions[0]!, isActive: false }, definitions[1]!]) })
@@ -165,6 +172,90 @@ it.each([true, false])("initial movement opens only after both successful arriva
   expect(pick().value).toBe("first")
   fireEvent.change(screen.getByRole("combobox", { name: "نوع العملية" }), { target: { value: "GIFT" } })
   expect(confirm().disabled).toBe(false)
+})
+it.each([
+  ["stock", "SALE"], ["definitions", "SALE"], ["stock", "TRANSFER"], ["definitions", "TRANSFER"],
+] as const)("retains the same %s-dependent %s draft, blocks forced submission and retries", async (failedRead, mode) => {
+  let offline = false
+  const recovery = deferred<unknown>()
+  const definitions = vi.fn(async () => {
+    if (offline && failedRead === "definitions") throw new Error("definitions offline")
+    return [definition]
+  })
+  const contents = vi.fn(async () => {
+    if (offline && failedRead === "stock") throw new Error("stock offline")
+    return stock
+  })
+  const { wrapper, query, transport } = setup(definitions, contents)
+  const pageLocations = [locations[0]!, { id: "same", type: "PROJECT" as const, label: "Project" }]
+  render(<ExactInventoryPage client={financialClient.inventory} locations={pageLocations} parties={parties} initialMovement />, { wrapper })
+  const dialog = await screen.findByRole("dialog")
+  const prefix = [...exactCommercePrefix(financialClient.inventory), "operator"]
+  const stockKey = [...prefix, "location", { warehouseId: "same" }]
+  const definitionKey = [...prefix, "definitions"]
+  const failedKey = failedRead === "stock" ? stockKey : definitionKey
+  await waitFor(() => {
+    expect(query.getQueryState(stockKey)).toMatchObject({ status: "success", fetchStatus: "idle" })
+    expect(query.getQueryState(definitionKey)).toMatchObject({ status: "success", fetchStatus: "idle" })
+  })
+  expect(query.getQueryCache().find({ queryKey: failedKey, exact: true })?.getObserversCount()).toBe(1)
+  fireEvent.change(screen.getByRole("combobox", { name: "الوجهة" }), { target: { value: "PROJECT:same" } })
+  fireEvent.change(pick(), { target: { value: "second" } })
+  fireEvent.change(screen.getByRole("textbox", { name: "الكمية المحولة" }), { target: { value: "2" } })
+  if (mode === "SALE") {
+    fireEvent.change(screen.getByRole("combobox", { name: "نوع العملية" }), { target: { value: "SALE" } })
+    fireEvent.change(screen.getByRole("combobox", { name: "التسعير، اختياري" }), { target: { value: "PRICE" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "سعر الوحدة الخارجي" }), { target: { value: "12.3456" } })
+  }
+  const note = screen.getByRole("textbox", { name: "ملاحظة التحويل" }) as HTMLTextAreaElement
+  fireEvent.change(note, { target: { value: "Keep this draft" } })
+  const form = confirm().closest("form")!
+  const writes = () => transport.mock.calls.filter(([path]) => ["financial.inventory.createOutbound", "financial.inventory.transferConsumable"].includes(path.join(".")))
+  const assertDraft = () => {
+    expect(screen.getByRole("dialog")).toBe(dialog)
+    expect(confirm().closest("form")).toBe(form)
+    expect((screen.getByRole("combobox", { name: "نوع العملية" }) as HTMLSelectElement).value).toBe(mode)
+    expect(pick().value).toBe("second")
+    expect((screen.getByRole("textbox", { name: "الكمية المحولة" }) as HTMLInputElement).value).toBe("2")
+    expect(note.value).toBe("Keep this draft")
+    expect(note.disabled).toBe(false)
+    if (mode === "SALE") expect((screen.getByRole("textbox", { name: "سعر الوحدة الخارجي" }) as HTMLInputElement).value).toBe("12.3456")
+    else expect((screen.getByRole("combobox", { name: "الوجهة" }) as HTMLSelectElement).value).toBe("PROJECT:same")
+  }
+  offline = true
+  await act(async () => { await query.invalidateQueries({ queryKey: failedKey, exact: true }) })
+  expect(query.getQueryState(failedKey)).toMatchObject({ status: "error", fetchStatus: "idle", data: failedRead === "stock" ? stock : [definition] })
+  expect(failedRead === "stock" ? contents : definitions).toHaveBeenCalledTimes(2)
+  expect((await screen.findByRole("alert")).textContent).toMatch(/./)
+  assertDraft()
+  expect(confirm().disabled).toBe(true)
+  fireEvent.click(confirm())
+  fireEvent.submit(form)
+  await act(async () => {})
+  expect(writes()).toHaveLength(0)
+  offline = false
+  if (failedRead === "stock") contents.mockImplementationOnce(() => recovery.promise as Promise<Contents>)
+  else definitions.mockImplementationOnce(() => recovery.promise as Promise<typeof definition[]>)
+  fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }))
+  await waitFor(() => expect(query.getQueryState(failedKey)?.fetchStatus).toBe("fetching"))
+  expect(confirm().disabled).toBe(true)
+  fireEvent.submit(form)
+  expect(writes()).toHaveLength(0)
+  await act(async () => recovery.resolve(failedRead === "stock" ? stock : [definition]))
+  await waitFor(() => expect(confirm().disabled).toBe(false))
+  expect(screen.queryByRole("alert")).toBeNull()
+  assertDraft()
+  if (mode === "SALE") {
+    fireEvent.change(screen.getByRole("combobox", { name: "نوع العملية" }), { target: { value: "TRANSFER" } })
+    expect((screen.getByRole("combobox", { name: "الوجهة" }) as HTMLSelectElement).value).toBe("PROJECT:same")
+    fireEvent.change(screen.getByRole("combobox", { name: "نوع العملية" }), { target: { value: "SALE" } })
+  }
+  fireEvent.click(confirm())
+  await waitFor(() => expect(writes()).toHaveLength(1))
+  expect(writes()[0]![1]).toEqual(mode === "SALE" ? {
+    requestId: expect.any(String), fromType: "WAREHOUSE", fromId: "same", transferType: "SALE", counterpartyId: "party", notes: "Keep this draft", debtAmountDzd: undefined, firstPaymentAmountDzd: undefined,
+    items: [{ itemId: "material", optionId: "second", quantity: 2, unitPriceDzd: "12.3456", derivedPrice: undefined }],
+  } : { requestId: expect.any(String), inventoryEntryId: "producer-second", quantity: 2, fromWarehouseId: "same", fromProjectId: undefined, toWarehouseId: undefined, toProjectId: "same", note: "Keep this draft" })
 })
 it.each([true, false])("initial movement waits truthfully for dependencies and retries, definition failure=%s", async definitionFailure => {
   const request = deferred<unknown>()
