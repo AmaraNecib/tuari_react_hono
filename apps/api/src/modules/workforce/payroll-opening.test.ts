@@ -23,6 +23,19 @@ describe.each(["", "545-opening-public-test-key"])("opening review and attributa
     expect(() => f.db.prepare("DELETE FROM employee_opening_review").run()).toThrow(/immutable/);
   });
 
+  it("corrects reviewed zero, then to zero, then back positive without losing original identity or history", () => {
+    const f = fixture(key);
+    f.opening.review({ ...f.audit, requestId: "zero-initial", employeeId: f.employeeId, wages: "0.00", advances: "0.00" });
+    for (const [requestId, expectedAmount, amount] of [["from-zero", "0.00", "2000.00"], ["to-zero", "2000.00", "0.00"], ["positive-again", "0.00", "1900.00"]]) {
+      f.opening.correct({ ...f.audit, requestId: requestId!, employeeId: f.employeeId, kind: "WAGE", expectedAmount: expectedAmount!, amount: amount!, reason: "Rechecked opening document" });
+    }
+    const source = f.repository.getReview(f.employeeId)!.sources[0]!;
+    expect(f.finance.remaining(source.debtEntryId)).toBe("1900.00");
+    expect(f.repository.getReview(f.employeeId)!.sources).toHaveLength(1);
+    expect(f.opening.history(f.employeeId).map(row => [row.oldAmount, row.newAmount])).toEqual([["0.00", "2000.00"], ["2000.00", "0.00"], ["0.00", "1900.00"]]);
+    expect(f.cost()).toEqual([]);
+  });
+
   it("rolls back ledger and review when persistence refuses the second source", () => {
     const f = fixture(key);
     f.db.exec("CREATE TRIGGER refuse_opening BEFORE INSERT ON employee_opening_source WHEN NEW.kind='ADVANCE' BEGIN SELECT RAISE(ABORT,'Injected opening failure'); END");

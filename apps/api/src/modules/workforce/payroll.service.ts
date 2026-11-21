@@ -6,6 +6,7 @@ import type { ExactDebtAccount, ExactDebtEntry } from "../company/exact-finance.
 import type { PayrollCashRepository, PayrollCashRecord, PayrollSettlementRecord } from "./payroll-cash.repository";
 import type { PayrollSourceRepository } from "./payroll-source.repository";
 import type { PayrollOffsetRecord, PayrollOffsetRepository } from "./payroll-offset.repository";
+import type { PayrollOpeningReviewProvider } from "./payroll-lifecycle";
 
 export class PayrollDomainError extends Error {
   constructor(message: string, readonly code: "BAD_REQUEST" | "NOT_FOUND" | "CONFLICT") {
@@ -34,15 +35,15 @@ const timestamp = timestampSchema.transform(value => new Date(value).toISOString
 const command = { requestId: z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/), actorUserId: auditActorUserIdSchema, actorLabel: z.string().max(1000).nullable(), transactionId: auditTransactionIdSchema };
 const registrationSchema = z.object({ ...command, earningId: entityId }).strict();
 const cashSchema = z.object({ ...command, employeeId: entityId, amount: positiveMoney, paymentDate: timestamp,
-  wages: z.array(z.object({ earningId: entityId, amount: positiveMoney }).strict()).max(9999), advanceAmount: positiveMoney.optional() }).strict().superRefine((input, context) => {
-  if (new Set(input.wages.map(row => row.earningId)).size !== input.wages.length) context.addIssue({ code: "custom", message: "Duplicate earning allocation" });
+  wages: z.array(z.union([z.object({ earningId: entityId, amount: positiveMoney }).strict(), z.object({ openingId: entityId, amount: positiveMoney }).strict()])).max(9999), advanceAmount: positiveMoney.optional() }).strict().superRefine((input, context) => {
+  if (new Set(input.wages.map(row => "earningId" in row ? `EARNING:${row.earningId}` : `OPENING:${row.openingId}`)).size !== input.wages.length) context.addIssue({ code: "custom", message: "Duplicate earning allocation" });
   if (1 + input.wages.length + (input.advanceAmount ? 1 : 0) > 10000) context.addIssue({ code: "custom", message: "Payroll cash materialization limit exceeded" });
   try {
     const total = input.wages.reduce((sum, row) => sum + BigInt(Money.parse(row.amount).toMinorUnits()), input.advanceAmount ? BigInt(Money.parse(input.advanceAmount).toMinorUnits()) : 0n);
     if (total !== BigInt(Money.parse(input.amount).toMinorUnits())) context.addIssue({ code: "custom", message: "Cash total must equal explicit wage allocations and advance" });
   } catch { context.addIssue({ code: "custom", message: "Invalid cash reconciliation" }); }
 });
-const repaymentSchema = z.object({ ...command, employeeId: entityId, advanceId: entityId, amount: positiveMoney, paymentDate: timestamp }).strict();
+const repaymentSchema = z.object({ ...command, employeeId: entityId, advanceId: entityId.optional(), openingAdvanceId: entityId.optional(), amount: positiveMoney, paymentDate: timestamp }).strict().refine(value => Boolean(value.advanceId) !== Boolean(value.openingAdvanceId), "Choose exactly one advance source");
 const offsetSchema = z.object({ ...command, employeeId: entityId, amount: positiveMoney, settlementDate: timestamp,
   wageSource: z.object({ kind: z.enum(["EARNING", "OPENING"]), id: entityId }).strict(),
   advanceSource: z.object({ kind: z.enum(["ADVANCE", "OPENING_ADVANCE"]), id: entityId }).strict() }).strict();
@@ -56,9 +57,9 @@ const accountMatches = (account: ExactDebtAccount, employeeId: string, direction
 
 /** Internal commands only. Finance owns balances, transaction reservation and replay. */
 export class PayrollService {
-  constructor(private readonly finance: ExactFinanceService, private readonly cash: PayrollCashRepository, private readonly sources: PayrollSourceRepository, private readonly dependencies: Dependencies, private readonly offsets?: PayrollOffsetRepository) {
+  constructor(private readonly finance: ExactFinanceService, private readonly cash: PayrollCashRepository, private readonly sources: PayrollSourceRepository, private readonly dependencies: Dependencies, private readonly offsets?: PayrollOffsetRepository, private readonly opening?: PayrollOpeningReviewProvider) {
     const identity = finance.transactionIdentity;
-    for (const participant of [cash, sources, ...(offsets ? [offsets] : [])]) {
+    for (const participant of [cash, sources, ...(offsets ? [offsets] : []), ...(opening ? [opening] : [])]) {
       if (participant.transactionIdentity.connection !== identity.connection || participant.transactionIdentity.lock !== identity.lock) throw new TypeError("Payroll participants require the same connection and shared FIFO");
     }
   }
@@ -94,11 +95,12 @@ export class PayrollService {
     const audit = { actorUserId, actorLabel, transactionId };
     return this.finance.runAggregate({ requestId, producer: { type: "PAYROLL_EARNINGS", id: key("cash", requestId) }, intent: { kind: "cash-payment", ...intent }, ...audit }, this.cash, () => {
       const wageAllocations = input.wages.map(row => {
-        const original = this.registerSelectedEarning(row.earningId, requestId, audit, input.employeeId);
+        const source = "earningId" in row ? { kind: "EARNING" as const, id: row.earningId } : { kind: "OPENING" as const, id: row.openingId };
+        const original = "earningId" in row ? this.registerSelectedEarning(row.earningId, requestId, audit, input.employeeId) : this.selectedOpening(row.openingId, input.employeeId, "WAGE").original;
         if (!original) throw new PayrollDomainError("A positive approved earning is required", "BAD_REQUEST");
-        const producer = this.finance.forProducer({ type: "PAYROLL_EARNINGS", id: row.earningId });
-        const payment = producer.recordPayment({ requestId: key(requestId, "wage", row.earningId), debtEntryId: original.id, amountDzd: row.amount, currency: "DZD", paymentMethod: "CASH", ...audit });
-        return { id: this.dependencies.id(), source: { kind: "EARNING" as const, id: row.earningId }, amount: row.amount, debtAccountId: original.debtAccountId, debtEntryId: original.id, paymentEntryId: payment.id };
+        const producer = this.finance.forProducer({ type: source.kind === "EARNING" ? "PAYROLL_EARNINGS" : "PAYROLL_OPENING", id: source.id });
+        const payment = producer.recordPayment({ requestId: source.kind === "EARNING" ? key(requestId, "wage", source.id) : key(requestId, "opening-wage", source.id), debtEntryId: original.id, amountDzd: row.amount, currency: "DZD", paymentMethod: "CASH", ...audit });
+        return { id: this.dependencies.id(), source, amount: row.amount, debtAccountId: original.debtAccountId, debtEntryId: original.id, paymentEntryId: payment.id };
       });
       let advance: PayrollCashRecord["advance"] = null;
       if (input.advanceAmount) {
@@ -112,6 +114,16 @@ export class PayrollService {
       this.cash.saveCash(record);
       return record;
     }, confirmedRefusal);
+  }
+
+  private selectedOpening(sourceId: string, employeeId: string, kind: "WAGE" | "ADVANCE") {
+    const review = this.opening?.getReview(employeeId);
+    const source = review?.state === "REVIEWED" ? review.sources.find(row => row.sourceId === sourceId && row.kind === kind) : undefined;
+    if (!source || source.employeeId !== employeeId || source.currency !== "DZD") throw new PayrollDomainError("Reviewed opening source was not found", "NOT_FOUND");
+    const account = this.finance.getAccount(source.debtAccountId);
+    const original = this.finance.listEntries(account.id).find(row => row.id === source.debtEntryId);
+    if (!original || !accountMatches(account, employeeId, kind === "WAGE" ? "PAYABLE" : "RECEIVABLE") || original.status !== "LIVE" || original.targetEntryId || original.correctionOfEntryId || original.producerType !== "PAYROLL_OPENING" || original.producerId !== sourceId || original.currency !== "DZD" || original.signedAmountDzd !== Money.parse(source.amount).toWire()) throw new PayrollDomainError("Opening ledger linkage mismatch", "CONFLICT");
+    return { account, original };
   }
 
   private selectedAdvance(advanceId: string, employeeId: string) {
@@ -153,10 +165,11 @@ export class PayrollService {
     const { requestId, actorUserId, actorLabel, transactionId, ...intent } = input;
     const audit = { actorUserId, actorLabel, transactionId };
     return this.finance.runAggregate({ requestId, producer: { type: "PAYROLL_ADVANCE", id: key("repay", requestId) }, intent: { kind: "advance-cash-repayment", ...intent }, ...audit }, this.cash, () => {
-      const source = this.selectedAdvance(input.advanceId, input.employeeId);
-      const producer = this.finance.forProducer({ type: "PAYROLL_ADVANCE", id: input.advanceId });
+      const source = input.advanceId ? this.selectedAdvance(input.advanceId, input.employeeId) : this.selectedOpening(input.openingAdvanceId!, input.employeeId, "ADVANCE");
+      const sourceId = input.advanceId ?? input.openingAdvanceId!;
+      const producer = this.finance.forProducer({ type: input.advanceId ? "PAYROLL_ADVANCE" : "PAYROLL_OPENING", id: sourceId });
       const payment = producer.recordPayment({ requestId: key(requestId, "repayment"), debtEntryId: source.original.id, amountDzd: input.amount, currency: "DZD", paymentMethod: "CASH", ...audit });
-      const settlement: PayrollSettlementRecord = { id: this.dependencies.id(), employeeId: input.employeeId, currency: "DZD", amount: input.amount, paymentDate: input.paymentDate, ...audit, createdAt: timestamp.parse(this.dependencies.now()), source: { kind: "ADVANCE", id: input.advanceId }, debtAccountId: source.account.id, debtEntryId: source.original.id, paymentEntryId: payment.id };
+      const settlement: PayrollSettlementRecord = { id: this.dependencies.id(), employeeId: input.employeeId, currency: "DZD", amount: input.amount, paymentDate: input.paymentDate, ...audit, createdAt: timestamp.parse(this.dependencies.now()), source: { kind: input.advanceId ? "ADVANCE" : "OPENING_ADVANCE", id: sourceId }, debtAccountId: source.account.id, debtEntryId: source.original.id, paymentEntryId: payment.id };
       this.cash.saveSettlement(settlement);
       return settlement;
     }, confirmedRefusal);

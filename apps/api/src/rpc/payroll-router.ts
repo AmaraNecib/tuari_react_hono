@@ -8,9 +8,12 @@ import { PayrollDomainError, PayrollNotCommittedError } from "../modules/workfor
 import type { PayrollService } from "../modules/workforce/payroll.service";
 import type { PayrollLifecycle } from "../modules/workforce/payroll-lifecycle";
 import type { RpcContext } from "./context";
+import { createPayrollOpeningRouter } from "./payroll-opening-router";
+import type { PayrollOpeningService } from "../modules/workforce/payroll-opening.service";
 import type { RpcMiddleware, MutationAuditContext } from "./rpc-middleware";
 
-function resolveError(error: unknown): unknown {
+export function resolveError(error: unknown): unknown {
+  if (error instanceof ORPCError) return error;
   if (error instanceof PayrollNotCommittedError) return new ORPCError(error.code, { message: error.message, data: { payrollOutcome: "NOT_COMMITTED" } });
   if (error instanceof PayrollDomainError) return new ORPCError(error.code, { message: error.message });
   if (error instanceof ExactDebtError) {
@@ -30,13 +33,14 @@ function parseOutput<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 /** Authenticated exact payroll procedures. Finance remains the only balance and replay authority. */
-export function createPayrollRouter(payroll: PayrollService, getPayroll: (employeeId: string) => PayrollLifecycle, middleware: RpcMiddleware) {
+export function createPayrollRouter(payroll: PayrollService, getPayroll: (employeeId: string) => PayrollLifecycle, middleware: RpcMiddleware, opening?: PayrollOpeningService) {
   const os = implement(payrollContract).$context<RpcContext>();
   function audited<Input, Output>(schema: z.ZodType<Output>, action: (input: Input, audit: MutationAuditContext) => unknown) {
     const handler = middleware.mutationAudit(({ input, auditContext }: { context: RpcContext; input: Input; auditContext: MutationAuditContext }) => action(input, auditContext), resolveError);
     return async (params: { context: RpcContext; input: Input }) => parseOutput(schema, await handler(params));
   }
   return os.router({
+    ...createPayrollOpeningRouter(opening, middleware, resolveError),
     employeePayrollGet: os.employeePayrollGet.handler(async ({ context, input }) => {
       const handler = middleware.queryAuth<{ employeeId: string }, PayrollLifecycle>(async ({ input: query }) => getPayroll(query.employeeId), resolveError);
       return parseOutput(employeePayrollOutputSchema, await handler({ context, input }));

@@ -1,5 +1,15 @@
 # #545 opening balances: accepted foundation and audited corrections
 
+## Connected backend milestone
+
+Accepted opening storage now upgrades only an exactly attested #558 database, transactionally and without rebuilding existing financial tables. Plain/keyed upgrade tests preserve employee fields, markers, roles and financial entries through reopen. Partial, damaged and marker-only opening states fail closed.
+
+The selected exact root now wires one native opening provider and command module into authenticated opening get/review/correct procedures and the existing payroll lifecycle. Corrections from reviewed zero create a first positive original with an immutable zero-to-positive event. Later corrections to zero use a producer-restricted internal finance capability; generic debt RPC still rejects zero corrections. The same original survives later positive correction. Opening correction IDs are explicitly attributed and counted by the lifecycle reader; arbitrary ledger corrections still fail closed.
+
+Existing cash and repayment procedures accept explicit reviewed opening sources in addition to prior earning/advance inputs. The existing finance writer and cash storage remain authoritative. Authenticated plain/keyed tests prove repeated unreviewed payments retain the reminder, then 5,000 opening + 35,000 approved - 30,000 paid = 10,000 owed, cost35,000, separate opening advance recovery, wrong-worker rejection, replay and persisted reopen. These new procedures are not yet exposed in employee UI.
+
+Still unfinished: optional employee-creation entry and later review/correction UI with confirmation/history, selected browser proof, and explicit reconciliation for a correction below cash already settled. No complete #545 verdict or publication is claimed. The core and startup reviews are scoped to earlier milestones; complete new backend behavior needs current-head review.
+
 ## Approved continuation
 
 The owner confirmed #558 merge and approved extending financial schema and payroll contracts in this lane. Accepted develop ede97c99 is integrated non-destructively at be43dc6b; prior preservation commits remain. Earlier inventory below describes the old base, not current implementation authority.

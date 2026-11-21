@@ -9,6 +9,7 @@ export * from "./auth";
 export * from "./workforce";
 export * from "./payroll";
 export * from "./payroll-contract";
+export * from "./payroll-opening";
 export * from "./salary-days";
 export * from "./round-to-decimals";
 export * from "./projects";

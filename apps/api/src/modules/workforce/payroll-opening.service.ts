@@ -42,6 +42,18 @@ export class PayrollOpeningService {
       return result;
     });
   }
+  get(employeeId: string) {
+    return this.repository.withTransaction(() => {
+      this.finance.requireParty("INTERNAL_WORKER", employeeId);
+      const review = this.repository.getReview(employeeId);
+      const sources = (review?.sources ?? []).map(source => {
+        const entries = this.finance.listEntries(source.debtAccountId);
+        const current = entries.filter(row => row.status === "LIVE" && (row.id === source.debtEntryId || row.correctionOfEntryId === source.debtEntryId)).reduce((sum, row) => sum.add(Money.parse(row.signedAmountDzd)), Money.parse("0"));
+        return { kind: source.kind, sourceId: source.sourceId, amount: source.amount, currentAmount: current.toWire(), remaining: this.finance.forProducer({ type: "PAYROLL_OPENING", id: source.sourceId }).remaining(source.debtEntryId), debtAccountId: source.debtAccountId, debtEntryId: source.debtEntryId };
+      });
+      return { employeeId, review: review ? "REVIEWED" as const : "UNREVIEWED" as const, wages: review ? sources.find(row => row.kind === "WAGE")?.currentAmount ?? "0.00" : null, advances: review ? sources.find(row => row.kind === "ADVANCE")?.currentAmount ?? "0.00" : null, sources, history: this.history(employeeId) };
+    });
+  }
   history(employeeId: string) {
     return this.repository.withTransaction(() => {
       const reviewed = this.repository.getReview(employeeId);
@@ -49,7 +61,7 @@ export class PayrollOpeningService {
       return this.repository.listCorrections(employeeId).map(event => {
         const source = reviewed?.sources.find(row => row.sourceId === event.sourceId);
         const ledger = entries.get(event.id);
-        if (!source || !ledger || ledger.correctionOfEntryId !== source.debtEntryId || ledger.producerType !== "PAYROLL_OPENING" || ledger.producerId !== source.sourceId || ledger.debtAccountId !== source.debtAccountId || Money.parse(event.newAmount).subtract(Money.parse(event.oldAmount)).toWire() !== ledger.signedAmountDzd || ledger.actorUserId !== event.actorUserId || ledger.actorLabel !== event.actorLabel || ledger.createdAt !== event.createdAt || ledger.note !== event.reason) throw new Error("Opening correction history ledger mismatch");
+        if (!source || !ledger || !(ledger.correctionOfEntryId === source.debtEntryId || (ledger.id === source.debtEntryId && event.oldAmount === "0.00")) || ledger.producerType !== "PAYROLL_OPENING" || ledger.producerId !== source.sourceId || ledger.debtAccountId !== source.debtAccountId || Money.parse(event.newAmount).subtract(Money.parse(event.oldAmount)).toWire() !== ledger.signedAmountDzd || ledger.actorUserId !== event.actorUserId || ledger.actorLabel !== event.actorLabel || ledger.createdAt !== event.createdAt || ledger.note !== event.reason) throw new Error("Opening correction history ledger mismatch");
         return { ...event, status: ledger.status, voidedAt: ledger.voidedAt, voidedBy: ledger.voidedBy, voidReason: ledger.voidReason };
       });
     });
@@ -58,13 +70,25 @@ export class PayrollOpeningService {
     const input = correctionSchema.parse(raw);
     const { requestId, employeeId, kind, expectedAmount, amount, reason, ...actor } = input;
     return this.finance.runAggregate({ requestId, producer: { type: "PAYROLL_OPENING", id: key(employeeId, "correction") }, intent: { employeeId, kind, expectedAmount, amount, reason }, ...actor }, this.repository, () => {
-      const source = this.repository.getReview(employeeId)?.sources.find(row => row.kind === kind);
-      if (!source) throw new PayrollDomainError("Opening source was not found", "NOT_FOUND");
+      const review = this.repository.getReview(employeeId);
+      if (!review) throw new PayrollDomainError("Review the opening before correcting it", "NOT_FOUND");
+      const source = review.sources.find(row => row.kind === kind);
+      if (!source) {
+        if (expectedAmount !== "0.00") throw new PayrollDomainError("Opening amount changed; refresh before confirming", "CONFLICT");
+        if (amount === "0.00") throw new PayrollDomainError("Correction must change the opening amount", "BAD_REQUEST");
+        const sourceId = this.dependencies.id();
+        const producer = this.finance.forProducer({ type: "PAYROLL_OPENING", id: sourceId });
+        const account = producer.createAccount({ requestId: key(requestId, "zero-source-account"), partyType: "INTERNAL_WORKER", workerId: employeeId, direction: kind === "WAGE" ? "PAYABLE" : "RECEIVABLE", currency: "DZD", ...actor });
+        const original = producer.postEntry({ requestId: key(requestId, "zero-source-original"), debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: amount, currency: "DZD", note: reason, ...actor });
+        this.repository.saveSource({ kind, amount, employeeId, currency: "DZD", sourceId, debtAccountId: account.id, debtEntryId: original.id });
+        this.repository.saveCorrection({ id: original.id, sourceId, oldAmount: "0.00", newAmount: amount, reason, createdAt: original.createdAt, ...actor });
+        return { id: original.id, oldAmount: "0.00", newAmount: amount };
+      }
       const entries = this.finance.listEntries(source.debtAccountId);
       const current = entries.filter(row => row.status === "LIVE" && (row.id === source.debtEntryId || row.correctionOfEntryId === source.debtEntryId)).reduce((sum, row) => sum.add(Money.parse(row.signedAmountDzd)), Money.parse("0"));
       if (current.toWire() !== expectedAmount) throw new PayrollDomainError("Opening amount changed; refresh before confirming", "CONFLICT");
       const producer = this.finance.forProducer({ type: "PAYROLL_OPENING", id: source.sourceId });
-      const saved = producer.correctEntry({ requestId: key(requestId, "ledger"), entryId: source.debtEntryId, amountDzd: amount, currency: "DZD", reason, ...actor });
+      const saved = producer.correctOpeningEntry({ requestId: key(requestId, "ledger"), entryId: source.debtEntryId, amountDzd: amount, currency: "DZD", reason, ...actor });
       this.repository.saveCorrection({ id: saved.id, sourceId: source.sourceId, oldAmount: current.toWire(), newAmount: amount, reason, createdAt: saved.createdAt, ...actor });
       return { id: saved.id, oldAmount: current.toWire(), newAmount: amount };
     });

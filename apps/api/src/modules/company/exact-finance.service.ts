@@ -1,7 +1,7 @@
 import {
   Money, sumMoneyHistory, getLockedDirectionForCategory, exactDebtProducerSchema, exactFinanceAggregateOwnerSchema, type ExactDebtProducer, type ExactFinanceAggregateOwner,
   createExactDebtAccountSchema, postExactDebtEntrySchema, payExactDebtEntrySchema,
-  correctExactDebtEntrySchema, voidExactDebtEntrySchema, settleExactDebtAccountSchema,
+  correctExactDebtEntrySchema, exactDebtAmountSchema, voidExactDebtEntrySchema, settleExactDebtAccountSchema,
   type CreateExactDebtAccount, type PostExactDebtEntry, type PayExactDebtEntry,
   type CorrectExactDebtEntry, type VoidExactDebtEntry, type SettleExactDebtAccount,
 } from "@tuari/contracts";
@@ -241,7 +241,15 @@ export class ExactFinanceService {
     });
   }
   correctEntry(raw: CorrectExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
-    const input = correctExactDebtEntrySchema.parse(raw);
+    return this.correctObligation(raw, false);
+  }
+  /** Opening review may explicitly correct an unknown historical amount to zero. */
+  correctOpeningEntry(raw: CorrectExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
+    if (this.producer?.type !== "PAYROLL_OPENING") throw new ExactDebtError("Opening correction requires its producer", "CONFLICT");
+    return this.correctObligation(raw, true);
+  }
+  private correctObligation(raw: CorrectExactDebtEntry & ExactDebtAudit, openingZero: boolean): ExactDebtEntry {
+    const input = (openingZero ? correctExactDebtEntrySchema.extend({ amountDzd: exactDebtAmountSchema }) : correctExactDebtEntrySchema).parse(raw);
     const audit = this.audit(raw);
     return this.command("correction", { ...input, ...audit }, input, () => {
       const target = this.obligation(input.entryId);
@@ -253,7 +261,8 @@ export class ExactFinanceService {
       const delta = Money.parse(input.amountDzd).subtract(existingAmount);
       if (delta.compare(zero()) === 0) throw new ExactDebtError("Correction must change the obligation");
       const originalSign = Money.parse(target.signedAmountDzd).compare(zero());
-      if (Money.parse(input.amountDzd).compare(zero()) !== originalSign) throw new ExactDebtError("Correction cannot change the original obligation direction");
+      const proposedSign = Money.parse(input.amountDzd).compare(zero());
+      if (proposedSign !== originalSign && !(openingZero && proposedSign === 0)) throw new ExactDebtError("Correction cannot change the original obligation direction");
       const remainderSign = this.remainingFrom(target, rows).add(delta).compare(zero());
       if (remainderSign !== 0 && remainderSign !== originalSign) throw new ExactDebtError("Correction cannot invalidate recorded settled amounts");
       return this.append(account, { entryType: "ADJUSTMENT", signedAmountDzd: delta.toWire(), correctionOfEntryId: target.id, entryDate: this.dependencies.now(), note: input.reason, reasonCategory: target.reasonCategory, reasonDetail: target.reasonDetail }, audit);

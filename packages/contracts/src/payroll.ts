@@ -35,11 +35,11 @@ export const payrollOffsetRecordSchema = z.object({
 export const employeePayrollGetInputSchema = z.object({ employeeId: payrollId }).strict();
 export const employeePayrollCashRecordInputSchema = z.object({
   requestId: z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/), employeeId: payrollId, amount: positiveAmount, paymentDate: timestampSchema,
-  wages: z.array(z.object({ earningId: payrollId, amount: positiveAmount }).strict()).max(9999), advanceAmount: positiveAmount.optional(),
+  wages: z.array(z.union([z.object({ earningId: payrollId, amount: positiveAmount }).strict(), z.object({ openingId: payrollId, amount: positiveAmount }).strict()])).max(9999), advanceAmount: positiveAmount.optional(),
 }).strict();
 export const employeePayrollAdvanceRepayInputSchema = z.object({
-  requestId: z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/), employeeId: payrollId, advanceId: payrollId, amount: positiveAmount, paymentDate: timestampSchema,
-}).strict();
+  requestId: z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/), employeeId: payrollId, advanceId: payrollId.optional(), openingAdvanceId: payrollId.optional(), amount: positiveAmount, paymentDate: timestampSchema,
+}).strict().refine(value => Boolean(value.advanceId) !== Boolean(value.openingAdvanceId), "Choose exactly one advance source");
 export const employeePayrollAdvanceOffsetInputSchema = z.object({
   requestId: z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/), employeeId: payrollId,
   wageSource: z.object({ kind: z.literal("EARNING"), id: payrollId }).strict(),

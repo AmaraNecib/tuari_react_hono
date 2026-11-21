@@ -23,7 +23,7 @@ export function createExactPayrollServices(
   const cash = new SqlitePayrollCashRepository(db, lock);
   const sources = new SqlitePayrollSourceRepository(db, lock, financeRepository);
   const offsets = new SqlitePayrollOffsetRepository(db, lock);
-  const payroll = new PayrollService(finance, cash, sources, dependencies, offsets);
+  const payroll = new PayrollService(finance, cash, sources, dependencies, offsets, opening);
   const lifecycle = new SqlitePayrollLifecycleReader(db, lock, finance, financeRepository, sources, cash, offsets, opening);
   return { payroll, lifecycle };
 }

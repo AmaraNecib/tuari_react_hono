@@ -69,7 +69,7 @@ export class SqlitePayrollLifecycleReader {
     if (this.opening) {
       openingReview = this.opening.getReview(employeeId);
       if (openingReview !== null && (!Array.isArray(openingReview.sources) || !["UNREVIEWED", "REVIEWED"].includes(openingReview.state) || openingReview.employeeId !== employeeId || (openingReview.state === "UNREVIEWED" && openingReview.sources.length !== 0))) throw new TypeError("Opening provider returned invalid review metadata");
-      const returnedCost = openingReview === null ? 0 : 1 + openingReview.sources.length;
+      const returnedCost = openingReview === null ? 0 : 1 + openingReview.sources.length + openingReview.sources.reduce((sum, source) => sum + (source.correctionIds?.length ?? 0), 0);
       if (returnedCost !== openingCost) throw new RangeError("Opening provider row count does not match returned review and sources");
     }
 
@@ -160,7 +160,7 @@ export class SqlitePayrollLifecycleReader {
     });
     const openingBalances = (openingReview?.sources ?? []).map(source => {
       const ledger = (source.kind === "WAGE" ? wageSources : advanceSources).get(`OPENING:${source.sourceId}`)!;
-      return { kind: source.kind, remaining: this.validateLedgerMovements(ledger, detailFor(ledger.account.id), expectedMovements.get(ledger.original.id) ?? new Map()) };
+      return { kind: source.kind, remaining: this.validateLedgerMovements(ledger, detailFor(ledger.account.id), expectedMovements.get(ledger.original.id) ?? new Map(), source.correctionIds) };
     });
 
     const wagesCash = cash.flatMap(row => row.wageAllocations.map(allocation => allocation.amount));
@@ -243,10 +243,14 @@ export class SqlitePayrollLifecycleReader {
     }
   }
 
-  private validateLedgerMovements(source: LedgerSource, detail: LedgerView, expected: Map<string, { amount: string; type: "PAYMENT" | "SETTLEMENT" }>): string {
+  private validateLedgerMovements(source: LedgerSource, detail: LedgerView, expected: Map<string, { amount: string; type: "PAYMENT" | "SETTLEMENT" }>, correctionIds: readonly string[] = []): string {
     const original = detail.entries.get(source.original.id);
     if (!original || original.status !== "LIVE" || original.targetEntryId || original.correctionOfEntryId || Money.parse(original.signedAmountDzd).compare(Money.parse(source.amount)) !== 0) throw new TypeError("Payroll original no longer matches its source amount");
-    if (detail.corrected.has(source.original.id)) throw new TypeError("Payroll original has an unattributed correction");
+    const approved = new Set(correctionIds);
+    if (approved.size !== correctionIds.length || (approved.size && source.original.producerType !== "PAYROLL_OPENING")) throw new TypeError("Invalid opening correction attribution");
+    const correctionEntries = [...detail.entries.values()].filter(row => row.correctionOfEntryId === source.original.id);
+    for (const row of correctionEntries) if (!approved.has(row.id) || row.producerType !== "PAYROLL_OPENING" || row.producerId !== source.original.producerId) throw new TypeError("Payroll original has an unattributed correction");
+    for (const id of approved) if (id !== source.original.id && !correctionEntries.some(row => row.id === id)) throw new TypeError("Opening correction references missing ledger history");
     const children = detail.children.get(source.original.id) ?? [];
     if (children.some(row => row.entryType !== "PAYMENT" && row.entryType !== "SETTLEMENT")) throw new TypeError("Payroll original has an unattributed ledger movement");
     const actual = children;
@@ -260,7 +264,7 @@ export class SqlitePayrollLifecycleReader {
     if (seen.size !== expected.size) throw new TypeError("Payroll provenance references a missing ledger movement");
     const remaining = original.remainingDzd;
     if (remaining === null) throw new TypeError("Payroll original has no live remaining amount");
-    const computed = Money.parse(sumMoneyHistory([Money.parse(source.amount), ...actual.map(row => Money.parse(row.signedAmountDzd))]));
+    const computed = Money.parse(sumMoneyHistory([Money.parse(source.amount), ...correctionEntries.filter(row => row.status === "LIVE").map(row => Money.parse(row.signedAmountDzd)), ...actual.map(row => Money.parse(row.signedAmountDzd))]));
     if (Money.parse(remaining).compare(computed) !== 0 || Money.parse(remaining).compare(ZERO) < 0) throw new TypeError("Payroll ledger remaining disagrees with source movements");
     return remaining;
   }

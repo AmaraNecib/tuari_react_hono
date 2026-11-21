@@ -22,6 +22,9 @@ import { createRetiredFinancialAction } from "./retired-financial-handlers";
 import type { FreshExactAppDependencies } from "../app/fresh-exact-dependencies";
 import type { PayrollService } from "../modules/workforce/payroll.service";
 import type { PayrollLifecycle } from "../modules/workforce/payroll-lifecycle";
+import type { PayrollOpeningService } from "../modules/workforce/payroll-opening.service";
+import { createPayrollOpeningRouter } from "./payroll-opening-router";
+import { resolveError as resolvePayrollError } from "./payroll-router";
 import { createWorkforceHandlers } from "./handlers/workforce";
 import { createOperationsHandlers } from "./handlers/operations";
 import { createFinanceHandlers, createCounterpartyHandlers } from "./handlers/finance";
@@ -50,6 +53,7 @@ type RouterDependencies = {
   /** Caller-owned exact capability. Absence must never revive numeric payroll. */
   payroll?: {
     service: PayrollService;
+    opening?: PayrollOpeningService;
     getEmployeePayroll: (employeeId: string) => PayrollLifecycle;
   };
   authBootstrapService: Pick<AuthBootstrapService, "getSetupStatus" | "bootstrapFirstUser" | "isBootstrapOwner">;
@@ -106,8 +110,9 @@ export function createRouter(
 
   const payrollUnavailable = () => { throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Exact payroll composition is not configured" }); };
   const payrollHandlers = dependencies.payroll
-    ? createPayrollRouter(dependencies.payroll.service, dependencies.payroll.getEmployeePayroll, m)
+    ? createPayrollRouter(dependencies.payroll.service, dependencies.payroll.getEmployeePayroll, m, dependencies.payroll.opening)
     : {
+    ...createPayrollOpeningRouter(undefined, m, resolvePayrollError),
     employeePayrollGet: os.employeePayrollGet.handler(async params => employeePayrollOutputSchema.parse(await m.queryAuth(async () => payrollUnavailable())(params))),
     employeePayrollCashRecord: os.employeePayrollCashRecord.handler(async params => payrollCashRecordSchema.parse(await m.mutationAudit(() => payrollUnavailable(), error => error)(params))),
     employeePayrollAdvanceRepay: os.employeePayrollAdvanceRepay.handler(async params => payrollRepaymentRecordSchema.parse(await m.mutationAudit(() => payrollUnavailable(), error => error)(params))),

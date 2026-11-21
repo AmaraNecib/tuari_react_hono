@@ -33,7 +33,8 @@ export const payrollOpeningSchemaStatements: readonly string[] = [
   `CREATE TRIGGER employee_opening_correction_link BEFORE INSERT ON employee_opening_correction
     WHEN NOT EXISTS(SELECT 1 FROM employee_opening_source s JOIN debt_entry e ON e.id=NEW.id
       WHERE s.source_id=NEW.source_id AND e.debt_account_id=s.debt_account_id AND e.currency='DZD'
-      AND e.correction_of_entry_id=s.debt_entry_id AND e.target_entry_id IS NULL AND e.status='LIVE'
+      AND (e.correction_of_entry_id=s.debt_entry_id OR (e.id=s.debt_entry_id AND e.correction_of_entry_id IS NULL AND NEW.old_minor=0))
+      AND e.target_entry_id IS NULL AND e.status='LIVE'
       AND e.producer_type='PAYROLL_OPENING' AND e.producer_id=s.source_id
       AND e.signed_amount_minor=NEW.new_minor-NEW.old_minor AND e.note=NEW.reason
       AND e.actor_user_id IS NEW.actor_user_id AND e.actor_label IS NEW.actor_label
@@ -61,7 +62,7 @@ export class SqlitePayrollOpeningRepository implements PayrollOpeningReviewProvi
     }).immediate());
   }
   countRows(employeeId: string): number {
-    return (this.db.prepare("SELECT (SELECT count(*) FROM employee_opening_review WHERE employee_id=?) + (SELECT count(*) FROM employee_opening_source WHERE employee_id=?) AS count").get(employeeId, employeeId) as { count: number }).count;
+    return (this.db.prepare("SELECT (SELECT count(*) FROM employee_opening_review WHERE employee_id=?) + (SELECT count(*) FROM employee_opening_source WHERE employee_id=?) + (SELECT count(*) FROM employee_opening_correction c JOIN employee_opening_source s ON s.source_id=c.source_id WHERE s.employee_id=?) AS count").get(employeeId, employeeId, employeeId) as { count: number }).count;
   }
   getReview(employeeId: string): PayrollOpeningReview | null {
     return this.withTransaction(() => {
@@ -71,7 +72,9 @@ export class SqlitePayrollOpeningRepository implements PayrollOpeningReviewProvi
       return { employeeId, state: "REVIEWED", sources: rows.map(row => {
         const amount = prepareMoneyRead(this.db, "SELECT amount_minor AS minor_units FROM employee_opening_source WHERE source_id=?").get(row.sourceId);
         if (!amount) throw new Error("Opening source amount missing");
-        return { ...row, amount: amount.toWire() };
+        const corrections = this.db.prepare("SELECT id FROM employee_opening_correction WHERE source_id=? ORDER BY sequence LIMIT 10001").all(row.sourceId) as { id: string }[];
+        if (corrections.length > 10000) throw new RangeError("Opening correction limit exceeded");
+        return { ...row, amount: amount.toWire(), correctionIds: corrections.map(event => event.id) };
       }) };
     });
   }
@@ -86,11 +89,16 @@ export class SqlitePayrollOpeningRepository implements PayrollOpeningReviewProvi
     }));
   }
   saveCorrection(event: { id: string; sourceId: string; oldAmount: string; newAmount: string; reason: string; createdAt: string } & PayrollAudit): void {
+    const count = this.db.prepare("SELECT count(*) AS count FROM employee_opening_correction c JOIN employee_opening_source s ON s.source_id=c.source_id WHERE s.employee_id=(SELECT employee_id FROM employee_opening_source WHERE source_id=?)").get(event.sourceId) as { count: number };
+    if (count.count >= 10000) throw new RangeError("Opening correction history limit exceeded");
     this.db.prepare("INSERT INTO employee_opening_correction(id,source_id,old_minor,new_minor,actor_user_id,actor_label,transaction_id,created_at,reason) VALUES (?,?,?,?,?,?,?,?,?)")
       .run(event.id, event.sourceId, bindMoney(Money.parse(event.oldAmount)), bindMoney(Money.parse(event.newAmount)), event.actorUserId, event.actorLabel, event.transactionId, event.createdAt, event.reason);
   }
   save(review: PayrollOpeningReview, audit: PayrollAudit, createdAt: string): void {
     this.db.prepare("INSERT INTO employee_opening_review(employee_id,actor_user_id,actor_label,transaction_id,created_at) VALUES (?,?,?,?,?)").run(review.employeeId, audit.actorUserId, audit.actorLabel, audit.transactionId, createdAt);
-    for (const row of review.sources) this.db.prepare("INSERT INTO employee_opening_source(source_id,employee_id,kind,currency,amount_minor,debt_account_id,debt_entry_id) VALUES (?,?,?,?,?,?,?)").run(row.sourceId, row.employeeId, row.kind, row.currency, bindMoney(Money.parse(row.amount)), row.debtAccountId, row.debtEntryId);
+    for (const row of review.sources) this.saveSource(row);
+  }
+  saveSource(row: PayrollOpeningReview["sources"][number]): void {
+    this.db.prepare("INSERT INTO employee_opening_source(source_id,employee_id,kind,currency,amount_minor,debt_account_id,debt_entry_id) VALUES (?,?,?,?,?,?,?)").run(row.sourceId, row.employeeId, row.kind, row.currency, bindMoney(Money.parse(row.amount)), row.debtAccountId, row.debtEntryId);
   }
 }

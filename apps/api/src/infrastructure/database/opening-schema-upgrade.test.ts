@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createFinancialDependencies } from "../../app/financial-dependencies";
+import { createExactCommerceServices } from "../../rpc/exact-commerce-composition";
 import { createFifoLock } from "./fifo-lock";
 import { createDatabaseConnection } from "./factory";
 import { ensureFreshExactApplicationSchema } from "./fresh-exact-schema";
@@ -29,9 +29,10 @@ describe.each(["", "545-upgrade-public-key"])("opening schema upgrade (%s)", key
     const db = await oldDatabase(key);
     db.exec(`INSERT INTO employee(id,first_name,last_name,phone,role_id,status,salary_reference_period,salary_reference_amount,created_at,updated_at)
       SELECT 'preserved-worker','Worker','History','0612345678',id,'ACTIVE','MONTHLY','30000.00','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z' FROM role WHERE key='worker'`);
-    const financial = createFinancialDependencies(db, createFifoLock(), { id: () => crypto.randomUUID(), now: () => "2026-11-01T00:00:00.000Z" });
+    const financial = createExactCommerceServices(db, createFifoLock(), { id: () => crypto.randomUUID(), now: () => "2026-11-01T00:00:00.000Z" });
     const account = financial.finance.createAccount({ requestId: "existing-account", partyType: "INTERNAL_WORKER", workerId: "preserved-worker", direction: "PAYABLE", currency: "DZD" });
     financial.finance.postEntry({ requestId: "existing-obligation", debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: "5000.00", currency: "DZD" });
+    const employee = db.prepare("SELECT * FROM employee WHERE id='preserved-worker'").get();
     const ledger = db.prepare("SELECT * FROM debt_entry ORDER BY id").all();
     const prior = db.prepare("SELECT * FROM app_schema_state ORDER BY key").all();
     const roles = db.prepare("SELECT * FROM role ORDER BY id").all();
@@ -39,6 +40,7 @@ describe.each(["", "545-upgrade-public-key"])("opening schema upgrade (%s)", key
     expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'employee_opening_%' ORDER BY name").all()).toEqual([{ name: "employee_opening_correction" }, { name: "employee_opening_review" }, { name: "employee_opening_source" }]);
     expect(db.prepare("SELECT * FROM app_schema_state WHERE key!='payroll_opening_v1' ORDER BY key").all()).toEqual(prior);
     expect(db.prepare("SELECT * FROM role ORDER BY id").all()).toEqual(roles);
+    expect(db.prepare("SELECT * FROM employee WHERE id='preserved-worker'").get()).toEqual(employee);
     const schema = db.prepare("SELECT * FROM sqlite_master ORDER BY type,name").all();
     await ensureFreshExactApplicationSchema(db);
     expect(db.prepare("SELECT * FROM sqlite_master ORDER BY type,name").all()).toEqual(schema);
@@ -49,6 +51,7 @@ describe.each(["", "545-upgrade-public-key"])("opening schema upgrade (%s)", key
     connections.push(reopened);
     await ensureFreshExactApplicationSchema(reopened);
     expect(reopened.prepare("SELECT * FROM debt_entry ORDER BY id").all()).toEqual(ledger);
+    expect(reopened.prepare("SELECT * FROM employee WHERE id='preserved-worker'").get()).toEqual(employee);
     expect(reopened.pragma("foreign_key_check")).toEqual([]);
   });
   it.each(["partial", "marker"])("refuses %s opening state rather than trusting or repairing it", async state => {
