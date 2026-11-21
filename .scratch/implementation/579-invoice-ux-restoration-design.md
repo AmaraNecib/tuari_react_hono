@@ -1,0 +1,27 @@
+# Invoice exact-form progressive disclosure restoration
+
+Base: `bcbb97daee55b545f4b6e4911db0ce39c2e100f0`. Worktree: `D:/worktrees/tuari_react_hono/t3-735a52ee-8d4b6d8a510efe19`. Verification: focused-local / CI-final-pending; high-assurance bounded correction.
+
+## Approved mapping
+
+- Essential fields remain in `ExactInventoryPurchaseForm`: invoice number/date and exact-price line editor.
+- Four existing `CollapsibleSection` disclosures provide accessible, initially closed groups: debt/payment; counterparty; typed warehouse/project defaults; note/attachments. Component-local state persists through line list updates.
+- Current exact `party`, debt/payment inputs, `note`, and attachment draft stay the source of submitted values; no API/schema fields are introduced.
+- Header destination is UI state encoded as `WAREHOUSE:<id>` or `PROJECT:<id>`. A line's explicit location wins; an unset line inherits the header value during line mapping. Group destination remains the header default. Existing `locationInput` resolves the typed pair, including same-string warehouse/project IDs.
+- Existing exact price parsing, debt percent contract, create-once/upload retry and attachment validation remain unchanged.
+
+Reachable risk: accidentally changing line placement, exact money/debt semantics, or attachment retry while hiding optional controls. Interface/seam: mounted `ExactInventoryPurchaseForm` with real query context, observing rendered controls and submitted exact command.
+
+Architecture: no seam moved; the existing `CollapsibleSection` interface is reused. Applied wisdom: sensible editable defaults; typed composite location identity; hidden fields should be unmounted and section state should survive parent rerenders. Excluded: legacy numeric invoice field/DB assertions; exact command remains authoritative.
+
+## Recovery and proof scope
+
+Recovered the two existing source/test drafts without resetting or replacing the tree. Read-only dependency junctions reuse the parent's installed root and web toolchain. No package install, build, browser, server, schema or API change is part of this correction. Logs and native-command scripts live on C because D has less than 70 MB free.
+
+Optional groups sit above the always-visible line grid. Their controls unmount while closed; their values remain in the purchase form and attachment draft. Existing disclosure IDs label the expanded regions. The typed header destination feeds only lines with an empty override. Same-string project and warehouse IDs remain distinct.
+
+Mounted form cases cover all four toggles, actual hidden controls, RTL, expansion persistence, typed collision, explicit override versus header inheritance, retained note and party, exact canonical pricing and visible disabled-save reasons. The mounted real-QueryClient route case expands every section, submits schema-validated exact debt and four-place price input, fails upload, retries on the same created group, then mounts attachment detail. Existing attachment reconciliation failure and cross-owner draft tests remain intact.
+
+The two historical invoice E2E specs were read but not changed or run. They assume legacy type-first rows, custom header warehouse/project comboboxes, supplier auto-seeding, numeric DZD columns and old detail navigation. Current exact form has a combined typed native destination selector and no supplier-name editor or supplier auto-seeding. The exact service stores `input.supplierName ?? null`, so asserting a selected party's label as persisted supplier would invent equivalence. These browser assertions need explicit exact-route/schema migration and parent browser proof after capacity recovery; mounted exact command and detail proof does not claim to replace them.
+
+No new domain term, adapter or seam was introduced. Deleting this form would move its parsing, optional-state and upload lifecycle into the page, so the existing form interface remains useful. Broader extraction would add an interface without a second caller and is outside this bounded fix. Parent owns combined-delta review, browser proof and all hosted/CI/protection gates.

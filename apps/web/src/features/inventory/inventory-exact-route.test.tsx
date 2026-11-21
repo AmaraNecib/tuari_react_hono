@@ -4,7 +4,7 @@ import { i18n } from "@/i18n"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, expect, it, vi } from "vitest"
-import { exactInventoryDetailSchema, inventoryItemDefinitionSchema, type ExactInventoryClient } from "@tuari/contracts"
+import { exactInventoryInvoiceCreateSchema, exactInventoryDetailSchema, inventoryItemDefinitionSchema, type ExactInventoryClient } from "@tuari/contracts"
 import { HomeViewPageDetailContent } from "@/features/app-shell/home-view-page-content-detail-pages"
 import { sessionQueryKey } from "@/features/app-shell/workspace-keys"
 import { buildHomeViewCopy } from "@/features/app-shell/home-view-copy"
@@ -37,7 +37,7 @@ afterEach(() => { cleanup(); clients.splice(0).forEach(query => query.clear()); 
 function mount(page: "invoice-details" | "invoice-create" | "invoices" = "invoice-details") {
   const query = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(query)
   query.setQueryData(sessionQueryKey, { user: { id: "operator", name: "Operator", phone: "0612345678", version: "0.0.0" } })
-  const props = { page, selectedInvoiceId: group.id, copy: buildHomeViewCopy(i18n.t.bind(i18n)), derived: { roles: [], warehouses: [{ id: "warehouse", name: "Warehouse" }], projects: [], employeeRows: [], externalCounterparties: [] }, navigation: {}, t: i18n.t.bind(i18n) } as unknown as Parameters<typeof HomeViewPageDetailContent>[0]
+  const props = { page, selectedInvoiceId: group.id, copy: buildHomeViewCopy(i18n.t.bind(i18n)), derived: { roles: [], warehouses: [{ id: "warehouse", name: "Warehouse" }], projects: [], employeeRows: [], externalCounterparties: [{ id: "party", fullName: "Supplier" }] }, navigation: {}, t: i18n.t.bind(i18n) } as unknown as Parameters<typeof HomeViewPageDetailContent>[0]
   return render(<QueryClientProvider client={query}><HomeViewPageDetailContent {...props} /></QueryClientProvider>)
 }
 function setup() {
@@ -56,10 +56,17 @@ it("mounts search purchase IDs on the inventory detail source, never generic inv
 })
 it("mounts create, freezes the created group on failed upload, retries without another writer, then fetches detail/list", async () => {
   setup(); mocks.upload.mockRejectedValueOnce(new Error("upload failed")).mockResolvedValueOnce([])
-  mocks.inventory.getInvoice!.mockResolvedValue({ ...detail(), attachments: [file] })
+  const created = exactInventoryDetailSchema.parse({ ...detail(), group: { ...group, externalCounterpartyId: "party", grossTotalDzd: "1.23", paidAmountDzd: "0.30", remainingDebtDzd: "0.93", debtEntryId: "debt-entry", note: "expanded note" }, attachments: [file] })
+  mocks.inventory.createInvoice!.mockResolvedValue(created)
+  mocks.inventory.listInvoices!.mockResolvedValue([created.group])
+  mocks.inventory.getInvoice!.mockResolvedValue(created)
   mount("invoice-create")
   const dialog = await screen.findByRole("dialog")
-  fireEvent.change(within(dialog).getByRole("textbox", { name: "سعر الوحدة" }), { target: { value: "1" } })
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "سعر الوحدة" }), { target: { value: "1.2345" } })
+  for (const name of ["تسجيل الشراء كدين على الشركة", "الطرف الخارجي", "الوجهة الافتراضية", "ملاحظات"]) fireEvent.click(within(dialog).getByRole("button", { name }))
+  fireEvent.click(within(dialog).getByRole("checkbox", { name: "تسجيل الشراء كدين على الشركة" }))
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "الدفعة الأولى، اختياري" }), { target: { value: "0.30" } })
+  fireEvent.change(within(dialog).getByRole("textbox", { name: "ملاحظة" }), { target: { value: "expanded note" } })
   fireEvent.change(within(dialog).getByLabelText("ملفات الفاتورة"), { target: { files: [new File(["x"], "invoice.pdf", { type: "application/pdf" })] } })
   const save = within(dialog).getByRole("button", { name: "حفظ الفاتورة والمخزون" }) as HTMLButtonElement
   expect(save.disabled).toBe(false)
@@ -67,12 +74,15 @@ it("mounts create, freezes the created group on failed upload, retries without a
   fireEvent.click(save)
   await waitFor(() => expect(mocks.inventory.createInvoice).toHaveBeenCalledTimes(1))
   await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1))
+  const command = exactInventoryInvoiceCreateSchema.parse(mocks.inventory.createInvoice!.mock.calls[0]![0])
+  expect(command).toMatchObject({ warehouseId: "warehouse", createDebt: true, externalCounterpartyId: "party", paidAmountDzd: "0.30", note: "expanded note", entries: [{ unitPriceDzd: "1.2345" }] })
   await screen.findByText("upload failed")
   fireEvent.click(within(dialog).getByRole("button", { name: /إعادة.*رفع/ }))
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
   expect(mocks.inventory.createInvoice).toHaveBeenCalledTimes(1)
   expect(mocks.upload).toHaveBeenNthCalledWith(2, group.id, expect.arrayContaining([expect.any(File)]))
   expect(await screen.findByRole("link", { name: "invoice.pdf" })).toBeTruthy()
+  expect(screen.getByText("0.93")).toBeTruthy()
 })
 it("uploads from mounted detail, retries against the same group, and refetches its attachment list", async () => {
   setup(); mocks.upload.mockRejectedValueOnce(new Error("retry upload")).mockResolvedValueOnce([])
