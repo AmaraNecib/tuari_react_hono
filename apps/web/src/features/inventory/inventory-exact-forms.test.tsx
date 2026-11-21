@@ -3,7 +3,7 @@ import "@/i18n"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import type { ExactInventoryClient, InventoryItemDefinition } from "@tuari/contracts"
+import { exactInventoryInvoiceCreateSchema, type ExactInventoryClient, type InventoryItemDefinition } from "@tuari/contracts"
 import { sessionQueryKey } from "@/features/app-shell/workspace-keys"
 import { ExactInventoryPurchaseForm } from "./inventory-exact-purchase-form"
 import { ExactInventoryMovementForm } from "./inventory-exact-movement-form"
@@ -19,7 +19,8 @@ function wrapper(children: React.ReactNode) {
  const query = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
  queries.push(query)
  query.setQueryData(sessionQueryKey, { user: { id: "operator", name: "Operator", phone: "0612345678", version: "0.0.0" } })
- return render(<QueryClientProvider client={query}>{children}</QueryClientProvider>)
+ const view = render(<QueryClientProvider client={query}>{children}</QueryClientProvider>)
+ return { ...view, rerender: (next: React.ReactNode) => view.rerender(<QueryClientProvider client={query}>{next}</QueryClientProvider>) }
 }
 describe("exact inventory forms", () => {
  it("keeps exact invoice essentials visible and optional controls collapsed; header destination survives adding lines", () => {
@@ -61,9 +62,45 @@ describe("exact inventory forms", () => {
   screen.getAllByRole("textbox", { name: "سعر الوحدة" }).forEach(input => fireEvent.change(input, { target: { value: "1.5000" } }))
   fireEvent.click(screen.getByRole("button", { name: "حفظ الفاتورة والمخزون" }))
   await waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
-  expect(submit.mock.calls[0]![0].input).toMatchObject({ projectId: "same", externalCounterpartyId: "second", note: "retained note", entries: [{ warehouseId: "same", unitPriceDzd: "1.5000" }, { projectId: "same", unitPriceDzd: "1.5000" }] })
+  expect(submit.mock.calls[0]![0].input).toMatchObject({ projectId: "same", externalCounterpartyId: "second", supplierName: "ثاني", note: "retained note", entries: [{ warehouseId: "same", unitPriceDzd: "1.5000" }, { projectId: "same", unitPriceDzd: "1.5000" }] })
   expect(submit.mock.calls[0]![0].input.entries[0]).not.toHaveProperty("projectId")
   expect(submit.mock.calls[0]![0].input.entries[1]).not.toHaveProperty("warehouseId")
+ }, 15000)
+ it("retains a manual supplier without a party and reseeds it when the party changes", async () => {
+  const submit = vi.fn().mockResolvedValue(undefined)
+  const props = { definitions, locations, parties: [...parties, { id: "second", label: "Second supplier" }], pending: false, error: null, close: () => {}, submit }
+  const view = wrapper(<ExactInventoryPurchaseForm {...props} />)
+  expect(screen.queryByRole("textbox", { name: "اسم المورد" })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "الطرف الخارجي" }))
+  const supplier = () => screen.getByRole("textbox", { name: "اسم المورد" }) as HTMLInputElement
+  expect(supplier().value).toBe("طرف خارجي")
+  expect(supplier().readOnly).toBe(true)
+  expect(document.getElementById(supplier().getAttribute("aria-describedby")!)?.textContent).toContain("ألغِ تحديد")
+  const party = () => screen.getByRole("combobox", { name: "الطرف الخارجي" })
+  fireEvent.change(party(), { target: { value: "" } })
+  expect(supplier().readOnly).toBe(false)
+  fireEvent.change(supplier(), { target: { value: "  Manual supplier  " } })
+  view.rerender(<ExactInventoryPurchaseForm {...props} locations={[...locations]} parties={[...props.parties]} />)
+  fireEvent.click(screen.getByRole("button", { name: "إضافة بند مخزون" }))
+  fireEvent.click(screen.getByRole("button", { name: "الطرف الخارجي" }))
+  fireEvent.click(screen.getByRole("button", { name: "الطرف الخارجي" }))
+  expect(supplier().value).toBe("  Manual supplier  ")
+  screen.getAllByRole("textbox", { name: "سعر الوحدة" }).forEach(input => fireEvent.change(input, { target: { value: "1" } }))
+  fireEvent.click(screen.getByRole("button", { name: "حفظ الفاتورة والمخزون" }))
+  await waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
+  expect(exactInventoryInvoiceCreateSchema.parse(submit.mock.calls[0]![0].input).supplierName).toBe("Manual supplier")
+  fireEvent.change(party(), { target: { value: "second" } })
+  expect(supplier().value).toBe("Second supplier")
+  expect(supplier().readOnly).toBe(true)
+  fireEvent.click(screen.getByRole("button", { name: "حفظ الفاتورة والمخزون" }))
+  await waitFor(() => expect(submit).toHaveBeenCalledTimes(2))
+  expect(exactInventoryInvoiceCreateSchema.parse(submit.mock.calls[1]![0].input)).toMatchObject({ supplierName: "Second supplier", externalCounterpartyId: "second" })
+  fireEvent.change(party(), { target: { value: "" } })
+  fireEvent.change(supplier(), { target: { value: "   " } })
+  fireEvent.click(screen.getByRole("button", { name: "حفظ الفاتورة والمخزون" }))
+  await waitFor(() => expect(submit).toHaveBeenCalledTimes(3))
+  expect(exactInventoryInvoiceCreateSchema.parse(submit.mock.calls[2]![0].input).supplierName).toBeNull()
+  view.unmount()
  }, 15000)
  it("explains invalid save and names an unsupported file even after its section closes", () => {
   wrapper(<ExactInventoryPurchaseForm definitions={definitions} locations={locations} parties={parties} pending={false} error={null} close={() => {}} submit={vi.fn()} />)

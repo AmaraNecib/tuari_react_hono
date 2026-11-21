@@ -56,7 +56,7 @@ it("mounts search purchase IDs on the inventory detail source, never generic inv
 })
 it("mounts create, freezes the created group on failed upload, retries without another writer, then fetches detail/list", async () => {
   setup(); mocks.upload.mockRejectedValueOnce(new Error("upload failed")).mockResolvedValueOnce([])
-  const created = exactInventoryDetailSchema.parse({ ...detail(), group: { ...group, externalCounterpartyId: "party", grossTotalDzd: "1.23", paidAmountDzd: "0.30", remainingDebtDzd: "0.93", debtEntryId: "debt-entry", note: "expanded note" }, attachments: [file] })
+  const created = exactInventoryDetailSchema.parse({ ...detail(), group: { ...group, externalCounterpartyId: "party", supplierName: "Supplier", grossTotalDzd: "1.23", paidAmountDzd: "0.30", remainingDebtDzd: "0.93", debtEntryId: "debt-entry", note: "expanded note" }, attachments: [file] })
   mocks.inventory.createInvoice!.mockResolvedValue(created)
   mocks.inventory.listInvoices!.mockResolvedValue([created.group])
   mocks.inventory.getInvoice!.mockResolvedValue(created)
@@ -75,7 +75,7 @@ it("mounts create, freezes the created group on failed upload, retries without a
   await waitFor(() => expect(mocks.inventory.createInvoice).toHaveBeenCalledTimes(1))
   await waitFor(() => expect(mocks.upload).toHaveBeenCalledTimes(1))
   const command = exactInventoryInvoiceCreateSchema.parse(mocks.inventory.createInvoice!.mock.calls[0]![0])
-  expect(command).toMatchObject({ warehouseId: "warehouse", createDebt: true, externalCounterpartyId: "party", paidAmountDzd: "0.30", note: "expanded note", entries: [{ unitPriceDzd: "1.2345" }] })
+  expect(command).toMatchObject({ warehouseId: "warehouse", createDebt: true, externalCounterpartyId: "party", supplierName: "Supplier", paidAmountDzd: "0.30", note: "expanded note", entries: [{ unitPriceDzd: "1.2345" }] })
   await screen.findByText("upload failed")
   fireEvent.click(within(dialog).getByRole("button", { name: /إعادة.*رفع/ }))
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())

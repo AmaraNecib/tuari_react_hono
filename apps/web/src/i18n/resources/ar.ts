@@ -290,6 +290,8 @@ export const ar = {
       "addInventoryLine": "إضافة بند مخزون",
       "purchaseDebtMode": "تسجيل الشراء كدين على الشركة",
       "externalParty": "الطرف الخارجي",
+      "supplierName": "اسم المورد",
+      "supplierFromParty": "يُستخدم اسم الطرف المحدد. لإدخال اسم مورد يدويًا، ألغِ تحديد الطرف الخارجي.",
       "initialPaymentMode": "إدخال الدفعة الأولى",
       "fixedAmount": "مبلغ",
       "percentage": "نسبة مئوية",
