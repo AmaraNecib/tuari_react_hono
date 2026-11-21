@@ -5,7 +5,7 @@ import { expectProjectCost, openChargeCorrection, openHistory, openTransfer, rea
 
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 import { findE2eDatabase, loadDatabaseConstructor } from "./helpers/db-seed"
-import { selectInvoiceLineItem } from "./helpers/invoice-line"
+import type { TransferFixture } from "./helpers/asset-charge"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 installManagedApiLifecycle()
@@ -19,6 +19,7 @@ test.describe.configure({ mode: "serial" })
 // end rather than only at the module seam.
 let itemName = ""
 let projectName = ""
+let purchased: TransferFixture
 
 test.beforeAll(async () => {
   await resetE2eDatabase()
@@ -126,36 +127,22 @@ test.describe("inventory asset charge — purchase onto a project", () => {
     await bootstrapOrSignIn(page)
 
     await page.goto("/invoices/create")
-    await expect(page.getByRole("heading", { name: "إضافة مخزون بالفاتورة" })).toBeVisible()
-
-    // The page starts with one line. Variant C: choose the row's type first
-    // (an ASSET definition is offered only under the ASSET kind), then pick the
-    // definition by its unique name, then set the line's destination.
-    await selectInvoiceLineItem(page, { kind: "ASSET", itemName })
-
-    // The line's project select is a native <select> whose option list carries
-    // the project; the header default project is a custom combobox, so this
-    // targets only the line.
-    const projectSelect = page
-      .locator("select")
-      .filter({ has: page.locator("option", { hasText: projectName }) })
-      .first()
-    await projectSelect.selectOption({ label: projectName })
-    await page.getByLabel("سعر الأصل").fill("5000")
-
-    await page.getByRole("button", { name: "حفظ الفاتورة" }).click()
-    await expect(page.getByRole("link", { name: "تفاصيل الفاتورة" })).toBeVisible({ timeout: 20_000 })
-
-    // The asset row keeps its charge history reachable; expanding it shows the
-    // project and the amount charged for this placement.
-    await expect(page.getByText(itemName).first()).toBeVisible({ timeout: 15_000 })
-    await page.getByRole("button", { name: "سجل الاحتساب" }).first().click()
-    const history = page.getByTestId("asset-charge-history").first()
-    await expect(history).toBeVisible({ timeout: 10_000 })
+    const dialog = page.getByRole("dialog", { name: "فاتورة مخزون جديدة", exact: true })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole("combobox", { name: "العنصر", exact: true }).selectOption({ label: `${itemName} · أصل` })
+    await dialog.getByRole("combobox", { name: "وجهة البند", exact: true }).selectOption({ label: projectName })
+    await dialog.getByRole("textbox", { name: "سعر شراء الأصل", exact: true }).fill("5000.00")
+    await dialog.getByRole("button", { name: "حفظ الفاتورة والمخزون", exact: true }).click()
+    await expect(dialog).toBeHidden()
+    const db = loadDatabaseConstructor()(findE2eDatabase())
+    try {
+      const asset = db.prepare(`SELECT u.id AS assetId, u.current_project_id AS projectId,
+        e.invoice_group_id AS invoiceId FROM inventory_asset_unit u JOIN inventory_entry e ON e.id = u.inventory_entry_id WHERE u.asset_name = ?`).get(itemName) as Pick<TransferFixture, "assetId" | "projectId" | "invoiceId">
+      purchased = { ...asset, assetName: itemName, projectName, warehouseId: "", destinationWarehouseId: "" }
+    } finally { db.close() }
+    const history = await openHistory(page, purchased)
     await expect(history).toContainText(projectName)
-    // Grouping separator varies by ICU locale; accept grouped or ungrouped.
-    await expect(history).toContainText(/5[.,٬]?000/)
-  })
+    await expect(history).toContainText("5,000")  })
 
   test("the charge is persisted for the placement's project", () => {
     const Database = loadDatabaseConstructor()
@@ -163,14 +150,14 @@ test.describe("inventory asset charge — purchase onto a project", () => {
     try {
       const rows = db
         .prepare(
-          `SELECT c.amount_dzd AS amountDzd, c.status AS status, p.name AS projectName
+          `SELECT CAST(c.amount_minor AS TEXT) AS amountMinor, c.status AS status, p.name AS projectName
            FROM inventory_asset_charge c JOIN project p ON p.id = c.project_id
            WHERE p.name = ?`,
         )
-        .all(projectName) as Array<{ amountDzd: number; status: string; projectName: string }>
+        .all(projectName) as Array<{ amountMinor: string; status: string; projectName: string }>
 
       expect(rows).toHaveLength(1)
-      expect(rows[0]).toMatchObject({ amountDzd: 5000, status: "LIVE", projectName })
+      expect(rows[0]).toMatchObject({ amountMinor: "500000", status: "LIVE", projectName })
     } finally {
       db.close()
     }
@@ -179,17 +166,39 @@ test.describe("inventory asset charge — purchase onto a project", () => {
   test("the transfer dialog asks for the charge when the destination is a project", async ({ page }) => {
     await bootstrapOrSignIn(page)
 
-    // Open the invoice details (the latest invoice is the one just created).
-    await page.getByRole("link", { name: "الفواتير" }).first().click()
-    await expect(page.getByRole("heading", { name: "الفواتير" })).toBeVisible()
-    await page.getByText("IN-00001").first().click()
-    await expect(page.getByRole("link", { name: "تفاصيل الفاتورة" })).toBeVisible({ timeout: 15_000 })
-
-    await page.getByRole("button", { name: "تحويل الأصل" }).first().click()
-    await expect(page.getByRole("dialog")).toBeVisible()
-    await page.getByLabel("نوع الوجهة").selectOption({ value: "PROJECT" })
-
-    // The charge fields appear once the destination is a project.
-    await expect(page.getByLabel("مبلغ الاحتساب")).toBeVisible()
-  })
+    const fixture = await seedTransferAsset(page)
+    const dialog = await openTransfer(page, purchased)
+    await dialog.getByRole("combobox", { name: "الوجهة", exact: true }).selectOption(`PROJECT:${fixture.projectId}`)
+    await dialog.getByRole("checkbox", { name: "تحديد احتساب مختلف على المشروع", exact: true }).check()
+    const amount = dialog.getByRole("textbox", { name: "احتساب المشروع، صفر يعني مجانًا", exact: true })
+    await expect(amount).toHaveValue("5000.00")
+    await amount.fill("3500.00")
+    await dialog.getByRole("button", { name: "تأكيد التحويل", exact: true }).click()
+    await expect(dialog).toBeHidden()
+    await expect.poll(() => readPlacement(purchased)).toEqual({
+      unit: { warehouseId: null, projectId: fixture.projectId },
+      charges: [
+        { amountDzd: "5000.00", projectId: purchased.projectId, status: "LIVE" },
+        { amountDzd: "3500.00", projectId: fixture.projectId, status: "LIVE" },
+      ],
+    })
+    const returnDialog = await openTransfer(page, purchased)
+    await returnDialog.getByRole("combobox", { name: "الوجهة", exact: true }).selectOption(`PROJECT:${purchased.projectId}`)
+    await expect(returnDialog.getByText(/الاحتساب الافتراضي/)).toContainText("3500.00")
+    await expect(returnDialog.getByText(/الاحتساب الافتراضي/)).toContainText("من آخر احتساب")
+    await returnDialog.getByRole("checkbox", { name: "تحديد احتساب مختلف على المشروع", exact: true }).check()
+    const freeAmount = returnDialog.getByRole("textbox", { name: "احتساب المشروع، صفر يعني مجانًا", exact: true })
+    await expect(freeAmount).toHaveValue("3500.00")
+    await freeAmount.fill("0.00")
+    await expect(freeAmount).toHaveValue("0.00")
+    await returnDialog.getByRole("button", { name: "تأكيد التحويل", exact: true }).click()
+    await expect(returnDialog).toBeHidden()
+    await expect.poll(() => readPlacement(purchased)).toEqual({
+      unit: { warehouseId: null, projectId: purchased.projectId },
+      charges: [
+        { amountDzd: "5000.00", projectId: purchased.projectId, status: "LIVE" },
+        { amountDzd: "3500.00", projectId: fixture.projectId, status: "LIVE" },
+        { amountDzd: "0.00", projectId: purchased.projectId, status: "LIVE" },
+      ],
+    })  })
 })

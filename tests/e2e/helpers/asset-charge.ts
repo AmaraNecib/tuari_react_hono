@@ -82,7 +82,8 @@ export async function transferToProject(page: Page, fixture: TransferFixture) {
   const dialog = await openTransfer(page, fixture)
   await dialog.getByRole("combobox", { name: "الوجهة", exact: true }).selectOption(`PROJECT:${fixture.projectId}`)
   await expect(dialog.getByText(/الاحتساب الافتراضي/)).toContainText("5000.00")
-  await expect(dialog.getByLabel("النسبة من سعر الشراء")).toHaveValue("0")
+  await expect(dialog.getByRole("checkbox", { name: "تحديد احتساب مختلف على المشروع", exact: true })).not.toBeChecked()
+  await expect(dialog.getByText(/الاحتساب الافتراضي/)).toContainText("من سعر الشراء")
   await dialog.getByRole("button", { name: "تأكيد التحويل" }).click()
   await expect(dialog).toBeHidden()
   await expect.poll(() => readPlacement(fixture)).toEqual({
