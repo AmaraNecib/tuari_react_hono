@@ -1020,9 +1020,10 @@ describe("global search (Ctrl+K) — debounced and lazy (issue #280)", () => {
     for (const [id, phrase, magnitude] of expectedRows) {
       const row = document.getElementById(`search-option-debt-${id}`)
       expect(row, `missing result identity for ${id}`).toBeTruthy()
-      expect(row?.textContent).toContain(phrase)
-      expect(row?.textContent).toContain(magnitude)
-      expect(row?.textContent).not.toMatch(/مستحق علينا\\s*-50/)
+      const text = (row?.textContent ?? "").replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim()
+      expect(text).toContain(`${phrase} دج ${magnitude}`)
+      expect(text).not.toContain(`${phrase} دج -${magnitude}`)
+      expect(text).not.toContain(`${phrase} دج −${magnitude}`)
     }
   })
 

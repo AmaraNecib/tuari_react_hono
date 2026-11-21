@@ -10,7 +10,7 @@ import { useEmployeesQuery, useProjectsQuery, useWarehousesQuery, useExternalCou
 import { useInventoryItemDefinitionsQuery } from "@/features/inventory/inventory-hooks"
 import { useExactDebtSummary } from "@/features/debts/debts-exact-queries"
 import { useExactInventoryInvoices } from "@/features/inventory/inventory-exact-queries"
-import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts"
+import { DEBT_BALANCE_STATE_PHRASE, getDebtAccountBalanceState } from "@tuari/contracts"
 import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { financialClient } from "@/lib/orpc-client"
 import { UserJourneyTour } from "@/hooks/use-user-journey"
@@ -253,11 +253,8 @@ export function HomeViewSignedInShell({
       const balance = account.currentBalance
       const zero = /^-?0\.00$/.test(balance)
       const negative = balance.startsWith("-") && !zero
-      const state = zero
-        ? "settled"
-        : account.direction === "PAYABLE"
-          ? negative ? "creditWithUs" : "owedByUs"
-          : negative ? "creditWithThem" : "owedToUs"
+      const balanceSign = zero ? 0 : negative ? -1 : 1
+      const state = getDebtAccountBalanceState({ currentBalance: balanceSign, direction: account.direction })
       const phrase = DEBT_BALANCE_STATE_PHRASE[state]
       const amount = formatExactMoney(negative ? balance.slice(1) : balance, { aggregate: true, grouped: true }).text
       return {
