@@ -74,6 +74,7 @@ const mockState: {
   workspaceError: Error | null
   debtsSummaryError: boolean
   debtsSummaryPending: boolean
+  debtSearchAccounts: Array<Record<string, unknown>>
   systemLogData: { items: Array<Record<string, unknown>> }
   invoiceGroupDetail: InventoryInvoiceGroupDetail | undefined
 } = {
@@ -88,6 +89,7 @@ const mockState: {
   workspaceError: null,
   debtsSummaryError: false,
   debtsSummaryPending: false,
+  debtSearchAccounts: [],
   systemLogData: defaultSystemLogData,
   invoiceGroupDetail: undefined,
 }
@@ -572,7 +574,7 @@ vi.mock("@/features/debts/debts-exact-queries", () => ({
   useExactDebtSummary: (_client: unknown, options?: { enabled?: boolean }) => {
     if (options) searchState.debts = options.enabled
     return {
-      data: mockState.debtsSummaryPending || mockState.debtsSummaryError ? undefined : { accounts: [], grossPayableDzd: "0.00", grossReceivableDzd: "0.00" },
+      data: mockState.debtsSummaryPending || mockState.debtsSummaryError ? undefined : { accounts: mockState.debtSearchAccounts, grossPayableDzd: "0.00", grossReceivableDzd: "0.00" },
       isPending: mockState.debtsSummaryPending,
       isError: mockState.debtsSummaryError,
       refetch: vi.fn(),
@@ -907,6 +909,8 @@ export function renderWorkspace(
     debtsSummaryError?: boolean
     /** True to simulate the feature-scoped debts summary query loading. */
     debtsSummaryPending?: boolean
+    /** Exact account rows returned by the global-search debt query. */
+    debtSearchAccounts?: Array<Record<string, unknown>>
     /** Full workspace data override. */
     workspaceData?: WorkspaceMetadata | undefined
     /** Detail tab within a detail page (e.g. "finance"). */
@@ -934,6 +938,7 @@ export function renderWorkspace(
   mockState.workspaceData = "workspaceData" in opts ? opts.workspaceData : makeWorkspaceData()
   mockState.debtsSummaryError = "debtsSummaryError" in opts ? opts.debtsSummaryError! : false
   mockState.debtsSummaryPending = "debtsSummaryPending" in opts ? opts.debtsSummaryPending! : false
+  mockState.debtSearchAccounts = opts.debtSearchAccounts ?? []
   mockState.invoiceGroupDetail = "invoiceGroupDetail" in opts ? opts.invoiceGroupDetail : undefined
   const queryClient = new QueryClient({
     defaultOptions: {

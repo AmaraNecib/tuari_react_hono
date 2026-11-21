@@ -10,7 +10,7 @@ import { useEmployeesQuery, useProjectsQuery, useWarehousesQuery, useExternalCou
 import { useInventoryItemDefinitionsQuery } from "@/features/inventory/inventory-hooks"
 import { useExactDebtSummary } from "@/features/debts/debts-exact-queries"
 import { useExactInventoryInvoices } from "@/features/inventory/inventory-exact-queries"
-import { DEBT_BALANCE_STATE_PHRASE, Money } from "@tuari/contracts"
+import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts"
 import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { financialClient } from "@/lib/orpc-client"
 import { UserJourneyTour } from "@/hooks/use-user-journey"

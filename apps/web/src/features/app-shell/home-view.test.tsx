@@ -990,6 +990,42 @@ describe("global search (Ctrl+K) — debounced and lazy (issue #280)", () => {
     expect(screen.getAllByText("المستودعات").length).toBeGreaterThan(0)
   })
 
+  it("searches directional debt states with exact unsigned magnitudes and stable account ids", async () => {
+    const debtSearchAccounts = [
+      { id: "payable-positive", direction: "PAYABLE", currentBalance: "50.00", externalCounterpartyId: "p1" },
+      { id: "payable-negative", direction: "PAYABLE", currentBalance: "-50.00", externalCounterpartyId: "p1" },
+      { id: "payable-zero", direction: "PAYABLE", currentBalance: "0.00", externalCounterpartyId: "p1" },
+      { id: "receivable-positive", direction: "RECEIVABLE", currentBalance: "50.00", externalCounterpartyId: "p1" },
+      { id: "receivable-negative", direction: "RECEIVABLE", currentBalance: "-50.00", externalCounterpartyId: "p1" },
+      { id: "receivable-zero", direction: "RECEIVABLE", currentBalance: "-0.00", externalCounterpartyId: "p1" },
+      { id: "wide", direction: "PAYABLE", currentBalance: "184467440737095516.14", externalCounterpartyId: "p1" },
+    ]
+    renderWorkspace("projects", {
+      sessionUser: demoUser,
+      debtSearchAccounts,
+      workspaceData: makeWorkspaceData({ externalCounterparties: [{ id: "p1", fullName: "شركة الاختبار", phoneNumber: "", note: null, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" }] }),
+    })
+    fireEvent.click(screen.getByRole("button", { name: "بحث" }))
+    fireEvent.change(screen.getByPlaceholderText("بحث..."), { target: { value: "شركة الاختبار" } })
+    await waitFor(() => expect(screen.getAllByText("شركة الاختبار")).toHaveLength(8))
+    const expectedRows = [
+      ["payable-positive", "مستحق علينا", "50"],
+      ["payable-negative", "رصيد مستحق لنا", "50"],
+      ["payable-zero", "مسوّى", "0"],
+      ["receivable-positive", "مستحق لنا", "50"],
+      ["receivable-negative", "رصيد مستحق لهم", "50"],
+      ["receivable-zero", "مسوّى", "0"],
+      ["wide", "مستحق علينا", "184,467,440,737,095,516.14"],
+    ] as const
+    for (const [id, phrase, magnitude] of expectedRows) {
+      const row = document.getElementById(`search-option-debt-${id}`)
+      expect(row, `missing result identity for ${id}`).toBeTruthy()
+      expect(row?.textContent).toContain(phrase)
+      expect(row?.textContent).toContain(magnitude)
+      expect(row?.textContent).not.toMatch(/مستحق علينا\\s*-50/)
+    }
+  })
+
   it("fetches the seven search-corpus queries only while the dialog is open", () => {
     // Render a non-dashboard page: the dashboard section (issue #23)
     // legitimately mounts the inventory/invoices queries for its stat cards,
