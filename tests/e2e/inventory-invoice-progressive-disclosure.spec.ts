@@ -204,6 +204,7 @@ test.describe("inventory invoice create — progressive disclosure", () => {
       [alternateWarehouse, mixedItemB, mixedItemA, "×4"],
     ]) {
       await openWarehouseHistory(page, destination!)
+      expect(new URL(page.url()).pathname).toBe(destination === warehouseName ? destinationA : destinationB)
       const local = page.getByTestId("location-transfer-history-row").filter({ hasText: ownItem! })
       await expect(local).toHaveCount(1)
       await expect(local).toContainText("شراء")
