@@ -72,6 +72,31 @@ describe.each(["", "558-systemlog-key"])("exact system log native %s", key => {
     f.db.transaction(() => { expect(() => f.reader.listSystemLog()).toThrow(/snapshot/); })();
     expect(() => f.reader.listSystemLogPage(undefined, { offset: -1, limit: 1 })).toThrow();
   });
+  it("rejects unsafe row budgets and page bounds without exposing a partial log", async () => {
+    const f = await fixture(key);
+    for (const maxRows of [0, 1.5, 100_001, Number.NaN]) {
+      expect(() => createExactSystemLogReader(f.db, f.lock, { maxRows })).toThrow("Invalid system log row budget");
+    }
+    for (const page of [
+      { offset: 0.5, limit: 1 }, { offset: 0, limit: 0.5 },
+      { offset: 0, limit: 0 }, { offset: 0, limit: 100_001 },
+    ]) {
+      expect(() => f.reader.listSystemLogPage(undefined, page)).toThrow("Invalid system log page");
+    }
+    expect(f.reader.listSystemLogPage(undefined, { offset: 100_000, limit: 1 })).toEqual({ items: [], totalCount: 1 });
+  });
+
+  it("attributes exact external debt to the counterparty rather than an internal worker", async () => {
+    const f = await fixture(key);
+    const party = f.repo.createExternalCounterparty({ fullName: "Cement supplier", phoneNumber: "0555123456", note: null });
+    const account = f.graph.finance.createAccount({ requestId: "supplier-account", partyType: "EXTERNAL_COUNTERPARTY", externalCounterpartyId: party.id, direction: "PAYABLE", currency: "DZD" });
+    const entry = f.graph.finance.postEntry({ requestId: "supplier-opening", debtAccountId: account.id, entryType: "OPENING", signedAmountDzd: "123.45", currency: "DZD", entryDate: paid });
+    const row = f.reader.listSystemLog({ entityId: entry.id }).items[0]!;
+    expect(row).toMatchObject({ entityId: entry.id, entityLabel: "Cement supplier", actionType: "DEBT_ENTRY_RECORDED", createdAt: paid });
+    expect(row.detail).toContain("+123.45 دج");
+    expect(row.summary).toContain("Cement supplier");
+  });
+
   it("uses posting amounts and dates for correction, settlement, void and both account directions", async () => {
     const f = await fixture(key);
     for (const direction of ["PAYABLE", "RECEIVABLE"] as const) {

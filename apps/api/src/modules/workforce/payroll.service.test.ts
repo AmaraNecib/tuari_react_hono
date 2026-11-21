@@ -153,6 +153,25 @@ describe.each([["plain", ""], ["keyed", "558-command-public-key"]])("payroll com
     expect(f.finance.listAccounts()).toEqual([]);
   });
 
+  it("rejects duplicate allocations and unreconciled totals before registering debt", () => {
+    const f = fixture(key); const earning = f.earning("100.00");
+    const input = { ...f.audit, requestId: "bad-allocation", employeeId: f.employeeId, amount: "2.00", paymentDate: paidAt };
+    expect(() => f.service.recordCash({ ...input, wages: [{ earningId: earning.id, amount: "1.00" }, { earningId: earning.id, amount: "1.00" }] })).toThrow(/Duplicate earning allocation/);
+    expect(() => f.service.recordCash({ ...input, wages: [{ earningId: earning.id, amount: "1.00" }] })).toThrow(/Cash total must equal/);
+    expect(f.finance.listAccounts()).toEqual([]);
+    expect(f.cash.listCash(f.employeeId)).toEqual([]);
+    expect(f.sources.getEarning(earning.id)?.original).toBeNull();
+  });
+
+  it("refuses absent earnings and advances without creating cash or debt", () => {
+    const f = fixture(key);
+    expect(() => f.service.registerEarning({ ...f.audit, requestId: "missing-registration", earningId: randomUUID() })).toThrow(/not found/);
+    expect(() => f.service.repayAdvance({ ...f.audit, requestId: "missing-advance", employeeId: f.employeeId, advanceId: randomUUID(), amount: "1.00", paymentDate: paidAt })).toThrow(/not found/);
+    expect(f.finance.listAccounts()).toEqual([]);
+    expect(f.cash.listCash(f.employeeId)).toEqual([]);
+    expect(f.cash.listSettlements(f.employeeId)).toEqual([]);
+  });
+
   it("preserves response-loss cash replay after closing and reopening a real database", () => {
     const f = fixture(key); const earning = f.earning();
     const input = { ...f.audit, requestId: "reopen", employeeId: f.employeeId, amount: "25000.00", paymentDate: paidAt, wages: [{ earningId: earning.id, amount: "25000.00" }] };
