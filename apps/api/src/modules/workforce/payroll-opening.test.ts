@@ -35,6 +35,35 @@ describe.each(["", "545-opening-public-test-key"])("opening review and attributa
     expect(f.opening.review(input).sources).toHaveLength(2);
   });
 
+  it("rolls back a correction if its audit event cannot be saved and preserves immutable events", () => {
+    const f = fixture(key);
+    const reviewed = f.opening.review({ ...f.audit, requestId: "audit-review", employeeId: f.employeeId, wages: "2000.00", advances: "0.00" });
+    const original = reviewed.sources[0]!;
+    const input = { ...f.audit, requestId: "audit-correction", employeeId: f.employeeId, kind: "WAGE" as const, expectedAmount: "2000.00", amount: "1900.00", reason: "Verified document" };
+    f.db.exec("CREATE TRIGGER refuse_correction_event BEFORE INSERT ON employee_opening_correction BEGIN SELECT RAISE(ABORT,'Injected audit failure'); END");
+    expect(() => f.opening.correct(input)).toThrow(/Injected audit failure/);
+    expect(f.finance.remaining(original.debtEntryId)).toBe("2000.00");
+    expect(f.opening.history(f.employeeId)).toEqual([]);
+    f.db.exec("DROP TRIGGER refuse_correction_event");
+    const saved = f.opening.correct(input);
+    expect(f.opening.correct(input)).toEqual(saved);
+    expect(f.opening.history(f.employeeId)).toHaveLength(1);
+    expect(() => f.db.prepare("UPDATE employee_opening_correction SET reason='Replace history'").run()).toThrow(/immutable/);
+    expect(() => f.db.prepare("DELETE FROM employee_opening_correction").run()).toThrow(/immutable/);
+    expect(() => f.db.exec("INSERT OR REPLACE INTO employee_opening_correction SELECT * FROM employee_opening_correction")).toThrow(/already exists/);
+  });
+
+  it("keeps voided corrections and the original before/new facts after another correction", () => {
+    const f = fixture(key);
+    const reviewed = f.opening.review({ ...f.audit, requestId: "void-review", employeeId: f.employeeId, wages: "2000.00", advances: "0.00" });
+    const source = reviewed.sources[0]!;
+    const first = f.opening.correct({ ...f.audit, requestId: "first", employeeId: f.employeeId, kind: "WAGE", expectedAmount: "2000.00", amount: "1900.00", reason: "First recollection" });
+    f.finance.forProducer({ type: "PAYROLL_OPENING", id: source.sourceId }).voidEntry({ ...f.audit, requestId: "void-first", entryId: first.id, voidReason: "Incorrect recollection" });
+    f.opening.correct({ ...f.audit, requestId: "second", employeeId: f.employeeId, kind: "WAGE", expectedAmount: "2000.00", amount: "200.00", reason: "Checked original document" });
+    expect(f.opening.history(f.employeeId).map(row => [row.oldAmount, row.newAmount, row.status])).toEqual([["2000.00", "1900.00", "VOIDED"], ["2000.00", "200.00", "LIVE"]]);
+    expect(f.finance.remaining(source.debtEntryId)).toBe("200.00");
+  });
+
   it("retains 2000, then 1900, then 200 as linked history without changing labor cost", () => {
     const f = fixture(key);
     expect(f.repository.getReview(f.employeeId)).toBeNull();

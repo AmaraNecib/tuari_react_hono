@@ -45,13 +45,12 @@ export class PayrollOpeningService {
   history(employeeId: string) {
     return this.repository.withTransaction(() => {
       const reviewed = this.repository.getReview(employeeId);
-      return (reviewed?.sources ?? []).flatMap(source => {
-        let previous = Money.parse(source.amount);
-        return this.finance.listEntries(source.debtAccountId).filter(row => row.correctionOfEntryId === source.debtEntryId && row.status === "LIVE").map(row => {
-          const oldAmount = previous.toWire();
-          previous = previous.add(Money.parse(row.signedAmountDzd));
-          return { id: row.id, kind: source.kind, sourceId: source.sourceId, oldAmount, newAmount: previous.toWire(), actorUserId: row.actorUserId, actorLabel: row.actorLabel, createdAt: row.createdAt, reason: row.note };
-        });
+      const entries = new Map((reviewed?.sources ?? []).flatMap(source => this.finance.listEntries(source.debtAccountId)).map(row => [row.id, row]));
+      return this.repository.listCorrections(employeeId).map(event => {
+        const source = reviewed?.sources.find(row => row.sourceId === event.sourceId);
+        const ledger = entries.get(event.id);
+        if (!source || !ledger || ledger.correctionOfEntryId !== source.debtEntryId || ledger.producerType !== "PAYROLL_OPENING" || ledger.producerId !== source.sourceId || ledger.debtAccountId !== source.debtAccountId || Money.parse(event.newAmount).subtract(Money.parse(event.oldAmount)).toWire() !== ledger.signedAmountDzd || ledger.actorUserId !== event.actorUserId || ledger.actorLabel !== event.actorLabel || ledger.createdAt !== event.createdAt || ledger.note !== event.reason) throw new Error("Opening correction history ledger mismatch");
+        return { ...event, status: ledger.status, voidedAt: ledger.voidedAt, voidedBy: ledger.voidedBy, voidReason: ledger.voidReason };
       });
     });
   }
@@ -66,6 +65,7 @@ export class PayrollOpeningService {
       if (current.toWire() !== expectedAmount) throw new PayrollDomainError("Opening amount changed; refresh before confirming", "CONFLICT");
       const producer = this.finance.forProducer({ type: "PAYROLL_OPENING", id: source.sourceId });
       const saved = producer.correctEntry({ requestId: key(requestId, "ledger"), entryId: source.debtEntryId, amountDzd: amount, currency: "DZD", reason, ...actor });
+      this.repository.saveCorrection({ id: saved.id, sourceId: source.sourceId, oldAmount: current.toWire(), newAmount: amount, reason, createdAt: saved.createdAt, ...actor });
       return { id: saved.id, oldAmount: current.toWire(), newAmount: amount };
     });
   }
