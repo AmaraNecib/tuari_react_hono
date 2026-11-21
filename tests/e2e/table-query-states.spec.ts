@@ -26,6 +26,7 @@ test("catalog loading and API failure never claim an empty result, and retry rec
 
   await bootstrapOrSignIn(page)
   await page.getByRole("link", { name: "دليل العناصر", exact: true }).first().click()
+  await page.getByRole("button", { name: "دليل العناصر", exact: true }).click()
   await expect(page.getByRole("status").filter({ hasText: "جارٍ تحميل دليل العناصر" })).toBeVisible()
   await expect(page.getByText("لا توجد تعريفات عناصر حتى الآن.", { exact: true })).toBeHidden()
   const catalog = page.locator("section").filter({ has: page.getByRole("heading", { name: "العناصر الحالية", exact: true }) })
