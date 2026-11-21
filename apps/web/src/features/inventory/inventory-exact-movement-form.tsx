@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Quantity, type ExactInventoryClient, type InventoryItemDefinition, type ExactInventoryAsset } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
@@ -16,11 +16,14 @@ import type { ExactInventoryAction } from "./inventory-exact-queries"
 type Contents = Awaited<ReturnType<ExactInventoryClient["locationContents"]>>
 export function ExactInventoryMovementForm({ client, contents, definitions, locations, parties, source, pending, error, close, submit }: { client: ExactInventoryClient; contents: Contents; definitions: InventoryItemDefinition[]; locations: ExactInventoryLocation[]; parties: ExactInventoryParty[]; source: string; pending: boolean; error: string | null; close(): void; submit(command: ExactInventoryAction): Promise<void> }) {
   const { t, i18n } = useTranslation()
-  const options = [
+  const options = useMemo(() => [
     ...contents.consumables.filter(row => row.quantity > 0).map(row => ({ id: row.id, itemId: row.itemDefinitionId, label: `${row.itemName} · ${row.quantity}`, quantity: row.quantity, asset: null as ExactInventoryAsset | null, entryId: row.inventoryEntryId })),
     ...contents.assets.map(row => ({ id: row.id, itemId: row.itemDefinitionId, label: row.assetName, quantity: 1, asset: row, entryId: row.inventoryEntryId })),
-  ].filter(row => definitions.some(definition => definition.id === row.itemId && definition.isActive))
+  ].filter(row => definitions.some(definition => definition.id === row.itemId && definition.isActive)), [contents, definitions])
   const [pick, setPick] = useState(options[0]?.id ?? "")
+  useEffect(() => {
+    if (!options.some(row => row.id === pick)) setPick(options[0]?.id ?? "")
+  }, [options, pick])
   const [mode, setMode] = useState<"TRANSFER" | "SALE" | "GIFT" | "RETURN">("TRANSFER")
   const [quantity, setQuantity] = useState("1")
   const [destination, setDestination] = useState("")

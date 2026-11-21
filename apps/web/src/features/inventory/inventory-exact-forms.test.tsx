@@ -149,6 +149,19 @@ describe("exact inventory forms", () => {
   expect(screen.getByText("0.75")).toBeTruthy()
   expect(screen.queryByText("0.76")).toBeNull()
  })
+ it("selects arriving eligible stock and replaces a selection that becomes ineligible", async () => {
+  const submit = vi.fn().mockResolvedValue(undefined)
+  const props = { client: {} as ExactInventoryClient, contents, definitions: [] as InventoryItemDefinition[], locations, parties, source: "WAREHOUSE:warehouse", pending: false, error: null, close: () => {}, submit }
+  const view = wrapper(<ExactInventoryMovementForm {...props} />)
+  fireEvent.change(screen.getByRole("combobox", { name: "نوع العملية" }), { target: { value: "GIFT" } })
+  expect((screen.getByRole("combobox", { name: "المخزون المختار" }) as HTMLSelectElement).value).toBe("")
+  view.rerender(<ExactInventoryMovementForm {...props} definitions={definitions} />)
+  await waitFor(() => expect((screen.getByRole("combobox", { name: "المخزون المختار" }) as HTMLSelectElement).value).toBe("balance"))
+  expect((screen.getByRole("button", { name: "تأكيد التحويل" }) as HTMLButtonElement).disabled).toBe(false)
+  view.rerender(<ExactInventoryMovementForm {...props} definitions={[{ ...definitions[1]!, id: "material", isActive: false }]} />)
+  await waitFor(() => expect((screen.getByRole("combobox", { name: "المخزون المختار" }) as HTMLSelectElement).value).toBe(""))
+  expect((screen.getByRole("button", { name: "تأكيد التحويل" }) as HTMLButtonElement).disabled).toBe(true)
+ })
  it("preserves an omitted outbound price rather than submitting zero, and blocks overstock", async () => {
   const submit = vi.fn().mockResolvedValue(undefined)
   wrapper(<ExactInventoryMovementForm client={{} as ExactInventoryClient} contents={contents} definitions={definitions} locations={locations} parties={parties} source="WAREHOUSE:warehouse" pending={false} error={null} close={() => {}} submit={submit} />)
