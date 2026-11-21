@@ -10,7 +10,8 @@ import { useEmployeesQuery, useProjectsQuery, useWarehousesQuery, useExternalCou
 import { useInventoryItemDefinitionsQuery } from "@/features/inventory/inventory-hooks"
 import { useExactDebtSummary } from "@/features/debts/debts-exact-queries"
 import { useExactInventoryInvoices } from "@/features/inventory/inventory-exact-queries"
-import { Money } from "@tuari/contracts"
+import { DEBT_BALANCE_STATE_PHRASE, Money } from "@tuari/contracts"
+import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { financialClient } from "@/lib/orpc-client"
 import { UserJourneyTour } from "@/hooks/use-user-journey"
 import { SearchDialog, type SearchItem } from "@/components/ui/search-dialog"
@@ -249,11 +250,20 @@ export function HomeViewSignedInShell({
         : partyName && "fullName" in partyName
           ? partyName.fullName
           : t("search.unknownParty")
-      const phrase = account.direction === "PAYABLE" ? t("search.debtOwedByUs") : t("search.debtOwedToUs")
+      const balance = account.currentBalance
+      const zero = /^-?0\.00$/.test(balance)
+      const negative = balance.startsWith("-") && !zero
+      const state = zero
+        ? "settled"
+        : account.direction === "PAYABLE"
+          ? negative ? "creditWithUs" : "owedByUs"
+          : negative ? "creditWithThem" : "owedToUs"
+      const phrase = DEBT_BALANCE_STATE_PHRASE[state]
+      const amount = formatExactMoney(negative ? balance.slice(1) : balance, { aggregate: true, grouped: true }).text
       return {
         id: `debt-${account.id}`,
         title: name,
-        description: `${phrase} ${Money.parse(account.currentBalance).format({ grouped: true })} ${t("search.currency")}`,
+        description: `${phrase} ${amount} ${t("search.currency")}`,
         category: t("debts.label"),
         action: () => { window.location.href = "/debts" },
       }
