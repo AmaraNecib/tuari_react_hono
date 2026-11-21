@@ -28,8 +28,10 @@ project-cost still had 88.46% functions and 80% branches with that draft present
    empty out-of-range pagination. Attribute external debt to its counterparty
    with an exact independently entered 123.45 DZD amount, on both native drivers.
 4. Payroll command interface. Reject duplicate allocations, unreconciled cash,
-   absent earnings and absent advances. Assert no resulting accounts, cash or
-   settlements. Exercise both native drivers. Existing money guards stay intact.
+   absent earnings and absent advances. Refuse 10001 materialized rows from
+   one cash row, 9999 allocations and one advance before financial writes.
+   Assert no resulting accounts, cash or settlements. Exercise both native
+   drivers. Existing money guards stay intact.
 
 These are existing caller-facing interfaces, not newly introduced test seams.
 A zero-earning candidate failed the real schema's positive-total constraint.
@@ -60,4 +62,10 @@ Applied wisdom: inspect coverage branch lists, not merely lines; avoid synthetic
 paths when coverage reveals unreachable fallbacks; preserve exact split and
 reversal operands rather than rounded derived rates. Adapter-exclusion layout
 advice is excluded because no includes, exclusions or adapter locations change.
-Review and CI acceptance remain parent-owned and pending.
+The single full API run at `86279521` passed 147 files, 2402 tests, with three
+Windows-dependent skips. Functions improved to 99.29%, branches to 98.97%.
+The global gate still failed, with 2119 of 2141 branches covered, one short.
+The subsequently added payroll materialization case targets the observed
+uncovered branch at payroll.service.ts:39. Only focused proof follows it.
+No second full run is claimed or authorized. A fresh full gate belongs to the
+parent or CI. Review and CI acceptance remain parent-owned and pending.

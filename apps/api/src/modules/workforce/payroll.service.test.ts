@@ -163,6 +163,16 @@ describe.each([["plain", ""], ["keyed", "558-command-public-key"]])("payroll com
     expect(f.sources.getEarning(earning.id)?.original).toBeNull();
   });
 
+  it("refuses cash materialization above 10000 rows before any financial writes", () => {
+    const f = fixture(key);
+    const wages = Array.from({ length: 9999 }, (_, index) => ({ earningId: `earning-${index}`, amount: "1.00" }));
+    // One cash row, 9999 allocations and one advance exceed the aggregate budget.
+    expect(() => f.service.recordCash({ ...f.audit, requestId: "over-budget", employeeId: f.employeeId, amount: "10000.00", paymentDate: paidAt, wages, advanceAmount: "1.00" })).toThrow(/Payroll cash materialization limit exceeded/);
+    expect(f.finance.listAccounts()).toEqual([]);
+    expect(f.cash.listCash(f.employeeId)).toEqual([]);
+    expect(f.db.prepare("SELECT count(*) AS count FROM exact_finance_command").get()).toEqual({ count: 0 });
+  });
+
   it("refuses absent earnings and advances without creating cash or debt", () => {
     const f = fixture(key);
     expect(() => f.service.registerEarning({ ...f.audit, requestId: "missing-registration", earningId: randomUUID() })).toThrow(/not found/);
