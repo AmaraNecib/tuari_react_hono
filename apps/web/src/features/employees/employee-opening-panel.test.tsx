@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@/i18n"
-import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { PayrollOpeningOutput } from "@tuari/contracts"
 import { ORPCError } from "@orpc/client"
@@ -22,7 +22,80 @@ beforeEach(() => {
   vi.clearAllMocks()
   Object.defineProperty(navigator, "locks", { configurable: true, value: { request: (_name: string, callback: () => Promise<unknown>) => callback() } })
 })
+function deferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>(done => { resolve = done })
+  return { promise, resolve }
+}
+function prepareCorrection() {
+  fireEvent.change(screen.getByRole("textbox", { name: "المبلغ المصحح" }), { target: { value: "1900" } })
+  fireEvent.change(screen.getByRole("textbox", { name: "سبب التصحيح" }), { target: { value: "Verified document" } })
+  fireEvent.click(screen.getByRole("button", { name: "مراجعة التصحيح" }))
+  fireEvent.click(screen.getByRole("button", { name: "تأكيد حفظ التصحيح" }))
+}
+
 describe("opening correction confirmation", () => {
+  it.each(["missing", "replacement", "corrupt"])("reconciles %s durable state after successful dispatch loses ownership", async state => {
+    const response = deferred()
+    mocks.correct.mockImplementationOnce(() => response.promise)
+    render(<EmployeeOpeningPanel employeeId="employee-1" />)
+    prepareCorrection()
+    await waitFor(() => expect(mocks.correct).toHaveBeenCalledTimes(1))
+    const key = localStorage.key(0)!
+    const replacement = JSON.parse(localStorage.getItem(key)!)
+    replacement.payload.requestId = crypto.randomUUID()
+    if (state === "missing") localStorage.removeItem(key)
+    else localStorage.setItem(key, state === "corrupt" ? "broken" : JSON.stringify(replacement))
+    await act(async () => { response.resolve(); await response.promise })
+    if (state === "missing") {
+      await waitFor(() => expect((screen.getByRole("button", { name: "مراجعة التصحيح" }) as HTMLButtonElement).disabled).toBe(false))
+      expect(screen.queryByRole("alert")).toBeNull()
+    } else if (state === "replacement") {
+      fireEvent.click(await screen.findByRole("button", { name: "إعادة إرسال الطلب نفسه" }))
+      await waitFor(() => expect(mocks.correct).toHaveBeenCalledTimes(2))
+      expect(mocks.correct.mock.calls[1]![0].requestId).toBe(replacement.payload.requestId)
+    } else {
+      expect(screen.getByRole("alert")).toBeTruthy()
+      expect((screen.getByRole("button", { name: "إعادة إرسال الطلب نفسه" }) as HTMLButtonElement).disabled).toBe(true)
+      expect(localStorage.getItem(key)).toBe("broken")
+    }
+    expect(mocks.refetch).toHaveBeenCalled()
+  })
+
+  it.each(["missing", "replacement", "corrupt"])("reloads %s intent when a queued retry acquires its lock", async state => {
+    mocks.correct.mockRejectedValueOnce(new Error("Response lost"))
+    render(<EmployeeOpeningPanel employeeId="employee-1" />)
+    prepareCorrection()
+    await screen.findByRole("button", { name: "إعادة إرسال الطلب نفسه" })
+    const entered = deferred()
+    const release = deferred()
+    Object.defineProperty(navigator, "locks", { configurable: true, value: { request: async (_name: string, callback: () => Promise<unknown>) => {
+      entered.resolve(); await release.promise; return callback()
+    } } })
+    fireEvent.click(screen.getByRole("button", { name: "إعادة إرسال الطلب نفسه" }))
+    await entered.promise
+    const key = localStorage.key(0)!
+    const replacement = JSON.parse(localStorage.getItem(key)!)
+    replacement.payload.requestId = crypto.randomUUID()
+    if (state === "missing") localStorage.removeItem(key)
+    else localStorage.setItem(key, state === "corrupt" ? "broken" : JSON.stringify(replacement))
+    await act(async () => { release.resolve(); await release.promise })
+    expect(mocks.correct).toHaveBeenCalledTimes(1)
+    if (state === "missing") {
+      await waitFor(() => expect((screen.getByRole("button", { name: "مراجعة التصحيح" }) as HTMLButtonElement).disabled).toBe(false))
+      expect(screen.queryByRole("alert")).toBeNull()
+      expect(mocks.refetch).toHaveBeenCalledTimes(1)
+    } else if (state === "replacement") {
+      expect(JSON.parse(localStorage.getItem(key)!).payload.requestId).toBe(replacement.payload.requestId)
+      mocks.correct.mockResolvedValueOnce(mocks.opening)
+      fireEvent.click(screen.getByRole("button", { name: "إعادة إرسال الطلب نفسه" }))
+      await waitFor(() => expect(mocks.correct).toHaveBeenCalledTimes(2))
+      expect(mocks.correct.mock.calls[1]![0].requestId).toBe(replacement.payload.requestId)
+    } else {
+      expect((screen.getByRole("button", { name: "إعادة إرسال الطلب نفسه" }) as HTMLButtonElement).disabled).toBe(true)
+      expect(localStorage.getItem(key)).toBe("broken")
+    }
+  })
   it("requires actual cash refund confirmation before applying a saved pending correction", async () => {
     const original = structuredClone(mocks.opening)
     try {
@@ -46,10 +119,44 @@ describe("opening correction confirmation", () => {
     try {
       mocks.opening.proposals = ["WAGE", "ADVANCE"].map((kind, index) => ({ id: `proposal-${index}`, sourceId: `source-${index}`, employeeId: "employee-1", kind: kind as "WAGE" | "ADVANCE", oldAmount: "2000.00", newAmount: "200.00", requiredRefund: "1300.00", reason: "Verified opening", actorUserId: "user-1", actorLabel: "Owner", transactionId: `txn-${index}`, createdAt: "2026-11-01T00:00:00.000Z", status: "PENDING" as const, resolution: null }))
       render(<EmployeeOpeningPanel employeeId="employee-1" />)
-      const checkboxes = screen.getAllByRole("checkbox")
+      const checkboxes = screen.getAllByRole("checkbox") as HTMLInputElement[]
+      const prepareButtons = screen.getAllByRole("button", { name: "مراجعة رد النقد وتطبيق التصحيح" }) as HTMLButtonElement[]
       fireEvent.click(checkboxes[0]!)
       expect(checkboxes[0]!.checked).toBe(true)
       expect(checkboxes[1]!.checked).toBe(false)
+      expect(prepareButtons[0]!.disabled).toBe(false)
+      expect(prepareButtons[1]!.disabled).toBe(true)
+      fireEvent.click(prepareButtons[1]!)
+      expect(screen.queryByRole("button", { name: "تأكيد رد النقد وتطبيق التصحيح" })).toBeNull()
+      expect(mocks.reconcile).not.toHaveBeenCalled()
+      mocks.reconcile.mockResolvedValue(mocks.opening)
+      fireEvent.click(prepareButtons[0]!)
+      fireEvent.click(screen.getByRole("button", { name: "تأكيد رد النقد وتطبيق التصحيح" }))
+      await waitFor(() => expect(mocks.reconcile).toHaveBeenCalledTimes(1))
+      const wagePayload = mocks.reconcile.mock.calls[0]![0]
+      expect(wagePayload).toMatchObject({ proposalId: "proposal-0", confirmCashRefund: true, refundAmount: "1300.00" })
+      await waitFor(() => expect(localStorage.length).toBe(0))
+      await waitFor(() => expect((screen.getAllByRole("checkbox")[1] as HTMLInputElement).disabled).toBe(false))
+      const freshCheckboxes = screen.getAllByRole("checkbox") as HTMLInputElement[]
+      expect(freshCheckboxes.every(checkbox => !checkbox.checked)).toBe(true)
+      expect((screen.getAllByRole("button", { name: "مراجعة رد النقد وتطبيق التصحيح" })[1] as HTMLButtonElement).disabled).toBe(true)
+      fireEvent.click(freshCheckboxes[1]!)
+      await waitFor(() => {
+        expect(freshCheckboxes[0]!.checked).toBe(false)
+        expect(freshCheckboxes[1]!.checked).toBe(true)
+      })
+      const wagePrepare = screen.getAllByRole("button", { name: "مراجعة رد النقد وتطبيق التصحيح" })[0] as HTMLButtonElement
+      expect(wagePrepare.disabled).toBe(true)
+      fireEvent.click(wagePrepare)
+      expect(screen.queryByRole("button", { name: "تأكيد رد النقد وتطبيق التصحيح" })).toBeNull()
+      expect(mocks.reconcile).toHaveBeenCalledTimes(1)
+      fireEvent.click(screen.getAllByRole("button", { name: "مراجعة رد النقد وتطبيق التصحيح" })[1]!)
+      fireEvent.click(screen.getByRole("button", { name: "تأكيد رد النقد وتطبيق التصحيح" }))
+      await waitFor(() => expect(mocks.reconcile).toHaveBeenCalledTimes(2))
+      const advancePayload = mocks.reconcile.mock.calls[1]![0]
+      expect(advancePayload).toMatchObject({ proposalId: "proposal-1", confirmCashRefund: true, refundAmount: "1300.00" })
+      expect(wagePayload.requestId).not.toBe(advancePayload.requestId)
+      await waitFor(() => expect(localStorage.length).toBe(0))
     } finally { Object.assign(mocks.opening, original) }
   })
   it("does not treat unknown as zero until an explicit review is confirmed", async () => {

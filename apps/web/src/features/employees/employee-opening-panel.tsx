@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { ORPCError } from "@orpc/client"
 import { Money } from "@tuari/contracts"
@@ -56,27 +56,29 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
   const data = query.data
   const busy = dispatching || reviewMutation.isPending || correctMutation.isPending || reconcileMutation.isPending || cancelMutation.isPending
 
+  const load = useCallback(() => {
+    try {
+      const storage = getPayrollStorage()
+      if (!storage) throw new Error("Missing storage")
+      const results = actions.map(action => loadPayrollPendingIntent(action, identity, storage))
+      if (results.some(result => !result.ok)) throw new Error("Invalid stored intent")
+      const saved = results.flatMap(result => result.ok && result.pending ? [result.pending] : [])
+      if (saved.length > 1) throw new Error("Conflicting opening intents")
+      setPending(saved[0] ?? null)
+      setRefusedAttempt(null)
+      setPreview(null)
+      setCashConfirmedProposalId(null)
+      setStorageError(false)
+      setReady(true)
+    } catch { setStorageError(true); setReady(false) }
+  }, [identity])
+
   useEffect(() => {
     alive.current = true
-    const load = () => {
-      try {
-        const storage = getPayrollStorage()
-        if (!storage) throw new Error("Missing storage")
-        const results = actions.map(action => loadPayrollPendingIntent(action, identity, storage))
-        if (results.some(result => !result.ok)) throw new Error("Invalid stored intent")
-        const saved = results.flatMap(result => result.ok && result.pending ? [result.pending] : [])
-        if (saved.length > 1) throw new Error("Conflicting opening intents")
-        setPending(saved[0] ?? null)
-        setRefusedAttempt(null)
-        setPreview(null)
-        setStorageError(false)
-        setReady(true)
-      } catch { setStorageError(true); setReady(false) }
-    }
     load()
     window.addEventListener("storage", load)
     return () => { alive.current = false; window.removeEventListener("storage", load) }
-  }, [identity])
+  }, [load])
 
   async function send(intent: OpeningIntent) {
     const storage = getPayrollStorage()
@@ -92,7 +94,7 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
       else if (attempted.action === "opening-reconcile") await reconcileMutation.mutateAsync(attempted.payload)
       else await cancelMutation.mutateAsync(attempted.payload)
       if (!clearPayrollPendingIntent(attempted.action, identity, attempted.payload.requestId, storage)) {
-        if (alive.current) { setPending(null); setError(""); setReady(false); void query.refetch() }
+        if (alive.current) { load(); setError(""); void query.refetch() }
         return
       }
       if (alive.current) { setPending(null); setError(""); setAmount(""); setReason(""); setCashConfirmedProposalId(null) }
@@ -121,13 +123,8 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
           const storage = getPayrollStorage()
           if (!storage) throw new Error("Missing storage")
           const current = loadPayrollPendingIntent(intent.action, identity, storage)
-          if (!current.ok) throw new Error("Invalid stored intent")
-          if (!current.pending || current.pending.payload.requestId !== intent.payload.requestId) {
-            const results = actions.map(action => loadPayrollPendingIntent(action, identity, storage))
-            if (results.some(result => !result.ok)) throw new Error("Invalid stored intent")
-            const saved = results.flatMap(result => result.ok && result.pending ? [result.pending] : [])
-            if (saved.length > 1) throw new Error("Conflicting opening intents")
-            setPending(saved[0] ?? null); setPreview(null); setReady(true); setError("")
+          if (!current.ok || !current.pending || current.pending.payload.requestId !== intent.payload.requestId) {
+            load(); setError("")
             await query.refetch()
             return
           }
