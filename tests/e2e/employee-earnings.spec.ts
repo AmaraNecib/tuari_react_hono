@@ -56,6 +56,8 @@ async function createEmployee(page: Page, input: {
     await selectOptionContaining(row.getByLabel("المشروع"), input.project)
   }
   await page.getByRole("button", { name: "حفظ العامل", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "مراجعة الرصيد السابق، خطوة اختيارية", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "إنهاء ومتابعة المراجعة لاحقاً", exact: true }).click()
   await expect(page.getByRole("heading", { name: "العاملون" })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText(`${input.firstName} ${input.lastName}`)).toBeVisible()
 }

@@ -19,6 +19,8 @@ test("payroll fixture UI retains an uncertain advance across native tabs and rel
   await row.getByLabel("رقم الهاتف").fill(`055${Date.now().toString().slice(-7)}`)
   await row.getByLabel("صلاحية التطبيق").selectOption({ label: "مدير مشروع" })
   await page.getByRole("button", { name: "حفظ العامل", exact: true }).click()
+  await expect(page.getByRole("heading", { name: "مراجعة الرصيد السابق، خطوة اختيارية", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "إنهاء ومتابعة المراجعة لاحقاً", exact: true }).click()
   await page.getByRole("row").filter({ hasText: name }).getByRole("button", { name: /^عرض$/ }).click()
   const employeeId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1)!
   const fixture = {
