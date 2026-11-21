@@ -110,12 +110,107 @@ describe("injected exact debt page", () => {
     const input = within(dialog).getByRole("textbox", { name: "مبلغ الدفعة" })
     fireEvent.change(input, { target: { value: "٠٫٣١" } })
     expect((within(dialog).getByRole("button", { name: "تأكيد الحفظ" }) as HTMLButtonElement).disabled).toBe(true)
+    expect(within(dialog).queryByRole("region", { name: "معاينة الدفعة" })).toBeNull()
     fireEvent.click(within(dialog).getByRole("button", { name: "كامل المبلغ" }))
     expect((input as HTMLInputElement).value).toBe("0.30")
     fireEvent.change(input, { target: { value: "٠٫١٠" } })
+    expect(within(dialog).getByRole("region", { name: "معاينة الدفعة" }).textContent).toContain("0.1")
+    expect(within(dialog).getByRole("region", { name: "معاينة الدفعة" }).textContent).toContain("0.2")
     fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
     await waitFor(() => expect(client.pay).toHaveBeenCalledTimes(1))
     expect(client.pay.mock.calls[0]?.[0]).toMatchObject({ debtEntryId: entry.id, amountDzd: "0.10", paymentMethod: "CASH", requestId: expect.any(String) })
+  })
+  it.each(["PAYABLE", "RECEIVABLE"] as const)("previews the selected original and submits retained localized text in %s accounts", async direction => {
+    const { client, query, unmount, remount } = fixture()
+    await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ })
+    const selectedAccount = { ...account, direction }
+    const original = { ...entry, remainingDzd: "2500.00" }
+    const unrelated = { ...entry, id: "unrelated", remainingDzd: "75.00", postingSequence: 2 }
+    client.summary.mockResolvedValue({ accounts: [selectedAccount], grossPayableDzd: direction === "PAYABLE" ? account.currentBalance : "0.00", grossReceivableDzd: direction === "RECEIVABLE" ? account.currentBalance : "0.00" })
+    client.detail.mockResolvedValue({ account: selectedAccount, entries: [original, unrelated] })
+    await act(async () => { await query.invalidateQueries() })
+    fireEvent.click(await screen.findByRole("button", { name: direction === "PAYABLE" ? /المورد أحمد · مستحقات علينا/ : /المورد أحمد · مستحقات لنا/ }))
+    await screen.findByRole("region", { name: "جدول حركات الدين" })
+    expect(screen.getByRole("heading", { name: direction === "PAYABLE" ? "حركات الحساب · مستحقات علينا" : "حركات الحساب · مستحقات لنا" })).toBeTruthy()
+    fireEvent.click(within(document.querySelector(`[data-entry-id="${entry.id}"]`) as HTMLElement).getByRole("button", { name: "تسجيل دفعة" }))
+    let dialog = await screen.findByRole("dialog")
+    const input = within(dialog).getByRole("textbox", { name: "مبلغ الدفعة" }) as HTMLInputElement
+    fireEvent.change(input, { target: { value: "2 000.50" } })
+    expect(input.value).toBe("2 000.50")
+    const preview = within(dialog).getByRole("region", { name: "معاينة الدفعة" })
+    expect(within(preview).getByText("2,000.5").closest("p")?.textContent).toContain("مبلغ الدفعة")
+    expect(within(preview).getByText("499.5").closest("p")?.textContent).toContain("الرصيد بعد الدفعة")
+    expect(within(preview).queryByRole("textbox")).toBeNull()
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
+    await waitFor(() => expect(client.pay).toHaveBeenCalledTimes(1))
+    expect(client.pay.mock.calls[0]?.[0]).toMatchObject({ debtEntryId: entry.id, amountDzd: "2000.50", paymentMethod: "CASH" })
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    // A server reload, not the preview, owns the new remaining amount.
+    client.detail.mockResolvedValue({ account: selectedAccount, entries: [{ ...original, remainingDzd: "499.50" }, unrelated] })
+    unmount()
+    remount()
+    fireEvent.click(await screen.findByRole("button", { name: direction === "PAYABLE" ? /المورد أحمد · مستحقات علينا/ : /المورد أحمد · مستحقات لنا/ }))
+    await screen.findByText("499.5")
+    fireEvent.click(within(document.querySelector('[data-entry-id="unrelated"]') as HTMLElement).getByRole("button", { name: "تسجيل دفعة" }))
+    dialog = await screen.findByRole("dialog")
+    expect((within(dialog).getByRole("textbox", { name: "مبلغ الدفعة" }) as HTMLInputElement).value).toBe("")
+    expect(within(dialog).queryByRole("region", { name: "معاينة الدفعة" })).toBeNull()
+    fireEvent.click(within(dialog).getByRole("button", { name: "كامل المبلغ" }))
+    expect(within(within(dialog).getByRole("region", { name: "معاينة الدفعة" })).getByText("75")).toBeTruthy()
+    expect(within(within(dialog).getByRole("region", { name: "معاينة الدفعة" })).getByText("0")).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
+    await waitFor(() => expect(client.pay).toHaveBeenCalledTimes(2))
+    expect(client.pay.mock.calls[1]?.[0]).toMatchObject({ debtEntryId: "unrelated", amountDzd: "75.00" })
+  })
+  it.each([
+    ["", false], [" ", false], ["-", true], [".", true], ["20 00.50", true], ["2,000 000.50", true],
+    ["0", false], ["-0.01", false], ["2500.01", true], ["1.001", true], ["92233720368547758.08", true], ["0".repeat(129), true],
+  ] as const)("never projects or writes invalid payment draft %j", async (draft, ariaInvalid) => {
+    const { client } = fixture()
+    client.detail.mockResolvedValue({ account, entries: [{ ...entry, remainingDzd: "2500.00" }] })
+    await openAccount()
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دفعة" }))
+    const dialog = await screen.findByRole("dialog")
+    const input = within(dialog).getByRole("textbox", { name: "مبلغ الدفعة" }) as HTMLInputElement
+    fireEvent.change(input, { target: { value: draft } })
+    fireEvent.blur(input)
+    expect(input.value).toBe(draft)
+    if (ariaInvalid) expect(input.getAttribute("aria-invalid")).toBe("true")
+    expect(within(dialog).queryByRole("region", { name: "معاينة الدفعة" })).toBeNull()
+    expect((within(dialog).getByRole("button", { name: "تأكيد الحفظ" }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.submit(input.closest("form")!)
+    await act(async () => {})
+    expect(client.pay).not.toHaveBeenCalled()
+  })
+  it.each([
+    ["0".repeat(127) + "1", "1.00", "1", "92,233,720,368,547,757.07"],
+    ["٠٫٠١", "0.01", "0.01", "92,233,720,368,547,758.06"],
+    ["92 233 720 368 547 758.06", "92233720368547758.06", "92,233,720,368,547,758.06", "0.01"],
+    ["92233720368547758.07", "92233720368547758.07", "92,233,720,368,547,758.07", "0"],
+  ])("preserves large original cents for %s beneath a wide account total", async (draft, canonical, paid, remaining) => {
+    const { client, query } = fixture()
+    await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ })
+    client.summary.mockResolvedValue({ accounts: [account, { ...account, id: "second", externalCounterpartyId: "other", currentBalance: "92233720368547758.07" }], grossPayableDzd: "92323792361095168.00", grossReceivableDzd: "0.00" })
+    client.detail.mockResolvedValue({ account, entries: [{ ...entry, remainingDzd: "92233720368547758.07" }] })
+    await act(async () => { await query.invalidateQueries() })
+    expect(await screen.findByText("92,323,792,361,095,168")).toBeTruthy()
+    await openAccount()
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دفعة" }))
+    const dialog = await screen.findByRole("dialog")
+    const input = within(dialog).getByRole("textbox", { name: "مبلغ الدفعة" }) as HTMLInputElement
+    fireEvent.change(input, { target: { value: draft } })
+    expect(input.value).toBe(draft)
+    const preview = within(dialog).getByRole("region", { name: "معاينة الدفعة" })
+    expect(within(preview).getByText(paid)).toBeTruthy()
+    expect(within(preview).getByText(remaining)).toBeTruthy()
+    if (canonical === "92233720368547758.07") {
+      fireEvent.click(within(dialog).getByRole("button", { name: "كامل المبلغ" }))
+      expect(input.value).toBe("92233720368547758.07")
+      expect(within(preview).getByText("0")).toBeTruthy()
+    }
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
+    await waitFor(() => expect(client.pay).toHaveBeenCalledTimes(1))
+    expect(client.pay.mock.calls[0]?.[0]).toMatchObject({ debtEntryId: entry.id, amountDzd: canonical })
   })
   it("keeps the same request key after uncertain transport failure and retry", async () => {
     const { client } = fixture()

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import type { ExactDebtsClient, ExactDebtDetail, ExactDebtAccount } from "@tuari/contracts"
 import { AppDate } from "@/components/app-date"
@@ -142,6 +143,7 @@ export function ExactDebtsPage({ client, parties, scopedParty }: { client: Exact
 }
 
 function DebtActionDialog({ action, accountId, canOpen, canAdvance, pending, error, onClose, onSubmit }: { action: Action; accountId: string; canOpen: boolean; canAdvance: boolean; pending: boolean; error: string | null; onClose: () => void; onSubmit: (command: ExactDebtCommand) => Promise<void> }) {
+  const { t } = useTranslation()
   const [draft, setDraft] = useState("")
   const [reason, setReason] = useState("")
   const [method, setMethod] = useState<"CASH" | "BANK_TRANSFER" | "CHECK">("CASH")
@@ -149,6 +151,9 @@ function DebtActionDialog({ action, accountId, canOpen, canAdvance, pending, err
   const parsed = amount(draft, action.kind === "pay")
   const maximum = action.kind === "pay" ? action.entry.remainingDzd! : undefined
   const exceeds = maximum !== undefined && parsed !== null && parseLocalizedMoneyInput(parsed).compare(parseLocalizedMoneyInput(maximum)) > 0
+  const projectedRemaining = action.kind === "pay" && parsed !== null && !exceeds
+    ? parseLocalizedMoneyInput(maximum!).subtract(parseLocalizedMoneyInput(parsed))
+    : null
   const needsAmount = action.kind === "pay" || action.kind === "correct" || action.kind === "post"
   const needsReason = action.kind !== "pay" && action.kind !== "settle"
   const valid = (!needsAmount || (parsed !== null && parsed !== "0.00" && !exceeds)) && (!needsReason || Boolean(reason.trim()))
@@ -171,6 +176,7 @@ function DebtActionDialog({ action, accountId, canOpen, canAdvance, pending, err
     <form className="min-w-0 space-y-4" onSubmit={event => { event.preventDefault(); void submit().catch(() => {}) }}>
       {action.kind === "post" && <label className="block space-y-2 text-sm"><span>نوع الحركة</span><NativeSelect aria-label="نوع الحركة" value={postType} disabled={pending} onChange={event => setPostType(event.target.value as typeof postType)}><option value="ADJUSTMENT">تعديل</option>{canOpen && <option value="OPENING">رصيد افتتاحي</option>}{canAdvance && <option value="ADVANCE">سلفة للعامل</option>}</NativeSelect></label>}
       {needsAmount && <CurrencyAmountInput exact label={action.kind === "correct" ? "المبلغ المتفق عليه بعد التصحيح" : action.kind === "post" ? "مبلغ الحركة، موجب أو سالب" : "مبلغ الدفعة"} value={draft} onChange={setDraft} maxAmount={maximum} onPayFull={maximum ? () => setDraft(maximum) : undefined} disabled={pending} />}
+      {action.kind === "pay" && projectedRemaining !== null && <section aria-label={t("debts.payment.preview")} aria-live="polite" className="rounded-lg border border-border p-3 text-sm"><p>{t("debts.payment.preview")}</p><p>{t("debts.payment.amount")}: <MoneyValue exact value={parsed!} currencyLabel="دج" /></p><p>{t("debts.payment.balanceAfter")}: <MoneyValue exact value={projectedRemaining.toWire()} currencyLabel="دج" /></p></section>}
       {action.kind === "pay" && <label className="block space-y-2 text-sm"><span>طريقة الدفع</span><NativeSelect aria-label="طريقة الدفع" value={method} onChange={event => setMethod(event.target.value as typeof method)} disabled={pending}><option value="CASH">نقداً</option><option value="BANK_TRANSFER">تحويل بنكي</option><option value="CHECK">شيك</option></NativeSelect></label>}
       <label className="block space-y-2 text-sm"><span>{needsReason ? "السبب، مطلوب" : "ملاحظة، اختيارية"}</span><Textarea aria-label={needsReason ? "السبب، مطلوب" : "ملاحظة، اختيارية"} value={reason} maxLength={1000} onChange={event => setReason(event.target.value)} disabled={pending} /></label>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
