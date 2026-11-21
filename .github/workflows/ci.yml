@@ -293,9 +293,25 @@ jobs:
           # map-derived, but never splice shipped data into shell source.
           E2E_SPECS: ${{ needs.detect.outputs.e2e_specs }}
         run: |
+          pnpm --filter @tuari/contracts build
           pnpm exec playwright install --with-deps chromium
-          # shellcheck disable=SC2086  # E2E_SPECS is an intentional space-separated list
-          pnpm test:e2e $E2E_SPECS
+          # The connected-exact config owns its isolated API, web server, and run directory.
+          read -r -a selected_specs <<< "$E2E_SPECS"
+          generic_specs=()
+          connected_exact=false
+          for spec in "${selected_specs[@]}"; do
+            if [ "$spec" = "tests/e2e/payroll-connected-exact.spec.ts" ]; then
+              connected_exact=true
+            else
+              generic_specs+=("$spec")
+            fi
+          done
+          if [ "${#generic_specs[@]}" -gt 0 ]; then
+            pnpm test:e2e "${generic_specs[@]}"
+          fi
+          if [ "$connected_exact" = true ]; then
+            pnpm exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts
+          fi
 
       - name: Upload Playwright HTML report
         if: needs.detect.outputs.e2e_mode != 'skip' && !cancelled()

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,15 @@ import {
 const rootDir = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 const selectorPath = path.join(rootDir, 'scripts', 'ci', 'e2e-selection.mjs');
 const specDir = path.join(rootDir, 'tests', 'e2e');
+
+test('CI builds contracts and runs connected-exact only with its dedicated config', () => {
+  const workflow = readFileSync(path.join(rootDir, '.github/workflows/ci.yml'), 'utf8');
+  const e2eJob = workflow.slice(workflow.indexOf('  test-e2e:'), workflow.indexOf('\n  build:'));
+  assert.ok(e2eJob.indexOf('pnpm --filter @tuari/contracts build') < e2eJob.indexOf('pnpm exec playwright install'));
+  assert.match(e2eJob, /if \[ "\$spec" = "tests\/e2e\/payroll-connected-exact\.spec\.ts" \]; then/);
+  assert.match(e2eJob, /generic_specs\+=\("\$spec"\)/);
+  assert.match(e2eJob, /playwright test --config=playwright\.connected-exact\.config\.ts tests\/e2e\/payroll-connected-exact\.spec\.ts/);
+});
 
 test('globToRegExp: ** crosses directories, * does not, ? is one char', () => {
   assert.ok(globToRegExp('apps/web/src/lib/**').test('apps/web/src/lib/a/b.ts'));
