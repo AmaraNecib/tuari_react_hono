@@ -31,7 +31,7 @@
 .employee-account-summary dt { font-size: .875rem; color: var(--muted-foreground); }
 .employee-payroll > .employee-account-summary dd { font-size: 1.75rem; font-weight: 600; margin-top: .25rem; }
 .employee-account-breakdown summary { cursor: pointer; padding-block: .5rem; font-size: .875rem; }
-.employee-operation { border-inline-start: 3px solid var(--primary); padding-inline-start: 1rem; }
+.employee-operation { padding-block: .5rem; }
 .employee-opening-editor > form { padding-top: .75rem; }
 .employee-opening { background: var(--muted); }
 .employee-payroll [role="group"] { margin-top: 1.25rem; }

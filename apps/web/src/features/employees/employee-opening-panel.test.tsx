@@ -41,6 +41,18 @@ function prepareCorrection() {
 }
 
 describe("opening correction confirmation", () => {
+  it("names the repeatable correction action separately from its confirmation", () => {
+    const view = baseRender(<EmployeeOpeningPanel employeeId="employee-1" />)
+    const editor = view.container.querySelector<HTMLDetailsElement>(".employee-opening-editor")!
+    const action = screen.getByText("تصحيح الرصيد السابق", { exact: true })
+    expect(editor.open).toBe(false)
+    fireEvent.click(action)
+    expect(editor.open).toBe(true)
+    expect(screen.getByRole("button", { name: "مراجعة التصحيح" })).toBeTruthy()
+    fireEvent.click(action)
+    fireEvent.click(action)
+    expect(editor.open).toBe(true)
+  })
   it.each(["missing", "replacement", "corrupt"])("reconciles %s durable state after successful dispatch loses ownership", async state => {
     const response = deferred()
     mocks.correct.mockImplementationOnce(() => response.promise)

@@ -329,7 +329,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
             </div>)}
           </dl>
           <details className="employee-account-breakdown">
-            <summary>تفاصيل حساب الأجور والسلف</summary>
+            <summary>{t("payroll.breakdown")}</summary>
           <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
             {([
               ["approvedEarnings", data.summary.approvedEarnings],
@@ -413,8 +413,8 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
                 {busy ? t("payroll.saving") : t(`payroll.submit.${action}`)}
               </Button>
             )}
-            {!pending && action === "repay" && !selectedAdvance && !selectedOpeningAdvance ? <p className="text-sm text-muted-foreground">لا توجد سلفة متبقية للسداد.</p> : null}
-            {!pending && action === "offset" && (!selectedAdvance || !selectedEarning) ? <p className="text-sm text-muted-foreground">التسوية تتطلب أجراً معتمداً وسلفة حالية متبقيين. الرصيد السابق غير متاح للتسوية.</p> : null}
+            {!pending && action === "repay" && !selectedAdvance && !selectedOpeningAdvance ? <p className="text-sm text-muted-foreground">{t("payroll.noRepayableAdvance")}</p> : null}
+            {!pending && action === "offset" && (!selectedAdvance || !selectedEarning) ? <p className="text-sm text-muted-foreground">{t("payroll.offsetSourcesRequired")}</p> : null}
           </form></div>
           <details className="border-t border-border/60 pt-3">
             <summary className="cursor-pointer text-sm font-medium">{t("payroll.history")}</summary>

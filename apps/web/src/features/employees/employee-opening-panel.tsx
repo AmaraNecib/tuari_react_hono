@@ -207,7 +207,7 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
         <div><dt>{t("employeeOpening.advances")}</dt><dd><MoneyValue exact value={data.advances ?? "0.00"} currencyLabel={t("detailPages.salary.currency")} /></dd></div>
       </dl> : null}
       <details open={data.review === "UNREVIEWED" ? true : undefined} className="employee-opening-editor">
-      <summary>{t(data.review === "UNREVIEWED" ? "employeeOpening.review" : "employeeOpening.correct")}</summary>
+      <summary>{t(data.review === "UNREVIEWED" ? "employeeOpening.review" : "employeeOpening.editBalance")}</summary>
       <form onSubmit={prepare} className="max-w-3xl space-y-4">
         <fieldset disabled={busy || !ready || storageError || preview !== null} className="grid min-w-0 gap-3 [&>label]:min-w-0 sm:grid-cols-2">
           {data.review === "UNREVIEWED" ? <>
