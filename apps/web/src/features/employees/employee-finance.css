@@ -25,7 +25,15 @@
 .employee-payroll > dl dd { font-variant-numeric: tabular-nums; font-size: 1.125rem; }
 .employee-payroll > dl > div:nth-child(4),
 .employee-payroll > dl > div:nth-child(8) { color: var(--foreground); font-weight: 600; }
-.employee-payment-form { max-width: 48rem; }
+.employee-payment-form { max-width: 48rem; margin-top: 1rem; }
+.employee-account-summary { display: flex; flex-wrap: wrap; gap: 2rem; border-block: 1px solid var(--border); padding-block: 1rem; }
+.employee-account-summary > div { flex: 1; min-width: 12rem; }
+.employee-account-summary dt { font-size: .875rem; color: var(--muted-foreground); }
+.employee-payroll > .employee-account-summary dd { font-size: 1.75rem; font-weight: 600; margin-top: .25rem; }
+.employee-account-breakdown summary { cursor: pointer; padding-block: .5rem; font-size: .875rem; }
+.employee-operation { border-inline-start: 3px solid var(--primary); padding-inline-start: 1rem; }
+.employee-opening-editor > form { padding-top: .75rem; }
+.employee-opening { background: var(--muted); }
 .employee-payroll [role="group"] { margin-top: 1.25rem; }
 .employee-opening { margin-top: 2rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: 12px; }
 .employee-opening label { display: block; font-size: .875rem; line-height: 1.8; }

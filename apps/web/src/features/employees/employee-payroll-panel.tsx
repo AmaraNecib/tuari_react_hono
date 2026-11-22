@@ -314,7 +314,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
     <section className="employee-payroll space-y-4" aria-labelledby={`payroll-heading-${employeeId}`} dir="rtl">
       <div>
         <h3 id={`payroll-heading-${employeeId}`} className="text-lg font-semibold text-foreground">{t("payroll.title")}</h3>
-        <p className="text-sm text-muted-foreground">{t("payroll.description")}</p>
+
       </div>
       {data?.opening.reminder ? <p role="status" className="rounded-lg border border-border bg-muted/40 p-3 text-sm">{t("payroll.openingReminder")}</p> : null}
       {session.isError || (session.isSuccess && !identity) ? <p role="alert" className="text-sm text-destructive">{t("payroll.identityRequired")}</p> : null}
@@ -322,16 +322,22 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
       {payroll.isError && !data ? <p role="alert" className="text-sm text-destructive">{t("payroll.loadError", { code: visibleError(payroll.error) })}</p> : null}
       {data ? (
         <>
+          <dl className="employee-account-summary">
+            {(["wagesOwed", "advancesOwed"] as const).map(key => <div key={key}>
+              <dt>{t(`payroll.${key}`)}</dt>
+              <dd><MoneyValue exact aggregate value={aggregateMoney(data.summary[key])} currencyLabel={currencyLabel} /></dd>
+            </div>)}
+          </dl>
+          <details className="employee-account-breakdown">
+            <summary>تفاصيل حساب الأجور والسلف</summary>
           <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
             {([
               ["approvedEarnings", data.summary.approvedEarnings],
               ["wageCashPaid", data.summary.wageCashPaid],
               ["wagesOffset", data.summary.wagesOffset],
-              ["wagesOwed", data.summary.wagesOwed],
               ["advancesGiven", data.summary.advancesGiven],
               ["advancesCashRecovered", data.summary.advancesCashRecovered],
               ["advancesOffset", data.summary.advancesOffset],
-              ["advancesOwed", data.summary.advancesOwed],
               ["unallocatedEarnings", data.summary.unallocatedEarnings],
             ] as const).map(([key, value]) => (
               <div key={key} className="border-b border-border/60 py-2">
@@ -340,10 +346,8 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
               </div>
             ))}
           </dl>
-          {data.opening.wages !== null || data.opening.advances !== null ? (
-            <p className="text-xs text-muted-foreground">{t("payroll.openingNotIncluded")}</p>
-          ) : null}
-          <div className="flex flex-wrap gap-2" role="group" aria-label={t("payroll.actions")}>
+          </details>
+          <div className="employee-operation"><div className="flex flex-wrap gap-2" role="group" aria-label={t("payroll.actions")}>
             {(["cash", "offset", "repay"] as const).map(item => (
               <Button key={item} type="button" size="sm" variant={action === item ? "default" : "outline"} aria-pressed={action === item} onClick={() => setAction(item)} disabled={locked || busy}>
                 {t(`payroll.action.${item}`)}
@@ -405,11 +409,13 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
                 <Button type="button" disabled={busy || identityKey !== JSON.stringify(pending.identity)} onClick={() => void retryIntent(pending)}>{busy ? t("payroll.saving") : t("payroll.retry")}</Button>
               </div>
             ) : (
-              <Button type="submit" className="sm:col-span-2 sm:justify-self-start" disabled={busy || storageError || !identity || (action !== "cash" && availableAdvances.length === 0)}>
+              <Button type="submit" className="sm:col-span-2 sm:justify-self-start" disabled={busy || storageError || !identity || (action === "repay" && !selectedAdvance && !selectedOpeningAdvance) || (action === "offset" && (!selectedAdvance || !selectedEarning))}>
                 {busy ? t("payroll.saving") : t(`payroll.submit.${action}`)}
               </Button>
             )}
-          </form>
+            {!pending && action === "repay" && !selectedAdvance && !selectedOpeningAdvance ? <p className="text-sm text-muted-foreground">لا توجد سلفة متبقية للسداد.</p> : null}
+            {!pending && action === "offset" && (!selectedAdvance || !selectedEarning) ? <p className="text-sm text-muted-foreground">التسوية تتطلب أجراً معتمداً وسلفة حالية متبقيين. الرصيد السابق غير متاح للتسوية.</p> : null}
+          </form></div>
           <details className="border-t border-border/60 pt-3">
             <summary className="cursor-pointer text-sm font-medium">{t("payroll.history")}</summary>
             <ol className="mt-3 space-y-2 text-sm">

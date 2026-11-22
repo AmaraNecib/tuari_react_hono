@@ -187,8 +187,11 @@ export function EmployeeDetailsPage({
                 </Button>
               ) : null}
             </div>
-            <EmployeeEarningsHistory employeeId={employee.id} employeeNames={employeeNames} projectNames={projectNames} />
             <EmployeePayrollPanel employeeId={employee.id} />
+            <details>
+              <summary className="cursor-pointer py-3 text-sm font-medium">{t("earnings.historyTitle")}</summary>
+              <EmployeeEarningsHistory employeeId={employee.id} employeeNames={employeeNames} projectNames={projectNames} />
+            </details>
           </section>
 
         </div>

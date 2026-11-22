@@ -202,6 +202,12 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
         <label className="block">{t("employeeOpening.cancelReason")}<Textarea value={reason} onChange={event => setReason(event.target.value)} maxLength={1000} disabled={busy || preview !== null} /></label>
         <Button type="button" variant="outline" disabled={busy || preview !== null || !reason.trim() || !ready || storageError} onClick={() => prepareProposal(proposal.id, true)}>{t("employeeOpening.cancelProposal")}</Button>
       </div>)}</div> : null}
+      {data.review !== "UNREVIEWED" ? <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        <div><dt>{t("employeeOpening.wages")}</dt><dd><MoneyValue exact value={data.wages ?? "0.00"} currencyLabel={t("detailPages.salary.currency")} /></dd></div>
+        <div><dt>{t("employeeOpening.advances")}</dt><dd><MoneyValue exact value={data.advances ?? "0.00"} currencyLabel={t("detailPages.salary.currency")} /></dd></div>
+      </dl> : null}
+      <details open={data.review === "UNREVIEWED" ? true : undefined} className="employee-opening-editor">
+      <summary>{t(data.review === "UNREVIEWED" ? "employeeOpening.review" : "employeeOpening.correct")}</summary>
       <form onSubmit={prepare} className="max-w-3xl space-y-4">
         <fieldset disabled={busy || !ready || storageError || preview !== null} className="grid min-w-0 gap-3 [&>label]:min-w-0 sm:grid-cols-2">
           {data.review === "UNREVIEWED" ? <>
@@ -224,6 +230,7 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
         <p className="text-sm">{t("employeeOpening.unchangedHistory")}</p>
         <div className="flex flex-wrap gap-2"><Button type="button" disabled={busy || storageError} onClick={() => void dispatch(preview, true)}>{confirmLabel(preview)}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => setPreview(null)}>{t("employeeOpening.cancel")}</Button></div>
       </div> : null}
+      </details>
     </> : null}
     {data?.proposals.filter(proposal => proposal.status !== "PENDING").map(proposal => <p key={proposal.id} className="text-sm">{t(proposal.status === "APPLIED" ? "employeeOpening.appliedProposal" : "employeeOpening.cancelledProposal")}: <bdi>{proposal.oldAmount}</bdi> ← <bdi>{proposal.newAmount}</bdi> · {proposal.resolution?.reason}</p>)}
     {data?.refunds.length ? <div className="space-y-2 text-sm"><h4 className="font-medium">{t("employeeOpening.refundHistory")}</h4>{data.refunds.map(refund => <p key={refund.id}>{t(refund.direction === "IN" ? "employeeOpening.refundIn" : "employeeOpening.refundOut")}: <MoneyValue exact value={refund.amount} currencyLabel={t("detailPages.salary.currency")} /> · <AppDate value={refund.refundDate} /> · <bdi>{refund.actorLabel ?? refund.actorUserId ?? t("employeeOpening.unknownActor")}</bdi></p>)}</div> : null}

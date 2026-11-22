@@ -46,7 +46,7 @@ function renderPanel(employeeId = "employee-1") {
 
 afterEach(() => { cleanup(); localStorage.clear() })
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
   employeePayrollOutputSchema.parse(mocks.payroll)
   let tail = Promise.resolve()
   Object.defineProperty(navigator, "locks", { configurable: true, value: {
@@ -59,6 +59,43 @@ beforeEach(() => {
 })
 
 describe("employee payroll controls", () => {
+  it("repays an opening-only advance and retries the identical frozen request", async () => {
+    const advances = mocks.payroll.advances
+    mocks.payroll.advances = []
+    mocks.openingSources = [{ kind: "ADVANCE", sourceId: "opening-only", remaining: "300.00" }]
+    mocks.repay.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({ id: "receipt" })
+    try {
+      renderPanel()
+      fireEvent.click(screen.getByRole("button", { name: "سداد سلفة", pressed: false }))
+      fireEvent.change(screen.getByRole("textbox", { name: "مبلغ السداد النقدي" }), { target: { value: "300" } })
+      expect(screen.getByRole("button", { name: "تسجيل السداد" })).toHaveProperty("disabled", false)
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل السداد" }))
+      await screen.findByRole("button", { name: "إعادة العملية نفسها" })
+      const payload = mocks.repay.mock.calls[0]![0]
+      expect(payload).toMatchObject({ openingAdvanceId: "opening-only", amount: "300.00" })
+      expect(payload).not.toHaveProperty("advanceId")
+      fireEvent.click(screen.getByRole("button", { name: "إعادة العملية نفسها" }))
+      await waitFor(() => expect(mocks.repay).toHaveBeenCalledTimes(2))
+      expect(mocks.repay.mock.calls[1]![0]).toEqual(payload)
+      await waitFor(() => expect(localStorage.length).toBe(0))
+    } finally { mocks.payroll.advances = advances; mocks.openingSources = [] }
+  })
+
+  it("blocks repayment without a source and offset without a current earning", () => {
+    const original = structuredClone(mocks.payroll)
+    try {
+      mocks.payroll.advances = []
+      mocks.payroll.earnings = []
+      renderPanel()
+      fireEvent.click(screen.getByRole("button", { name: "سداد سلفة", pressed: false }))
+      expect(screen.getByRole("button", { name: "تسجيل السداد" })).toHaveProperty("disabled", true)
+      fireEvent.click(screen.getByRole("button", { name: "تسوية سلفة", pressed: false }))
+      expect(screen.getByRole("button", { name: "تسجيل التسوية" })).toHaveProperty("disabled", true)
+      expect(mocks.repay).not.toHaveBeenCalled()
+      expect(mocks.offset).not.toHaveBeenCalled()
+    } finally { Object.assign(mocks.payroll, original) }
+  })
+
   it("settles selected opening wages and advances through the existing payment controls", async () => {
     mocks.openingSources = [{ kind: "WAGE", sourceId: "opening-wage", remaining: "2000.00" }, { kind: "ADVANCE", sourceId: "opening-advance", remaining: "300.00" }]
     mocks.cash.mockResolvedValue({ id: "opening-payment" })

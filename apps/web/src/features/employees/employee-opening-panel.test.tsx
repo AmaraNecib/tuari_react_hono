@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@/i18n"
-import { act, fireEvent, render, screen, waitFor, cleanup } from "@testing-library/react"
+import { act, fireEvent, render as baseRender, screen, waitFor, cleanup } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { PayrollOpeningOutput } from "@tuari/contracts"
 import { ORPCError } from "@orpc/client"
@@ -22,6 +22,12 @@ beforeEach(() => {
   vi.clearAllMocks()
   Object.defineProperty(navigator, "locks", { configurable: true, value: { request: (_name: string, callback: () => Promise<unknown>) => callback() } })
 })
+function render(element: Parameters<typeof baseRender>[0]) {
+  const view = baseRender(element)
+  const disclosure = view.container.querySelector(".employee-opening-editor")
+  if (disclosure && !disclosure.hasAttribute("open")) fireEvent.click(disclosure.querySelector("summary")!)
+  return view
+}
 function deferred() {
   let resolve!: () => void
   const promise = new Promise<void>(done => { resolve = done })
