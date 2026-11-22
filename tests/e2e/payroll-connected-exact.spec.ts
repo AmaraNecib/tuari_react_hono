@@ -270,7 +270,7 @@ test("opening review is optional at creation and corrections retain confirmed hi
   await page.reload()
   const repaid = await rpc(page, "employeePayrollGet", { employeeId })
   expect(repaid.repayments).toHaveLength(1)
-  expect(repaid.repayments[0]).toMatchObject({ amount: "300.00", source: { kind: "OPENING" } })
+  expect(repaid.repayments[0]).toMatchObject({ amount: "300.00", source: { kind: "OPENING_ADVANCE" } })
   writeFileSync(test.info().outputPath("opening-300-persisted.json"), JSON.stringify(repaid, null, 2))
   await captureEmployeeFinance(page, "opening-300-committed")
   writeFileSync(test.info().outputPath("opening-receipts.json"), JSON.stringify({ employeeId, saved, requests, proposed, reconciled, refundRequests }, null, 2))
