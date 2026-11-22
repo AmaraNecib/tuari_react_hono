@@ -96,6 +96,21 @@ describe("employee payroll controls", () => {
     } finally { Object.assign(mocks.payroll, original) }
   })
 
+  it.each(["earning", "advance"] as const)("explains and blocks offset when only the current %s is missing", missing => {
+    const original = structuredClone(mocks.payroll)
+    try {
+      if (missing === "earning") mocks.payroll.earnings = []
+      else mocks.payroll.advances = []
+      renderPanel()
+      fireEvent.click(screen.getByRole("button", { name: "تسوية سلفة", pressed: false }))
+      const submit = screen.getByRole("button", { name: "تسجيل التسوية" })
+      expect(submit).toHaveProperty("disabled", true)
+      expect(screen.getByText("التسوية تتطلب أجراً معتمداً وسلفة حالية متبقيين. الرصيد السابق غير متاح للتسوية.")).toBeTruthy()
+      fireEvent.click(submit)
+      expect(mocks.offset).not.toHaveBeenCalled()
+    } finally { Object.assign(mocks.payroll, original) }
+  })
+
   it("settles selected opening wages and advances through the existing payment controls", async () => {
     mocks.openingSources = [{ kind: "WAGE", sourceId: "opening-wage", remaining: "2000.00" }, { kind: "ADVANCE", sourceId: "opening-advance", remaining: "300.00" }]
     mocks.cash.mockResolvedValue({ id: "opening-payment" })

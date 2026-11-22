@@ -413,7 +413,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
                 {busy ? t("payroll.saving") : t(`payroll.submit.${action}`)}
               </Button>
             )}
-            {!pending && action === "repay" && !selectedAdvance && !selectedOpeningAdvance ? <p className="text-sm text-muted-foreground">{t("payroll.noRepayableAdvance")}</p> : null}
+            {!pending && action === "repay" && !selectedAdvance && !selectedOpeningAdvance ? <p className="text-sm text-muted-foreground">{t(availableAdvances.length > 0 || openingAdvance ? "payroll.error.ADVANCE_REQUIRED" : "payroll.noRepayableAdvance")}</p> : null}
             {!pending && action === "offset" && (!selectedAdvance || !selectedEarning) ? <p className="text-sm text-muted-foreground">{t("payroll.offsetSourcesRequired")}</p> : null}
           </form></div>
           <details className="border-t border-border/60 pt-3">
