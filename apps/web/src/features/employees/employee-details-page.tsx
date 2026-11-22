@@ -174,28 +174,17 @@ export function EmployeeDetailsPage({
             />
           </RecordInfoGrid>
 
-          <div className="rounded-xl border border-border/70 bg-sidebar p-5 dark:bg-surface" dir="rtl">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between" dir="rtl">
-              <div className="space-y-1 text-start">
-                <h3 className="text-lg font-semibold text-foreground">{t("detailPages.employee.financeSectionTitle")}</h3>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {t("detailPages.employee.financeSectionDescription")}
-                </p>
-              </div>
+          <section className="min-w-0 space-y-4 border-t border-border pt-4" aria-labelledby="employee-earnings-history-title" dir="rtl">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 id="employee-earnings-history-title" className="text-lg font-semibold text-foreground">
+                {t("earnings.historyTitle")}
+              </h3>
               {employee.status === "ACTIVE" ? (
                 <Button size="lg" onClick={() => onApproveEarning?.(employee.id)}>
                   {t("earnings.approve")}
                 </Button>
               ) : null}
             </div>
-
-
-          </div>
-
-          <section className="space-y-3 rounded-xl border border-border/70 bg-sidebar p-5 dark:bg-surface" aria-labelledby="employee-earnings-history-title">
-            <h3 id="employee-earnings-history-title" className="text-lg font-semibold text-foreground">
-              {t("earnings.historyTitle")}
-            </h3>
             <EmployeeEarningsHistory employeeId={employee.id} employeeNames={employeeNames} projectNames={projectNames} />
             <EmployeePayrollPanel employeeId={employee.id} />
           </section>
