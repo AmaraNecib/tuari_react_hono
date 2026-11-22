@@ -1,0 +1,41 @@
+/* Employee-only typography keeps shared record pages unchanged. */
+.employee-record { max-width: 80rem; margin-inline: auto; }
+.employee-record h1,
+.employee-record h2,
+.employee-record h3,
+.employee-record h4,
+.employee-record th,
+.employee-record dt,
+.employee-record label,
+.employee-record [role="tab"],
+.employee-record .font-mono {
+  font-family: var(--font-arabic), var(--font-body), sans-serif;
+  letter-spacing: normal;
+  font-style: normal;
+}
+.employee-record h1 { font-size: 1.75rem; line-height: 1.5; font-weight: 600; }
+.employee-record h3 { font-size: 1.125rem; line-height: 1.7; }
+.employee-record th { font-size: .875rem; }
+.employee-record button, .employee-record a[href] { min-height: 44px; }
+.employee-record .page-header { align-items: center; gap: 1rem; }
+.employee-record .page-header > div:last-child { padding-top: 0; }
+.employee-record [role="tabpanel"] { padding-top: .25rem; }
+.employee-payroll { margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+.employee-payroll > dl { gap: .5rem 1.5rem; }
+.employee-payroll > dl dd { font-variant-numeric: tabular-nums; font-size: 1.125rem; }
+.employee-payroll > dl > div:nth-child(4),
+.employee-payroll > dl > div:nth-child(8) { color: var(--foreground); font-weight: 600; }
+.employee-payment-form { max-width: 48rem; }
+.employee-payroll [role="group"] { margin-top: 1.25rem; }
+.employee-opening { margin-top: 2rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: 12px; }
+.employee-opening label { display: block; font-size: .875rem; line-height: 1.8; }
+.employee-opening label.flex { display: flex; }
+.employee-opening textarea { min-height: 5rem; }
+.employee-opening summary, .employee-payroll > details > summary { cursor: pointer; min-height: 44px; align-content: center; }
+.employee-opening [role="status"], .employee-opening [role="alert"] { padding: .75rem; border: 1px solid var(--border); border-radius: 8px; }
+@media (max-width: 640px) {
+  .employee-record .page-header { flex-direction: column; align-items: stretch; }
+  .employee-record .page-header > div:last-child { flex-shrink: 1; }
+  .employee-record h1 { font-size: 1.5rem; overflow-wrap: anywhere; }
+  .employee-opening { padding: 1rem; }
+}

@@ -183,7 +183,7 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
   }
   const confirmLabel = (intent: OpeningIntent) => t(intent.action === "opening-review" ? "employeeOpening.confirmReview" : intent.action === "opening-correct" ? "employeeOpening.confirmCorrect" : intent.action === "opening-reconcile" ? "employeeOpening.confirmRefund" : "employeeOpening.confirmCancel")
 
-  return <section aria-label={t("employeeOpening.title")} className="min-w-0 space-y-4 border-t border-border pt-5">
+  return <section aria-label={t("employeeOpening.title")} className="employee-opening min-w-0 space-y-4">
     <h3 className="text-base font-semibold">{t("employeeOpening.title")}</h3>
     {storageError ? <p role="alert">{t("employeeOpening.storage")}</p> : null}
     {error ? <p role="alert">{error}</p> : null}
@@ -202,7 +202,7 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
         <label className="block">{t("employeeOpening.cancelReason")}<Textarea value={reason} onChange={event => setReason(event.target.value)} maxLength={1000} disabled={busy || preview !== null} /></label>
         <Button type="button" variant="outline" disabled={busy || preview !== null || !reason.trim() || !ready || storageError} onClick={() => prepareProposal(proposal.id, true)}>{t("employeeOpening.cancelProposal")}</Button>
       </div>)}</div> : null}
-      <form onSubmit={prepare} className="space-y-3">
+      <form onSubmit={prepare} className="max-w-3xl space-y-4">
         <fieldset disabled={busy || !ready || storageError || preview !== null} className="grid min-w-0 gap-3 [&>label]:min-w-0 sm:grid-cols-2">
           {data.review === "UNREVIEWED" ? <>
             <label>{t("employeeOpening.wages")}<CurrencyInput aria-label={t("employeeOpening.wages")} value={wages} onChange={event => setWages(event.target.value)} /></label>

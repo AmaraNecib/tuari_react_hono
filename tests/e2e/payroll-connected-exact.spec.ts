@@ -17,6 +17,30 @@ async function rpc<K extends Procedure>(page: Page, path: K, input: Parameters<A
   }, { api: process.env.PLAYWRIGHT_API_URL!, path, input })
 }
 
+async function captureEmployeeFinance(page: Page, name: string) {
+  await page.evaluate(() => document.fonts.ready)
+  const record = page.locator(".employee-record")
+  await expect(record.locator("h1")).toHaveCSS("font-style", "normal")
+  await expect(record.locator("h1")).toHaveCSS("font-family", /IBM Plex Sans Arabic/)
+  expect(await record.locator(".employee-payment-form").evaluate(form => Boolean(form.compareDocumentPosition(document.querySelector(".employee-opening")!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true)
+  await record.locator("h1").scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath(name + "-desktop.png") })
+  await record.locator(".employee-payment-form").screenshot({ path: test.info().outputPath(name + "-payment-form.png") })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(record).toBeVisible()
+  expect(await record.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  const collapse = page.getByRole("button", { name: "تصغير الشريط الجانبي", exact: true })
+  if (await collapse.isVisible()) await collapse.click()
+  await record.locator("h1").scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath(name + "-mobile.png") })
+  await record.locator(".employee-payment-form").scrollIntoViewIfNeeded()
+  await page.screenshot({ path: test.info().outputPath(name + "-mobile-payment.png") })
+  await page.evaluate(() => document.documentElement.classList.add("dark"))
+  await page.screenshot({ path: test.info().outputPath(name + "-mobile-dark.png") })
+  await page.evaluate(() => document.documentElement.classList.remove("dark"))
+  await page.setViewportSize({ width: 1280, height: 720 })
+}
+
 // No financial fixtures or legacy SQL seed/reset. The only interception forwards
 // the real cash request, waits for its committed response, then drops delivery.
 test("selected exact payroll persists UI cash, offset and repayment across reload and replay", async ({ page, context }) => {
@@ -28,7 +52,7 @@ test("selected exact payroll persists UI cash, offset and repayment across reloa
   }, process.env.PLAYWRIGHT_API_URL!)
   const role = metadata.roles.find((role: { key: string }) => role.key === "worker")
   expect(role).toBeTruthy()
-  const employee = await rpc(page, "employeesCreate", { firstName: "Connected", lastName: "Payroll", phone: "0555123987", roleId: role.id })
+  const employee = await rpc(page, "employeesCreate", { firstName: "عامل", lastName: "تجريبي 593", phone: "0555123987", roleId: role.id })
   if (!employee.success) throw new Error(JSON.stringify(employee))
   const employeeId = employee.item.id
   const project = await rpc(page, "projectsCreate", { name: "Connected payroll project", status: "ACTIVE" })
@@ -103,6 +127,7 @@ test("selected exact payroll persists UI cash, offset and repayment across reloa
   await panel.locator("summary").click()
   await expect(panel.locator("ol > li")).toHaveCount(3)
   await panel.screenshot({ path: test.info().outputPath("payroll-connected.png") })
+  await captureEmployeeFinance(page, "current-payment-history")
   const require = createRequire(resolve("apps/api/package.json"))
   const Database = require("better-sqlite3")
   const db = new Database(process.env.APP_DB_PATH!, { readonly: true })
@@ -185,7 +210,7 @@ test("opening review is optional at creation and corrections retain confirmed hi
   expect(saved.history.every(event => Boolean(event.actorUserId && event.createdAt && event.reason))).toBe(true)
   await page.reload()
   await expect(opening.getByRole("listitem")).toHaveCount(2)
-  await opening.screenshot({ path: test.info().outputPath("opening-after-correction.png") })
+  await opening.locator("form").screenshot({ path: test.info().outputPath("opening-after-correction.png") })
   await payroll.getByRole("combobox", { name: "الأجر المعتمد", exact: true }).selectOption(`opening:${saved.sources.find(source => source.kind === "WAGE")!.sourceId}`)
   await payroll.getByRole("textbox", { name: "المبلغ المدفوع من الأجر", exact: true }).fill("100")
   await payroll.getByRole("button", { name: "تسجيل الدفع", exact: true }).click()
@@ -223,6 +248,8 @@ test("opening review is optional at creation and corrections retain confirmed hi
   expect(reconciled.refunds).toMatchObject([{ amount: "50.00", direction: "IN" }])
   expect(reconciled.proposals[0]?.status).toBe("APPLIED")
   expect((await rpc(page, "employeePayrollGet", { employeeId })).summary).toMatchObject({ wagesOwed: "0.00", advancesOwed: "300.00" })
-  await opening.screenshot({ path: test.info().outputPath("opening-after-reconciliation.png") })
+  await opening.locator("h3").screenshot({ path: test.info().outputPath("opening-after-reconciliation.png") })
+  await opening.locator("ol").screenshot({ path: test.info().outputPath("opening-correction-list.png") })
+  await captureEmployeeFinance(page, "opening-correction-history")
   writeFileSync(test.info().outputPath("opening-receipts.json"), JSON.stringify({ employeeId, saved, requests, proposed, reconciled, refundRequests }, null, 2))
 })

@@ -1,3 +1,4 @@
+import "./employee-finance.css"
 import type { ReactNode } from "react"
 import { Button } from "@/components/ui/button"
 import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
@@ -93,6 +94,7 @@ export function EmployeeDetailsPage({
   const tabsBaseId = `employee-record-${employee.id}`
 
   return (
+    <div className="employee-record">
     <RecordPageFrame
       backHref="/employees"
       backLabel={t("detailPages.employee.back")}
@@ -198,5 +200,6 @@ export function EmployeeDetailsPage({
         </RecordTabPanel>
       ) : null}
     </RecordPageFrame>
+    </div>
   )
 }

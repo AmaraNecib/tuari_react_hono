@@ -311,12 +311,11 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
     : null
 
   return (
-    <section className="space-y-4" aria-labelledby={`payroll-heading-${employeeId}`} dir="rtl">
+    <section className="employee-payroll space-y-4" aria-labelledby={`payroll-heading-${employeeId}`} dir="rtl">
       <div>
         <h3 id={`payroll-heading-${employeeId}`} className="text-lg font-semibold text-foreground">{t("payroll.title")}</h3>
         <p className="text-sm text-muted-foreground">{t("payroll.description")}</p>
       </div>
-      <EmployeeOpeningPanel employeeId={employeeId} />
       {data?.opening.reminder ? <p role="status" className="rounded-lg border border-border bg-muted/40 p-3 text-sm">{t("payroll.openingReminder")}</p> : null}
       {session.isError || (session.isSuccess && !identity) ? <p role="alert" className="text-sm text-destructive">{t("payroll.identityRequired")}</p> : null}
       {payroll.isPending && !data ? <p role="status" className="text-sm text-muted-foreground">{t("payroll.loading")}</p> : null}
@@ -352,7 +351,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
             ))}
           </div>
           {action === "offset" ? <p className="text-sm text-muted-foreground">{t("payroll.offsetOptions")}</p> : null}
-          <form className="grid min-w-0 grid-cols-1 gap-3 [&>label]:min-w-0 sm:grid-cols-2 xl:grid-cols-4" onSubmit={submit}>
+          <form className="employee-payment-form grid min-w-0 grid-cols-1 gap-4 [&>label]:min-w-0 sm:grid-cols-2" onSubmit={submit}>
             {action !== "repay" ? (
               <label className="space-y-1 text-sm">
                 <span>{t("payroll.earning")}</span>
@@ -406,7 +405,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
                 <Button type="button" disabled={busy || identityKey !== JSON.stringify(pending.identity)} onClick={() => void retryIntent(pending)}>{busy ? t("payroll.saving") : t("payroll.retry")}</Button>
               </div>
             ) : (
-              <Button type="submit" className="sm:col-span-2" disabled={busy || storageError || !identity || (action !== "cash" && availableAdvances.length === 0)}>
+              <Button type="submit" className="sm:col-span-2 sm:justify-self-start" disabled={busy || storageError || !identity || (action !== "cash" && availableAdvances.length === 0)}>
                 {busy ? t("payroll.saving") : t(`payroll.submit.${action}`)}
               </Button>
             )}
@@ -422,6 +421,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
           </details>
         </>
       ) : null}
+      <EmployeeOpeningPanel employeeId={employeeId} />
     </section>
   )
 }
