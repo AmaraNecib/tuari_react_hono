@@ -32,9 +32,9 @@ async function captureEmployeeFinance(page: Page, name: string) {
   const collapse = page.getByRole("button", { name: "تصغير الشريط الجانبي", exact: true })
   if (await collapse.isVisible()) await collapse.click()
   const breadcrumb = page.getByRole("navigation", { name: "breadcrumb" })
-  await expect(breadcrumb.locator('[aria-current="page"]')).toBeVisible()
+  await expect(breadcrumb.locator('[data-slot="breadcrumb-page"]')).toBeVisible()
   expect(await breadcrumb.evaluate(element => {
-    const label = element.querySelector('[aria-current="page"]')!.getBoundingClientRect()
+    const label = element.querySelector('[data-slot="breadcrumb-page"]')!.getBoundingClientRect()
     const header = element.closest("header")!.getBoundingClientRect()
     return label.top >= header.top && label.bottom <= header.bottom && label.left >= header.left && label.right <= header.right
   })).toBe(true)
