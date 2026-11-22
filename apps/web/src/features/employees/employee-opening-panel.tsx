@@ -221,6 +221,7 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
         </fieldset>
         {!preview ? <Button type="submit" disabled={busy || !ready || storageError}>{t(data.review === "UNREVIEWED" ? "employeeOpening.review" : "employeeOpening.correct")}</Button> : null}
       </form>
+      </details>
       {preview ? <div className="space-y-3 rounded-lg border border-border p-3" role="group" aria-label={t("employeeOpening.correct")}>
         {preview.action === "opening-correct" ? <>
           <dl className="grid grid-cols-2 gap-2"><dt>{t("employeeOpening.previous")}</dt><dd><bdi>{preview.payload.expectedAmount}</bdi></dd><dt>{t("employeeOpening.next")}</dt><dd><bdi>{preview.payload.amount}</bdi></dd></dl>
@@ -230,7 +231,6 @@ function OpeningEditor({ identity }: { identity: PayrollIdentity }) {
         <p className="text-sm">{t("employeeOpening.unchangedHistory")}</p>
         <div className="flex flex-wrap gap-2"><Button type="button" disabled={busy || storageError} onClick={() => void dispatch(preview, true)}>{confirmLabel(preview)}</Button><Button type="button" variant="outline" disabled={busy} onClick={() => setPreview(null)}>{t("employeeOpening.cancel")}</Button></div>
       </div> : null}
-      </details>
     </> : null}
     {data?.proposals.filter(proposal => proposal.status !== "PENDING").map(proposal => <p key={proposal.id} className="text-sm">{t(proposal.status === "APPLIED" ? "employeeOpening.appliedProposal" : "employeeOpening.cancelledProposal")}: <bdi>{proposal.oldAmount}</bdi> ← <bdi>{proposal.newAmount}</bdi> · {proposal.resolution?.reason}</p>)}
     {data?.refunds.length ? <div className="space-y-2 text-sm"><h4 className="font-medium">{t("employeeOpening.refundHistory")}</h4>{data.refunds.map(refund => <p key={refund.id}>{t(refund.direction === "IN" ? "employeeOpening.refundIn" : "employeeOpening.refundOut")}: <MoneyValue exact value={refund.amount} currencyLabel={t("detailPages.salary.currency")} /> · <AppDate value={refund.refundDate} /> · <bdi>{refund.actorLabel ?? refund.actorUserId ?? t("employeeOpening.unknownActor")}</bdi></p>)}</div> : null}
