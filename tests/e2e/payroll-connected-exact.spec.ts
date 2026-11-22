@@ -26,6 +26,7 @@ async function captureEmployeeFinance(page: Page, name: string) {
   await record.locator("h1").scrollIntoViewIfNeeded()
   await page.screenshot({ path: test.info().outputPath(name + "-desktop.png") })
   await record.locator(".employee-payment-form").screenshot({ path: test.info().outputPath(name + "-payment-form.png") })
+  await record.locator(".employee-payroll").screenshot({ path: test.info().outputPath(name + "-account.png") })
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(record).toBeVisible()
   expect(await record.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
@@ -271,7 +272,15 @@ test("opening review is optional at creation and corrections retain confirmed hi
   const repaid = await rpc(page, "employeePayrollGet", { employeeId })
   expect(repaid.repayments).toHaveLength(1)
   expect(repaid.repayments[0]).toMatchObject({ amount: "300.00", source: { kind: "OPENING_ADVANCE" } })
-  writeFileSync(test.info().outputPath("opening-300-persisted.json"), JSON.stringify(repaid, null, 2))
+  const require = createRequire(resolve("apps/api/package.json"))
+  const Database = require("better-sqlite3")
+  const db = new Database(process.env.APP_DB_PATH!, { readonly: true })
+  let persisted
+  try {
+    persisted = db.prepare("SELECT source_kind, source_id, amount_minor FROM employee_salary_settlement WHERE employee_id=?").all(employeeId)
+    expect(persisted).toEqual([{ source_kind: "OPENING_ADVANCE", source_id: saved.sources.find(source => source.kind === "ADVANCE")!.sourceId, amount_minor: 30000 }])
+  } finally { db.close() }
+  writeFileSync(test.info().outputPath("opening-300-persisted.json"), JSON.stringify({ repaid, persisted }, null, 2))
   await captureEmployeeFinance(page, "opening-300-committed")
   writeFileSync(test.info().outputPath("opening-receipts.json"), JSON.stringify({ employeeId, saved, requests, proposed, reconciled, refundRequests }, null, 2))
 })
