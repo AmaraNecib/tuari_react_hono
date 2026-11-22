@@ -25,21 +25,21 @@ type BreadcrumbItemRecord = {
  */
 export function WorkspaceBreadcrumbs({ items }: { items: BreadcrumbItemRecord[] }) {
   return (
-    <Breadcrumb>
-      <BreadcrumbList>
+    <Breadcrumb className="min-w-0 w-full">
+      <BreadcrumbList className="flex-nowrap overflow-hidden">
         {items.map((item, index) => {
           const isLast = index === items.length - 1
 
           return (
             <Fragment key={`${item.label}-${index}`}>
-              <BreadcrumbItem>
+              <BreadcrumbItem className={isLast ? "min-w-0" : "hidden shrink-0 md:inline-flex"}>
                 {isLast || !item.to ? (
-                  <BreadcrumbPage>{item.label}</BreadcrumbPage>
+                  <BreadcrumbPage className="truncate" title={item.label}>{item.label}</BreadcrumbPage>
                 ) : (
                   <BreadcrumbLink render={<Link {...getWorkspaceLinkProps(item.to)} />}>{item.label}</BreadcrumbLink>
                 )}
               </BreadcrumbItem>
-              {!isLast ? <BreadcrumbSeparator /> : null}
+              {!isLast ? <BreadcrumbSeparator className="hidden shrink-0 md:flex" /> : null}
             </Fragment>
           )
         })}
