@@ -42,8 +42,9 @@ export function createInventoryHandlers(
     )),
     inventoryInvoiceGroupsGet: os.inventoryInvoiceGroupsGet.handler(m.queryAuth(async ({ input }) =>
       inventoryService.getInvoiceGroup((input as IdInput).id)
-    )),
-    inventoryInvoiceGroupsCreate: os.inventoryInvoiceGroupsCreate.handler(m.mutationAudit(
+,
+      toInventoryFailureResult,
+    )),    inventoryInvoiceGroupsCreate: os.inventoryInvoiceGroupsCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => inventoryService.createInvoiceGroup(input as InventoryInvoiceGroupCreateInput, auditContext),
       toInventoryFailureResult,
     )),
@@ -53,11 +54,13 @@ export function createInventoryHandlers(
     )),
     inventoryLocationContentsGet: os.inventoryLocationContentsGet.handler(m.queryAuth(async ({ input }) =>
       inventoryService.getLocationContents(input as InventoryLocationContentsInput)
-    )),
-    inventoryAssetsGet: os.inventoryAssetsGet.handler(m.queryAuth(async ({ input }) =>
+,
+      toInventoryFailureResult,
+    )),    inventoryAssetsGet: os.inventoryAssetsGet.handler(m.queryAuth(async ({ input }) =>
       inventoryService.getAsset((input as IdInput).id)
-    )),
-    inventoryAssetsTransfer: os.inventoryAssetsTransfer.handler(m.mutationAudit(
+,
+      toInventoryFailureResult,
+    )),    inventoryAssetsTransfer: os.inventoryAssetsTransfer.handler(m.mutationAudit(
       ({ input, auditContext }) => inventoryService.transferAsset(input as InventoryAssetTransferInput, auditContext),
       toInventoryFailureResult,
     )),
@@ -115,8 +118,9 @@ export function createCatalogHandlers(
     )),
     inventoryItemDefinitionsGet: os.inventoryItemDefinitionsGet.handler(m.queryAuth(async ({ input }) =>
       inventoryService.getItemDefinition((input as IdInput).id)
-    )),
-    inventoryItemDefinitionsCreate: os.inventoryItemDefinitionsCreate.handler(m.mutationAudit(
+,
+      toInventoryFailureResult,
+    )),    inventoryItemDefinitionsCreate: os.inventoryItemDefinitionsCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => inventoryService.createItemDefinition(input as InventoryItemDefinitionCreateInput, auditContext),
       toInventoryFailureResult,
     )),

@@ -33,8 +33,9 @@ export function createOperationsHandlers(
     )),
     projectsGet: os.projectsGet.handler(m.queryAuth(async ({ input }) =>
       operationsService.getProject((input as IdInput).id)
-    )),
-    projectsCreate: os.projectsCreate.handler(m.mutationAudit(
+,
+      toFailureResult,
+    )),    projectsCreate: os.projectsCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => operationsService.createProject(input as ProjectCreateInput, auditContext),
       toFailureResult,
     )),
@@ -47,8 +48,9 @@ export function createOperationsHandlers(
     )),
     warehousesGet: os.warehousesGet.handler(m.queryAuth(async ({ input }) =>
       operationsService.getWarehouse((input as IdInput).id)
-    )),
-    warehousesCreate: os.warehousesCreate.handler(m.mutationAudit(
+,
+      toFailureResult,
+    )),    warehousesCreate: os.warehousesCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => operationsService.createWarehouse(input as WarehouseCreateInput, auditContext),
       toFailureResult,
     )),
@@ -61,8 +63,9 @@ export function createOperationsHandlers(
     )),
     projectAssignmentsGet: os.projectAssignmentsGet.handler(m.queryAuth(async ({ input }) =>
       operationsService.getProjectAssignment((input as IdInput).id)
-    )),
-    projectAssignmentsCreate: os.projectAssignmentsCreate.handler(m.mutationAudit(
+,
+      toFailureResult,
+    )),    projectAssignmentsCreate: os.projectAssignmentsCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => operationsService.createProjectAssignment(input as ProjectAssignmentCreateInput, auditContext),
       toFailureResult,
     )),
@@ -75,8 +78,9 @@ export function createOperationsHandlers(
     )),
     warehouseAssignmentsGet: os.warehouseAssignmentsGet.handler(m.queryAuth(async ({ input }) =>
       operationsService.getWarehouseAssignment((input as IdInput).id)
-    )),
-    warehouseAssignmentsCreate: os.warehouseAssignmentsCreate.handler(m.mutationAudit(
+,
+      toFailureResult,
+    )),    warehouseAssignmentsCreate: os.warehouseAssignmentsCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => operationsService.createWarehouseAssignment(input as WarehouseAssignmentCreateInput, auditContext),
       toFailureResult,
     )),

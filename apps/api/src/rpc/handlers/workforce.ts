@@ -43,7 +43,7 @@ export function createWorkforceHandlers(
     })),
     rolesGet: os.rolesGet.handler(m.queryAuth(async ({ input }) => {
       return workforceService.getRole((input as IdInput).id);
-    })),
+    }, toFailureResult)),
     rolesCreate: os.rolesCreate.handler(m.mutationAudit(
       ({ input }) => workforceService.createRole(input as RoleCreateInput),
       toFailureResult,
@@ -80,7 +80,11 @@ export function createWorkforceHandlers(
       }
     }))),
     employeesGet: os.employeesGet.handler(m.withPermission("employees:read", m.withAuth(async ({ input }) => {
-      return workforceService.getEmployee((input as IdInput).id);
+      try {
+        return await workforceService.getEmployee((input as IdInput).id);
+      } catch (error) {
+        return toFailureResult(error);
+      }
     }))),
     employeesCreate: os.employeesCreate.handler(m.withPermission("employees:create", m.withAudit(
       ({ input, auditContext }) => workforceService.createEmployee(input as EmployeeCreateInput, auditContext),
@@ -119,7 +123,7 @@ export function createWorkforceHandlers(
     })),
     managerAssignmentsGet: os.managerAssignmentsGet.handler(m.queryAuth(async ({ input }) => {
       return workforceService.getManagerAssignment((input as IdInput).id);
-    })),
+    }, toFailureResult)),
     managerAssignmentsCreate: os.managerAssignmentsCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => workforceService.createManagerAssignment(input as ManagerAssignmentCreateInput, auditContext),
       toFailureResult,
