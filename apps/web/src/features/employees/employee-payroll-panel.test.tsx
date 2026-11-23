@@ -102,6 +102,22 @@ describe("employee payroll controls", () => {
     } finally { Object.assign(mocks.payroll, original) }
   })
 
+  it("preserves an advance repayment draft when an unrelated earning is exhausted", async () => {
+    const original = structuredClone(mocks.payroll)
+    try {
+      const view = renderPanel()
+      fireEvent.click(screen.getByRole("button", { name: "سداد سلفة", pressed: false }))
+      fireEvent.change(screen.getByRole("textbox", { name: "مبلغ السداد النقدي" }), { target: { value: "1500" } })
+      mocks.payroll.earnings[0]!.remaining = "0.00"
+      view.rerender(<EmployeePayrollPanel employeeId="employee-1" />)
+      expect(screen.getByRole("textbox", { name: "مبلغ السداد النقدي" })).toHaveProperty("value", "1500")
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل السداد" }))
+      await waitFor(() => expect(mocks.repay).toHaveBeenCalledTimes(1))
+      expect(mocks.repay.mock.calls[0]![0]).toMatchObject({ employeeId: "employee-1", advanceId: "advance-1", amount: "1500.00" })
+      await waitFor(() => expect(localStorage.length).toBe(0))
+    } finally { Object.assign(mocks.payroll, original) }
+  })
+
   it("keeps an uncertain percentage payment frozen across automatic earning selection", async () => {
     const original = structuredClone(mocks.payroll)
     mocks.cash.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({ id: "receipt" })

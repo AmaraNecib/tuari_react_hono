@@ -48,6 +48,10 @@ CI found that the new calculator's direct Money import was absent from the exact
 
 Greptile found that automatic earning selection retained the previous editable percentage and amount, and that excessive percentages disabled submit without explaining the outstanding-balance limit. Reproduce both through form tests before correcting them. Clear editable money, percentage and errors on an automatic source change only when no pending intent is locked. Retain pending payload and request identity. Derive an excessive-balance message from the live amount and remaining balance, independently of malformed percentage errors. Add frozen retry proof across automatic selection.
 
+## Repayment-draft correction and design reassessment
+
+A later hosted review found an unrelated advance repayment draft was erased when the wage source disappeared. Reassessment after three correction rounds identifies shared editable `amount` state across cash, offset and repayment as the relevant coupling. The source-selection invalidation must match its dependencies: cash and offset use an earning, repayment does not. Keep the existing state model for this bounded fix and condition earning-driven draft invalidation on action not being repay. Splitting all action state or replacing the form is not needed to correct the reachable defect. Preserve locked retry behavior. A failing-first form regression exhausts the unrelated earning, preserves 1500 DZD repayment input and verifies submission still references the original advance.
+
 ## Architecture
 
 Retain the existing payroll write and retry interfaces. A pure percentage calculator should own rational conversion and display approximation so integer money rules do not spread through event handlers. No schema, ledger, rounding-policy or published-contract change is proposed.

@@ -156,7 +156,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
       const nextEarningId = availableEarnings[0]?.earning.id ?? (openingWage ? `opening:${openingWage.sourceId}` : "")
       if (nextEarningId !== earningId) {
         setEarningId(nextEarningId)
-        if (!locked) {
+        if (!locked && action !== "repay") {
           setAmount("")
           setPercentageDraft(null)
           setError("")
@@ -164,7 +164,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
       }
     }
     if (!availableAdvances.some(item => item.advance.id === advanceId) && !(openingAdvance && advanceId === `opening:${openingAdvance.sourceId}`)) setAdvanceId(availableAdvances[0]?.advance.id ?? (openingAdvance ? `opening:${openingAdvance.sourceId}` : ""))
-  }, [earningId, advanceId, availableEarnings, availableAdvances, openingWage, openingAdvance, locked])
+  }, [earningId, advanceId, availableEarnings, availableAdvances, openingWage, openingAdvance, locked, action])
 
   const selectedEarning = earnings.find(item => item.earning.id === earningId)
   const selectedAdvance = advances.find(item => item.advance.id === advanceId)
