@@ -38,3 +38,9 @@ Parent dependency junctions reuse the frozen installed packages and built contra
 Applied wisdom: never show a false zero for loading/error; exact deterministic money display. EOL lesson checked against the actual diff; no whitespace failure. Excluded unrelated aging, money-split and transaction-writer lessons because those algorithms did not change. No wisdom file is written by this lane.
 
 Local implementation and execution proof do not constitute independent review, CI acceptance, protection enforcement or whole-issue closure. Protection was reported pending by the parent. Parent review and hosted gates remain open.
+
+## Shared-database correction after hosted review
+
+Greptile identified that the existing connected payroll case asserted every cash row in the shared file database. The new case adds two unrelated payments, so the original expectation fails when all three cases run together. Reproduced at published head 57901d0b: two cases passed and the payroll persistence case received three cash rows instead of its employee's one row. Earlier single-case proof did not cover this interference.
+
+Scope the cash, offset and repayment persistence queries to their fixture employee, retaining the independent exact amount and one-row expectations. Explicitly select the fixture employee in the debt case instead of depending on employee-list ordering. No financial source, schema, test cleanup or database reset changes. Run the entire three-case connected file against one fresh shared database to cover cross-case coexistence, plus connected-test typecheck. Preserve red and green logs under ignored .scratch/reviews/560/shared-db-*. One fresh combined-delta review must carry forward unchanged initial conclusions before publishing this correction.

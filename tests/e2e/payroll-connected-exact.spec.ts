@@ -35,6 +35,7 @@ test("debt payroll read shows exact settlement directions after reload #560", as
   await rpc(page, "employeePayrollCashRecord", { requestId: "browser-560-first", employeeId, amount: "45000.00", paymentDate: "2026-11-19T09:00:00.000Z", wages: [{ earningId: earning.item.id, amount: "40000.00" }], advanceAmount: "5000.00" })
   await page.goto("/debts")
   const panel = page.getByRole("region", { name: "ديون الأجور والسلف للموظف" })
+  await panel.getByRole("combobox", { name: "اختيار الموظف لعرض الرواتب" }).selectOption(employeeId)
   await expect(panel.getByText("20,000", { exact: true })).toHaveCount(2)
   await expect(panel.getByText("أجور مستحقة للموظف", { exact: true }).locator("..")).toContainText("20,000")
   await expect(panel.getByText("جزء الأجور")).toBeVisible()
@@ -178,9 +179,9 @@ test("selected exact payroll persists UI cash, offset and repayment across reloa
   try {
     persisted = {
       database: process.env.APP_DB_PATH,
-      cash: db.prepare("SELECT amount_minor FROM employee_salary_cash").all(),
-      offsets: db.prepare("SELECT amount_minor FROM employee_salary_advance_offset").all(),
-      repayments: db.prepare("SELECT amount_minor FROM employee_salary_settlement").all(),
+      cash: db.prepare("SELECT amount_minor FROM employee_salary_cash WHERE employee_id=?").all(employeeId),
+      offsets: db.prepare("SELECT amount_minor FROM employee_salary_advance_offset WHERE employee_id=?").all(employeeId),
+      repayments: db.prepare("SELECT amount_minor FROM employee_salary_settlement WHERE employee_id=?").all(employeeId),
       labor: db.prepare("SELECT amount_minor FROM employee_earning_segment WHERE project_id=?").all(project.item.id),
     }
     expect(persisted.cash).toEqual([{ amount_minor: 3000000 }])
