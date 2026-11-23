@@ -76,7 +76,7 @@ describe("DebtCreatePage — category direction", () => {
       ["قرض مباشر (أعطينا)", "أعطينا الطرف الخارجي قرض"],
       ["قرض مباشر (أخذنا)", "طرف خارجي أقرضنا مال"],
       ["أخرى", "سبب آخر — يرجى تقديم تفصيل"],
-    ]
+    ] as const
     const categoryButtons = screen.getAllByRole("button").filter((button) =>
       categories.some(([label]) => button.textContent?.includes(label)),
     )
@@ -85,6 +85,28 @@ describe("DebtCreatePage — category direction", () => {
     for (const [label, description] of categories) {
       const button = screen.getByRole("button", { name: `${label} ${description}` })
       expect(button.textContent).toContain(description)
+    }
+  })
+
+  it("reads every category label and description from its translation key", () => {
+    const names = ["salaryAdvance", "reimbursement", "cashTake", "equipmentDamage", "personalLoan", "directLoanGiven", "directLoanTaken", "other"]
+    const originals = names.flatMap((name) => ["label", "description"].map((field) => {
+      const key = `detailPages.debt.categories.${name}.${field}`
+      return { key, value: i18n.getResource("ar", "translation", key), replacement: `${name} ${field}` }
+    }))
+    try {
+      for (const { key, replacement } of originals) {
+        i18n.addResource("ar", "translation", key, replacement)
+      }
+      renderPage()
+      for (const name of names) {
+        expect(screen.getByRole("button", { name: `${name} label ${name} description` })).toBeTruthy()
+      }
+    } finally {
+      cleanup()
+      for (const { key, value } of originals) {
+        i18n.addResource("ar", "translation", key, value)
+      }
     }
   })
 

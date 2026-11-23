@@ -4,24 +4,24 @@ Base: `16c3ec7c5f9ce8b5e6a6bd64c4347a0307a59e14`. Risk tier: elevated domain cal
 
 ## Scope and model
 
-Move the eight rendered category names and descriptions in `apps/web/src/features/debts/debt-create-page.tsx` to the existing Arabic resource under `translation.detailPages.debt.categories`. Preserve values, ordering, exact text, direction locks and submission behavior. Domain terms and interfaces remain unchanged: `ReasonCategory`, `DebtDirectionAlias`, `getLockedDirectionForCategory`, and the create mutation payload continue to define semantics. The category label-key and description-key fields are presentation references only. No seam moved.
+Move the eight legacy category names and descriptions in `apps/web/src/features/debts/debt-create-page.tsx` to the existing Arabic resource under `translation.detailPages.debt.categories`. Preserve values, ordering, exact text, direction locks and submission behavior. Domain terms and interfaces remain unchanged: `ReasonCategory`, `DebtDirectionAlias`, `getLockedDirectionForCategory`, and the create mutation payload continue to define semantics. The category label-key and description-key fields are presentation references only. No seam moved.
 
 ## M1–M10 plan audit at base
 
 Plan authority: `plans/003-ui-polish-and-architecture/plan.md`.
 
 - M1 (plan lines 11–56): partially delivered here: reachable create-page category copy only. Remaining hardcoded debt surfaces and English-resource work are unfulfilled.
-- M2 (lines 59–71): employee role filtering remains unaudited in this slice; no query or dropdown behavior changed.
+- M2: active debt route still filters `derived.employeeRows` by `employee.isWorker` in `home-view-page-content-detail-pages.tsx:104`. SQLite exact-finance `partyExists` checks the employee table without a role predicate in `sqlite-exact-finance.repository.ts:49-51`. No query or dropdown behavior changed here.
 - M3 (lines 74–99): no tab conversion; the current create page remains a form, not the proposed detail-page tab layout.
 - M4 (lines 102–117): closure presentation/API work untouched.
 - M5 (lines 120–130): shell spacing untouched.
-- M6 (lines 133–153): not-found route and roles guard untouched.
+- M6: router.tsx defines NotFoundPage at line 34, uses it for roles at line 172, and registers defaultNotFoundComponent at line 288. Existing implementation needs rendering and navigation proof, not a duplicate catch-all route.
 - M7 (lines 156–179): shared UI component inventory untouched.
 - M8 (lines 182–204): theme token audit untouched.
-- M9 (lines 207–231): cases, ledger and hub pagination untouched.
+- M9: the active debts-exact-page.tsx already slices accounts and entries into pages of 25 at lines 81-82 and renders account paging at line 98. Acceptance beyond 50 items still needs interaction proof. Legacy panels remain separate.
 - M10 (lines 234–244): linked-case label API/UI work untouched.
 
-This audit records milestone status for this slice, not a full verification of each milestone's acceptance criteria. Current code evidence: `debt-create-page.tsx` still contains category list and form; `debt-create-page.test.tsx` covers direction; `ar.ts` contains the existing `detailPages.debt` namespace. No other milestone source was changed.
+Route correction from parent inspection: router.tsx:87 maps /debts/create to the debt-create workspace page. home-view-page-content-detail-pages.tsx:97-108 handles both debts and debt-create with ExactFinancialRoutePage, not DebtCreatePage. The category extraction is therefore legacy cleanup only and does not fix the active experience. Active M1 work must target debts-exact-page.tsx. This audit records milestone status for this slice, not a full verification of each milestone's acceptance criteria. Current code evidence: `debt-create-page.tsx` still contains category list and form; `debt-create-page.test.tsx` covers direction; `ar.ts` contains the existing `detailPages.debt` namespace. No other milestone source was changed.
 
 ## Proof and review
 
