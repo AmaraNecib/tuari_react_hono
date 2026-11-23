@@ -64,6 +64,19 @@ function paymentField(unit: "amount" | "percentage") {
 }
 
 describe("employee payroll controls", () => {
+  it("keeps wage and advance allocations when the selected cash action is clicked again", async () => {
+    renderPanel()
+    fireEvent.change(paymentField("percentage"), { target: { value: "50" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "سلفة نقدية إضافية، اختيارية" }), { target: { value: "2000" } })
+    fireEvent.click(screen.getByRole("button", { name: "دفع نقدي", pressed: true }))
+    expect(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })).toHaveProperty("value", "50")
+    expect(screen.getByRole("textbox", { name: "سلفة نقدية إضافية، اختيارية" })).toHaveProperty("value", "2000")
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفع" }))
+    await waitFor(() => expect(mocks.cash).toHaveBeenCalledTimes(1))
+    expect(mocks.cash.mock.calls[0]![0]).toMatchObject({ amount: "7000.00", wages: [{ earningId: "earning-1", amount: "5000.00" }], advanceAmount: "2000.00" })
+    await waitFor(() => expect(localStorage.length).toBe(0))
+  })
+
   it("keeps distinct settlement visible when exact totals round to the same percentage", () => {
     const original = structuredClone(mocks.payroll)
     try {

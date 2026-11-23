@@ -84,6 +84,10 @@ This is a bounded appearance/recording correction, not another money interaction
 
 Fresh appearance review raised focused invalid styling. Source inspection shows the destructive border rule already follows focus, contrary to the report's stated cascade order; the actual issue is the primary inward outline painting over that border. Preserve destructive outline color as well for invalid input. Browser proof compares focused border and outline against a separate destructive-token probe. An intermediate test captured a border transition frame as its expected color; replace that timing-sensitive snapshot with a retrying final-token assertion, not a weaker palette expectation. Preserve both failed logs and the passing focused run. Normal valid-input recording is visually unchanged by this error-only correction.
 
+## Selected-action identity correction
+
+After develop synchronization, hosted review identified that pressing the already-selected cash action cleared wage amount/percentage while retaining extra advance, allowing accidental advance-only submission. Accept the finding. Current-action selection must be a no-op, preserving the entire existing draft and any errors; actual action changes retain the prior reset behavior. Failing-first regression enters50percent of10000 plus2000 advance, presses selected cash and verifies percentage50 plus2000 remain and request submits7000 total with5000 wages and2000 advance. No appearance, calculator, ledger, retry identity or schema change. Owner's provisional visual acceptance remains applicable. Reassessment keeps action identity guard local rather than broad form refactor; no further UI changes are authorized by this correction.
+
 ## Architecture
 
 Retain the existing payroll write and retry interfaces. A pure percentage calculator should own rational conversion and display approximation so integer money rules do not spread through event handlers. No schema, ledger, rounding-policy or published-contract change is proposed.

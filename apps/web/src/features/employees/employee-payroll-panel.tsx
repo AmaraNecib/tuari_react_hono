@@ -407,7 +407,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
           </details>
           <div className="employee-operation"><div className="flex flex-wrap gap-2" role="group" aria-label={t("payroll.actions")}>
             {(["cash", "offset", "repay"] as const).map(item => (
-              <Button key={item} type="button" size="sm" variant={action === item ? "default" : "outline"} aria-pressed={action === item} onClick={() => { setAction(item); setAmount(""); setPercentageDraft(null); setError("") }} disabled={locked || busy}>
+              <Button key={item} type="button" size="sm" variant={action === item ? "default" : "outline"} aria-pressed={action === item} onClick={() => { if (action === item) return; setAction(item); setAmount(""); setPercentageDraft(null); setError("") }} disabled={locked || busy}>
                 {t(`payroll.action.${item}`)}
               </Button>
             ))}
