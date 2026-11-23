@@ -62,6 +62,7 @@ export function useEmployeeEarningsQuery(employeeId?: string) {
 export function useEmployeePayrollQuery(employeeId: string) {
   return useWorkspaceScopedQuery({
     key: (userId) => employeeEarningsQueryKeys.payroll(userId ?? "anonymous", employeeId),
+    enabled: Boolean(employeeId),
     queryFn: () => rpcClient.employeePayrollGet({ employeeId }),
   })
 }

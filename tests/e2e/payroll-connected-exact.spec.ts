@@ -17,6 +17,41 @@ async function rpc<K extends Procedure>(page: Page, path: K, input: Parameters<A
   }, { api: process.env.PLAYWRIGHT_API_URL!, path, input })
 }
 
+test("debt payroll read shows exact settlement directions after reload #560", async ({ page }) => {
+  await bootstrapOrSignIn(page)
+  const metadata = await page.evaluate(async api => {
+    const response = await fetch(`${api}/rpc/financial/metadata`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: '{"json":null}' })
+    if (!response.ok) throw new Error(`metadata ${response.status}`)
+    return (await response.json()).json
+  }, process.env.PLAYWRIGHT_API_URL!)
+  const role = metadata.roles.find((row: { key: string }) => row.key === "worker")
+  const employee = await rpc(page, "employeesCreate", { firstName: "عامل", lastName: "ديون 560", phone: "0555123560", roleId: role.id })
+  if (!employee.success) throw new Error("Employee fixture failed")
+  const employeeId = employee.item.id
+  const project = await rpc(page, "projectsCreate", { name: "Debt browser", status: "ACTIVE" })
+  if (!project.success) throw new Error("Project fixture failed")
+  const earning = await rpc(page, "employeeEarningsApprove", { requestId: crypto.randomUUID(), employeeId, currencyCode: "DZD", periodStart: "2026-11-01T00:00:00.000Z", periodEnd: "2026-12-01T00:00:00.000Z", totalAmount: "60000.00", unallocatedAmount: "15000.00", segments: [{ id: crypto.randomUUID(), days: 30, amount: "45000.00", projectId: project.item.id }] })
+  if (!earning.success) throw new Error("Earning fixture failed")
+  await rpc(page, "employeePayrollCashRecord", { requestId: "browser-560-first", employeeId, amount: "45000.00", paymentDate: "2026-11-19T09:00:00.000Z", wages: [{ earningId: earning.item.id, amount: "40000.00" }], advanceAmount: "5000.00" })
+  await page.goto("/debts")
+  const panel = page.getByRole("region", { name: "ديون الأجور والسلف للموظف" })
+  await expect(panel.getByText("20,000", { exact: true })).toHaveCount(2)
+  await expect(panel.getByText("أجور مستحقة للموظف", { exact: true }).locator("..")).toContainText("20,000")
+  await expect(panel.getByText("جزء الأجور")).toBeVisible()
+  await expect(panel.getByText("40,000", { exact: true })).toBeVisible()
+  await expect(panel.getByText("15,000", { exact: true })).toHaveCount(0)
+  await page.evaluate(() => document.fonts.ready)
+  await panel.screenshot({ path: test.info().outputPath("debt-payroll-desktop.png") })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(panel).toBeVisible()
+  expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await panel.screenshot({ path: test.info().outputPath("debt-payroll-mobile.png") })
+  await rpc(page, "employeePayrollCashRecord", { requestId: "browser-560-final", employeeId, amount: "20000.00", paymentDate: "2026-11-20T09:00:00.000Z", wages: [{ earningId: earning.item.id, amount: "20000.00" }] })
+  await page.reload()
+  await expect(panel.getByText("0", { exact: true }).first()).toBeVisible()
+  await expect(panel.getByText("5,000", { exact: true }).first()).toBeVisible()
+  await expect(panel.getByRole("link", { name: /ملف الموظف/ })).toHaveAttribute("href", `/employees/${employeeId}?tab=financial`)
+})
 async function captureEmployeeFinance(page: Page, name: string) {
   await page.evaluate(() => document.fonts.ready)
   const record = page.locator(".employee-record")

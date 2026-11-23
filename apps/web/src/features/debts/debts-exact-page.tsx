@@ -14,6 +14,7 @@ import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
 import { getCachedSessionUserId } from "@/features/app-shell/workspace-keys"
 import { Money, sumMoneyHistory } from "@tuari/contracts"
 import { useExactDebtCommand, useExactDebtDetail, useExactDebtSummary, type ExactDebtCommand } from "./debts-exact-queries"
+import { EmployeePayrollDebtSection } from "./employee-payroll-debt-section"
 
 export type ExactDebtPartyOption = { id: string; label: string; partyType: ExactDebtAccount["partyType"] }
 type Entry = ExactDebtDetail["entries"][number]
@@ -96,6 +97,7 @@ export function ExactDebtsPage({ client, parties, scopedParty }: { client: Exact
       </nav>
       {matchingAccounts.length > 25 && <div className="flex items-center gap-3" aria-label="صفحات الحسابات"><Button variant="outline" disabled={accountPage === 1} onClick={() => setAccountPage(page => page - 1)}>السابق</Button><span>{accountPage}</span><Button variant="outline" disabled={accountPage * 25 >= matchingAccounts.length} onClick={() => setAccountPage(page => page + 1)}>التالي</Button></div>}
     </>}
+    {(!scopedParty || scopedParty.partyType === "INTERNAL_WORKER") && <EmployeePayrollDebtSection employees={scopedParties.filter(row => row.partyType === "INTERNAL_WORKER")} scopedParty={scopedParty} />}
     <Surface className="min-w-0 p-5" variant="card">
       <h2 className="mb-4 text-lg font-semibold">إنشاء حساب أو إضافة رصيد افتتاحي للطرف</h2>
       <form className="grid min-w-0 gap-4 md:grid-cols-2" onSubmit={event => {

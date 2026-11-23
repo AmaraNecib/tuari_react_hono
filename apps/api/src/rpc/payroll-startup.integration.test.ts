@@ -42,6 +42,73 @@ afterEach(() => { for (const root of roots.splice(0)) root.close(); });
 // No injected payroll graph or payroll fixtures: the selected exact root must supply
 // auth, earning storage and the single finance ledger on its own connection.
 describe("selected exact application startup (not default activation)", { timeout: 60_000 }, () => {
+  it("shares salary settlement with debt reads without duplicate expense or attribution netting (#560)", async () => {
+    const databasePath = join(mkdtempSync(join(tmpdir(), "tuari-560-")), "application.sqlite");
+    const config = createAppConfig({ BETTER_AUTH_SECRET: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM", DB_ADAPTER: "sqlite" });
+    const root = await createFreshExactAppDependencies({ databasePath }, config);
+    roots.push(root);
+    const owner = await root.authBootstrapService.bootstrapFirstUser({ name: "Debt owner", phone: "0612345678", password: "password123" });
+    if (!owner.success) throw new Error("Bootstrap failed");
+    const session = await (await root.auth.$context).internalAdapter.createSession(owner.item.id);
+    const headers = new Headers({ authorization: `Bearer ${session.token}` });
+    const connect = (app: typeof root) => createRouterClient(createRouter(app), { context: createRpcContext(headers, app.sessionService) }) as AppClient;
+    const client = connect(root);
+    const role = root.workforceService.listRoles().items.find(item => item.key === "worker")!;
+    const employee = await client.employeesCreate({ firstName: "Debt", lastName: "Worker", phone: "0555123987", roleId: role.id });
+    const project = await client.projectsCreate({ name: "Salary cost", status: "ACTIVE" });
+    if (!employee.success || !project.success) throw new Error("Fixture failed");
+    const employeeId = employee.item.id;
+    const earning = await client.employeeEarningsApprove({
+      requestId: crypto.randomUUID(), employeeId, currencyCode: "DZD",
+      periodStart: "2026-11-01T00:00:00.000Z", periodEnd: "2026-12-01T00:00:00.000Z",
+      totalAmount: "60000.00", unallocatedAmount: "0.00",
+      segments: [{ id: "labor", projectId: project.item.id, days: 30, amount: "60000.00" }],
+    });
+    // A separate period has unallocated attribution, not an unpaid balance.
+    const unrelated = await client.employeeEarningsApprove({
+      requestId: crypto.randomUUID(), employeeId, currencyCode: "DZD",
+      periodStart: "2026-10-01T00:00:00.000Z", periodEnd: "2026-11-01T00:00:00.000Z",
+      totalAmount: "15000.00", unallocatedAmount: "15000.00", segments: [],
+    });
+    if (!earning.success || !unrelated.success) throw new Error("Approval failed");
+    expect((await client.financial.debts.summary()).grossPayableDzd).toBe("0.00");
+    const paymentDate = "2026-11-18T09:00:00.000Z";
+    const input = { requestId: "debt-salary-560", employeeId, amount: "60000.00", paymentDate,
+      wages: [{ earningId: earning.item.id, amount: "40000.00" }, { earningId: unrelated.item.id, amount: "15000.00" }], advanceAmount: "5000.00" };
+    const paid = await client.employeePayrollCashRecord(input);
+    expect(await client.employeePayrollCashRecord(input)).toEqual(paid);
+    const assertRead = async (api: AppClient, wagesOwed: string) => {
+      const salary = await api.employeePayrollGet({ employeeId });
+      expect(salary.summary).toMatchObject({ wagesOwed, advancesOwed: "5000.00", unallocatedEarnings: "15000.00" });
+      expect(salary.earnings.find(row => row.earning.id === earning.item.id)?.remaining).toBe(wagesOwed);
+      const debts = await api.financial.debts.summary();
+      expect(debts).toMatchObject({ grossPayableDzd: wagesOwed, grossReceivableDzd: "5000.00" });
+      const cost = await api.projectCostGet({ projectId: project.item.id });
+      expect(cost).toMatchObject({ success: true, item: { parts: { salariesAmount: "60000.00" } } });
+      return debts;
+    };
+    const before = await assertRead(client, "20000.00");
+    const connectionIndex = vi.mocked(createDatabaseConnection).mock.calls.map(args => args[0]).lastIndexOf(databasePath);
+    const db = vi.mocked(createDatabaseConnection).mock.results[connectionIndex]!.value;
+    const changes = () => db.prepare("SELECT total_changes() AS n").get();
+    const readChanges = changes();
+    expect(await assertRead(client, "20000.00")).toEqual(before);
+    expect(changes()).toEqual(readChanges);
+    root.close();
+    const reopened = await createFreshExactAppDependencies({ databasePath }, config);
+    roots.push(reopened);
+    const reload = connect(reopened);
+    await assertRead(reload, "20000.00");
+    const finalInput = { requestId: "debt-final-560", employeeId, amount: "20000.00", paymentDate, wages: [{ earningId: earning.item.id, amount: "20000.00" }] };
+    const final = await reload.employeePayrollCashRecord(finalInput);
+    expect(await reload.employeePayrollCashRecord(finalInput)).toEqual(final);
+    const settled = await assertRead(reload, "0.00");
+    expect(settled.accounts).toHaveLength(before.accounts.length);
+    reopened.close();
+    const last = await createFreshExactAppDependencies({ databasePath }, config);
+    roots.push(last);
+    await assertRead(connect(last), "0.00");
+  });
   it.each(["", "selected-exact-test-key"])("persists selected-root payments and metadata (key=%s)", async databaseKey => {
     const directory = mkdtempSync(join(tmpdir(), "tuari-558-selected-root-"));
     const databasePath = join(directory, "application.sqlite");

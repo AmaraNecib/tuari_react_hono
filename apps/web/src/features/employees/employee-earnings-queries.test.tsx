@@ -84,6 +84,20 @@ beforeEach(() => {
 })
 
 describe("employee earnings queries", () => {
+  it("disables empty and unauthenticated payroll reads and switches session identity", async () => {
+    const queryClient = makeQueryClient()
+    mocks.session.mockReturnValue({ data: undefined })
+    const hook = renderHook(({ id }) => useEmployeePayrollQuery(id), { initialProps: { id: "employee-1" }, wrapper: wrapper(queryClient) })
+    expect(mocks.payrollGet).not.toHaveBeenCalled()
+    mocks.session.mockReturnValue({ data: { user: { id: "user-1" } } })
+    hook.rerender({ id: "" })
+    expect(mocks.payrollGet).not.toHaveBeenCalled()
+    hook.rerender({ id: "employee-1" })
+    await waitFor(() => expect(hook.result.current.data).toBeDefined())
+    mocks.session.mockReturnValue({ data: { user: { id: "user-2" } } })
+    hook.rerender({ id: "employee-1" })
+    await waitFor(() => expect(mocks.payrollGet).toHaveBeenCalledTimes(2))
+  })
   it("refetches a mounted fresh payroll cache on earning approval", async () => {
     const queryClient = makeQueryClient()
     queryClient.setQueryData(orpc.session.queryOptions().queryKey, { user: { id: "user-1", name: null, phone: "0612345678", version: "0.0.0" } })
