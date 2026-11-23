@@ -1007,8 +1007,6 @@ export const ar = {
         notes: "ملاحظات",
         financeCurrentSalary: "الأجر الحالي",
         financeSalaryPeriod: "دورية الأجر",
-        financeSectionTitle: "سجل الرواتب",
-        financeSectionDescription: "دفعات الرواتب المسجلة لهذا العامل.",
         employmentState: "الحالة الوظيفية",
         directManager: "المدير المباشر",
         projectAssignment: "ربط المشروع",
