@@ -2,7 +2,7 @@
  * Request-failure observability.
  *
  * A user who reports "it did not save" must leave a readable trace in the
- * desktop shell's `api-server.log`. Failures are logged there through the
+ * desktop shell's day-folder JSONL logs. Failures are logged through the
  * existing {@link StructuredLogger}; this module only decides what a failure
  * looks like.
  *
