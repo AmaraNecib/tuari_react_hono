@@ -23,6 +23,27 @@ function wrapper(children: React.ReactNode) {
  return { ...view, rerender: (next: React.ReactNode) => view.rerender(<QueryClientProvider client={query}>{next}</QueryClientProvider>) }
 }
 describe("exact inventory forms", () => {
+ it.each(["CASH", "BANK_TRANSFER", "CHECK"])("submits initial tender %s independently from input mode and omits it for zero", async method => {
+  const submit = vi.fn().mockResolvedValue(undefined)
+  wrapper(<ExactInventoryPurchaseForm definitions={definitions} locations={locations} parties={parties} pending={false} error={null} close={() => {}} submit={submit} />)
+  fireEvent.change(screen.getByRole("textbox", { name: "سعر الوحدة" }), { target: { value: "10.0000" } })
+  fireEvent.click(screen.getByRole("button", { name: "تسجيل الشراء كدين على الشركة" }))
+  fireEvent.click(screen.getByRole("checkbox", { name: "تسجيل الشراء كدين على الشركة" }))
+  expect(screen.queryByRole("combobox", { name: "طريقة الدفع" })).toBeNull()
+  fireEvent.change(screen.getByRole("textbox", { name: "الدفعة الأولى، اختياري" }), { target: { value: "2.50" } })
+  fireEvent.change(screen.getByRole("combobox", { name: "طريقة الدفع" }), { target: { value: method } })
+  fireEvent.change(screen.getByRole("combobox", { name: "إدخال الدفعة الأولى" }), { target: { value: "PERCENT" } })
+  fireEvent.change(screen.getByRole("textbox", { name: "نسبة الدفعة الأولى" }), { target: { value: "25" } })
+  expect((screen.getByRole("combobox", { name: "طريقة الدفع" }) as HTMLSelectElement).value).toBe(method)
+  fireEvent.click(screen.getByRole("button", { name: "حفظ الفاتورة والمخزون" }))
+  await waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
+  expect(submit.mock.calls[0]![0].input).toMatchObject({ initialPaymentMethod: method, paymentInputType: "PERCENT", paidPercent: 25 })
+  fireEvent.change(screen.getByRole("textbox", { name: "نسبة الدفعة الأولى" }), { target: { value: "0" } })
+  expect(screen.queryByRole("combobox", { name: "طريقة الدفع" })).toBeNull()
+  fireEvent.click(screen.getByRole("button", { name: "حفظ الفاتورة والمخزون" }))
+  await waitFor(() => expect(submit).toHaveBeenCalledTimes(2))
+  expect(submit.mock.calls[1]![0].input).not.toHaveProperty("initialPaymentMethod")
+ })
  it("keeps exact invoice essentials visible and optional controls collapsed; header destination survives adding lines", () => {
   wrapper(<ExactInventoryPurchaseForm definitions={definitions} locations={[{ id: "same", type: "WAREHOUSE", label: "مخزن" }, { id: "same", type: "PROJECT", label: "مشروع" }]} parties={parties} pending={false} error={null} close={() => {}} submit={vi.fn()} />)
   expect(screen.getByRole("textbox", { name: "رقم الفاتورة، اختياري" })).toBeTruthy()

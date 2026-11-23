@@ -192,7 +192,8 @@ export class ExactInventoryService {
     if (!group) throw new ExactDebtError("Inventory invoice not found", "NOT_FOUND");
     const entries = this.repo.listEntries(id).map(row => ({ ...row, assets: this.repo.listAssets().filter(asset => asset.inventoryEntryId === row.id) }));
     const ids = new Set(entries.map(row => row.id));
-    return { group, entries, attachments: this.repo.listAttachmentsByInvoiceGroupId(id), consumableBalances: this.repo.listBalances().filter(row => ids.has(row.inventoryEntryId)), movements: this.repo.listMovements().filter(row => row.inventoryEntryId && ids.has(row.inventoryEntryId)) };
+    const payments = group.debtAccountId && group.debtEntryId ? this.finance.detail(group.debtAccountId).entries.filter(entry => entry.entryType === "PAYMENT" && entry.targetEntryId === group.debtEntryId && entry.producerType === "INVENTORY_PURCHASE" && entry.producerId === group.id).map(({ remainingDzd: _remaining, ...entry }) => entry) : [];
+    return { group, entries, payments, attachments: this.repo.listAttachmentsByInvoiceGroupId(id), consumableBalances: this.repo.listBalances().filter(row => ids.has(row.inventoryEntryId)), movements: this.repo.listMovements().filter(row => row.inventoryEntryId && ids.has(row.inventoryEntryId)) };
   }
   createInvoiceGroup(raw: ExactInventoryInvoiceInput & ExactDebtAudit) {
     const input = exactInventoryInvoiceCreateSchema.parse(raw);
@@ -233,6 +234,7 @@ export class ExactInventoryService {
         ? percentagePayment(gross, input.paidPercent ?? 0)
         : Money.parse(input.paidAmountDzd ?? "0");
       if (paid.compare(gross) > 0) throw new ExactDebtError("First payment exceeds purchase total");
+      if (input.initialPaymentMethod && paid.compare(zero()) <= 0) throw new ExactDebtError("Initial payment method requires a positive payment");
       const group: ExactInventoryInvoice = { id: groupId, invoiceNumber: input.invoiceNumber ?? `IN-${String(this.repo.listGroups().length + 1).padStart(5, "0")}`,
         supplierName: input.supplierName ?? null, invoiceDate: input.invoiceDate ?? now, warehouseId: input.warehouseId ?? null, projectId: input.projectId ?? null,
         externalCounterpartyId: input.externalCounterpartyId ?? null, currency: input.currency, grossTotalDzd: gross.toWire(), paidAmountDzd: paid.toWire(), remainingDebtDzd: gross.subtract(paid).toWire(),
@@ -259,7 +261,7 @@ export class ExactInventoryService {
         const account = port.createAccount({ requestId: request(input.requestId, "account", group.id), partyType: "EXTERNAL_COUNTERPARTY", externalCounterpartyId: input.externalCounterpartyId!, direction: "PAYABLE", ...auditOf(raw) });
         const original = port.postEntry({ requestId: request(input.requestId, "original", group.id), debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: gross.toWire(), ...auditOf(raw) });
         group.debtAccountId = account.id; group.debtEntryId = original.id;
-        if (paid.compare(zero()) > 0) port.recordPayment({ requestId: request(input.requestId, "first-payment", group.id), debtEntryId: original.id, amountDzd: paid.toWire(), ...auditOf(raw) });
+        if (paid.compare(zero()) > 0) port.recordInventoryPayment({ paymentMethod: input.initialPaymentMethod, requestId: request(input.requestId, "first-payment", group.id), debtEntryId: original.id, amountDzd: paid.toWire(), ...auditOf(raw) });
         this.repo.saveGroup(group);
       }
       return this.getInvoiceGroup(group.id);

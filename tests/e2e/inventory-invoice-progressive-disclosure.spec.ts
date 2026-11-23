@@ -73,7 +73,7 @@ test.describe("inventory invoice create — progressive disclosure", () => {
     }
     const debt = editor.getByRole("checkbox", { name: sections[0], exact: true })
     await debt.check()
-    // #591 owns CASH/BANK/CHECK. AMOUNT below is an input mode, not a payment method.
+    // Amount entry and tender selection are independent.
     await editor.getByRole("combobox", { name: "إدخال الدفعة الأولى", exact: true }).selectOption("AMOUNT")
     await editor.getByLabel("الدفعة الأولى، اختياري", { exact: true }).fill("500")
     const party = editor.getByRole("combobox", { name: "الطرف الخارجي", exact: true })
@@ -107,6 +107,7 @@ test.describe("inventory invoice create — progressive disclosure", () => {
       await editor.getByLabel("كمية المخزون", { exact: true }).nth(index).fill("10")
       await editor.getByLabel("سعر الوحدة", { exact: true }).nth(index).fill("100")
     }
+    await editor.getByRole("combobox", { name: "طريقة الدفع", exact: true }).selectOption("BANK_TRANSFER")
     await editor.getByRole("button", { name: "حفظ الفاتورة والمخزون", exact: true }).click()
     await expect(editor).toBeHidden()
     await expect(page.getByRole("heading", { name: `تفاصيل ${number}`, exact: true })).toBeVisible()
@@ -138,6 +139,7 @@ test.describe("inventory invoice create — progressive disclosure", () => {
     await page.goto(`/invoices/${groupId}`)
     await expect(page.getByRole("heading", { name: `تفاصيل ${number}`, exact: true })).toBeVisible()
     await expect(page.getByRole("link", { name: "invoice-note.png", exact: true })).toBeVisible()
+    await expect(page.getByRole("region", { name: "سجل دفعات الشراء", exact: true })).toContainText("تحويل بنكي")
     const history = page.getByRole("region", { name: "سجل الحركات", exact: true })
     const movements = history.getByRole("article")
       .filter({ has: page.getByRole("heading", { name: itemName, level: 4, exact: true }) })
