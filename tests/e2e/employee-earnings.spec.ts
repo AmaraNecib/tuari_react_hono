@@ -145,6 +145,12 @@ test("employee earnings approval keeps exact references, retries one committed r
   await page.setViewportSize({ width: 1280, height: 1000 })
   await page.getByRole("button", { name: "حفظ كل التغييرات" }).click()
   await expect(page.getByRole("heading", { name: employeeName, level: 1 })).toBeVisible({ timeout: 15_000 })
+  const detailBreadcrumb = page.getByRole("navigation", { name: "breadcrumb" })
+  expect(await detailBreadcrumb.evaluate(nav => {
+    const label = nav.querySelector('[data-slot="breadcrumb-page"]')!.getBoundingClientRect()
+    const bounds = nav.getBoundingClientRect()
+    return label.width > 20 && label.left >= bounds.left - 1 && label.right <= bounds.right + 1
+  })).toBe(true)
 
   await page.getByRole("tab", { name: "المالية" }).click()
   await expect(page.getByText("12,345.67")).toBeVisible()
