@@ -291,12 +291,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let runtime_secrets = load_runtime_secrets(app)?;
     cleanup_stale_api_processes(app);
 
-    let log_file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&server_log_path)
-        .map_err(|error| error.to_string())?;
-    let error_log_file = log_file.try_clone().map_err(|error| error.to_string())?;
+    let logs_dir = server_log_path.parent().ok_or("Invalid log directory")?;
 
     let mut command = if cfg!(debug_assertions) {
         let mut cmd = Command::new(if cfg!(target_os = "windows") {
@@ -346,8 +341,9 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .env("APP_DB_PATH", app_db_path.as_os_str())
         .env("APP_ATTACHMENTS_ROOT", attachments_root.as_os_str())
         .env("DATABASE_URL", to_sqlite_url(&app_db_path))
-        .stdout(Stdio::from(log_file))
-        .stderr(Stdio::from(error_log_file));
+        .env("TUARI_LOGS_DIR", logs_dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
 
     // Point the API sidecar at the user-editable config.json (may not exist
     // yet — the API treats a missing file as "use env/defaults").
@@ -366,6 +362,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     if let Ok(tuari_dir) = resolve_tuari_dir(app) {
         match crate::license::LicenseManager::initialize(&tuari_dir) {
             Ok(manager) => {
+                crate::event_sink::emit("info", "license validation complete", None);
                 let env_map = manager.to_env_map();
                 for (key, value) in &env_map {
                     command.env(key, value);
@@ -376,6 +373,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
                 }
             }
             Err(error) => {
+                crate::event_sink::emit("error", "license validation failed", None);
                 for (key, value) in license_failure_env_map(&error) {
                     command.env(key, value);
                 }
@@ -387,6 +385,17 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .spawn()
         .map_err(|error| format!("Failed to launch API process: {error}"))?;
 
+    if let Some(mut stderr) = child.stderr.take() {
+        std::thread::spawn(move || {
+            let mut buffer = [0_u8; 8192];
+            loop {
+                match stderr.read(&mut buffer) {
+                    Ok(0) | Err(_) => break,
+                    Ok(size) => crate::event_sink::emit("error", "API stderr", Some(String::from_utf8_lossy(&buffer[..size]).into_owned())),
+                }
+            }
+        });
+    }
     ensure_ready(&mut child, |child| wait_for_api_ready(child, &server_log_path))?;
     Ok(child)
 }

@@ -59,6 +59,41 @@ OTel (agent → collector → backend) is built for server fleets; our "server" 
 - **Never ticketed before**; docs planned it but never shipped: `docs/PHASE5-INTEGRATION-RELEASE.md` ("[ ] Desktop app crash reports"), `docs/RELEASE_SUMMARY.md` ("[ ] Desktop crash reports reviewed"), `docs/prd/licensing-prd.md` (telemetry as v2 item).
 - #237 (Audit page system log) is the in-app audit-trail UI — unrelated to this effort.
 
+## Implementation run
+
+- Mode: remote. Ticket source: GitHub issue #324, read on this run.
+- Branch: `fix/issue-324`.
+- Target ref: freshly fetched `origin/develop`, per owner instruction to start from develop. The local `develop` branch belongs to another worktree and was not changed.
+- Pinned base: `853e19342a04687233133b4b9f1148aaea1269c9`. Fast-forwarded `fix/issue-324` to this commit before implementation; retained the design edits.
+- Review tier: Standard. This change records lifecycle outcomes, not license payloads or authorization decisions. All three initial local review lenses remain required under the standing review policy.
+- No dependency additions planned.
+
+### Interface and ownership
+
+Keep `StructuredLogger` as the API caller interface. Introduce an event-sink interface with `emit(event)`, `flush()`, and a readable degraded flag. Events contain a schema version, offset-aware timestamp, severity, source, message, optional attributes, and optional error signature/count. Capture the timestamp when emitting, not from the request context's creation time.
+
+The desktop already resolves portable and installed log roots. It must pass the resolved root to the API explicitly because the sidecar clears its environment and runs from a runtime directory. Do not derive portable storage from the API working directory.
+
+The shared event-sink protocol has native adapters in TypeScript and Rust. API owns api.log/api.N.log; desktop owns desktop.log/desktop.N.log under the same day folders. This avoids cross-process count-update and rotation races while keeping panic capture independent of API availability. The standalone sink default remains app.log/app.N.log. Both adapters share schemaVersion 1, timestamp, severity, source, message, lifecycle, attributes, and count. No new dependency is required. Cleanup recognizes only these owned chunk names.
+
+### Confirmed test seam
+
+The owner confirmed the event-sink seam in this session before tests were written. Verification mode: focused-local / CI-final-pending. Full acceptance remains a hosted CI gate.
+
+Drive the event-sink interface against a temporary filesystem, with a controllable clock and small configurable limits. Assert the resulting JSONL rather than private helpers. Cover midnight rollover, offset changes, chunk splitting, retention and total-size enforcement, duplicate counts, ring-buffer eviction/flush, partial trailing lines, and nonthrowing write failures.
+
+Capture-adapter integration checks should prove that logger output, uncaught failures, desktop panic, and lifecycle milestones reach that same interface. No product UI changes are planned, so browser UI proof is not applicable to this foundation.
+
+### Storage decisions and review risks
+
+- The first error is durable immediately. A twelve-byte padded JSON numeric count permits in-place updates without rewriting or shifting subsequent records. The duplicate table is bounded to 1000 signatures and expires per one-minute window. A torn count update remains an inherent removable-media risk.
+- Lifecycle milestones bypass the routine debug/info ring. The API ring retains 1000 events and drains before each error. Rust emits lifecycle/error records only.
+- Before appending, trim only a non-newline-terminated trailing record. Complete earlier records remain intact.
+- Startup and durable emits enforce 30 local calendar days and a 200 MiB total cap. Cleanup touches only owned day-folder log names, not arbitrary files.
+- The API receives TUARI_LOGS_DIR from the desktop. The legacy unbounded api-server.log writer is removed; raw sidecar stderr is captured in bounded 8192-byte reads through the desktop sink. Log-directory creation failures no longer abort runtime file initialization.
+- Panic capture uses try_lock and best-effort stderr fallback. The original panic hook is preserved. A subprocess regression proves panic capture without changing the test runner's global hook.
+- Never record license keys, database keys, authentication secrets, or entire process environments.
+
 ## Out of scope
 
 - #327 ingest server (deferred by schedule).
