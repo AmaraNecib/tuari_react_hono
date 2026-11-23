@@ -73,6 +73,7 @@ try {
     attachments = { linked: 0, copied: 0, fallbackReasons: [] };
     const exists = copy.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='inventory_invoice_attachment'").get();
     const rows = exists ? copy.prepare("SELECT relative_path, sha256 FROM inventory_invoice_attachment").all() : [];
+    const included = new Map();
     for (const row of rows) {
       const live = within(root, row.relative_path);
       let digest = row.sha256;
@@ -87,11 +88,18 @@ try {
         fs.mkdirSync(path.dirname(object), { recursive: true });
         const temporary = object + "." + crypto.randomUUID();
         fs.writeFileSync(temporary, bytes, { flag: "wx" });
-        try { fs.renameSync(temporary, object); }
-        finally { fs.rmSync(temporary, { force: true }); }
+        try {
+          try { fs.copyFileSync(temporary, object, fs.constants.COPYFILE_EXCL); }
+          catch (error) { if (error.code !== "EEXIST") throw error; }
+        } finally { fs.rmSync(temporary, { force: true }); }
       }
       if (hash(fs.readFileSync(object)) !== digest) throw new Error("Attachment object hash mismatch: " + row.relative_path);
       const target = within(destination, row.relative_path);
+      if (included.has(target)) {
+        if (included.get(target) !== digest) throw new Error("Conflicting attachment digests: " + row.relative_path);
+        continue;
+      }
+      included.set(target, digest);
       fs.mkdirSync(path.dirname(target), { recursive: true });
       try {
         fs.linkSync(object, target);

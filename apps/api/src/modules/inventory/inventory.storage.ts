@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import { constants, copyFile, link, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises"
+import { constants, copyFile, link, mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, relative, resolve } from "node:path"
 
 function sanitizeFileName(fileName: string) {
@@ -60,7 +60,14 @@ export class InventoryAttachmentStorage {
             throw new Error("Attachment object hash mismatch")
           }
         } else if (["EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP", "EMLINK", "ENOSYS"].includes(code ?? "")) {
-          await rename(temporary, objectPath)
+          try {
+            await copyFile(temporary, objectPath, constants.COPYFILE_EXCL)
+          } catch (copyError) {
+            if ((copyError as NodeJS.ErrnoException).code !== "EEXIST") throw copyError
+          }
+          if (createHash("sha256").update(await readFile(objectPath)).digest("hex") !== sha256) {
+            throw new Error("Attachment object hash mismatch")
+          }
         } else throw error
       }
     } finally {

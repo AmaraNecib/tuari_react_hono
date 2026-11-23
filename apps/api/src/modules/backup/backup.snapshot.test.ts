@@ -3,7 +3,23 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkS
 import { InventoryAttachmentStorage } from "../inventory/inventory.storage";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { WorkerOptions } from "node:worker_threads";
+import { createBackupService } from "./backup.service";
+
+const faults = vi.hoisted(() => ({ linkFailure: false }));
+vi.mock("node:worker_threads", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:worker_threads")>();
+  return {
+    ...actual,
+    Worker: class extends actual.Worker {
+      constructor(filename: string | URL, options?: WorkerOptions) {
+        const prelude = 'require("node:fs").linkSync = () => { const e = new Error("cross-device"); e.code = "EXDEV"; throw e; };\n';
+        super(faults.linkFailure && options?.eval ? prelude + String(filename) : filename, options);
+      }
+    },
+  };
+});
 
 import { createDatabaseConnection } from "../../infrastructure/database/factory";
 import { createWorkerSnapshotter } from "./backup.snapshot";
@@ -25,6 +41,7 @@ describe("createWorkerSnapshotter", () => {
   };
 
   beforeEach(() => {
+    faults.linkFailure = false;
     tempRoot = mkdtempSync(join(tmpdir(), "tuari-snapshot-"));
     databasePath = join(tempRoot, "data", "tuari.sqlite");
     mkdirSync(join(tempRoot, "data"), { recursive: true });
@@ -72,6 +89,9 @@ describe("createWorkerSnapshotter", () => {
     expect((await take(join(day2, "tuari.sqlite"))).attachments).toMatchObject({ linked: 1, copied: 0 });
     db.close();
     await storage.deleteRelativePath(second.relativePath);
+    const day3 = join(tempRoot, "day3");
+    mkdirSync(day3);
+    expect((await take(join(day3, "tuari.sqlite"))).attachments).toMatchObject({ linked: 1, copied: 0 });
     expect(readFileSync(join(day1, "attachments", first.relativePath), "utf8")).toBe("first");
     expect(readFileSync(join(day2, "attachments", second.relativePath), "utf8")).toBe("second");
     const detached = join(tempRoot, "detached");
@@ -111,6 +131,52 @@ describe("createWorkerSnapshotter", () => {
     const result = await createWorkerSnapshotter({ databasePath, attachmentsRootPath })(join(tempRoot, "out.sqlite"));
     expect(result.attachments).toMatchObject({ linked: 1, copied: 0 });
     expect(readFileSync(join(tempRoot, "attachments/group/legacy.txt"), "utf8")).toBe("legacy bytes");
+  });
+
+  it("deduplicates repeated references to the same legacy path", async () => {
+    seedDatabase(1);
+    const db = new Database(databasePath);
+    db.exec("CREATE TABLE inventory_invoice_attachment (relative_path TEXT, sha256 TEXT)");
+    db.exec("INSERT INTO inventory_invoice_attachment VALUES ('legacy', NULL), ('legacy', NULL)");
+    db.close();
+    const attachmentsRootPath = join(tempRoot, "live");
+    mkdirSync(attachmentsRootPath);
+    writeFileSync(join(attachmentsRootPath, "legacy"), "one file");
+    const result = await createWorkerSnapshotter({ databasePath, attachmentsRootPath })(join(tempRoot, "out.sqlite"));
+    expect(result.attachments).toMatchObject({ linked: 1, copied: 0 });
+    expect(readFileSync(join(tempRoot, "attachments/legacy"), "utf8")).toBe("one file");
+  });
+
+  it("reports real copy fallback in the service marker and log", async () => {
+    seedDatabase(1);
+    const attachmentsRootPath = join(tempRoot, "live");
+    const storage = new InventoryAttachmentStorage(attachmentsRootPath);
+    const saved = await storage.saveInvoiceAttachment({
+      invoiceGroupId: "group", originalName: "invoice.txt", bytes: Buffer.from("fallback bytes"),
+    });
+    const db = new Database(databasePath);
+    db.exec("CREATE TABLE inventory_invoice_attachment (relative_path TEXT, sha256 TEXT)");
+    db.prepare("INSERT INTO inventory_invoice_attachment VALUES (?, ?)").run(saved.relativePath, saved.sha256);
+    db.close();
+    faults.linkFailure = true;
+    const messages: string[] = [];
+    const service = createBackupService({
+      snapshot: createWorkerSnapshotter({ databasePath, attachmentsRootPath }),
+      backupsRootPath: join(tempRoot, "backups"),
+      now: () => new Date("2026-01-15T08:00:00Z"),
+      logger: { info: (message) => messages.push(message), error: vi.fn() },
+    });
+    const result = await service.runDueBackup();
+    expect(result.status).toBe("created");
+    if (result.status !== "created") throw new Error("backup did not complete");
+    const marker = JSON.parse(readFileSync(join(result.path, "snapshot.json"), "utf8"));
+    expect(marker.attachments).toEqual({ linked: 0, copied: 1, fallbackReasons: [saved.relativePath + ": EXDEV"] });
+    expect(messages.some((message) => message.includes('"copied":1') && message.includes("EXDEV"))).toBe(true);
+    const file = join(result.path, "attachments", saved.relativePath);
+    expect(readFileSync(file, "utf8")).toBe("fallback bytes");
+    expect(statSync(file).nlink).toBe(1);
+    rmSync(attachmentsRootPath, { recursive: true });
+    expect(readFileSync(file, "utf8")).toBe("fallback bytes");
   });
 
   it("runs the copy off the event loop instead of blocking it", async () => {
