@@ -19,12 +19,12 @@ import { EmployeePayrollDebtSection } from "./employee-payroll-debt-section"
 export type ExactDebtPartyOption = { id: string; label: string; partyType: ExactDebtAccount["partyType"] }
 type Entry = ExactDebtDetail["entries"][number]
 type Action = { kind: "pay" | "correct" | "void"; entry: Entry } | { kind: "post" | "settle" }
-const actionLabel = { pay: "تسجيل دفعة", correct: "تصحيح المبلغ المتفق عليه", void: "إلغاء الحركة", post: "إضافة حركة", settle: "تسوية الحساب بالكامل" }
+const actionLabel = { pay: "exactDebts.pay", correct: "exactDebts.correct", void: "exactDebts.void", post: "exactDebts.post", settle: "exactDebts.settle" }
 // Client identity bounds retention without keeping discarded clients alive.
 // Owner is part of each intent signature, so remounts preserve uncertain keys
 // without sharing them across authenticated users.
 const requestScopes = new WeakMap<ExactDebtsClient, Map<string, string>>()
-const entryLabel = { OPENING: "رصيد افتتاحي", ADJUSTMENT: "تعديل", ADVANCE: "سلفة", PAYMENT: "دفعة", SETTLEMENT: "تسوية" }
+const entryLabel = { OPENING: "exactDebts.opening", ADJUSTMENT: "exactDebts.adjustment", ADVANCE: "exactDebts.advance", PAYMENT: "exactDebts.payment", SETTLEMENT: "exactDebts.settlement" }
 function amount(value: string, positive: boolean) {
   try {
     const parsed = parseLocalizedMoneyInput(value)
@@ -35,6 +35,7 @@ function amount(value: string, positive: boolean) {
 
 /** Authenticated debt ledger using the exact financial client. */
 export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees }: { client: ExactDebtsClient; parties: ExactDebtPartyOption[]; scopedParty?: ExactDebtPartyOption; payrollEmployees?: ExactDebtPartyOption[] }) {
+  const { t } = useTranslation()
   const [selected, setSelected] = useState<string | null>(null)
   const [accountPage, setAccountPage] = useState(1)
   const [entryPage, setEntryPage] = useState(1)
@@ -62,7 +63,7 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
     if (!requestId) { requestId = crypto.randomUUID(); requests.set(signature, requestId) }
     await mutation.mutateAsync({ ...command, input: { ...command.input, requestId } } as ExactDebtCommand)
     requests.delete(signature)
-    setNotice("تم حفظ الحركة وتحديث الرصيد.")
+    setNotice(t("exactDebts.saved"))
   }
   function open(next: Action) { mutation.reset(); setAction(next); setNotice("") }
   const chosenParty = scopedParty ?? scopedParties.find(row => row.id === partyId)
@@ -81,25 +82,25 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
   const scopedReceivableDzd = scopedGross("RECEIVABLE")
   const shownAccounts = matchingAccounts.slice((accountPage - 1) * 25, accountPage * 25)
   const shownEntries = detail.data?.entries.slice().reverse().slice((entryPage - 1) * 25, entryPage * 25) ?? []
-  return <main dir="rtl" className="min-w-0 space-y-6" aria-label="سجل الديون الدقيق">
-    <header><h1 className="text-2xl font-semibold">الديون</h1><p className="mt-1 text-sm text-muted-foreground">حسابات منفصلة للمستحقات لنا والمستحقات علينا.</p></header>
-    {summary.isPending ? <p role="status">جار تحميل الحسابات…</p> : summary.isError ? <div role="alert">تعذر تحميل الحسابات. <Button variant="outline" onClick={() => void summary.refetch()}>إعادة المحاولة</Button></div> : <>
+  return <main dir="rtl" className="min-w-0 space-y-6" aria-label={t("exactDebts.ledgerLabel")}>
+    <header><h1 className="text-2xl font-semibold">{t("exactDebts.title")}</h1><p className="mt-1 text-sm text-muted-foreground">{t("exactDebts.description")}</p></header>
+    {summary.isPending ? <p role="status">{t("exactDebts.loadingAccounts")}</p> : summary.isError ? <div role="alert">{t("exactDebts.accountsError")} <Button variant="outline" onClick={() => void summary.refetch()}>{t("exactDebts.retry")}</Button></div> : <>
       <div className="flex flex-wrap gap-x-10 gap-y-4 border-y border-border py-4">
-        <div className="max-w-full overflow-x-auto"><p className="mb-1 text-sm text-muted-foreground">مستحقات علينا</p><MoneyValue exact aggregate value={scopedParty ? scopedPayableDzd : summary.data.grossPayableDzd} currencyLabel="دج" variant="detail" /></div>
-        <div className="max-w-full overflow-x-auto"><p className="mb-1 text-sm text-muted-foreground">مستحقات لنا</p><MoneyValue exact aggregate value={scopedParty ? scopedReceivableDzd : summary.data.grossReceivableDzd} currencyLabel="دج" variant="detail" /></div>
+        <div className="max-w-full overflow-x-auto"><p className="mb-1 text-sm text-muted-foreground">{t("exactDebts.payable")}</p><MoneyValue exact aggregate value={scopedParty ? scopedPayableDzd : summary.data.grossPayableDzd} currencyLabel={t("exactDebts.currency")} variant="detail" /></div>
+        <div className="max-w-full overflow-x-auto"><p className="mb-1 text-sm text-muted-foreground">{t("exactDebts.receivable")}</p><MoneyValue exact aggregate value={scopedParty ? scopedReceivableDzd : summary.data.grossReceivableDzd} currencyLabel={t("exactDebts.currency")} variant="detail" /></div>
       </div>
-      <label className="block text-sm">بحث عن حساب<input aria-label="بحث عن حساب" className="mt-2 h-10 w-full rounded-xl border border-border bg-background px-3" value={search} onChange={event => { setSearch(event.target.value); setAccountPage(1) }} /></label>
-      <nav aria-label="حسابات الديون" className="flex flex-wrap gap-2">
+      <label className="block text-sm">{t("exactDebts.search")}<input aria-label={t("exactDebts.search")} className="mt-2 h-10 w-full rounded-xl border border-border bg-background px-3" value={search} onChange={event => { setSearch(event.target.value); setAccountPage(1) }} /></label>
+      <nav aria-label={t("exactDebts.accounts")} className="flex flex-wrap gap-2">
         {shownAccounts.map(row => <Button key={row.id} disabled={mutation.isPending} variant={row.id === selected ? "default" : "outline"} className="h-auto min-h-11 max-w-full flex-wrap py-2" onClick={() => { setSelected(row.id); setEntryPage(1); setAction(null); mutation.reset() }}>
-          {partyNames.get(row.workerId ?? row.externalCounterpartyId ?? "") ?? "طرف غير متاح"} · {row.direction === "PAYABLE" ? "مستحقات علينا" : "مستحقات لنا"} <MoneyValue exact value={row.currentBalance} currencyLabel="دج" />
+          {partyNames.get(row.workerId ?? row.externalCounterpartyId ?? "") ?? t("exactDebts.unknownParty")} · {row.direction === "PAYABLE" ? t("exactDebts.payable") : t("exactDebts.receivable")} <MoneyValue exact value={row.currentBalance} currencyLabel={t("exactDebts.currency")} />
         </Button>)}
-        {!scopedAccounts.length && <p>لا توجد حسابات ديون بعد.</p>}
+        {!scopedAccounts.length && <p>{t("exactDebts.emptyAccounts")}</p>}
       </nav>
-      {matchingAccounts.length > 25 && <div className="flex items-center gap-3" aria-label="صفحات الحسابات"><Button variant="outline" disabled={accountPage === 1} onClick={() => setAccountPage(page => page - 1)}>السابق</Button><span>{accountPage}</span><Button variant="outline" disabled={accountPage * 25 >= matchingAccounts.length} onClick={() => setAccountPage(page => page + 1)}>التالي</Button></div>}
+      {matchingAccounts.length > 25 && <div className="flex items-center gap-3" aria-label={t("exactDebts.accountPages")}><Button variant="outline" disabled={accountPage === 1} onClick={() => setAccountPage(page => page - 1)}>{t("exactDebts.previous")}</Button><span>{accountPage}</span><Button variant="outline" disabled={accountPage * 25 >= matchingAccounts.length} onClick={() => setAccountPage(page => page + 1)}>{t("exactDebts.next")}</Button></div>}
     </>}
     {(!scopedParty || scopedParty.partyType === "INTERNAL_WORKER") && <EmployeePayrollDebtSection employees={payrollEmployees ?? scopedParties.filter(row => row.partyType === "INTERNAL_WORKER")} scopedParty={scopedParty} />}
     <Surface className="min-w-0 p-5" variant="card">
-      <h2 className="mb-4 text-lg font-semibold">إنشاء حساب أو إضافة رصيد افتتاحي للطرف</h2>
+      <h2 className="mb-4 text-lg font-semibold">{t("exactDebts.createTitle")}</h2>
       <form className="grid min-w-0 gap-4 md:grid-cols-2" onSubmit={event => {
         event.preventDefault()
         if (!canCreate || !chosenParty) return
@@ -107,36 +108,36 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
           ...(chosenParty.partyType === "INTERNAL_WORKER" ? { workerId: chosenParty.id } : { externalCounterpartyId: chosenParty.id }),
           direction, ...(openingValue !== undefined && openingValue !== null ? { openingBalanceDzd: openingValue } : {}), reasonCategory: "OTHER", reasonDetail: reason.trim(), note: reason.trim() } }).then(() => { setOpening(""); setReason("") }).catch(() => {})
       }}>
-        <label className="space-y-2 text-sm"><span>الطرف</span><NativeSelect aria-label="الطرف" value={scopedParty?.id ?? partyId} disabled={mutation.isPending || Boolean(scopedParty)} onChange={event => setPartyId(event.target.value)}>{!parties.length && <option value="">لا توجد أطراف</option>}{scopedParties.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</NativeSelect></label>
-        <label className="space-y-2 text-sm"><span>اتجاه الحساب</span><NativeSelect aria-label="اتجاه الحساب" value={direction} disabled={mutation.isPending} onChange={event => setDirection(event.target.value as typeof direction)}><option value="PAYABLE">مستحقات علينا</option><option value="RECEIVABLE">مستحقات لنا</option></NativeSelect></label>
-        <CurrencyAmountInput exact label="الرصيد الافتتاحي، اختياري" value={opening} onChange={setOpening} disabled={mutation.isPending} />
-        <label className="space-y-2 text-sm"><span>سبب الدين</span><Textarea aria-label="سبب الدين" maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} disabled={mutation.isPending} /></label>
-        <div><Button type="submit" disabled={!canCreate || mutation.isPending}>حفظ الحساب</Button></div>
+        <label className="space-y-2 text-sm"><span>{t("exactDebts.party")}</span><NativeSelect aria-label={t("exactDebts.party")} value={scopedParty?.id ?? partyId} disabled={mutation.isPending || Boolean(scopedParty)} onChange={event => setPartyId(event.target.value)}>{!parties.length && <option value="">{t("exactDebts.emptyParties")}</option>}{scopedParties.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</NativeSelect></label>
+        <label className="space-y-2 text-sm"><span>{t("exactDebts.direction")}</span><NativeSelect aria-label={t("exactDebts.direction")} value={direction} disabled={mutation.isPending} onChange={event => setDirection(event.target.value as typeof direction)}><option value="PAYABLE">{t("exactDebts.payable")}</option><option value="RECEIVABLE">{t("exactDebts.receivable")}</option></NativeSelect></label>
+        <CurrencyAmountInput exact label={t("exactDebts.optionalOpening")} value={opening} onChange={setOpening} disabled={mutation.isPending} />
+        <label className="space-y-2 text-sm"><span>{t("exactDebts.reason")}</span><Textarea aria-label={t("exactDebts.reason")} maxLength={1000} value={reason} onChange={event => setReason(event.target.value)} disabled={mutation.isPending} /></label>
+        <div><Button type="submit" disabled={!canCreate || mutation.isPending}>{t("exactDebts.saveAccount")}</Button></div>
       </form>
     </Surface>
-    {detailAccountId && (detail.isPending ? <p role="status">جار تحميل الحركات…</p> : detail.isError ? <div role="alert">تعذر تحميل الحركات. <Button variant="outline" onClick={() => void detail.refetch()}>إعادة المحاولة</Button></div> : account && <Surface className="min-w-0 p-5" variant="card">
+    {detailAccountId && (detail.isPending ? <p role="status">{t("exactDebts.loadingEntries")}</p> : detail.isError ? <div role="alert">{t("exactDebts.entriesError")} <Button variant="outline" onClick={() => void detail.refetch()}>{t("exactDebts.retry")}</Button></div> : account && <Surface className="min-w-0 p-5" variant="card">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-        <div><h2 className="text-lg font-semibold">حركات الحساب · {account.direction === "PAYABLE" ? "مستحقات علينا" : "مستحقات لنا"}</h2><p className="mt-1"><MoneyValue exact value={account.currentBalance} currencyLabel="دج" variant="detail" /></p></div>
-        <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "post" })}>إضافة حركة</Button><Button disabled={mutation.isPending || !detail.data.entries.some(row => row.remainingDzd !== null && row.remainingDzd !== "0.00" && !row.producerType && !row.targetEntryId && !row.correctionOfEntryId)} onClick={() => open({ kind: "settle" })}>تسوية الحساب بالكامل</Button></div>
+        <div><h2 className="text-lg font-semibold">{t("exactDebts.entriesTitle")} {account.direction === "PAYABLE" ? t("exactDebts.payable") : t("exactDebts.receivable")}</h2><p className="mt-1"><MoneyValue exact value={account.currentBalance} currencyLabel={t("exactDebts.currency")} variant="detail" /></p></div>
+        <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "post" })}>{t("exactDebts.post")}</Button><Button disabled={mutation.isPending || !detail.data.entries.some(row => row.remainingDzd !== null && row.remainingDzd !== "0.00" && !row.producerType && !row.targetEntryId && !row.correctionOfEntryId)} onClick={() => open({ kind: "settle" })}>{t("exactDebts.settle")}</Button></div>
       </div>
-      <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label="جدول حركات الدين">
-        <Table><TableHeader><TableRow><TableHead>النوع والتاريخ</TableHead><TableHead>المبلغ</TableHead><TableHead>الرصيد بعد الحركة</TableHead><TableHead>المتبقي للحركة</TableHead><TableHead>التوثيق والإجراءات</TableHead></TableRow></TableHeader><TableBody>
+      <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label={t("exactDebts.entriesTable")}>
+        <Table><TableHeader><TableRow><TableHead>{t("exactDebts.typeDate")}</TableHead><TableHead>{t("exactDebts.amount")}</TableHead><TableHead>{t("exactDebts.balanceAfter")}</TableHead><TableHead>{t("exactDebts.remaining")}</TableHead><TableHead>{t("exactDebts.auditActions")}</TableHead></TableRow></TableHeader><TableBody>
           {shownEntries.map(row => <TableRow key={row.id} data-entry-id={row.id} className={row.status === "VOIDED" ? "opacity-65" : undefined}>
-            <TableCell><div>{entryLabel[row.entryType]}{row.correctionOfEntryId ? " · تصحيح" : ""}{row.status === "VOIDED" ? " · ملغاة" : ""}</div><div className="mt-1 text-xs text-muted-foreground"><AppDate value={row.entryDate} includeTime timeStyle="medium" /></div></TableCell>
-            <TableCell><MoneyValue exact signed value={row.signedAmountDzd} currencyLabel="دج" /></TableCell><TableCell><MoneyValue exact value={row.balanceAfterDzd} currencyLabel="دج" /></TableCell>
-            <TableCell>{row.remainingDzd !== null ? <MoneyValue exact value={row.remainingDzd} currencyLabel="دج" /> : "—"}</TableCell>
+            <TableCell><div>{t(entryLabel[row.entryType])}{row.correctionOfEntryId ? t("exactDebts.correctionSuffix") : ""}{row.status === "VOIDED" ? t("exactDebts.voidSuffix") : ""}</div><div className="mt-1 text-xs text-muted-foreground"><AppDate value={row.entryDate} includeTime timeStyle="medium" /></div></TableCell>
+            <TableCell><MoneyValue exact signed value={row.signedAmountDzd} currencyLabel={t("exactDebts.currency")} /></TableCell><TableCell><MoneyValue exact value={row.balanceAfterDzd} currencyLabel={t("exactDebts.currency")} /></TableCell>
+            <TableCell>{row.remainingDzd !== null ? <MoneyValue exact value={row.remainingDzd} currencyLabel={t("exactDebts.currency")} /> : "—"}</TableCell>
             <TableCell className="min-w-56"><p className="mb-2 max-w-72 whitespace-normal break-words text-xs text-muted-foreground">{row.note} {row.actorLabel}{row.voidReason ? ` · ${row.voidReason}` : ""}</p>
-              {(row.targetEntryId || row.correctionOfEntryId) && <p className="mb-2 text-xs">مرتبطة بالحركة <bdi dir="ltr">#{detail.data.entries.find(target => target.id === (row.targetEntryId ?? row.correctionOfEntryId))?.postingSequence}</bdi></p>}
+              {(row.targetEntryId || row.correctionOfEntryId) && <p className="mb-2 text-xs">{t("exactDebts.linkedEntry")} <bdi dir="ltr">#{detail.data.entries.find(target => target.id === (row.targetEntryId ?? row.correctionOfEntryId))?.postingSequence}</bdi></p>}
               {row.status === "LIVE" && !row.producerType && <div className="flex flex-wrap gap-2">
-                {!row.targetEntryId && !row.correctionOfEntryId && row.remainingDzd !== null && !row.remainingDzd.startsWith("-") && row.remainingDzd !== "0.00" && <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "pay", entry: row })}>تسجيل دفعة</Button>}
-                {!row.targetEntryId && !row.correctionOfEntryId && row.remainingDzd !== null && <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "correct", entry: row })}>تصحيح المبلغ</Button>}
-                <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "void", entry: row })}>إلغاء الحركة</Button>
+                {!row.targetEntryId && !row.correctionOfEntryId && row.remainingDzd !== null && !row.remainingDzd.startsWith("-") && row.remainingDzd !== "0.00" && <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "pay", entry: row })}>{t("exactDebts.pay")}</Button>}
+                {!row.targetEntryId && !row.correctionOfEntryId && row.remainingDzd !== null && <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "correct", entry: row })}>{t("exactDebts.correctAmount")}</Button>}
+                <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "void", entry: row })}>{t("exactDebts.void")}</Button>
               </div>}
             </TableCell>
           </TableRow>)}
         </TableBody></Table>
       </div>
-      {detail.data.entries.length > 25 && <div className="mt-4 flex items-center gap-3" aria-label="صفحات الحركات"><Button variant="outline" disabled={entryPage === 1} onClick={() => setEntryPage(page => page - 1)}>السابق</Button><span>{entryPage}</span><Button variant="outline" disabled={entryPage * 25 >= detail.data.entries.length} onClick={() => setEntryPage(page => page + 1)}>التالي</Button></div>}
+      {detail.data.entries.length > 25 && <div className="mt-4 flex items-center gap-3" aria-label={t("exactDebts.entryPages")}><Button variant="outline" disabled={entryPage === 1} onClick={() => setEntryPage(page => page - 1)}>{t("exactDebts.previous")}</Button><span>{entryPage}</span><Button variant="outline" disabled={entryPage * 25 >= detail.data.entries.length} onClick={() => setEntryPage(page => page + 1)}>{t("exactDebts.next")}</Button></div>}
     </Surface>)}
     {notice && <p role="status" className="text-sm text-foreground">{notice}</p>}
     {mutation.isError && !action && <p role="alert" className="text-sm text-destructive">{mutation.error.message}</p>}
@@ -174,15 +175,15 @@ function DebtActionDialog({ action, accountId, canOpen, canAdvance, pending, err
     onClose()
   }
   return <Dialog open onOpenChange={open => { if (!open && !pending) onClose() }}><DialogContent className="max-w-md" dir="rtl">
-    <DialogHeader><DialogTitle>{actionLabel[action.kind]}</DialogTitle><DialogDescription>{action.kind === "settle" ? "ستُسجل تسوية لكل حركة متبقية في هذا الحساب فقط." : action.kind === "void" ? "سيبقى سجل الحركة محفوظاً. تُلغى فقط آثارها المرتبطة دون الحركات الأخرى." : "تُحفظ الحركة في سجل الحساب مع توثيق الطرف والمبلغ."}</DialogDescription></DialogHeader>
+    <DialogHeader><DialogTitle>{t(actionLabel[action.kind])}</DialogTitle><DialogDescription>{action.kind === "settle" ? t("exactDebts.settleHelp") : action.kind === "void" ? t("exactDebts.voidHelp") : t("exactDebts.actionHelp")}</DialogDescription></DialogHeader>
     <form className="min-w-0 space-y-4" onSubmit={event => { event.preventDefault(); void submit().catch(() => {}) }}>
-      {action.kind === "post" && <label className="block space-y-2 text-sm"><span>نوع الحركة</span><NativeSelect aria-label="نوع الحركة" value={postType} disabled={pending} onChange={event => setPostType(event.target.value as typeof postType)}><option value="ADJUSTMENT">تعديل</option>{canOpen && <option value="OPENING">رصيد افتتاحي</option>}{canAdvance && <option value="ADVANCE">سلفة للعامل</option>}</NativeSelect></label>}
-      {needsAmount && <CurrencyAmountInput exact label={action.kind === "correct" ? "المبلغ المتفق عليه بعد التصحيح" : action.kind === "post" ? "مبلغ الحركة، موجب أو سالب" : "مبلغ الدفعة"} value={draft} onChange={setDraft} maxAmount={maximum} onPayFull={maximum ? () => setDraft(maximum) : undefined} disabled={pending} />}
-      {action.kind === "pay" && projectedRemaining !== null && <section aria-label={t("debts.payment.preview")} aria-live="polite" className="rounded-lg border border-border p-3 text-sm"><p>{t("debts.payment.preview")}</p><p>{t("debts.payment.amount")}: <MoneyValue exact value={parsed!} currencyLabel="دج" /></p><p>{t("debts.payment.balanceAfter")}: <MoneyValue exact value={projectedRemaining.toWire()} currencyLabel="دج" /></p></section>}
-      {action.kind === "pay" && <label className="block space-y-2 text-sm"><span>طريقة الدفع</span><NativeSelect aria-label="طريقة الدفع" value={method} onChange={event => setMethod(event.target.value as typeof method)} disabled={pending}><option value="CASH">نقداً</option><option value="BANK_TRANSFER">تحويل بنكي</option><option value="CHECK">شيك</option></NativeSelect></label>}
-      <label className="block space-y-2 text-sm"><span>{needsReason ? "السبب، مطلوب" : "ملاحظة، اختيارية"}</span><Textarea aria-label={needsReason ? "السبب، مطلوب" : "ملاحظة، اختيارية"} value={reason} maxLength={1000} onChange={event => setReason(event.target.value)} disabled={pending} /></label>
+      {action.kind === "post" && <label className="block space-y-2 text-sm"><span>{t("exactDebts.entryType")}</span><NativeSelect aria-label={t("exactDebts.entryType")} value={postType} disabled={pending} onChange={event => setPostType(event.target.value as typeof postType)}><option value="ADJUSTMENT">{t("exactDebts.adjustment")}</option>{canOpen && <option value="OPENING">{t("exactDebts.opening")}</option>}{canAdvance && <option value="ADVANCE">{t("exactDebts.workerAdvance")}</option>}</NativeSelect></label>}
+      {needsAmount && <CurrencyAmountInput exact label={action.kind === "correct" ? t("exactDebts.correctedAmount") : action.kind === "post" ? t("exactDebts.signedAmount") : t("exactDebts.paymentAmount")} value={draft} onChange={setDraft} maxAmount={maximum} onPayFull={maximum ? () => setDraft(maximum) : undefined} disabled={pending} />}
+      {action.kind === "pay" && projectedRemaining !== null && <section aria-label={t("debts.payment.preview")} aria-live="polite" className="rounded-lg border border-border p-3 text-sm"><p>{t("debts.payment.preview")}</p><p>{t("debts.payment.amount")}: <MoneyValue exact value={parsed!} currencyLabel={t("exactDebts.currency")} /></p><p>{t("debts.payment.balanceAfter")}: <MoneyValue exact value={projectedRemaining.toWire()} currencyLabel={t("exactDebts.currency")} /></p></section>}
+      {action.kind === "pay" && <label className="block space-y-2 text-sm"><span>{t("exactDebts.paymentMethod")}</span><NativeSelect aria-label={t("exactDebts.paymentMethod")} value={method} onChange={event => setMethod(event.target.value as typeof method)} disabled={pending}><option value="CASH">{t("exactDebts.cash")}</option><option value="BANK_TRANSFER">{t("exactDebts.bankTransfer")}</option><option value="CHECK">{t("exactDebts.check")}</option></NativeSelect></label>}
+      <label className="block space-y-2 text-sm"><span>{needsReason ? t("exactDebts.requiredReason") : t("exactDebts.optionalNote")}</span><Textarea aria-label={needsReason ? t("exactDebts.requiredReason") : t("exactDebts.optionalNote")} value={reason} maxLength={1000} onChange={event => setReason(event.target.value)} disabled={pending} /></label>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <DialogFooter><Button type="button" variant="outline" disabled={pending} onClick={onClose}>رجوع</Button><Button type="submit" disabled={!valid || pending}>{pending ? "جار الحفظ…" : "تأكيد الحفظ"}</Button></DialogFooter>
+      <DialogFooter><Button type="button" variant="outline" disabled={pending} onClick={onClose}>{t("exactDebts.back")}</Button><Button type="submit" disabled={!valid || pending}>{pending ? t("exactDebts.saving") : t("exactDebts.confirm")}</Button></DialogFooter>
     </form>
   </DialogContent></Dialog>
 }

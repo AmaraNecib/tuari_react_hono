@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import "@/i18n"
+import { i18n } from "@/i18n"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -34,6 +34,38 @@ async function openAccount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(query => query.clear()); setMoneyGrouping(true) })
 describe("injected exact debt page", () => {
+  it("resolves active page, ledger and dialog copy from Arabic resources", async () => {
+    const replacements = {
+      title: "عنوان مترجم للاختبار",
+      createTitle: "نموذج مترجم للاختبار",
+      entriesTable: "جدول مترجم للاختبار",
+      opening: "افتتاح مترجم للاختبار",
+      pay: "دفع مترجم للاختبار",
+      actionHelp: "وصف مترجم للاختبار",
+      confirm: "تأكيد مترجم للاختبار",
+    }
+    const originals = Object.entries(replacements).map(([name, value]) => {
+      const key = `exactDebts.${name}`
+      return { key, value, original: i18n.getResource("ar", "translation", key) }
+    })
+    try {
+      for (const { key, value } of originals) i18n.addResource("ar", "translation", key, value)
+      fixture()
+      expect(screen.getByRole("heading", { name: replacements.title })).toBeTruthy()
+      expect(screen.getByRole("heading", { name: replacements.createTitle })).toBeTruthy()
+      fireEvent.click(await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ }))
+      const ledger = await screen.findByRole("region", { name: replacements.entriesTable })
+      expect(within(ledger).getByText(replacements.opening)).toBeTruthy()
+      fireEvent.click(within(ledger).getByRole("button", { name: replacements.pay }))
+      const dialog = await screen.findByRole("dialog", { name: replacements.pay })
+      expect(within(dialog).getByText(replacements.actionHelp)).toBeTruthy()
+      expect(within(dialog).getByRole("button", { name: replacements.confirm })).toBeTruthy()
+    } finally {
+      cleanup()
+      for (const { key, original } of originals) i18n.addResource("ar", "translation", key, original)
+    }
+  })
+
   it("renders exact large cents and independent gross totals without touching numeric cache", async () => {
     const { query } = fixture()
     await openAccount()
