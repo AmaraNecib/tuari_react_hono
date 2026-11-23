@@ -89,8 +89,10 @@ try {
         const temporary = object + "." + crypto.randomUUID();
         fs.writeFileSync(temporary, bytes, { flag: "wx" });
         try {
-          try { fs.copyFileSync(temporary, object, fs.constants.COPYFILE_EXCL); }
-          catch (error) { if (error.code !== "EEXIST") throw error; }
+          if (!fs.existsSync(object)) {
+            try { fs.renameSync(temporary, object); }
+            catch (error) { if (!fs.existsSync(object)) throw error; }
+          }
         } finally { fs.rmSync(temporary, { force: true }); }
       }
       if (hash(fs.readFileSync(object)) !== digest) throw new Error("Attachment object hash mismatch: " + row.relative_path);

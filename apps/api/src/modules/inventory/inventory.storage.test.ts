@@ -4,12 +4,17 @@ import { join } from "node:path"
 
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-const faults = vi.hoisted(() => ({ linkFailure: false }))
+const faults = vi.hoisted(() => ({ linkFailure: false, forbidObjectCopy: false }))
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>()
   return { ...actual, link: (...args: Parameters<typeof actual.link>) => {
     if (faults.linkFailure) return Promise.reject(Object.assign(new Error("unsupported"), { code: "ENOTSUP" }))
     return actual.link(...args)
+  }, copyFile: (...args: Parameters<typeof actual.copyFile>) => {
+    if (faults.forbidObjectCopy && String(args[1]).endsWith("object")) {
+      return Promise.reject(new Error("Final object must not become visible during a copy"))
+    }
+    return actual.copyFile(...args)
   } }
 })
 
@@ -20,6 +25,7 @@ describe("InventoryAttachmentStorage", () => {
 
   afterEach(async () => {
     faults.linkFailure = false
+    faults.forbidObjectCopy = false
     await Promise.all(tempDirs.splice(0).map((directory) => rm(directory, { recursive: true, force: true })))
   })
 
@@ -75,6 +81,25 @@ describe("InventoryAttachmentStorage", () => {
     await storage.saveInvoiceAttachment({ ...args, originalName: "b.txt" })
     expect((await stat(objectPath)).ino).toBe(before.ino)
     expect(await readFile(objectPath, "utf8")).toBe("retained")
+  })
+
+  it("accepts long display filenames with a bounded on-disk basename", async () => {
+    const storage = await createStorage()
+    const saved = await storage.saveInvoiceAttachment({ invoiceGroupId: "group", originalName: "a".repeat(200), bytes: Buffer.from("long name") })
+    expect(saved.relativePath.split("/").at(-1)!.length).toBeLessThanOrEqual(255)
+    expect(await storage.readRelativePath(saved.relativePath)).toEqual(Buffer.from("long name"))
+  })
+
+  it("publishes concurrent no-hardlink uploads without exposing a copied final object", async () => {
+    const storage = await createStorage()
+    faults.linkFailure = true
+    faults.forbidObjectCopy = true
+    const bytes = Buffer.alloc(1024 * 1024, 42)
+    const uploads = await Promise.all(Array.from({ length: 8 }, (_, index) =>
+      storage.saveInvoiceAttachment({ invoiceGroupId: "group", originalName: index + ".bin", bytes })))
+    for (const uploaded of uploads) {
+      expect(await storage.readRelativePath(uploaded.relativePath)).toEqual(bytes)
+    }
   })
 
   it("rejects attachment writes that escape the storage root", async () => {

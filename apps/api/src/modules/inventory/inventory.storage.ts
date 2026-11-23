@@ -1,9 +1,9 @@
 import { createHash, randomUUID } from "node:crypto"
-import { constants, copyFile, link, mkdir, readFile, unlink, writeFile } from "node:fs/promises"
+import { constants, copyFile, link, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { dirname, isAbsolute, relative, resolve } from "node:path"
 
 function sanitizeFileName(fileName: string) {
-  const normalized = fileName.trim().replace(/[^a-zA-Z0-9._-]+/g, "-")
+  const normalized = fileName.trim().replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 100)
   return normalized.length > 0 ? normalized : "file"
 }
 
@@ -61,12 +61,22 @@ export class InventoryAttachmentStorage {
           }
         } else if (["EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP", "EMLINK", "ENOSYS"].includes(code ?? "")) {
           try {
-            await copyFile(temporary, objectPath, constants.COPYFILE_EXCL)
-          } catch (copyError) {
-            if ((copyError as NodeJS.ErrnoException).code !== "EEXIST") throw copyError
-          }
-          if (createHash("sha256").update(await readFile(objectPath)).digest("hex") !== sha256) {
-            throw new Error("Attachment object hash mismatch")
+            const existing = await readFile(objectPath)
+            if (createHash("sha256").update(existing).digest("hex") !== sha256) {
+              throw new Error("Attachment object hash mismatch")
+            }
+          } catch (readError) {
+            if ((readError as NodeJS.ErrnoException).code !== "ENOENT") throw readError
+            // The temporary is complete and on the same filesystem. Concurrent
+            // publishers have identical digest-addressed bytes; replacing the name
+            // never mutates any inode already linked into an older snapshot.
+            try {
+              await rename(temporary, objectPath)
+            } catch (publishError) {
+              // Windows can refuse replacement while another publisher reads it.
+              const winner = await readFile(objectPath).catch(() => { throw publishError })
+              if (createHash("sha256").update(winner).digest("hex") !== sha256) throw publishError
+            }
           }
         } else throw error
       }

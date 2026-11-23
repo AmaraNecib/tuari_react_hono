@@ -246,6 +246,7 @@ export const listBackupDates = (
 const STAGING_ARTIFACTS = new Set([
   BACKUP_DB_FILE_NAME,
   BACKUP_MARKER_FILE_NAME,
+  "attachments",
   `${BACKUP_DB_FILE_NAME}-wal`,
   `${BACKUP_DB_FILE_NAME}-shm`,
   `${BACKUP_DB_FILE_NAME}-journal`,
