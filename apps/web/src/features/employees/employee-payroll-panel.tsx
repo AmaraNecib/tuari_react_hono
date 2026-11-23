@@ -152,9 +152,19 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   }, [locked])
 
   useEffect(() => {
-    if (!availableEarnings.some(item => item.earning.id === earningId) && !(openingWage && earningId === `opening:${openingWage.sourceId}`)) setEarningId(availableEarnings[0]?.earning.id ?? (openingWage ? `opening:${openingWage.sourceId}` : ""))
+    if (!availableEarnings.some(item => item.earning.id === earningId) && !(openingWage && earningId === `opening:${openingWage.sourceId}`)) {
+      const nextEarningId = availableEarnings[0]?.earning.id ?? (openingWage ? `opening:${openingWage.sourceId}` : "")
+      if (nextEarningId !== earningId) {
+        setEarningId(nextEarningId)
+        if (!locked) {
+          setAmount("")
+          setPercentageDraft(null)
+          setError("")
+        }
+      }
+    }
     if (!availableAdvances.some(item => item.advance.id === advanceId) && !(openingAdvance && advanceId === `opening:${openingAdvance.sourceId}`)) setAdvanceId(availableAdvances[0]?.advance.id ?? (openingAdvance ? `opening:${openingAdvance.sourceId}` : ""))
-  }, [earningId, advanceId, availableEarnings, availableAdvances, openingWage, openingAdvance])
+  }, [earningId, advanceId, availableEarnings, availableAdvances, openingWage, openingAdvance, locked])
 
   const selectedEarning = earnings.find(item => item.earning.id === earningId)
   const selectedAdvance = advances.find(item => item.advance.id === advanceId)
@@ -164,6 +174,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   const percentageBasis = action === "cash" ? selectedEarning?.earning.totalAmount : undefined
   let percentageDisplay = ""
   let percentageApproximate = false
+  let previewError = ""
   let paymentPreview: ReturnType<typeof previewPayrollPayment> | null = null
   let cumulativeCashPercentage: ReturnType<typeof paymentPercentage> | null = null
   if (percentageBasis && selectedEarning && !locked) {
@@ -176,7 +187,11 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
         .filter(allocation => allocation.source.kind === "EARNING" && allocation.source.id === selectedEarning.earning.id)
         .reduce((sum, allocation) => sum + minor(allocation.amount), 0n)
       cumulativeCashPercentage = paymentPercentage(wire(previouslyPaid + minor(paymentPreview.amount)), percentageBasis)
-    } catch { /* Incomplete drafts have no valid preview. */ }
+    } catch {
+      try {
+        if (minor(amount) > minor(selectedEarning.remaining)) previewError = "AMOUNT_EXCEEDS_BALANCE"
+      } catch { /* Incomplete drafts have no valid preview. */ }
+    }
   }
   function editPercentage(value: string) {
     setPercentageDraft(value)
@@ -279,7 +294,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
 
   async function prepareAndSend() {
     if (!identity || !data || locked || storageError) return
-    if (percentageBasis && percentageDraft !== null && !paymentPreview) { setError("INVALID_PERCENTAGE"); return }
+    if (percentageBasis && percentageDraft !== null && !paymentPreview) { setError(previewError || "INVALID_PERCENTAGE"); return }
     const storage = getPayrollStorage()
     if (!storage) { setStorageError(true); return }
     try {
@@ -340,7 +355,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
     }
   }
 
-  const currentError = error || (storageError ? "STORAGE_UNAVAILABLE" : "")
+  const currentError = error || previewError || (storageError ? "STORAGE_UNAVAILABLE" : "")
   const pendingWageAmount = pending?.action === "cash"
     ? wire(pending.payload.wages.reduce((sum, allocation) => sum + minor(allocation.amount), 0n))
     : null

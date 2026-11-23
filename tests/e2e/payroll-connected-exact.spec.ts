@@ -145,6 +145,7 @@ test("percentage entry uses approved earnings and preserves a frozen retry after
   await expect(panel.getByText("النسبة المعروضة تقريبية", { exact: false })).toBeVisible()
   await percentage.fill("100")
   await expect(panel.getByRole("button", { name: "تسجيل الدفع", exact: true })).toBeDisabled()
+  await expect(panel.getByRole("alert")).toContainText("المبلغ يتجاوز الرصيد المتبقي")
 })
 
 // No financial fixtures or legacy SQL seed/reset. The only interception forwards

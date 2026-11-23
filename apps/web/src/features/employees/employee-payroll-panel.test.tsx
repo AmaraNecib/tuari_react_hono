@@ -84,6 +84,63 @@ describe("employee payroll controls", () => {
     } finally { Object.assign(mocks.payroll, original) }
   })
 
+  it("clears editable payment drafts when refresh automatically selects another earning", () => {
+    const original = structuredClone(mocks.payroll)
+    try {
+      mocks.payroll.earnings[0]!.earning.totalAmount = "60000.00"
+      mocks.payroll.earnings[0]!.remaining = "60000.00"
+      mocks.payroll.earnings.push({ ...structuredClone(mocks.payroll.earnings[0]!), earning: { ...mocks.payroll.earnings[0]!.earning, id: "earning-2", totalAmount: "100000.00" }, remaining: "100000.00" })
+      const view = renderPanel()
+      fireEvent.change(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" }), { target: { value: "50" } })
+      expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "30000.00")
+      mocks.payroll.earnings[0]!.remaining = "0.00"
+      view.rerender(<EmployeePayrollPanel employeeId="employee-1" />)
+      expect(screen.getByRole("combobox", { name: "الأجر المعتمد" })).toHaveProperty("value", "earning-2")
+      expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "")
+      expect(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })).not.toHaveProperty("value", "50")
+      expect(mocks.cash).not.toHaveBeenCalled()
+    } finally { Object.assign(mocks.payroll, original) }
+  })
+
+  it("keeps an uncertain percentage payment frozen across automatic earning selection", async () => {
+    const original = structuredClone(mocks.payroll)
+    mocks.cash.mockRejectedValueOnce(new Error("response lost")).mockResolvedValueOnce({ id: "receipt" })
+    try {
+      mocks.payroll.earnings[0]!.earning.totalAmount = "60000.00"
+      mocks.payroll.earnings[0]!.remaining = "60000.00"
+      const view = renderPanel()
+      fireEvent.change(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" }), { target: { value: "50" } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفع" }))
+      await screen.findByRole("button", { name: "إعادة العملية نفسها" })
+      const first = mocks.cash.mock.calls[0]![0]
+      expect(first.wages).toEqual([{ earningId: "earning-1", amount: "30000.00" }])
+      mocks.payroll.earnings[0]!.remaining = "0.00"
+      mocks.payroll.earnings.push({ ...structuredClone(mocks.payroll.earnings[0]!), earning: { ...mocks.payroll.earnings[0]!.earning, id: "earning-2", totalAmount: "100000.00" }, remaining: "100000.00" })
+      view.rerender(<EmployeePayrollPanel employeeId="employee-1" />)
+      expect(screen.getByRole("combobox", { name: "الأجر المعتمد" })).toHaveProperty("value", "earning-2")
+      fireEvent.click(screen.getByRole("button", { name: "إعادة العملية نفسها" }))
+      await waitFor(() => expect(mocks.cash).toHaveBeenCalledTimes(2))
+      expect(mocks.cash.mock.calls[1]![0]).toEqual(first)
+      await waitFor(() => expect(localStorage.length).toBe(0))
+    } finally { Object.assign(mocks.payroll, original) }
+  })
+
+  it("explains excessive percentages using the balance error and clears it after correction", () => {
+    const original = structuredClone(mocks.payroll)
+    try {
+      mocks.payroll.earnings[0]!.earning.totalAmount = "60000.00"
+      mocks.payroll.earnings[0]!.remaining = "12000.00"
+      renderPanel()
+      const percentage = screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })
+      fireEvent.change(percentage, { target: { value: "50" } })
+      expect(screen.getByRole("alert").textContent).toContain("المبلغ يتجاوز الرصيد المتبقي")
+      expect(screen.getByRole("button", { name: "تسجيل الدفع" })).toHaveProperty("disabled", true)
+      fireEvent.change(percentage, { target: { value: "10" } })
+      expect(screen.queryByRole("alert")).toBeNull()
+      expect(screen.getByRole("button", { name: "تسجيل الدفع" })).toHaveProperty("disabled", false)
+    } finally { Object.assign(mocks.payroll, original) }
+  })
+
   it("blocks invalid percentage rather than submitting the last valid amount", () => {
     renderPanel()
     const field = screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })

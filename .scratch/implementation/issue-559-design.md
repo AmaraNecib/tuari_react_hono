@@ -42,6 +42,12 @@ Dependencies were installed with `pnpm install --frozen-lockfile`, without packa
 
 Retain the failed initial connected-suite log. Scope existing native cash, offset and repayment assertions by employee_id, preserving every literal amount. Extend the connected percentage case with quarter/half interactions and derived previews, a three-cent earning whose 50 percent payment persists as two cents, reload with one cent outstanding, approximate reciprocal percentage and invalid/excess percentage rejection. No runtime source, money policy or API changed in this correction.
 
+## Hosted review correction
+
+CI found that the new calculator's direct Money import was absent from the exact-money consumer inventory. Add only its explicit path, preserving the complete scan and exact-set assertion. This records an existing direct consumer, not new storage activation or a looser allowlist.
+
+Greptile found that automatic earning selection retained the previous editable percentage and amount, and that excessive percentages disabled submit without explaining the outstanding-balance limit. Reproduce both through form tests before correcting them. Clear editable money, percentage and errors on an automatic source change only when no pending intent is locked. Retain pending payload and request identity. Derive an excessive-balance message from the live amount and remaining balance, independently of malformed percentage errors. Add frozen retry proof across automatic selection.
+
 ## Architecture
 
 Retain the existing payroll write and retry interfaces. A pure percentage calculator should own rational conversion and display approximation so integer money rules do not spread through event handlers. No schema, ledger, rounding-policy or published-contract change is proposed.
