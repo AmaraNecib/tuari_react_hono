@@ -2,7 +2,9 @@ import { useState, useMemo } from "react";
 import { getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { AppDate } from "@/components/app-date";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
+import { systemLogActionTypeSchema, systemLogEntityTypeSchema } from "@tuari/contracts";
+import { useSystemLogQuery } from "@/features/app-shell/workspace-queries";
+import { getActionTypeLabel, getEntityTypeLabel } from "@/features/app-shell/system-log-labels";
 import type { SystemLogEntry } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,15 +12,14 @@ import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
 import { AppShellFilterShell, DateRangeFilter, TableQueryState, usePaginatedRows } from "@/features/shared/table-primitives";
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls";
-import { isInstantWithinBounds, resolveDayRangeBounds } from "@/lib/date-range";
-import { rpcClient } from "@/lib/orpc-client";
+
 
 interface AuditLog {
   id: string;
   timestamp: string;
   actor: string;
-  domain: string;
-  action: string;
+  domain: SystemLogEntry["entityType"];
+  action: SystemLogEntry["actionType"];
   resourceId: string;
   changes: string;
 }
@@ -30,26 +31,25 @@ interface AuditLog {
 export function AuditLogPage() {
   const { t } = useTranslation()
   const [searchQuery, setSearchQuery] = useState("");
-  const [domain, setDomain] = useState("ALL");
-  const [action, setAction] = useState("ALL");
+  const [domain, setDomain] = useState<SystemLogEntry["entityType"] | "ALL">("ALL");
+  const [action, setAction] = useState<SystemLogEntry["actionType"] | "ALL">("ALL");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  // Fetch audit logs from API
-  const logsQuery = useQuery({
-    queryKey: ["systemLogList"],
-    queryFn: async () => {
-      const result = await rpcClient.systemLogList({});
-      return result?.items ?? [];
-    },
-  });
+  const filters = {
+    ...(domain !== "ALL" ? { entityType: domain } : {}),
+    ...(action !== "ALL" ? { actionType: action } : {}),
+    ...(startDate ? { fromDate: startDate } : {}),
+    ...(endDate ? { toDate: endDate } : {}),
+  };
+  const logsQuery = useSystemLogQuery({ filters });
 
   const apiResponse = logsQuery.data;
   const logs = useMemo(() => {
     if (!apiResponse) return [];
 
     // Map API response to AuditLog interface
-    return apiResponse.map((entry: SystemLogEntry) => ({
+    return apiResponse.items.map((entry: SystemLogEntry) => ({
       id: entry.id,
       timestamp: entry.createdAt,
       actor: entry.actorLabel ?? entry.actorCurrentLabel ?? t("systemLog.actorUnknown"),
@@ -73,28 +73,8 @@ export function AuditLogPage() {
       );
     }
 
-    if (domain !== "ALL") {
-      result = result.filter((log: AuditLog) => log.domain === domain);
-    }
-
-    if (action !== "ALL") {
-      result = result.filter((log: AuditLog) => log.action === action);
-    }
-
-    if (startDate || endDate) {
-      // Expand the picked days to inclusive Algeria bounds once, then reuse
-      // them for every row: a log written at 23:59 on the picked end date is
-      // inside the range, not dropped by a bare `yyyy-MM-dd` parsing as UTC
-      // midnight.
-      const bounds = resolveDayRangeBounds({
-        fromDate: startDate || undefined,
-        toDate: endDate || undefined,
-      });
-      result = result.filter((log: AuditLog) => isInstantWithinBounds(log.timestamp, bounds));
-    }
-
     return result.sort((a: AuditLog, b: AuditLog) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [logs, searchQuery, domain, action, startDate, endDate]);
+  }, [logs, searchQuery]);
 
   const { page, pageSize, pagedRows: pagedLogs, setPage, setPageSize } = usePaginatedRows({
     rows: filteredLogs,
@@ -107,8 +87,8 @@ export function AuditLogPage() {
     const rows = filteredLogs.map((log: AuditLog) => [
       new Date(log.timestamp).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() }),
       log.actor,
-      log.domain,
-      log.action,
+      getEntityTypeLabel(t, log.domain),
+      getActionTypeLabel(t, log.action),
       log.resourceId,
       log.changes,
     ]);
@@ -148,22 +128,17 @@ export function AuditLogPage() {
 
           <label className="flex flex-col gap-2 min-w-[10rem]">
             <span className="text-sm font-medium text-foreground">{t("auditLog.domain")}</span>
-            <NativeSelect value={domain} onChange={(e) => setDomain(e.target.value)}>
+            <NativeSelect value={domain} onChange={(e) => setDomain(e.target.value === "ALL" ? "ALL" : systemLogEntityTypeSchema.parse(e.target.value))}>
               <option value="ALL">{t("common.all")}</option>
-              <option value="المخزون">{t("auditLog.domainInventory")}</option>
-              <option value="الديون">{t("auditLog.domainDebts")}</option>
-              <option value="الموظفون">{t("auditLog.domainEmployees")}</option>
-              <option value="المشاريع">{t("auditLog.domainProjects")}</option>
+              {systemLogEntityTypeSchema.options.map((value) => <option key={value} value={value}>{getEntityTypeLabel(t, value)}</option>)}
             </NativeSelect>
           </label>
 
           <label className="flex flex-col gap-2 min-w-[10rem]">
             <span className="text-sm font-medium text-foreground">{t("auditLog.action")}</span>
-            <NativeSelect value={action} onChange={(e) => setAction(e.target.value)}>
+            <NativeSelect value={action} onChange={(e) => setAction(e.target.value === "ALL" ? "ALL" : systemLogActionTypeSchema.parse(e.target.value))}>
               <option value="ALL">{t("common.all")}</option>
-              <option value="create">{t("historyEvent.created")}</option>
-              <option value="update">{t("historyEvent.updated")}</option>
-              <option value="delete">{t("common.delete")}</option>
+              {systemLogActionTypeSchema.options.map((value) => <option key={value} value={value}>{getActionTypeLabel(t, value)}</option>)}
             </NativeSelect>
           </label>
 
@@ -193,12 +168,10 @@ export function AuditLogPage() {
                       <div className="flex-1 space-y-2">
                         <div className="flex flex-wrap gap-2">
                           <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
-                            {auditLog.domain}
+                            {getEntityTypeLabel(t, auditLog.domain)}
                           </span>
                           <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
-                            {auditLog.action === "create" && t("historyEvent.created")}
-                            {auditLog.action === "update" && t("historyEvent.updated")}
-                            {auditLog.action === "delete" && t("common.delete")}
+                            {getActionTypeLabel(t, auditLog.action)}
                           </span>
                         </div>
                         <div className="text-sm font-medium">{auditLog.changes}</div>
