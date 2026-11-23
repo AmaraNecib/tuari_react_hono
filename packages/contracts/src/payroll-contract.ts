@@ -17,7 +17,10 @@ import {
   payrollRepaymentRecordSchema,
 } from "./payroll";
 
+import { payrollOpeningContract } from "./payroll-opening";
+
 export const payrollContract = {
+  ...payrollOpeningContract,
   employeePayrollGet: oc.input(employeePayrollGetInputSchema).output(employeePayrollOutputSchema),
   employeePayrollCashRecord: payrollWrite.input(employeePayrollCashRecordInputSchema).output(payrollCashRecordSchema),
   employeePayrollAdvanceRepay: payrollWrite.input(employeePayrollAdvanceRepayInputSchema).output(payrollRepaymentRecordSchema),

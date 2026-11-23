@@ -2126,8 +2126,40 @@ fn license_failure_env_map(error: &crate::error::RustCoreError) -> HashMap<Strin
     ])
 }
 
-fn configure_api_child_environment(command: &mut Command, development: bool) {
+fn prepare_api_temp_directory(runtime_dir: &Path) -> Result<PathBuf, String> {
+    let temp_dir = runtime_dir.join("temp");
+    let failure =
+        |error: std::io::Error| format!("Failed to prepare API temporary directory: {error}");
+    create_dir_all(&temp_dir).map_err(failure)?;
+    let metadata = std::fs::symlink_metadata(&temp_dir).map_err(failure)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("API temporary directory must be a real directory".to_string());
+    }
+    let temp_dir = std::fs::canonicalize(temp_dir).map_err(failure)?;
+    static PROBE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let id = PROBE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "API temporary directory probe clock is before Unix epoch".to_string())?
+        .as_nanos();
+    let probe = temp_dir.join(format!(".write-probe-{}-{stamp}-{id}", std::process::id()));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+        .map_err(failure)?;
+    let result = std::io::Write::write_all(&mut file, b"tuari-temp-probe");
+    drop(file);
+    let cleanup = remove_file(&probe);
+    result.and(cleanup).map_err(failure)?;
+    Ok(temp_dir)
+}
+
+fn configure_api_child_environment(command: &mut Command, development: bool, temp_dir: &Path) {
     command.env_clear();
+    for key in ["TEMP", "TMP", "SQLITE_TMPDIR"] {
+        command.env(key, temp_dir);
+    }
 
     // Bundled Node needs SystemRoot on Windows. Keep that existing exception to
     // the cleared environment in both development and release.
@@ -2147,6 +2179,7 @@ fn configure_api_child_environment(command: &mut Command, development: bool) {
 
 fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
+    let temp_dir = prepare_api_temp_directory(&resolve_private_runtime_dir(app)?)?;
     let attachments_root = resolve_attachments_root(&app_db_path);
     let runtime_secrets = load_runtime_secrets(app)?;
     cleanup_stale_api_processes(app);
@@ -2194,17 +2227,14 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     #[cfg(target_os = "windows")]
     command.creation_flags(CREATE_NO_WINDOW);
 
-    configure_api_child_environment(&mut command, cfg!(debug_assertions));
+    configure_api_child_environment(&mut command, cfg!(debug_assertions), &temp_dir);
 
     command
         .env("API_HOST", API_HOST)
         .env("API_PORT", API_PORT.to_string())
         .env("ALLOWED_ORIGINS", ALLOWED_ORIGINS)
         .env("BETTER_AUTH_SECRET", runtime_secrets.better_auth_secret)
-        .env(
-            "BETTER_AUTH_URL",
-            format!("http://{API_HOST}:{API_PORT}"),
-        )
+        .env("BETTER_AUTH_URL", format!("http://{API_HOST}:{API_PORT}"))
         .env("AUTH_DB_PATH", auth_db_path.as_os_str())
         .env("APP_DB_PATH", app_db_path.as_os_str())
         .env("APP_ATTACHMENTS_ROOT", attachments_root.as_os_str())
@@ -2382,6 +2412,64 @@ mod tests {
     use crate::error::RustCoreError;
 
     #[test]
+    fn api_temp_directory_is_created_writable_and_reusable() {
+        let root = unique_temp_dir();
+        let path = super::prepare_api_temp_directory(&root).expect("prepare temp");
+        assert_eq!(path, std::fs::canonicalize(root.join("temp")).unwrap());
+        std::fs::write(path.join("sqlite-probe"), b"writable").unwrap();
+        assert_eq!(
+            std::fs::read(path.join("sqlite-probe")).unwrap(),
+            b"writable"
+        );
+        std::fs::write(path.join(".write-probe"), b"stale probe owned by another launch").unwrap();
+        assert_eq!(super::prepare_api_temp_directory(&root).unwrap(), path);
+        assert_eq!(std::fs::read_dir(&path).unwrap().count(), 2);
+        remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn api_temp_directory_refuses_a_file() {
+        let root = unique_temp_dir();
+        create_dir_all(&root).unwrap();
+        std::fs::write(root.join("temp"), b"do not replace").unwrap();
+        let error = super::prepare_api_temp_directory(&root).unwrap_err();
+        assert!(error.contains("API temporary directory"), "{error}");
+        assert_eq!(std::fs::read(root.join("temp")).unwrap(), b"do not replace");
+        remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn api_temp_environment_is_explicit_in_both_modes() {
+        let root = unique_temp_dir();
+        let path = super::prepare_api_temp_directory(&root).unwrap();
+        for development in [true, false] {
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command.env("TUARI_TEST_SECRET", "must-not-cross");
+            configure_api_child_environment(&mut command, development, &path);
+            let env: std::collections::HashMap<_, _> = command.get_envs().collect();
+            for key in ["TEMP", "TMP", "SQLITE_TMPDIR"] {
+                assert_eq!(
+                    env.get(std::ffi::OsStr::new(key)),
+                    Some(&Some(path.as_os_str()))
+                );
+            }
+            assert!(!env.contains_key(std::ffi::OsStr::new("TUARI_TEST_SECRET")));
+            command
+                .args(["--exact", "tests::environment_probe_child", "--nocapture"])
+                .env("TUARI_ENV_PROBE", "1")
+                .env("TUARI_EXPECTED_TEMP", &path);
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("SECRET_PRESENT=false"));
+        }
+        remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn development_api_process_can_resolve_node_through_host_path() {
         let mut command = if cfg!(target_os = "windows") {
             let system_root = std::env::var_os("SystemRoot").expect("Windows SystemRoot");
@@ -2394,7 +2482,9 @@ mod tests {
             command.args(["-c", "node --version"]);
             command
         };
-        configure_api_child_environment(&mut command, true);
+        let root = unique_temp_dir();
+        let temp_dir = super::prepare_api_temp_directory(&root).unwrap();
+        configure_api_child_environment(&mut command, true, &temp_dir);
 
         let output = command.output().expect("launch node lookup probe");
         assert!(
@@ -2414,8 +2504,12 @@ mod tests {
             .args(["--exact", "tests::environment_probe_child", "--nocapture"])
             .env("PATH", "production-path-must-not-cross")
             .env("TUARI_TEST_SECRET", "parent-secret-must-not-cross");
-        configure_api_child_environment(&mut command, false);
-        command.env("TUARI_ENV_PROBE", "1");
+        let root = unique_temp_dir();
+        let temp_dir = super::prepare_api_temp_directory(&root).unwrap();
+        configure_api_child_environment(&mut command, false, &temp_dir);
+        command
+            .env("TUARI_ENV_PROBE", "1")
+            .env("TUARI_EXPECTED_TEMP", &temp_dir);
 
         let output = command.output().expect("launch isolated environment probe");
         assert!(output.status.success(), "environment probe child failed");
@@ -2435,6 +2529,13 @@ mod tests {
         if std::env::var_os("TUARI_ENV_PROBE").is_none() {
             return;
         }
+        let expected = std::env::var_os("TUARI_EXPECTED_TEMP").unwrap();
+        for key in ["TEMP", "TMP", "SQLITE_TMPDIR"] {
+            assert_eq!(std::env::var_os(key), Some(expected.clone()));
+        }
+        let probe = PathBuf::from(expected).join("child-writable");
+        std::fs::write(&probe, b"child").unwrap();
+        std::fs::remove_file(probe).unwrap();
         println!("PATH_PRESENT={}", std::env::var_os("PATH").is_some());
         println!(
             "SECRET_PRESENT={}",

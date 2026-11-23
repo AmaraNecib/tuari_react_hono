@@ -27,6 +27,18 @@ const payload = {
 }
 
 describe("payroll pending intent recovery", () => {
+  it("retains the confirmed opening correction and original request across reload", () => {
+    const storage = memoryStorage()
+    const input = { requestId: "opening-correction", employeeId: identity.employeeId, kind: "WAGE" as const, expectedAmount: "2000.00", amount: "1900.00", reason: "Verified document" }
+    const saved = savePayrollPendingIntent("opening-correct", identity, input, storage)
+    const attempted = markPayrollIntentAttempt(saved, storage)
+    expect(loadPayrollPendingIntent("opening-correct", identity, storage)).toEqual({ ok: true, pending: attempted })
+    expect(loadPayrollPendingIntent("opening-correct", { ...identity, userId: "other-user" }, storage)).toEqual({ ok: true, pending: null })
+    expect(loadPayrollPendingIntent("opening-correct", { ...identity, workspaceId: "http://other-workspace.test" }, storage)).toEqual({ ok: true, pending: null })
+    expect(attempted.payload).toEqual(input)
+    expect(clearPayrollPendingIntent("opening-correct", identity, "different-request", storage)).toBe(false)
+    expect(clearPayrollPendingIntent("opening-correct", identity, input.requestId, storage)).toBe(true)
+  })
   it("persists distinct dispatch attempts without changing financial identity or payload", () => {
     const storage = memoryStorage()
     const saved = savePayrollPendingIntent("cash", identity, payload, storage)

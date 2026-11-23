@@ -13,6 +13,7 @@ import { resolveApiBaseUrl } from "@/lib/runtime-config"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import {
   useEmployeePayrollQuery,
+  useEmployeeOpeningQuery,
   useOffsetEmployeePayrollAdvanceMutation,
   useRecordEmployeePayrollCashMutation,
   useRepayEmployeePayrollAdvanceMutation,
@@ -30,6 +31,7 @@ import {
   type PayrollPendingIntent,
 } from "./payroll-pending-intent"
 import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
+import { EmployeeOpeningPanel } from "./employee-opening-panel"
 
 const ZERO = "0.00"
 const PAYROLL_ACTIONS: PayrollAction[] = ["cash", "repay", "offset"]
@@ -55,6 +57,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
     ? { userId, workspaceId, employeeId }
     : null, [userId, workspaceId, employeeId])
   const payroll = useEmployeePayrollQuery(employeeId)
+  const openingQuery = useEmployeeOpeningQuery(employeeId)
   const cashMutation = useRecordEmployeePayrollCashMutation()
   const repayMutation = useRepayEmployeePayrollAdvanceMutation()
   const offsetMutation = useOffsetEmployeePayrollAdvanceMutation()
@@ -80,6 +83,8 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   const availableEarnings = earnings.filter(item => minor(item.remaining) > 0n)
   const advances = data?.advances ?? []
   const availableAdvances = advances.filter(item => minor(item.remaining) > 0n)
+  const openingWage = action === "cash" ? openingQuery.data?.sources.find(source => source.kind === "WAGE" && minor(source.remaining) > 0n) : undefined
+  const openingAdvance = action === "repay" ? openingQuery.data?.sources.find(source => source.kind === "ADVANCE" && minor(source.remaining) > 0n) : undefined
 
   useEffect(() => {
     const refresh = () => setStorageRevision(value => value + 1)
@@ -144,12 +149,14 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   }, [locked])
 
   useEffect(() => {
-    if (!availableEarnings.some(item => item.earning.id === earningId)) setEarningId(availableEarnings[0]?.earning.id ?? "")
-    if (!availableAdvances.some(item => item.advance.id === advanceId)) setAdvanceId(availableAdvances[0]?.advance.id ?? "")
-  }, [earningId, advanceId, availableEarnings, availableAdvances])
+    if (!availableEarnings.some(item => item.earning.id === earningId) && !(openingWage && earningId === `opening:${openingWage.sourceId}`)) setEarningId(availableEarnings[0]?.earning.id ?? (openingWage ? `opening:${openingWage.sourceId}` : ""))
+    if (!availableAdvances.some(item => item.advance.id === advanceId) && !(openingAdvance && advanceId === `opening:${openingAdvance.sourceId}`)) setAdvanceId(availableAdvances[0]?.advance.id ?? (openingAdvance ? `opening:${openingAdvance.sourceId}` : ""))
+  }, [earningId, advanceId, availableEarnings, availableAdvances, openingWage, openingAdvance])
 
   const selectedEarning = earnings.find(item => item.earning.id === earningId)
   const selectedAdvance = advances.find(item => item.advance.id === advanceId)
+  const selectedOpeningWage = openingWage && earningId === `opening:${openingWage.sourceId}` ? openingWage : undefined
+  const selectedOpeningAdvance = openingAdvance && advanceId === `opening:${openingAdvance.sourceId}` ? openingAdvance : undefined
 
   async function sendIntent(intent: PayrollPendingIntent) {
     setRefusedAttemptId(null)
@@ -260,23 +267,23 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
       if (action === "cash") {
         const wageAmount = amount.trim() ? parseLocalizedMoneyInput(amount).toWire() : ZERO
         const wageMinor = minor(wageAmount)
-        if (wageMinor < 0n || (wageMinor > 0n && (!selectedEarning || wageMinor > minor(selectedEarning.remaining)))) throw new TypeError("AMOUNT_EXCEEDS_BALANCE")
+        if (wageMinor < 0n || (wageMinor > 0n && (!(selectedEarning || selectedOpeningWage) || wageMinor > minor((selectedOpeningWage ?? selectedEarning)!.remaining)))) throw new TypeError("AMOUNT_EXCEEDS_BALANCE")
         const extra = advanceAmount.trim() ? parseLocalizedMoneyInput(advanceAmount).toWire() : ZERO
         const extraMinor = minor(extra)
         if (extraMinor < 0n || wageMinor + extraMinor <= 0n) throw new TypeError("INVALID_AMOUNT")
         const payload: EmployeePayrollCashRecordInput = {
           requestId: createPayrollRequestId(), employeeId,
           amount: wire(wageMinor + extraMinor), paymentDate: timestamp,
-          wages: wageMinor > 0n && selectedEarning ? [{ earningId: selectedEarning.earning.id, amount: wageAmount }] : [],
+          wages: wageMinor > 0n ? selectedOpeningWage ? [{ openingId: selectedOpeningWage.sourceId, amount: wageAmount }] : selectedEarning ? [{ earningId: selectedEarning.earning.id, amount: wageAmount }] : [] : [],
           ...(extraMinor > 0n ? { advanceAmount: extra } : {}),
         }
         intent = savePayrollPendingIntent("cash", identity, payload, storage)
       } else if (action === "repay") {
-        if (!selectedAdvance) throw new TypeError("ADVANCE_REQUIRED")
+        if (!selectedAdvance && !selectedOpeningAdvance) throw new TypeError("ADVANCE_REQUIRED")
         const repayment = parseLocalizedMoneyInput(amount).toWire()
-        if (minor(repayment) <= 0n || minor(repayment) > minor(selectedAdvance.remaining)) throw new TypeError("AMOUNT_EXCEEDS_BALANCE")
+        if (minor(repayment) <= 0n || minor(repayment) > minor((selectedOpeningAdvance ?? selectedAdvance)!.remaining)) throw new TypeError("AMOUNT_EXCEEDS_BALANCE")
         const payload: EmployeePayrollAdvanceRepayInput = {
-          requestId: createPayrollRequestId(), employeeId, advanceId: selectedAdvance.advance.id, amount: repayment, paymentDate: timestamp,
+          requestId: createPayrollRequestId(), employeeId, ...(selectedOpeningAdvance ? { openingAdvanceId: selectedOpeningAdvance.sourceId } : { advanceId: selectedAdvance!.advance.id }), amount: repayment, paymentDate: timestamp,
         }
         intent = savePayrollPendingIntent("repay", identity, payload, storage)
       } else {
@@ -304,10 +311,10 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
     : null
 
   return (
-    <section className="space-y-4" aria-labelledby={`payroll-heading-${employeeId}`} dir="rtl">
+    <section className="employee-payroll space-y-4" aria-labelledby={`payroll-heading-${employeeId}`} dir="rtl">
       <div>
         <h3 id={`payroll-heading-${employeeId}`} className="text-lg font-semibold text-foreground">{t("payroll.title")}</h3>
-        <p className="text-sm text-muted-foreground">{t("payroll.description")}</p>
+
       </div>
       {data?.opening.reminder ? <p role="status" className="rounded-lg border border-border bg-muted/40 p-3 text-sm">{t("payroll.openingReminder")}</p> : null}
       {session.isError || (session.isSuccess && !identity) ? <p role="alert" className="text-sm text-destructive">{t("payroll.identityRequired")}</p> : null}
@@ -315,16 +322,22 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
       {payroll.isError && !data ? <p role="alert" className="text-sm text-destructive">{t("payroll.loadError", { code: visibleError(payroll.error) })}</p> : null}
       {data ? (
         <>
+          <dl className="employee-account-summary">
+            {(["wagesOwed", "advancesOwed"] as const).map(key => <div key={key}>
+              <dt>{t(`payroll.${key}`)}</dt>
+              <dd><MoneyValue exact aggregate value={aggregateMoney(data.summary[key])} currencyLabel={currencyLabel} /></dd>
+            </div>)}
+          </dl>
+          <details className="employee-account-breakdown">
+            <summary>{t("payroll.breakdown")}</summary>
           <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
             {([
               ["approvedEarnings", data.summary.approvedEarnings],
               ["wageCashPaid", data.summary.wageCashPaid],
               ["wagesOffset", data.summary.wagesOffset],
-              ["wagesOwed", data.summary.wagesOwed],
               ["advancesGiven", data.summary.advancesGiven],
               ["advancesCashRecovered", data.summary.advancesCashRecovered],
               ["advancesOffset", data.summary.advancesOffset],
-              ["advancesOwed", data.summary.advancesOwed],
               ["unallocatedEarnings", data.summary.unallocatedEarnings],
             ] as const).map(([key, value]) => (
               <div key={key} className="border-b border-border/60 py-2">
@@ -333,10 +346,8 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
               </div>
             ))}
           </dl>
-          {data.opening.wages !== null || data.opening.advances !== null ? (
-            <p className="text-xs text-muted-foreground">{t("payroll.openingNotIncluded")}</p>
-          ) : null}
-          <div className="flex flex-wrap gap-2" role="group" aria-label={t("payroll.actions")}>
+          </details>
+          <div className="employee-operation"><div className="flex flex-wrap gap-2" role="group" aria-label={t("payroll.actions")}>
             {(["cash", "offset", "repay"] as const).map(item => (
               <Button key={item} type="button" size="sm" variant={action === item ? "default" : "outline"} aria-pressed={action === item} onClick={() => setAction(item)} disabled={locked || busy}>
                 {t(`payroll.action.${item}`)}
@@ -344,20 +355,24 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
             ))}
           </div>
           {action === "offset" ? <p className="text-sm text-muted-foreground">{t("payroll.offsetOptions")}</p> : null}
-          <form className="grid min-w-0 grid-cols-1 gap-3 [&>label]:min-w-0 sm:grid-cols-2 xl:grid-cols-4" onSubmit={submit}>
+          <form className="employee-payment-form grid min-w-0 grid-cols-1 gap-4 [&>label]:min-w-0 sm:grid-cols-2" onSubmit={submit}>
             {action !== "repay" ? (
               <label className="space-y-1 text-sm">
                 <span>{t("payroll.earning")}</span>
-                <NativeSelect aria-label={t("payroll.earning")} value={earningId} onChange={event => setEarningId(event.target.value)} disabled={locked || availableEarnings.length === 0}>
-                  {availableEarnings.length ? availableEarnings.map(item => <option key={item.earning.id} value={item.earning.id}>{item.earning.periodStart.slice(0, 10)} · {t(`payroll.registration.${item.registration}`)} · {item.remaining} {currencyLabel}</option>) : <option value="">{t("payroll.noEarnings")}</option>}
+                <NativeSelect aria-label={t("payroll.earning")} value={earningId} onChange={event => setEarningId(event.target.value)} disabled={locked || (availableEarnings.length === 0 && !openingWage)}>
+                  {availableEarnings.map(item => <option key={item.earning.id} value={item.earning.id}>{item.earning.periodStart.slice(0, 10)} · {t(`payroll.registration.${item.registration}`)} · {item.remaining} {currencyLabel}</option>)}
+                  {openingWage ? <option value={`opening:${openingWage.sourceId}`}>{t("employeeOpening.wages")} · {openingWage.remaining} {currencyLabel}</option> : null}
+                  {!availableEarnings.length && !openingWage ? <option value="">{t("payroll.noEarnings")}</option> : null}
                 </NativeSelect>
               </label>
             ) : null}
             {action !== "cash" ? (
               <label className="space-y-1 text-sm">
                 <span>{t("payroll.advance")}</span>
-                <NativeSelect aria-label={t("payroll.advance")} value={advanceId} onChange={event => setAdvanceId(event.target.value)} disabled={locked || availableAdvances.length === 0}>
-                  {availableAdvances.length ? availableAdvances.map(item => <option key={item.advance.id} value={item.advance.id}>{item.advance.amount} {currencyLabel} · {t("payroll.remaining")} {item.remaining} {currencyLabel}</option>) : <option value="">{t("payroll.noAdvances")}</option>}
+                <NativeSelect aria-label={t("payroll.advance")} value={advanceId} onChange={event => setAdvanceId(event.target.value)} disabled={locked || (availableAdvances.length === 0 && !openingAdvance)}>
+                  {availableAdvances.map(item => <option key={item.advance.id} value={item.advance.id}>{item.advance.amount} {currencyLabel} · {t("payroll.remaining")} {item.remaining} {currencyLabel}</option>)}
+                  {openingAdvance ? <option value={`opening:${openingAdvance.sourceId}`}>{t("employeeOpening.advances")} · {openingAdvance.remaining} {currencyLabel}</option> : null}
+                  {!availableAdvances.length && !openingAdvance ? <option value="">{t("payroll.noAdvances")}</option> : null}
                 </NativeSelect>
               </label>
             ) : null}
@@ -394,11 +409,13 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
                 <Button type="button" disabled={busy || identityKey !== JSON.stringify(pending.identity)} onClick={() => void retryIntent(pending)}>{busy ? t("payroll.saving") : t("payroll.retry")}</Button>
               </div>
             ) : (
-              <Button type="submit" className="sm:col-span-2" disabled={busy || storageError || !identity || (action !== "cash" && availableAdvances.length === 0)}>
+              <Button type="submit" className="sm:col-span-2 sm:justify-self-start" disabled={busy || storageError || !identity || (action === "repay" && !selectedAdvance && !selectedOpeningAdvance) || (action === "offset" && (!selectedAdvance || !selectedEarning))}>
                 {busy ? t("payroll.saving") : t(`payroll.submit.${action}`)}
               </Button>
             )}
-          </form>
+            {!pending && action === "repay" && !selectedAdvance && !selectedOpeningAdvance ? <p className="text-sm text-muted-foreground">{t(availableAdvances.length > 0 || openingAdvance ? "payroll.error.ADVANCE_REQUIRED" : "payroll.noRepayableAdvance")}</p> : null}
+            {!pending && action === "offset" && (!selectedAdvance || !selectedEarning) ? <p className="text-sm text-muted-foreground">{t("payroll.offsetSourcesRequired")}</p> : null}
+          </form></div>
           <details className="border-t border-border/60 pt-3">
             <summary className="cursor-pointer text-sm font-medium">{t("payroll.history")}</summary>
             <ol className="mt-3 space-y-2 text-sm">
@@ -410,6 +427,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
           </details>
         </>
       ) : null}
+      <EmployeeOpeningPanel employeeId={employeeId} />
     </section>
   )
 }

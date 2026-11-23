@@ -6,6 +6,10 @@ import type {
   EmployeePayrollAdvanceOffsetInput,
   EmployeePayrollAdvanceRepayInput,
   EmployeePayrollCashRecordInput,
+  PayrollOpeningReviewInput,
+  PayrollOpeningCorrectInput,
+  PayrollOpeningReconcileInput,
+  PayrollOpeningCancelInput,
 } from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/workspace-mutations"
@@ -25,6 +29,7 @@ export const employeeEarningsQueryKeys = {
     employeeId ?? "all",
   ] as const,
   payrollRoot: (userId: string) => ["phase1", "workspace-domain", "employee-payroll", userId] as const,
+  opening: (userId: string, employeeId: string) => ["phase1", "workspace-domain", "employee-opening", userId, employeeId] as const,
   payroll: (userId: string, employeeId: string) => [
     ...employeeEarningsQueryKeys.payrollRoot(userId),
     employeeId,
@@ -61,6 +66,26 @@ export function useEmployeePayrollQuery(employeeId: string) {
   })
 }
 
+export function useEmployeeOpeningQuery(employeeId: string) {
+  return useWorkspaceScopedQuery({
+    key: userId => employeeEarningsQueryKeys.opening(userId ?? "anonymous", employeeId),
+    queryFn: () => rpcClient.employeePayrollOpeningGet({ employeeId }),
+  })
+}
+export function useReviewEmployeeOpeningMutation() {
+  return usePayrollMutation("opening-review", (input: PayrollOpeningReviewInput) => rpcClient.employeePayrollOpeningReview(input))
+}
+export function useCorrectEmployeeOpeningMutation() {
+  return usePayrollMutation("opening-correct", (input: PayrollOpeningCorrectInput) => rpcClient.employeePayrollOpeningCorrect(input))
+}
+
+export function useReconcileEmployeeOpeningMutation() {
+  return usePayrollMutation("opening-reconcile", (input: PayrollOpeningReconcileInput) => rpcClient.employeePayrollOpeningReconcile(input))
+}
+export function useCancelEmployeeOpeningProposalMutation() {
+  return usePayrollMutation("opening-cancel", (input: PayrollOpeningCancelInput) => rpcClient.employeePayrollOpeningCancelProposal(input))
+}
+
 function usePayrollMutation<A>(
   mutationKey: string,
   mutationFn: (input: A) => Promise<unknown>,
@@ -77,6 +102,7 @@ function usePayrollMutation<A>(
       const employeeId = (input as { employeeId: string }).employeeId
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: employeeEarningsQueryKeys.payroll(userId, employeeId) }),
+        queryClient.invalidateQueries({ queryKey: employeeEarningsQueryKeys.opening(userId, employeeId) }),
         queryClient.invalidateQueries({ queryKey: employeeEarningsQueryKeys.root(userId) }),
         invalidateWorkspaceDomains(queryClient, userId, { debtsSummary: true, debtAccounts: true, salaryPayments: true }),
         queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.debtsDetail(userId) }),

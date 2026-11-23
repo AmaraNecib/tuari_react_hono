@@ -57,7 +57,7 @@ export type FreshExactAppDependencies = Omit<AppDependencies,
   catalogService: Pick<InventoryService, "listItemDefinitions" | "listItemDefinitionOptions" | "getItemDefinition" | "createItemDefinition" | "updateItemDefinition">;
   financial: { services: FinancialDependencies; getMetadata(): Promise<WorkspaceMetadata>; reports: ExactReportCapability };
   listSystemLog: ExactSystemLogReader["listSystemLog"];
-  payroll: { service: FinancialDependencies["payroll"]; getEmployeePayroll: FinancialDependencies["lifecycle"]["getEmployeePayroll"] };
+  payroll: { service: FinancialDependencies["payroll"]; opening: FinancialDependencies["opening"]; getEmployeePayroll: FinancialDependencies["lifecycle"]["getEmployeePayroll"] };
 };
 
 /** Exact application root used by normal startup; incompatible files are refused. */
@@ -104,7 +104,7 @@ export async function createFreshExactAppDependencies(
       mode: "fresh-exact-selected",
       financial: { services: financial, getMetadata: async () => ({ ...companyService.getWorkspaceMetadata(), roles: await roleModule.list() }), reports },
       listSystemLog: systemLog.listSystemLog,
-      payroll: { service: financial.payroll, getEmployeePayroll: id => financial.lifecycle.getEmployeePayroll(id) },
+      payroll: { service: financial.payroll, opening: financial.opening, getEmployeePayroll: id => financial.lifecycle.getEmployeePayroll(id) },
       auth,
       accountService: new AccountService(new DrizzleAccountRepository(db, lock), auth),
       authBootstrapService,

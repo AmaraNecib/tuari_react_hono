@@ -1,5 +1,6 @@
 import { createDatabaseConnection } from "./factory";
-import { freshExactSchemaPlan } from "./fresh-exact-schema-plan";
+import { freshExactSchemaPlan, freshExactSchemaPlanV1 } from "./fresh-exact-schema-plan";
+import { payrollOpeningSchemaStatements } from "../../modules/workforce/adapters/sqlite-payroll-opening.repository";
 import { ensureFreshApplicationIdentity } from "./schema";
 import { BetterSqlite3Executor } from "./sqlite-executor";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
@@ -13,17 +14,19 @@ function physicalSchema(db: BetterSqliteDatabase): SchemaRow[] {
   return db.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all() as SchemaRow[];
 }
 
-async function construct(db: BetterSqliteDatabase) {
-  for (const statement of freshExactSchemaPlan) db.exec(statement);
+const openingKey = "payroll_opening_v1";
+async function construct(db: BetterSqliteDatabase, opening = true) {
+  for (const statement of opening ? freshExactSchemaPlan : freshExactSchemaPlanV1) db.exec(statement);
   await ensureFreshApplicationIdentity(new BetterSqlite3Executor(db));
   db.prepare("INSERT INTO app_schema_state(key,executed_at) VALUES (?,?)").run(startupKey, new Date().toISOString());
+  if (opening) db.prepare("INSERT INTO app_schema_state(key,executed_at) VALUES (?,?)").run(openingKey, new Date().toISOString());
 }
 
 /** A disposable schema oracle holds no application data or financial services. */
-async function expectedSchema(): Promise<SchemaRow[]> {
+async function expectedSchema(opening = true): Promise<SchemaRow[]> {
   const reference = createDatabaseConnection(":memory:", "");
   try {
-    await construct(reference);
+    await construct(reference, opening);
     return physicalSchema(reference);
   } finally { reference.close(); }
 }
@@ -40,11 +43,19 @@ function attest(db: BetterSqliteDatabase, expected: SchemaRow[]) {
 export async function ensureFreshExactApplicationSchema(db: BetterSqliteDatabase): Promise<void> {
   if (db.inTransaction) throw new Error("Financial schema startup requires its own transaction");
   const expected = await expectedSchema();
+  const previous = await expectedSchema(false);
   db.exec("PRAGMA foreign_keys=ON");
   db.exec("BEGIN IMMEDIATE");
   try {
     if (physicalSchema(db).length === 0) await construct(db);
+    else if (JSON.stringify(physicalSchema(db)) === JSON.stringify(previous)) {
+      attest(db, previous);
+      if (db.prepare("SELECT key FROM app_schema_state WHERE key=?").get(openingKey)) throw unsupported();
+      for (const statement of payrollOpeningSchemaStatements) db.exec(statement);
+      db.prepare("INSERT INTO app_schema_state(key,executed_at) VALUES (?,?)").run(openingKey, new Date().toISOString());
+    }
     attest(db, expected);
+    if (!db.prepare("SELECT key FROM app_schema_state WHERE key=?").get(openingKey)) throw unsupported();
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");

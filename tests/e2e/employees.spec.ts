@@ -55,7 +55,8 @@ test.describe("employees — critical path", () => {
 
     await page.getByRole("button", { name: "حفظ العامل" }).click()
 
-    // The save returns to the list where the new employee's full name renders.
+    await expect(page.getByRole("heading", { name: "مراجعة الرصيد السابق، خطوة اختيارية", exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "إنهاء ومتابعة المراجعة لاحقاً", exact: true }).click()
     await expect(page.getByText(`${firstName} ${lastName}`)).toBeVisible({ timeout: 10_000 })
   })
 

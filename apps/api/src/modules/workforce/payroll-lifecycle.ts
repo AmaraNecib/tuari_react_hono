@@ -10,6 +10,8 @@ export type PayrollOpeningSource = {
   readonly amount: string;
   readonly debtAccountId: string;
   readonly debtEntryId: string;
+  readonly correctionIds?: readonly string[];
+  readonly refunds?: readonly { readonly id: string; readonly amount: string }[];
 };
 
 export type PayrollOpeningReview = {

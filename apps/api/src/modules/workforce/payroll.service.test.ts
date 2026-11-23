@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDatabaseConnection } from "../../infrastructure/database/factory";
 import { createFifoLock } from "../../infrastructure/database/fifo-lock";
 import { schemaStatements } from "../../infrastructure/database/schema-definitions";
@@ -56,6 +56,100 @@ function fixture(key: string) {
 }
 
 describe.each([["plain", ""], ["keyed", "558-command-public-key"]])("payroll command integration %s", (_driver, key) => {
+  it.each(["identity", "currency", "negative", "orphan", "missing-account", "account-id", "producer-type", "producer-id", "entry-currency", "target", "correction"])("rejects an inconsistent earning port response: %s", fault => {
+    const f = fixture(key); const earning = f.earning("100.00");
+    f.service.registerEarning({ ...f.audit, requestId: "valid-registration", earningId: earning.id });
+    const valid = f.sources.getEarning(earning.id)!;
+    const source = { ...valid, original: { ...valid.original! }, account: { ...valid.account! } };
+    if (fault === "identity") source.id = "foreign";
+    if (fault === "currency") source.currency = "USD";
+    if (fault === "negative") source.amount = "-1.00";
+    if (fault === "orphan") source.original = null!;
+    if (fault === "missing-account") source.account = null!;
+    if (fault === "account-id") source.original.debtAccountId = "foreign";
+    if (fault === "producer-type") source.original.producerType = "PAYROLL_ADVANCE";
+    if (fault === "producer-id") source.original.producerId = "foreign";
+    if (fault === "entry-currency") source.original.currency = "USD" as typeof source.original.currency;
+    if (fault === "target") source.original.targetEntryId = "foreign";
+    if (fault === "correction") source.original.correctionOfEntryId = "foreign";
+    const before = f.finance.listEntries(valid.account!.id);
+    const lookup = vi.spyOn(f.sources, "getEarning").mockReturnValue(source);
+    try {
+      expect(() => f.service.recordCash({ ...f.audit, requestId: "invalid-port", employeeId: f.employeeId, amount: "1.00", paymentDate: paidAt, wages: [{ earningId: earning.id, amount: "1.00" }] })).toThrow(/not found|unsupported currency|Invalid approved|linkage/);
+      expect(f.cash.listCash(f.employeeId)).toEqual([]);
+      expect(f.finance.listEntries(valid.account!.id)).toEqual(before);
+      expect(f.finance.remaining(valid.original!.id)).toBe("100.00");
+    } finally { lookup.mockRestore(); }
+  });
+
+  it.each(["identity", "employee", "currency", "account-id", "entry-id", "entry-type", "producer-type", "producer-id", "entry-currency", "voided", "target", "correction", "original-amount", "source-amount"])("rejects an inconsistent advance port response: %s", fault => {
+    const f = fixture(key);
+    const cash = f.service.recordCash({ ...f.audit, requestId: "valid-advance", employeeId: f.employeeId, amount: "100.00", paymentDate: paidAt, wages: [], advanceAmount: "100.00" });
+    const valid = f.sources.getAdvance(cash.advance!.id)!;
+    const source = { ...valid, original: { ...valid.original }, account: { ...valid.account } };
+    if (fault === "identity") source.id = "foreign";
+    if (fault === "employee") source.employeeId = "foreign";
+    if (fault === "currency") source.currency = "USD";
+    if (fault === "account-id") source.account.id = "foreign";
+    if (fault === "entry-id") source.original.id = "foreign";
+    if (fault === "entry-type") source.original.entryType = "ADJUSTMENT";
+    if (fault === "producer-type") source.original.producerType = "PAYROLL_EARNINGS";
+    if (fault === "producer-id") source.original.producerId = "foreign";
+    if (fault === "entry-currency") source.original.currency = "USD" as typeof source.original.currency;
+    if (fault === "voided") source.original.status = "VOIDED";
+    if (fault === "target") source.original.targetEntryId = "foreign";
+    if (fault === "correction") source.original.correctionOfEntryId = "foreign";
+    if (fault === "original-amount") source.original.signedAmountDzd = "99.00";
+    if (fault === "source-amount") source.amount = "99.00";
+    const before = f.finance.listEntries(valid.account.id);
+    const lookup = vi.spyOn(f.sources, "getAdvance").mockReturnValue(source);
+    try {
+      expect(() => f.service.repayAdvance({ ...f.audit, requestId: "invalid-port", employeeId: f.employeeId, advanceId: cash.advance!.id, amount: "1.00", paymentDate: paidAt })).toThrow(/not found|linkage/);
+      expect(f.cash.listSettlements(f.employeeId)).toEqual([]);
+      expect(f.cash.listCash(f.employeeId)).toEqual([cash]);
+      expect(f.finance.listEntries(valid.account.id)).toEqual(before);
+      expect(f.finance.remaining(valid.original.id)).toBe("100.00");
+    } finally { lookup.mockRestore(); }
+  });
+
+  it("rejects an opening port whose amount differs from the ledger", () => {
+    const f = fixture(key); const sourceId = randomUUID();
+    const producer = f.finance.forProducer({ type: "PAYROLL_OPENING", id: sourceId });
+    const account = producer.createAccount({ requestId: "opening-account", partyType: "INTERNAL_WORKER", workerId: f.employeeId, direction: "PAYABLE", currency: "DZD", ...f.audit });
+    const original = producer.postEntry({ requestId: "opening-original", debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: "10.00", currency: "DZD", ...f.audit });
+    const service = new PayrollService(f.finance, f.cash, f.sources, { id: randomUUID, now: () => now }, undefined, {
+      transactionIdentity: f.sources.transactionIdentity,
+      countRows: () => 1,
+      getReview: () => ({ employeeId: f.employeeId, state: "REVIEWED", sources: [{ kind: "WAGE", employeeId: f.employeeId, currency: "DZD", sourceId, amount: "11.00", debtAccountId: account.id, debtEntryId: original.id }] }),
+    });
+    expect(() => service.recordCash({ ...f.audit, requestId: "mislinked-opening", employeeId: f.employeeId, amount: "1", paymentDate: paidAt, wages: [{ openingId: sourceId, amount: "1" }] })).toThrow(/Opening ledger linkage mismatch/);
+    expect(f.cash.listCash(f.employeeId)).toEqual([]);
+    expect(f.finance.remaining(original.id)).toBe("10.00");
+  });
+
+  it("refuses offset commands when offset storage is not configured", () => {
+    const f = fixture(key);
+    expect(() => f.service.offsetAdvance({ ...f.audit, requestId: "no-offset-store", employeeId: f.employeeId, amount: "1", settlementDate: paidAt, wageSource: { kind: "EARNING", id: "missing" }, advanceSource: { kind: "ADVANCE", id: "missing" } })).toThrow(/persistence is not configured/);
+    expect(f.finance.listAccounts()).toEqual([]);
+  });
+
+  it("refuses registering or paying missing earnings without creating debt", () => {
+    const f = fixture(key);
+    expect(() => f.service.registerEarning({ ...f.audit, requestId: "missing-earning", earningId: "missing" })).toThrow(/not found/);
+    expect(() => f.service.recordCash({ ...f.audit, requestId: "pay-missing", employeeId: f.employeeId, amount: "1", paymentDate: paidAt, wages: [{ earningId: "missing", amount: "1" }] })).toThrow(/not found/);
+    expect(f.finance.listAccounts()).toEqual([]);
+    expect(f.cash.listCash(f.employeeId)).toEqual([]);
+  });
+
+  it("refuses missing opening sources without creating cash or settlements", () => {
+    const f = fixture(key);
+    expect(() => f.service.recordCash({ ...f.audit, requestId: "missing-opening-wage", employeeId: f.employeeId, amount: "1", paymentDate: paidAt, wages: [{ openingId: "missing", amount: "1" }] })).toThrow(/Reviewed opening source/);
+    expect(() => f.service.repayAdvance({ ...f.audit, requestId: "missing-opening-advance", employeeId: f.employeeId, openingAdvanceId: "missing", amount: "1", paymentDate: paidAt })).toThrow(/Reviewed opening source/);
+    expect(f.cash.listCash(f.employeeId)).toEqual([]);
+    expect(f.cash.listSettlements(f.employeeId)).toEqual([]);
+    expect(f.finance.listAccounts()).toEqual([]);
+  });
+
   it("confirms only rolled-back absent-receipt refusals and accepts a corrected request", () => {
     const f = fixture(key); const earning = f.earning("100.00");
     const input = { ...f.audit, requestId: "stale-balance", employeeId: f.employeeId, amount: "101.00", paymentDate: paidAt, wages: [{ earningId: earning.id, amount: "101.00" }] };

@@ -1,7 +1,7 @@
 import {
   Money, sumMoneyHistory, getLockedDirectionForCategory, exactDebtProducerSchema, exactFinanceAggregateOwnerSchema, type ExactDebtProducer, type ExactFinanceAggregateOwner,
   createExactDebtAccountSchema, postExactDebtEntrySchema, payExactDebtEntrySchema,
-  correctExactDebtEntrySchema, voidExactDebtEntrySchema, settleExactDebtAccountSchema,
+  correctExactDebtEntrySchema, exactDebtAmountSchema, voidExactDebtEntrySchema, settleExactDebtAccountSchema,
   type CreateExactDebtAccount, type PostExactDebtEntry, type PayExactDebtEntry,
   type CorrectExactDebtEntry, type VoidExactDebtEntry, type SettleExactDebtAccount,
 } from "@tuari/contracts";
@@ -223,6 +223,25 @@ export class ExactFinanceService {
       return this.append(account, { entryType: "PAYMENT", signedAmountDzd: amount.negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), paymentMethod: input.paymentMethod, note: input.note }, audit);
     });
   }
+  /** Record actual returned cash against an opening original without erasing its payment. */
+  recordOpeningCashRefund(raw: PayExactDebtEntry & ExactDebtAudit & { refundDate: string }): ExactDebtEntry {
+    if (this.producer?.type !== "PAYROLL_OPENING") throw new ExactDebtError("Opening refund requires its producer", "CONFLICT");
+    const input = { ...payExactDebtEntrySchema.parse(raw), refundDate: postExactDebtEntrySchema.shape.entryDate.unwrap().parse(raw.refundDate) };
+    const audit = this.audit(raw);
+    if (input.refundDate > this.dependencies.now()) throw new ExactDebtError("Cash refund cannot be recorded in the future");
+    return this.command("opening-cash-refund", { ...input, ...audit }, input, () => {
+      const target = this.obligation(input.debtEntryId);
+      this.assertOwner(target);
+      const account = this.getAccount(target.debtAccountId);
+      this.assertCurrency(account, input.currency);
+      if (account.partyType !== "INTERNAL_WORKER" || input.paymentMethod !== "CASH") throw new ExactDebtError("Opening refund requires worker cash provenance");
+      const cash = this.listEntries(account.id).filter(row => row.status === "LIVE" && row.targetEntryId === target.id && row.paymentMethod === "CASH" && (row.entryType === "PAYMENT" || row.entryType === "ADJUSTMENT"));
+      const netPaid = Money.parse(sumMoneyHistory(cash.map(row => Money.parse(row.signedAmountDzd)))).negate();
+      const amount = Money.parse(input.amountDzd);
+      if (amount.compare(netPaid) > 0) throw new ExactDebtError("Refund exceeds actual net cash settled", "CONFLICT");
+      return this.append(account, { entryType: "ADJUSTMENT", signedAmountDzd: amount.toWire(), targetEntryId: target.id, entryDate: input.refundDate, paymentMethod: "CASH", note: input.note }, audit, undefined, true);
+    });
+  }
   /** Trusted producers may settle part of one original without recording cash. */
   recordSettlement(raw: Omit<PayExactDebtEntry, "paymentMethod"> & ExactDebtAudit): ExactDebtEntry {
     if (!this.producer) throw new ExactDebtError("Original settlement requires a producer", "CONFLICT");
@@ -241,7 +260,15 @@ export class ExactFinanceService {
     });
   }
   correctEntry(raw: CorrectExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
-    const input = correctExactDebtEntrySchema.parse(raw);
+    return this.correctObligation(raw, false);
+  }
+  /** Opening review may explicitly correct an unknown historical amount to zero. */
+  correctOpeningEntry(raw: CorrectExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
+    if (this.producer?.type !== "PAYROLL_OPENING") throw new ExactDebtError("Opening correction requires its producer", "CONFLICT");
+    return this.correctObligation(raw, true);
+  }
+  private correctObligation(raw: CorrectExactDebtEntry & ExactDebtAudit, openingZero: boolean): ExactDebtEntry {
+    const input = (openingZero ? correctExactDebtEntrySchema.extend({ amountDzd: exactDebtAmountSchema }) : correctExactDebtEntrySchema).parse(raw);
     const audit = this.audit(raw);
     return this.command("correction", { ...input, ...audit }, input, () => {
       const target = this.obligation(input.entryId);
@@ -253,7 +280,8 @@ export class ExactFinanceService {
       const delta = Money.parse(input.amountDzd).subtract(existingAmount);
       if (delta.compare(zero()) === 0) throw new ExactDebtError("Correction must change the obligation");
       const originalSign = Money.parse(target.signedAmountDzd).compare(zero());
-      if (Money.parse(input.amountDzd).compare(zero()) !== originalSign) throw new ExactDebtError("Correction cannot change the original obligation direction");
+      const proposedSign = Money.parse(input.amountDzd).compare(zero());
+      if (proposedSign !== originalSign && !(openingZero && proposedSign === 0)) throw new ExactDebtError("Correction cannot change the original obligation direction");
       const remainderSign = this.remainingFrom(target, rows).add(delta).compare(zero());
       if (remainderSign !== 0 && remainderSign !== originalSign) throw new ExactDebtError("Correction cannot invalidate recorded settled amounts");
       return this.append(account, { entryType: "ADJUSTMENT", signedAmountDzd: delta.toWire(), correctionOfEntryId: target.id, entryDate: this.dependencies.now(), note: input.reason, reasonCategory: target.reasonCategory, reasonDetail: target.reasonDetail }, audit);
@@ -330,10 +358,12 @@ export class ExactFinanceService {
     const now = this.dependencies.now();
     this.repository.saveAccount({ ...account, currentBalance: balance.toWire(), status: balance.compare(zero()) === 0 ? "SETTLED" : "OPEN", settledAt: balance.compare(zero()) === 0 ? now : null, updatedAt: now, ...this.audit(audit) });
   }
-  private append(account: ExactDebtAccount, input: Partial<ExactDebtEntry> & { entryType: ExactDebtEntry["entryType"]; signedAmountDzd: string; entryDate: string }, audit: ExactDebtAudit, rows = this.listEntries(account.id)): ExactDebtEntry {
+  private append(account: ExactDebtAccount, input: Partial<ExactDebtEntry> & { entryType: ExactDebtEntry["entryType"]; signedAmountDzd: string; entryDate: string }, audit: ExactDebtAudit, rows = this.listEntries(account.id), actualOpeningRefund = false): ExactDebtEntry {
     if (rows.length >= limit) throw new ExactDebtError("Debt entry write resource limit exceeded");
     const latest = rows.at(-1);
-    if (latest && input.entryDate < latest.entryDate) throw new ExactDebtError("Debt entry cannot be backdated");
+    // A late-recorded refund has an earlier event date but a later posting sequence.
+    // Keep every other writer anchored to the latest date across all prior postings.
+    if (!actualOpeningRefund && rows.some(row => input.entryDate < row.entryDate)) throw new ExactDebtError("Debt entry cannot be backdated");
     const amount = Money.parse(input.signedAmountDzd, account.currency);
     const balance = Money.parse(account.currentBalance, account.currency).add(amount);
     const now = this.dependencies.now();

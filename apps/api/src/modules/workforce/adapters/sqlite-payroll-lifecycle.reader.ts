@@ -13,6 +13,7 @@ const LIMIT = 10000;
 const ZERO = Money.parse("0.00");
 type LedgerSource = { readonly kind: "WAGE" | "ADVANCE"; readonly id: string; readonly employeeId: string; readonly currency: string; readonly amount: string; readonly account: ExactDebtAccount; readonly original: ExactDebtEntry };
 type LedgerEntry = ReturnType<ExactFinanceService["detail"]>["entries"][number];
+type MovementType = "PAYMENT" | "SETTLEMENT" | "ADJUSTMENT";
 type LedgerView = {
   readonly entries: Map<string, LedgerEntry>;
   readonly corrected: Set<string>;
@@ -69,7 +70,7 @@ export class SqlitePayrollLifecycleReader {
     if (this.opening) {
       openingReview = this.opening.getReview(employeeId);
       if (openingReview !== null && (!Array.isArray(openingReview.sources) || !["UNREVIEWED", "REVIEWED"].includes(openingReview.state) || openingReview.employeeId !== employeeId || (openingReview.state === "UNREVIEWED" && openingReview.sources.length !== 0))) throw new TypeError("Opening provider returned invalid review metadata");
-      const returnedCost = openingReview === null ? 0 : 1 + openingReview.sources.length;
+      const returnedCost = openingReview === null ? 0 : 1 + openingReview.sources.length + openingReview.sources.reduce((sum, source) => sum + (source.correctionIds?.length ?? 0) + (source.refunds?.length ?? 0), 0);
       if (returnedCost !== openingCost) throw new RangeError("Opening provider row count does not match returned review and sources");
     }
 
@@ -129,8 +130,8 @@ export class SqlitePayrollLifecycleReader {
     this.validateOffsetSources(offsets, earningById, wageSources, advanceSources);
     this.validateRepaymentSources(repayments, advanceSources);
 
-    const expectedMovements = new Map<string, Map<string, { amount: string; type: "PAYMENT" | "SETTLEMENT" }>>();
-    const addMovement = (originalId: string, entryId: string, amount: string, type: "PAYMENT" | "SETTLEMENT") => {
+    const expectedMovements = new Map<string, Map<string, { amount: string; type: MovementType }>>();
+    const addMovement = (originalId: string, entryId: string, amount: string, type: MovementType) => {
       let movements = expectedMovements.get(originalId);
       if (!movements) { movements = new Map(); expectedMovements.set(originalId, movements); }
       if (movements.has(entryId)) throw new TypeError("Duplicate payroll ledger attribution");
@@ -142,6 +143,7 @@ export class SqlitePayrollLifecycleReader {
       addMovement(row.advance.debtEntryId, row.advance.settlementEntryId, row.amount, "SETTLEMENT");
     }
     for (const row of repayments) addMovement(row.debtEntryId, row.paymentEntryId, row.amount, "PAYMENT");
+    for (const source of openingReview?.sources ?? []) for (const refund of source.refunds ?? []) addMovement(source.debtEntryId, refund.id, refund.amount, "ADJUSTMENT");
 
     const postedEarnings: PayrollLifecycle["earnings"][number][] = [];
     for (const earning of earnings) {
@@ -160,7 +162,7 @@ export class SqlitePayrollLifecycleReader {
     });
     const openingBalances = (openingReview?.sources ?? []).map(source => {
       const ledger = (source.kind === "WAGE" ? wageSources : advanceSources).get(`OPENING:${source.sourceId}`)!;
-      return { kind: source.kind, remaining: this.validateLedgerMovements(ledger, detailFor(ledger.account.id), expectedMovements.get(ledger.original.id) ?? new Map()) };
+      return { kind: source.kind, remaining: this.validateLedgerMovements(ledger, detailFor(ledger.account.id), expectedMovements.get(ledger.original.id) ?? new Map(), source.correctionIds) };
     });
 
     const wagesCash = cash.flatMap(row => row.wageAllocations.map(allocation => allocation.amount));
@@ -243,24 +245,30 @@ export class SqlitePayrollLifecycleReader {
     }
   }
 
-  private validateLedgerMovements(source: LedgerSource, detail: LedgerView, expected: Map<string, { amount: string; type: "PAYMENT" | "SETTLEMENT" }>): string {
+  private validateLedgerMovements(source: LedgerSource, detail: LedgerView, expected: Map<string, { amount: string; type: MovementType }>, correctionIds: readonly string[] = []): string {
     const original = detail.entries.get(source.original.id);
     if (!original || original.status !== "LIVE" || original.targetEntryId || original.correctionOfEntryId || Money.parse(original.signedAmountDzd).compare(Money.parse(source.amount)) !== 0) throw new TypeError("Payroll original no longer matches its source amount");
-    if (detail.corrected.has(source.original.id)) throw new TypeError("Payroll original has an unattributed correction");
+    const approved = new Set(correctionIds);
+    if (approved.size !== correctionIds.length || (approved.size && source.original.producerType !== "PAYROLL_OPENING")) throw new TypeError("Invalid opening correction attribution");
+    const correctionEntries = [...detail.entries.values()].filter(row => row.correctionOfEntryId === source.original.id);
+    for (const row of correctionEntries) if (!approved.has(row.id) || row.producerType !== "PAYROLL_OPENING" || row.producerId !== source.original.producerId) throw new TypeError("Payroll original has an unattributed correction");
+    for (const id of approved) if (id !== source.original.id && !correctionEntries.some(row => row.id === id)) throw new TypeError("Opening correction references missing ledger history");
     const children = detail.children.get(source.original.id) ?? [];
-    if (children.some(row => row.entryType !== "PAYMENT" && row.entryType !== "SETTLEMENT")) throw new TypeError("Payroll original has an unattributed ledger movement");
+    if (children.some(row => row.entryType !== "PAYMENT" && row.entryType !== "SETTLEMENT" && row.entryType !== "ADJUSTMENT")) throw new TypeError("Payroll original has an unattributed ledger movement");
     const actual = children;
     const seen = new Set<string>();
     for (const movement of actual) {
       const expectedMovement = expected.get(movement.id);
-      if (!expectedMovement || expectedMovement.type !== movement.entryType || Money.parse(movement.signedAmountDzd).compare(Money.parse(expectedMovement.amount).negate()) !== 0) throw new TypeError("Unattributed or mismatched payroll ledger movement");
+      const expectedAmount = expectedMovement ? Money.parse(expectedMovement.amount) : ZERO;
+      const refund = expectedMovement?.type === "ADJUSTMENT";
+      if (!expectedMovement || expectedMovement.type !== movement.entryType || (refund && (source.original.producerType !== "PAYROLL_OPENING" || movement.paymentMethod !== "CASH")) || Money.parse(movement.signedAmountDzd).compare(refund ? expectedAmount : expectedAmount.negate()) !== 0) throw new TypeError("Unattributed or mismatched payroll ledger movement");
       if (seen.has(movement.id)) throw new TypeError("Duplicate payroll ledger movement");
       seen.add(movement.id);
     }
     if (seen.size !== expected.size) throw new TypeError("Payroll provenance references a missing ledger movement");
     const remaining = original.remainingDzd;
     if (remaining === null) throw new TypeError("Payroll original has no live remaining amount");
-    const computed = Money.parse(sumMoneyHistory([Money.parse(source.amount), ...actual.map(row => Money.parse(row.signedAmountDzd))]));
+    const computed = Money.parse(sumMoneyHistory([Money.parse(source.amount), ...correctionEntries.filter(row => row.status === "LIVE").map(row => Money.parse(row.signedAmountDzd)), ...actual.map(row => Money.parse(row.signedAmountDzd))]));
     if (Money.parse(remaining).compare(computed) !== 0 || Money.parse(remaining).compare(ZERO) < 0) throw new TypeError("Payroll ledger remaining disagrees with source movements");
     return remaining;
   }
