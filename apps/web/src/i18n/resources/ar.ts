@@ -3,6 +3,18 @@
  */
 export const ar = {
   translation: {
+    debtPayroll: {
+      title: "ديون الأجور والسلف للموظف", employee: "الموظف", selectEmployee: "اختيار الموظف لعرض الرواتب",
+      ledgerExplanation: "إجماليات دفتر الديون تشمل الرواتب المسجلة فقط. هذا العرض المنفصل يشمل أيضاً الأجور المعتمدة بانتظار التسجيل، ولا يضاف إلى إجماليات الدفتر.",
+      employeeProfile: "ملف الموظف", noEmployee: "لا يوجد موظف داخلي لعرض بيانات الرواتب.",
+      loading: "جار تحميل بيانات الرواتب…", error: "تعذر تحميل بيانات الرواتب.", retry: "إعادة المحاولة",
+      wagesOwed: "أجور مستحقة للموظف", advancesOwed: "سلف مستحقة للشركة على الموظف",
+      earnings: "الأجور والفترات", earning: "الأجر", remaining: "المتبقي", advances: "السلف",
+      cash: "الدفعات النقدية، تشمل الأجور والسلف", wageAllocation: "جزء الأجور", advancePortion: "جزء السلفة",
+      recoveries: "التحصيل النقدي للسلف", offsets: "المقاصة الصريحة بين الأجور والسلف",
+      posted: "مسجل في دفتر الديون", pending: "بانتظار التسجيل في دفتر الديون",
+      emptyHistory: "لا توجد سجلات في هذا القسم. راجع الرصيد أعلاه.", previous: "السابق", next: "التالي",
+    },
     workforce: {
       validation: {
         salaryReference: {

@@ -20,6 +20,12 @@ import { ExactFinancialRoutePage } from "./exact-financial-route"
 const emptyExpenses = { projects: [], employees: [], sellers: [] }
 
 describe("normal exact-financial route composition", () => {
+  it("carries manager payroll options separately from worker-only debt parties", () => {
+    render(<ExactFinancialRoutePage route="debts" parties={[]} payrollEmployees={[{ id: "manager", label: "Project manager" }]} locations={[]} expenses={emptyExpenses} />)
+    expect(mocks.pages.debts).toHaveBeenLastCalledWith(expect.objectContaining({
+      parties: [], payrollEmployees: [{ id: "manager", label: "Project manager", partyType: "INTERNAL_WORKER" }],
+    }))
+  })
   it("binds the exact debt and invoice clients and carries route intent", () => {
     const party = { id: "worker-1", label: "Worker", type: "WORKER" as const }
     const view = render(<ExactFinancialRoutePage route="debts" parties={[party]} locations={[]} expenses={emptyExpenses} />)

@@ -17,6 +17,45 @@ async function rpc<K extends Procedure>(page: Page, path: K, input: Parameters<A
   }, { api: process.env.PLAYWRIGHT_API_URL!, path, input })
 }
 
+test("debt payroll read shows exact settlement directions after reload #560", async ({ page }) => {
+  await bootstrapOrSignIn(page)
+  const metadata = await page.evaluate(async api => {
+    const response = await fetch(`${api}/rpc/financial/metadata`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: '{"json":null}' })
+    if (!response.ok) throw new Error(`metadata ${response.status}`)
+    return (await response.json()).json
+  }, process.env.PLAYWRIGHT_API_URL!)
+  const role = metadata.roles.find((row: { key: string }) => row.key === "project_manager")
+  const employee = await rpc(page, "employeesCreate", { firstName: "عامل", lastName: "ديون 560", phone: "0555123560", roleId: role.id })
+  if (!employee.success) throw new Error("Employee fixture failed")
+  const employeeId = employee.item.id
+  const project = await rpc(page, "projectsCreate", { name: "Debt browser", status: "ACTIVE" })
+  if (!project.success) throw new Error("Project fixture failed")
+  const earning = await rpc(page, "employeeEarningsApprove", { requestId: crypto.randomUUID(), employeeId, currencyCode: "DZD", periodStart: "2026-11-01T00:00:00.000Z", periodEnd: "2026-12-01T00:00:00.000Z", totalAmount: "60000.00", unallocatedAmount: "15000.00", segments: [{ id: crypto.randomUUID(), days: 30, amount: "45000.00", projectId: project.item.id }] })
+  if (!earning.success) throw new Error("Earning fixture failed")
+  await rpc(page, "employeePayrollCashRecord", { requestId: "browser-560-first", employeeId, amount: "45000.00", paymentDate: "2026-11-19T09:00:00.000Z", wages: [{ earningId: earning.item.id, amount: "40000.00" }], advanceAmount: "5000.00" })
+  await page.goto("/debts")
+  const panel = page.getByRole("region", { name: "ديون الأجور والسلف للموظف" })
+  await panel.getByRole("combobox", { name: "اختيار الموظف لعرض الرواتب" }).selectOption(employeeId)
+  await expect(panel.getByText("20,000", { exact: true })).toHaveCount(2)
+  await expect(panel.getByText("أجور مستحقة للموظف", { exact: true }).locator("..")).toContainText("20,000")
+  await expect(panel.getByText("جزء الأجور")).toBeVisible()
+  await expect(panel.getByText("40,000", { exact: true })).toBeVisible()
+  await expect(panel.getByText("15,000", { exact: true })).toHaveCount(0)
+  await page.evaluate(() => document.fonts.ready)
+  await panel.screenshot({ path: test.info().outputPath("debt-payroll-desktop.png") })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(panel).toBeVisible()
+  expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true)
+  await panel.screenshot({ path: test.info().outputPath("debt-payroll-mobile.png") })
+  await rpc(page, "employeePayrollCashRecord", { requestId: "browser-560-final", employeeId, amount: "20000.00", paymentDate: "2026-11-20T09:00:00.000Z", wages: [{ earningId: earning.item.id, amount: "20000.00" }] })
+  await page.reload()
+  await expect(panel.getByText("0", { exact: true }).first()).toBeVisible()
+  await expect(panel.getByText("5,000", { exact: true }).first()).toBeVisible()
+  await expect(panel.getByRole("link", { name: /ملف الموظف/ })).toHaveAttribute("href", `/employees/${employeeId}?tab=finance`)
+  await panel.getByRole("link", { name: /ملف الموظف/ }).click()
+  await expect(page.getByRole("tab", { name: "المالية", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect(page.getByRole("region", { name: "حساب الأجور والسلف", exact: true })).toBeVisible()
+})
 async function captureEmployeeFinance(page: Page, name: string) {
   await page.evaluate(() => document.fonts.ready)
   const record = page.locator(".employee-record")
@@ -424,4 +463,43 @@ test("opening review is optional at creation and corrections retain confirmed hi
   writeFileSync(test.info().outputPath("opening-300-persisted.json"), JSON.stringify({ repaid, persisted }, null, 2))
   await captureEmployeeFinance(page, "opening-300-committed")
   writeFileSync(test.info().outputPath("opening-receipts.json"), JSON.stringify({ employeeId, saved, requests, proposed, reconciled, refundRequests }, null, 2))
+})
+
+test("owner opens the persisted invoice attachment through its actual browser link", async ({ page, context }) => {
+  await bootstrapOrSignIn(page)
+  const groupId = await page.evaluate(async api => {
+    async function rpc(path: string, input: unknown) {
+      const response = await fetch(`${api}/rpc/${path}`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ json: input }) })
+      if (!response.ok) throw new Error(`${path}: ${response.status}`)
+      return (await response.json()).json
+    }
+    const item = await rpc("inventoryItemDefinitionsCreate", { name: "Attachment proof material", itemType: "CONSUMABLE", unit: "bag" })
+    const warehouse = await rpc("warehousesCreate", { name: "Attachment proof depot", status: "ACTIVE" })
+    if (!item.success || !warehouse.success) throw new Error("Fixture creation failed")
+    const purchase = await rpc("financial/inventory/createInvoice", { requestId: crypto.randomUUID(), warehouseId: warehouse.item.id, entries: [{ kind: "CONSUMABLE", itemDefinitionId: item.item.id, quantity: 1, unitPriceDzd: "1.0000" }] })
+    return purchase.group.id as string
+  }, process.env.PLAYWRIGHT_API_URL!)
+  await page.goto(`/invoices/${groupId}`)
+  const bytes = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64")
+  const files = page.locator("section").filter({ has: page.getByRole("heading", { name: "ملفات الفاتورة", exact: true }) })
+  await files.getByLabel("ملفات الفاتورة", { exact: true }).setInputFiles({ name: "navigation-proof.png", mimeType: "image/png", buffer: bytes })
+  await files.getByRole("button", { name: "حفظ", exact: true }).click()
+  const link = page.getByRole("link", { name: "navigation-proof.png", exact: true })
+  await expect(link).toBeVisible()
+  await page.reload()
+  await expect(link).toBeVisible()
+  await expect(link).toHaveAttribute("rel", "noreferrer")
+  const responsePromise = context.waitForEvent("response", { predicate: response => response.url().includes("/api/inventory/attachments/") && response.request().isNavigationRequest() })
+  const popupPromise = page.waitForEvent("popup")
+  await link.click()
+  const popup = await popupPromise
+  const response = await responsePromise
+  expect(response.status()).toBe(200)
+  expect(response.headers()["content-type"]).toBe("image/png")
+  const headers = await response.request().allHeaders()
+  expect(headers.origin).toBeUndefined()
+  expect(headers.referer).toBeUndefined()
+  expect(await response.body()).toEqual(bytes)
+  await expect(popup.locator("img")).toBeVisible()
+  await popup.close()
 })
