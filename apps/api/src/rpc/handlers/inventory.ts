@@ -14,6 +14,7 @@ import type {
 
 import { toFailureResult as toInventoryFailureResult } from "../../modules/inventory/inventory.errors";
 import type { InventoryService } from "../../modules/inventory/inventory.service";
+import type { CatalogService } from "../../modules/inventory/catalog.service";
 import type { RpcMiddleware } from "../rpc-middleware";
 import type {
   IdInput,
@@ -103,7 +104,7 @@ export function createInventoryHandlers(
 export function createCatalogHandlers(
   os: ReturnType<typeof implement>,
   m: RpcMiddleware,
-  inventoryService: Pick<InventoryService, "listItemDefinitions" | "listItemDefinitionOptions" | "getItemDefinition" | "createItemDefinition" | "updateItemDefinition">,
+  inventoryService: Pick<CatalogService, "listItemDefinitions" | "listItemDefinitionOptions" | "getItemDefinition" | "createItemDefinition" | "updateItemDefinition">,
 ) {
   return {
     inventoryItemDefinitionsList: os.inventoryItemDefinitionsList.handler(m.queryAuth(async ({ input }) =>
