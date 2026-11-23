@@ -274,6 +274,7 @@ export async function createAppDependencies(
       updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase, connectionLock)),
       backupService: createBackupService({
         snapshot: createWorkerSnapshotter({
+          attachmentsRootPath: appConfig.attachmentsRootPath,
           databasePath,
           databaseKey: resolvedDatabaseKey,
         }),

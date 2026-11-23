@@ -13,6 +13,7 @@ import type { BackupRetentionPolicy } from "./backup.policy";
 export type BackupSnapshotResult = {
   schemaVersion: number;
   encrypted: boolean;
+  attachments?: { linked: number; copied: number; fallbackReasons: string[] };
 };
 
 /**
