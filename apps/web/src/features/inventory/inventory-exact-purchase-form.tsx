@@ -16,6 +16,15 @@ import { locationInput, type ExactInventoryLocation, type ExactInventoryParty } 
 import type { ExactInventoryAction } from "./inventory-exact-queries"
 
 type Line = { key: string; itemId: string; quantity: string; mode: "unit-price" | "agreed-total"; value: string; assetName: string; location: string }
+// Use the submitted numeric percentage, including exponent notation, as an exact ratio.
+function percentagePaid(gross: string, percent: number): Money {
+  if (percent < 1e-18) return Money.parse("0")
+  const [coefficient = "0", exponent = "0"] = String(percent).toLowerCase().split("e")
+  const fraction = coefficient.split(".")[1] ?? ""
+  const numerator = coefficient.replace(".", "").replace(/^0+(?=\d)/, "")
+  const denominator = `1${"0".repeat(fraction.length + 2 - Number(exponent))}`
+  return finalizeLines([ExactLine.fromDerived(Money.parse(gross), Quantity.parse(denominator), Quantity.parse(numerator))])
+}
 const fresh = (definition?: InventoryItemDefinition): Line => ({ key: crypto.randomUUID(), itemId: definition?.id ?? "", quantity: "1", mode: "unit-price", value: "", assetName: definition?.name ?? "", location: "" })
 export function ExactInventoryPurchaseForm({ definitions, locations, parties, pending, error, close, submit, onCreated }: { definitions: InventoryItemDefinition[]; locations: ExactInventoryLocation[]; parties: ExactInventoryParty[]; pending: boolean; error: string | null; close(): void; submit(command: ExactInventoryAction): Promise<unknown>; onCreated?(id: string): void }) {
   const { t, i18n } = useTranslation()
@@ -37,6 +46,7 @@ export function ExactInventoryPurchaseForm({ definitions, locations, parties, pe
   const [number, setNumber] = useState("")
   const [invoiceDate, setInvoiceDate] = useState(getAlgeriaDateInputValue)
   const [note, setNote] = useState("")
+  const normalizedPercent = Number(percent)
   let entries: ExactInventoryInvoiceInput["entries"] | null = null
   let total: string | null = null
   let paidAmount: string | undefined
@@ -65,11 +75,11 @@ export function ExactInventoryPurchaseForm({ definitions, locations, parties, pe
     if (debt) {
       paidAmount = paymentMode === "AMOUNT" ? parseLocalizedMoneyInput(paid || "0").toWire() : undefined
       if (paidAmount?.startsWith("-") || paidAmount && Money.parse(paidAmount).compare(Money.parse(total)) > 0) throw new Error("Invalid first payment")
-      if (paymentMode === "PERCENT" && (!percent.trim() || !Number.isFinite(Number(percent)) || Number(percent) < 0 || Number(percent) > 100)) throw new Error("Invalid percentage")
+      if (paymentMode === "PERCENT" && (!percent.trim() || !Number.isFinite(normalizedPercent) || normalizedPercent < 0 || normalizedPercent > 100)) throw new Error("Invalid percentage")
     }
   } catch { entries = null }
   let hasInitialPayment = false
-  try { hasInitialPayment = debt && total !== null && (paymentMode === "AMOUNT" ? Money.parse(paidAmount ?? "0").compare(Money.parse("0")) > 0 : Number(percent) > 0 && finalizeLines([ExactLine.fromDerived(Money.parse(total), Quantity.parse("100"), Quantity.parse(percent))]).compare(Money.parse("0")) > 0) } catch { /* Invalid operands are handled by form validation. */ }
+  try { hasInitialPayment = debt && total !== null && (paymentMode === "AMOUNT" ? Money.parse(paidAmount ?? "0").compare(Money.parse("0")) > 0 : Number.isFinite(normalizedPercent) && normalizedPercent >= 0 && normalizedPercent <= 100 && percentagePaid(total, normalizedPercent).compare(Money.parse("0")) > 0) } catch { /* Invalid operands are handled by form validation. */ }
   const destination = locationInput(location, locations)
   const date = toAlgeriaDayBoundaryIso(invoiceDate, "start")
   const valid = entries !== null && destination && date && (!debt || party)
@@ -79,7 +89,7 @@ export function ExactInventoryPurchaseForm({ definitions, locations, parties, pe
   return <Dialog open onOpenChange={open => { if (!open && !pending && !attachments.pending) close() }}><DialogContent dir={i18n.dir()} className="max-h-[90vh] max-w-3xl overflow-y-auto"><DialogHeader><DialogTitle>{t("exactCommerce.newInventoryInvoice")}</DialogTitle><DialogDescription>{t("exactCommerce.purchaseEditorDescription")}</DialogDescription></DialogHeader><form className="space-y-5" onSubmit={event => { event.preventDefault(); if (!valid || !entries || !date || !attachments.valid || attachments.pending) return; const create = createdId ? Promise.resolve({ group: { id: createdId } }) : submit({ kind: "createInvoice", input: { requestId: "pending", ...destination,
     invoiceNumber: number.trim() || null, invoiceDate: date, note: note.trim() || null, entries,
     supplierName: (selectedParty?.label ?? supplierName).trim() || null, externalCounterpartyId: party || null,
-    ...(debt ? { createDebt: true, ...(hasInitialPayment && method ? { initialPaymentMethod: method } : {}), paymentInputType: paymentMode, ...(paymentMode === "AMOUNT" ? { paidAmountDzd: paidAmount ?? "0.00" } : { paidPercent: Number(percent) }) } : { createDebt: false }) } }); void create.then(async result => { const id = (result as { group?: { id: string } } | undefined)?.group?.id; if (id) { setCreatedId(id); await attachments.upload(id); onCreated?.(id) } else if (attachments.files.length) { throw new Error("Missing created purchase identity") } close() }).catch(() => {}) }}>
+    ...(debt ? { createDebt: true, ...(hasInitialPayment && method ? { initialPaymentMethod: method } : {}), paymentInputType: paymentMode, ...(paymentMode === "AMOUNT" ? { paidAmountDzd: paidAmount ?? "0.00" } : { paidPercent: normalizedPercent }) } : { createDebt: false }) } }); void create.then(async result => { const id = (result as { group?: { id: string } } | undefined)?.group?.id; if (id) { setCreatedId(id); await attachments.upload(id); onCreated?.(id) } else if (attachments.files.length) { throw new Error("Missing created purchase identity") } close() }).catch(() => {}) }}>
     <fieldset disabled={pending || attachments.pending || Boolean(createdId)} className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><label className="space-y-2">{t("exactCommerce.optionalInvoiceNumber")}<Input value={number} maxLength={160} onChange={event => setNumber(event.target.value)} /></label><label className="space-y-2">{t("common.invoiceDate")}<Input type="date" value={invoiceDate} onChange={event => setInvoiceDate(event.target.value)} /></label></div>
     <CollapsibleSection title={t("exactCommerce.purchaseDebtMode")}><section className="space-y-4"><label className="flex min-h-11 items-center gap-3"><input type="checkbox" checked={debt} onChange={event => setDebt(event.target.checked)} />{t("exactCommerce.purchaseDebtMode")}</label>{debt && <div className="grid gap-4 sm:grid-cols-2"><label className="space-y-2">{t("exactCommerce.initialPaymentMode")}<NativeSelect value={paymentMode} onChange={event => setPaymentMode(event.target.value as typeof paymentMode)}><option value="AMOUNT">{t("exactCommerce.fixedAmount")}</option><option value="PERCENT">{t("exactCommerce.percentage")}</option></NativeSelect></label>{paymentMode === "AMOUNT" ? <CurrencyAmountInput exact label={t("exactCommerce.optionalInitialPayment")} value={paid} onChange={setPaid} /> : <label className="space-y-2">{t("exactCommerce.initialPaymentPercent")}<Input dir="ltr" inputMode="decimal" value={percent} onChange={event => setPercent(event.target.value)} /></label>}{hasInitialPayment && <label className="space-y-2">{t("exactCommerce.paymentMethod")}<NativeSelect value={method} onChange={event => setMethod(event.target.value as typeof method)}><option value="">{t("exactCommerce.unknownPaymentMethod")}</option><option value="CASH">{t("exactCommerce.cash")}</option><option value="BANK_TRANSFER">{t("exactCommerce.bankTransfer")}</option><option value="CHECK">{t("exactCommerce.check")}</option></NativeSelect></label>}</div>}</section></CollapsibleSection>
     <CollapsibleSection title={t("exactCommerce.externalParty")}><div className="grid gap-4 sm:grid-cols-2"><label className="block space-y-2">{t("exactCommerce.externalParty")}<NativeSelect value={party} onChange={event => { const id = event.target.value; setParty(id); if (id) setSupplierName(parties.find(row => row.id === id)?.label ?? "") }}><option value="">{t("common.none")}</option>{parties.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</NativeSelect></label><label className="block space-y-2">{t("exactCommerce.supplierName")}<Input aria-label={t("exactCommerce.supplierName")} aria-describedby={selectedParty ? supplierHintId : undefined} value={selectedParty?.label ?? supplierName} maxLength={160} readOnly={Boolean(selectedParty)} onChange={event => setSupplierName(event.target.value)} />{selectedParty && <span id={supplierHintId} className="block text-xs text-muted-foreground">{t("exactCommerce.supplierFromParty")}</span>}</label></div></CollapsibleSection>

@@ -28,6 +28,14 @@ No-debt purchase behavior remains unchanged: purchase summary paid equals gross,
 
 The active exact purchase form uses the existing NativeSelect beside the first-payment amount/input mode. It appears only for a positive effective debt-mode initial payment. The default is explicitly unspecified; the UI does not assume CASH. Selection survives mode/disclosure changes but is omitted when the effective payment becomes zero or debt mode is off. The detail page displays owned payment history and tender labels. Existing Arabic resources and RTL form conventions are reused.
 
+## Hosted review correction
+
+Greptile on c4aae85e identified that raw percentage strings accepted by Number, such as .5, could fail Quantity parsing and silently omit selected tender. Mounted red-first regression cases reproduced the failure for .5, +0.5, whitespace, 5e-1 and leading zeros. The form now uses the submitted normalized numeric percentage to construct an exact integer ratio, including exponent notation and the service's below-1e-18 zero cutoff. It does not convert money to Number. All 18 mounted form cases pass, as do web typecheck, affected lint and 6 actual purchase browser cases including .5 selection retention. The rendered normal-form layout is unchanged from the images already shown to the owner.
+
+Hosted Test API reported global branch coverage 98.98%, below the unchanged 99% gate. Added a producer-interface regression that rejects both generic and INVOICE capabilities before creating an account or journal receipt. All 3 producer-interface cases pass. This covers the new inventory-only capability rejection branches, rather than weakening thresholds or adding unrelated coverage. CI must confirm the global floor on the corrected head.
+
+The correction receives one fresh combined-delta review; unchanged initial lens conclusions are carried forward explicitly. Owner UI approval remains pending.
+
 ## Proof and boundaries
 
 Observed red-first proof: the new service tests failed on absent payment projection and missing method rejection before implementation. Initial setup attempts failed first because dependencies and contract output were absent; frozen-lockfile installation and contract compilation restored the test environment without dependency changes.

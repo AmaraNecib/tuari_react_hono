@@ -23,6 +23,21 @@ function wrapper(children: React.ReactNode) {
  return { ...view, rerender: (next: React.ReactNode) => view.rerender(<QueryClientProvider client={query}>{next}</QueryClientProvider>) }
 }
 describe("exact inventory forms", () => {
+ it.each([".5", "+0.5", " 0.5 ", "5e-1", "000.5"])("retains selected tender for normalized percentage %s", async percent => {
+  const submit = vi.fn().mockResolvedValue(undefined)
+  wrapper(<ExactInventoryPurchaseForm definitions={definitions} locations={locations} parties={parties} pending={false} error={null} close={() => {}} submit={submit} />)
+  fireEvent.change(screen.getByRole("textbox", { name: "سعر الوحدة" }), { target: { value: "1000" } })
+  fireEvent.click(screen.getByRole("button", { name: "تسجيل الشراء كدين على الشركة" }))
+  fireEvent.click(screen.getByRole("checkbox", { name: "تسجيل الشراء كدين على الشركة" }))
+  fireEvent.change(screen.getByRole("combobox", { name: "إدخال الدفعة الأولى" }), { target: { value: "PERCENT" } })
+  fireEvent.change(screen.getByRole("textbox", { name: "نسبة الدفعة الأولى" }), { target: { value: "0.5" } })
+  fireEvent.change(screen.getByRole("combobox", { name: "طريقة الدفع" }), { target: { value: "CHECK" } })
+  fireEvent.change(screen.getByRole("textbox", { name: "نسبة الدفعة الأولى" }), { target: { value: percent } })
+  expect((screen.getByRole("combobox", { name: "طريقة الدفع" }) as HTMLSelectElement).value).toBe("CHECK")
+  fireEvent.click(screen.getByRole("button", { name: "حفظ الفاتورة والمخزون" }))
+  await waitFor(() => expect(submit).toHaveBeenCalledTimes(1))
+  expect(submit.mock.calls[0]![0].input).toMatchObject({ initialPaymentMethod: "CHECK", paymentInputType: "PERCENT", paidPercent: 0.5 })
+ })
  it.each(["CASH", "BANK_TRANSFER", "CHECK"])("submits initial tender %s independently from input mode and omits it for zero", async method => {
   const submit = vi.fn().mockResolvedValue(undefined)
   wrapper(<ExactInventoryPurchaseForm definitions={definitions} locations={locations} parties={parties} pending={false} error={null} close={() => {}} submit={submit} />)

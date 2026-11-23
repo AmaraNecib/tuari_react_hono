@@ -108,6 +108,12 @@ test.describe("inventory invoice create — progressive disclosure", () => {
       await editor.getByLabel("سعر الوحدة", { exact: true }).nth(index).fill("100")
     }
     await editor.getByRole("combobox", { name: "طريقة الدفع", exact: true }).selectOption("BANK_TRANSFER")
+    await editor.getByRole("combobox", { name: "إدخال الدفعة الأولى", exact: true }).selectOption("PERCENT")
+    await editor.getByLabel("نسبة الدفعة الأولى", { exact: true }).fill("0.5")
+    await editor.getByLabel("نسبة الدفعة الأولى", { exact: true }).fill(".5")
+    await expect(editor.getByRole("combobox", { name: "طريقة الدفع", exact: true })).toHaveValue("BANK_TRANSFER")
+    await editor.getByRole("combobox", { name: "إدخال الدفعة الأولى", exact: true }).selectOption("AMOUNT")
+    await expect(editor.getByLabel("الدفعة الأولى، اختياري", { exact: true })).toHaveValue("500")
     await editor.getByRole("button", { name: "حفظ الفاتورة والمخزون", exact: true }).click()
     await expect(editor).toBeHidden()
     await expect(page.getByRole("heading", { name: `تفاصيل ${number}`, exact: true })).toBeVisible()
