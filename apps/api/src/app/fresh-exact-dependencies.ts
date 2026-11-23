@@ -23,7 +23,8 @@ import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
 import { AuditService } from "../modules/company/audit.service";
 import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
-import { InventoryService } from "../modules/inventory/inventory.service";
+import { CatalogService } from "../modules/inventory/catalog.service";
+import { InventoryAttachmentService } from "../modules/inventory/inventory-attachment.service";
 import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { ProjectCostService } from "../modules/project-cost/project-cost.service";
@@ -53,8 +54,8 @@ export type FreshExactAppDependencies = Omit<AppDependencies,
 > & {
   mode: "fresh-exact-selected";
   companyService: CompanyMetadataService;
-  inventoryAttachmentService: Pick<InventoryService, "addInvoiceAttachments" | "getAttachmentDownload">;
-  catalogService: Pick<InventoryService, "listItemDefinitions" | "listItemDefinitionOptions" | "getItemDefinition" | "createItemDefinition" | "updateItemDefinition">;
+  inventoryAttachmentService: InventoryAttachmentService;
+  catalogService: CatalogService;
   financial: { services: FinancialDependencies; getMetadata(): Promise<WorkspaceMetadata>; reports: ExactReportCapability };
   listSystemLog: ExactSystemLogReader["listSystemLog"];
   payroll: { service: FinancialDependencies["payroll"]; opening: FinancialDependencies["opening"]; getEmployeePayroll: FinancialDependencies["lifecycle"]["getEmployeePayroll"] };
@@ -96,10 +97,9 @@ export async function createFreshExactAppDependencies(
     const companyService = new CompanyMetadataService(workforceService, operationsService, new AuditService(company), new CounterpartyService(company, mutation));
     const roleModule = new RoleModule({ repository: new SqliteRbacRoleRepository(db) });
     const authBootstrapService = new AuthBootstrapService(new SqliteBootstrapPort(db, connection, lock), auth, appConfig.bootstrapSetupKey);
-    // Reuse catalog validation without supplying a numeric debt/charge service.
-    // Only catalog and attachment methods escape the selected composition root.
-    // Attachment ownership selects the group ID, never retired numeric money columns.
-    const catalog = new InventoryService(createInventoryRepository(connection, lock), new InventoryAttachmentStorage(appConfig.attachmentsRootPath), undefined, company);
+    const inventoryRepository = createInventoryRepository(connection, lock);
+    const catalog = new CatalogService(inventoryRepository, company);
+    const attachments = new InventoryAttachmentService(inventoryRepository, new InventoryAttachmentStorage(appConfig.attachmentsRootPath), company);
     return {
       mode: "fresh-exact-selected",
       financial: { services: financial, getMetadata: async () => ({ ...companyService.getWorkspaceMetadata(), roles: await roleModule.list() }), reports },
@@ -111,17 +111,8 @@ export async function createFreshExactAppDependencies(
       companyService,
       workforceService,
       operationsService,
-      catalogService: {
-        listItemDefinitions: catalog.listItemDefinitions.bind(catalog),
-        listItemDefinitionOptions: catalog.listItemDefinitionOptions.bind(catalog),
-        getItemDefinition: catalog.getItemDefinition.bind(catalog),
-        createItemDefinition: catalog.createItemDefinition.bind(catalog),
-        updateItemDefinition: catalog.updateItemDefinition.bind(catalog),
-      },
-      inventoryAttachmentService: {
-        addInvoiceAttachments: catalog.addInvoiceAttachments.bind(catalog),
-        getAttachmentDownload: catalog.getAttachmentDownload.bind(catalog),
-      },
+      catalogService: catalog,
+      inventoryAttachmentService: attachments,
       sessionService: new SessionService(auth, new SqlitePermissionResolver(db, authBootstrapService)),
       recoveryKeyService: new RecoveryKeyService(new SqliteRecoveryKeyPort(db, connection, lock)),
       updateService: new UpdateService(),
