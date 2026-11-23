@@ -32,6 +32,7 @@ import {
 } from "./payroll-pending-intent"
 import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
 import { EmployeeOpeningPanel } from "./employee-opening-panel"
+import { paymentFromPercentage, paymentPercentage, previewPayrollPayment } from "./payroll-percentage"
 
 const ZERO = "0.00"
 const PAYROLL_ACTIONS: PayrollAction[] = ["cash", "repay", "offset"]
@@ -70,6 +71,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   const [earningId, setEarningId] = useState("")
   const [advanceId, setAdvanceId] = useState("")
   const [amount, setAmount] = useState("")
+  const [percentageDraft, setPercentageDraft] = useState<string | null>(null)
   const [advanceAmount, setAdvanceAmount] = useState("")
   const [date, setDate] = useState(getAlgeriaDateInputValue())
   const locked = pending !== null
@@ -99,6 +101,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
     setEarningId("")
     setAdvanceId("")
     setAmount("")
+    setPercentageDraft(null)
     setAdvanceAmount("")
     setError("")
     setAction("cash")
@@ -158,6 +161,35 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   const selectedOpeningWage = openingWage && earningId === `opening:${openingWage.sourceId}` ? openingWage : undefined
   const selectedOpeningAdvance = openingAdvance && advanceId === `opening:${openingAdvance.sourceId}` ? openingAdvance : undefined
 
+  const percentageBasis = action === "cash" ? selectedEarning?.earning.totalAmount : undefined
+  let percentageDisplay = ""
+  let percentageApproximate = false
+  let paymentPreview: ReturnType<typeof previewPayrollPayment> | null = null
+  let cumulativeCashPercentage: ReturnType<typeof paymentPercentage> | null = null
+  if (percentageBasis && selectedEarning && !locked) {
+    try {
+      const display = paymentPercentage(amount || ZERO, percentageBasis)
+      percentageDisplay = display.value
+      percentageApproximate = display.approximate
+      paymentPreview = previewPayrollPayment(percentageBasis, selectedEarning.remaining, amount)
+      const previouslyPaid = (data?.cash ?? []).flatMap(record => record.wageAllocations)
+        .filter(allocation => allocation.source.kind === "EARNING" && allocation.source.id === selectedEarning.earning.id)
+        .reduce((sum, allocation) => sum + minor(allocation.amount), 0n)
+      cumulativeCashPercentage = paymentPercentage(wire(previouslyPaid + minor(paymentPreview.amount)), percentageBasis)
+    } catch { /* Incomplete drafts have no valid preview. */ }
+  }
+  function editPercentage(value: string) {
+    setPercentageDraft(value)
+    try {
+      if (!percentageBasis) throw new TypeError("EARNING_REQUIRED")
+      setAmount(paymentFromPercentage(percentageBasis, value))
+      setError("")
+    } catch {
+      setAmount("")
+      setError("INVALID_PERCENTAGE")
+    }
+  }
+
   async function sendIntent(intent: PayrollPendingIntent) {
     setRefusedAttemptId(null)
     setError("")
@@ -178,6 +210,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
       if (identityKeyRef.current === JSON.stringify(intent.identity)) {
         setPending(current => current?.payload.requestId === intent.payload.requestId ? null : current)
         setAmount("")
+        setPercentageDraft(null)
         setAdvanceAmount("")
         setError("")
       }
@@ -209,6 +242,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
         setPending(null)
         setRefusedAttemptId(null)
         setAmount("")
+        setPercentageDraft(null)
         setAdvanceAmount("")
         setError("")
         await payroll.refetch()
@@ -245,6 +279,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
 
   async function prepareAndSend() {
     if (!identity || !data || locked || storageError) return
+    if (percentageBasis && percentageDraft !== null && !paymentPreview) { setError("INVALID_PERCENTAGE"); return }
     const storage = getPayrollStorage()
     if (!storage) { setStorageError(true); return }
     try {
@@ -349,7 +384,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
           </details>
           <div className="employee-operation"><div className="flex flex-wrap gap-2" role="group" aria-label={t("payroll.actions")}>
             {(["cash", "offset", "repay"] as const).map(item => (
-              <Button key={item} type="button" size="sm" variant={action === item ? "default" : "outline"} aria-pressed={action === item} onClick={() => setAction(item)} disabled={locked || busy}>
+              <Button key={item} type="button" size="sm" variant={action === item ? "default" : "outline"} aria-pressed={action === item} onClick={() => { setAction(item); setAmount(""); setPercentageDraft(null); setError("") }} disabled={locked || busy}>
                 {t(`payroll.action.${item}`)}
               </Button>
             ))}
@@ -359,7 +394,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
             {action !== "repay" ? (
               <label className="space-y-1 text-sm">
                 <span>{t("payroll.earning")}</span>
-                <NativeSelect aria-label={t("payroll.earning")} value={earningId} onChange={event => setEarningId(event.target.value)} disabled={locked || (availableEarnings.length === 0 && !openingWage)}>
+                <NativeSelect aria-label={t("payroll.earning")} value={earningId} onChange={event => { setEarningId(event.target.value); setAmount(""); setPercentageDraft(null); setError("") }} disabled={locked || (availableEarnings.length === 0 && !openingWage)}>
                   {availableEarnings.map(item => <option key={item.earning.id} value={item.earning.id}>{item.earning.periodStart.slice(0, 10)} · {t(`payroll.registration.${item.registration}`)} · {item.remaining} {currencyLabel}</option>)}
                   {openingWage ? <option value={`opening:${openingWage.sourceId}`}>{t("employeeOpening.wages")} · {openingWage.remaining} {currencyLabel}</option> : null}
                   {!availableEarnings.length && !openingWage ? <option value="">{t("payroll.noEarnings")}</option> : null}
@@ -378,8 +413,26 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
             ) : null}
             <label className="space-y-1 text-sm">
               <span>{action === "offset" ? t("payroll.offsetAmount") : action === "repay" ? t("payroll.repaymentAmount") : t("payroll.wageCashAmount")}</span>
-              <CurrencyInput aria-label={action === "offset" ? t("payroll.offsetAmount") : action === "repay" ? t("payroll.repaymentAmount") : t("payroll.wageCashAmount")} currencyLabel={currencyLabel} value={amount} onChange={event => setAmount(event.target.value)} disabled={locked} required={action !== "cash"} />
+              <CurrencyInput aria-label={action === "offset" ? t("payroll.offsetAmount") : action === "repay" ? t("payroll.repaymentAmount") : t("payroll.wageCashAmount")} currencyLabel={currencyLabel} value={amount} onChange={event => { setAmount(event.target.value); setPercentageDraft(null); setError("") }} disabled={locked} required={action !== "cash"} />
             </label>
+            {percentageBasis && !locked ? <>
+              <label className="space-y-1 text-sm">
+                <span>{t("payroll.paymentPercentage")}</span>
+                <input className="h-9 w-full rounded-md border border-input bg-background px-3" dir="ltr" inputMode="decimal" aria-label={t("payroll.paymentPercentage")} value={percentageDraft ?? percentageDisplay} onChange={event => editPercentage(event.target.value)} />
+                <span className="block text-xs text-muted-foreground">{t("payroll.percentageBasis")} <MoneyValue exact value={percentageBasis} currencyLabel={currencyLabel} />{percentageApproximate ? ` · ${t("payroll.approximatePercentage")}` : ""}</span>
+              </label>
+              <div className="flex flex-wrap items-end gap-2">
+                <Button type="button" variant="outline" onClick={() => editPercentage("25")}>{t("payroll.quarter")}</Button>
+                <Button type="button" variant="outline" onClick={() => editPercentage("50")}>{t("payroll.half")}</Button>
+                <Button type="button" variant="outline" onClick={() => { setAmount(selectedEarning!.remaining); setPercentageDraft(null); setError("") }}>{t("payroll.entireRemainder")}</Button>
+              </div>
+              {paymentPreview ? <div role="status" className="space-y-1 rounded-md border border-border p-3 text-sm sm:col-span-2">
+                <p>{t("payroll.proposedPayment")} <MoneyValue exact value={paymentPreview.amount} currencyLabel={currencyLabel} /></p>
+                <p>{t("payroll.remainingAfterPayment")} <MoneyValue exact value={paymentPreview.remaining} currencyLabel={currencyLabel} /> · {paymentPreview.outstanding.approximate ? "≈ " : ""}{paymentPreview.outstanding.value}%</p>
+                {cumulativeCashPercentage ? <p>{t("payroll.cumulativeCashPaid")} {cumulativeCashPercentage.approximate ? "≈ " : ""}{cumulativeCashPercentage.value}%</p> : null}
+                <p>{t("payroll.cumulativeSettlement")} {paymentPreview.cumulative.approximate ? "≈ " : ""}{paymentPreview.cumulative.value}%</p>
+              </div> : null}
+            </> : null}
             {action === "cash" ? (
               <label className="space-y-1 text-sm">
                 <span>{t("payroll.advanceCashAmount")}</span>
@@ -409,7 +462,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
                 <Button type="button" disabled={busy || identityKey !== JSON.stringify(pending.identity)} onClick={() => void retryIntent(pending)}>{busy ? t("payroll.saving") : t("payroll.retry")}</Button>
               </div>
             ) : (
-              <Button type="submit" className="sm:col-span-2 sm:justify-self-start" disabled={busy || storageError || !identity || (action === "repay" && !selectedAdvance && !selectedOpeningAdvance) || (action === "offset" && (!selectedAdvance || !selectedEarning))}>
+              <Button type="submit" className="sm:col-span-2 sm:justify-self-start" disabled={busy || storageError || !identity || (percentageDraft !== null && percentageBasis !== undefined && !paymentPreview) || (action === "repay" && !selectedAdvance && !selectedOpeningAdvance) || (action === "offset" && (!selectedAdvance || !selectedEarning))}>
                 {busy ? t("payroll.saving") : t(`payroll.submit.${action}`)}
               </Button>
             )}

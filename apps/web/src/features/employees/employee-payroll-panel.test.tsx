@@ -59,6 +59,41 @@ beforeEach(() => {
 })
 
 describe("employee payroll controls", () => {
+  it("converts percentage and amount against approved earnings, not the remainder", async () => {
+    const original = structuredClone(mocks.payroll)
+    try {
+      mocks.payroll.earnings[0]!.earning.totalAmount = "60000.00"
+      mocks.payroll.earnings[0]!.remaining = "48000.00"
+      renderPanel()
+      fireEvent.change(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" }), { target: { value: "60" } })
+      expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "36000.00")
+      expect(screen.getByText(/إجمالي المسوّى بعدها/).textContent).toContain("80%")
+      expect(screen.getByText(/المتبقي بعدها/).textContent).toContain("20%")
+      expect(mocks.cash).not.toHaveBeenCalled()
+      fireEvent.change(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" }), { target: { value: "30000" } })
+      expect(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })).toHaveProperty("value", "50")
+      fireEvent.click(screen.getByRole("button", { name: "ربع الأجر" }))
+      expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "15000.00")
+      fireEvent.click(screen.getByRole("button", { name: "نصف الأجر" }))
+      expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "30000.00")
+      fireEvent.click(screen.getByRole("button", { name: "كامل المتبقي" }))
+      expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "48000.00")
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفع" }))
+      await waitFor(() => expect(mocks.cash).toHaveBeenCalledTimes(1))
+      expect(mocks.cash.mock.calls[0]![0].wages).toEqual([{ earningId: "earning-1", amount: "48000.00" }])
+    } finally { Object.assign(mocks.payroll, original) }
+  })
+
+  it("blocks invalid percentage rather than submitting the last valid amount", () => {
+    renderPanel()
+    const field = screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })
+    fireEvent.change(field, { target: { value: "50" } })
+    fireEvent.change(field, { target: { value: "1e1" } })
+    expect(screen.getByRole("button", { name: "تسجيل الدفع" })).toHaveProperty("disabled", true)
+    expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "")
+    expect(mocks.cash).not.toHaveBeenCalled()
+  })
+
   it("repays an opening-only advance and retries the identical frozen request", async () => {
     const advances = mocks.payroll.advances
     mocks.payroll.advances = []
