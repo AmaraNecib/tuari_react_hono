@@ -11,8 +11,9 @@ import { financialClient } from "@/lib/orpc-client"
 
 export type ExactFinancialRoute = "debts" | "expenses" | "inventory" | "invoices"
 
-export function ExactFinancialRoutePage({ route, parties, locations, expenses, invoiceId, createInvoice, initialInventoryMovement = false }: {
+export function ExactFinancialRoutePage({ route, parties, locations, expenses, invoiceId, createInvoice, initialInventoryMovement = false, payrollEmployees }: {
   route: ExactFinancialRoute
+  payrollEmployees?: { id: string; label: string }[]
   parties: ExactInvoiceParty[]
   locations: ExactInventoryLocation[]
   expenses: ExpensesPageProps
@@ -23,7 +24,7 @@ export function ExactFinancialRoutePage({ route, parties, locations, expenses, i
   const clients: FinancialClient = financialClient
   switch (route) {
     case "debts":
-      return <ExactDebtsPage client={clients.debts} parties={parties.map(party => ({
+      return <ExactDebtsPage client={clients.debts} payrollEmployees={payrollEmployees?.map(employee => ({ ...employee, partyType: "INTERNAL_WORKER" as const }))} parties={parties.map(party => ({
         id: party.id,
         label: party.label,
         partyType: party.type === "WORKER" ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY",

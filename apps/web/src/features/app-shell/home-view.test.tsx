@@ -34,6 +34,9 @@ vi.mock("@/features/employees/employee-earnings-queries", async (importOriginal)
   const actual = await importOriginal<typeof import("@/features/employees/employee-earnings-queries")>()
   return {
     ...actual,
+    // Shell tests control ledger status independently of the payroll read.
+    // Payroll data and authenticated route wiring have their own connected proof.
+    useEmployeePayrollQuery: () => ({ data: undefined, isPending: false, isError: false, refetch: vi.fn() }),
     useApproveEmployeeEarningMutation: () => ({ isPending: false, mutateAsync: approveEmployeeEarningMutate }),
   }
 })

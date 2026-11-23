@@ -18,7 +18,10 @@ const call = async (action: string, input?: unknown) => {
 }
 const client = Object.fromEntries(["summary", "detail", "create", "post", "pay", "correct", "void", "settle"].map(action => [action, (input?: unknown) => call(action, input)])) as ExactDebtsClient
 Object.assign(window, { fixtureMoneyGrouping: setMoneyGrouping })
-createRoot(document.getElementById("root")!).render(<QueryClientProvider client={query}><ExactDebtsPage client={client} parties={[
+// This debt-only bridge has no payroll service or employee router. Keep its
+// ledger worker selectable without mounting an unrelated payroll read/link.
+// Authenticated payroll rendering and navigation use the connected browser suite.
+createRoot(document.getElementById("root")!).render(<QueryClientProvider client={query}><ExactDebtsPage client={client} payrollEmployees={[]} parties={[
   { id: "00000000-0000-4000-8000-000000000999", label: "المورد أحمد", partyType: "EXTERNAL_COUNTERPARTY" },
   { id: "00000000-0000-4000-8000-000000000998", label: "العامل يوسف", partyType: "INTERNAL_WORKER" },
 ]} /></QueryClientProvider>)

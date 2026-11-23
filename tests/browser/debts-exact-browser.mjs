@@ -64,7 +64,11 @@ try {
   fixtureClient = client;
   await server.listen();
   browser = await chromium.launch({channel:"msedge",headless:true});
-  function observe(p) { p.on("pageerror",e=>errors.push(e.message));p.on("console",m=>{if(m.type()==="error")errors.push(m.text())}); }
+  function observe(p) {
+    p.on("pageerror",e=>errors.push(e.message));
+    p.on("console",m=>{if(m.type()==="error")errors.push(m.text())});
+    p.on("request", request => { if (request.url().includes("/rpc/employeePayroll")) errors.push("Debt-only fixture made an uncontrolled payroll request"); });
+  }
   page=await browser.newPage({viewport:{width:1120,height:900}});observe(page);
   const url=`http://127.0.0.1:${port}/tests/browser/debts-exact-fixture.html`;
   await page.goto(url,{waitUntil:"domcontentloaded",timeout:120000});
