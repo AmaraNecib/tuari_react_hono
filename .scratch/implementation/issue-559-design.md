@@ -74,6 +74,12 @@ Update the existing form and connected browser assertions to select modes explic
 
 The three initial UI lenses confirmed a presentation defect: comparing rounded cash and settlement percentage strings can suppress distinct settlement information. Keep the compact single-row preview only when exact cumulative minor-unit amounts match. A failing-first case uses a 1,000,000 DZD earning, 1 DZD prior offset and 800,000 DZD proposed payment: cash is exactly 80 percent, while settlement rounds to approximately 80 percent and must remain visible. Compare prior cash against approved total minus remaining in BigInt, not display strings. No money conversion, write or interaction changes. The recorded demo has no offsets, so its rendering remains identical under this correction.
 
+## Owner-requested attached selector and laptop presentation
+
+The owner rejected the cropped near-square recording and inset floating unit buttons. Keep the single-field interaction unchanged; attach a rectangular DZD/% selector directly beside the input, with a shared seam, zero gap or inset padding, and equal outer height. Remove the surrounding focus ring; retain a single-pixel input focus indicator and keyboard-visible unit focus. Selection uses a quiet background with a short inset baseline, not an orange floating tile. Record at native 1440 by 900 and preserve that laptop aspect ratio; remove setup/wait/mobile-resize segments without cropping away the application context. Supply a separate element screenshot for readable detail.
+
+This is a bounded appearance/recording correction, not another money interaction revision. Add browser geometry assertions: input and selector are exactly 52px tall, aligned at top, with selector right edge meeting input left edge, no outer wrapper border, and existing 44px keyboard/touch checks retained. First execution caught the project's 15px root making 3.25rem input height 48.75px while the fixed unit selector was 52px. Correct the input to 52px rather than relaxing equal-height assertions. Keep failed log. No arithmetic, draft, API, persistence or retry source changes. Fresh combined-delta review carries unchanged prior lenses. Owner approval remains required; no merge.
+
 ## Architecture
 
 Retain the existing payroll write and retry interfaces. A pure percentage calculator should own rational conversion and display approximation so integer money rules do not spread through event handlers. No schema, ledger, rounding-policy or published-contract change is proposed.

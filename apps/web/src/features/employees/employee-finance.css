@@ -34,16 +34,17 @@
 .employee-operation { max-width: 48rem; margin-inline: auto; padding-block: .5rem; }
 .payroll-payment-entry { min-width: 0; padding-block: .5rem; }
 .payroll-payment-entry > label { display: block; margin-bottom: .5rem; font-size: .875rem; font-weight: 500; }
-.payroll-value-control { display: flex; align-items: center; gap: .75rem; padding: .25rem; border: 1px solid var(--border); border-radius: 8px; background: var(--background); transition: border-color 160ms ease-out; }
-.payroll-value-control:focus-within { outline: 2px solid var(--primary); outline-offset: 2px; }
-.payroll-value-control:has(input[aria-invalid="true"]) { border-color: var(--destructive); }
-.payroll-value-control input { width: 100%; min-width: 0; height: 3rem; padding-inline: .75rem; background: transparent; color: var(--foreground); font-size: 1.5rem; font-weight: 500; font-variant-numeric: tabular-nums; text-align: right; outline: none; }
+.payroll-value-control { display: flex; align-items: stretch; gap: 0; }
+.payroll-value-control input { width: 100%; min-width: 0; height: 52px; padding-inline: 1rem; border: 1px solid var(--border); border-left: 0; border-radius: 0 8px 8px 0; background: var(--background); color: var(--foreground); font-size: 1.25rem; font-weight: 500; font-variant-numeric: tabular-nums; text-align: right; outline: none; transition: border-color 160ms ease-out; }
+.payroll-value-control input:focus-visible { border-color: var(--primary); outline: 1px solid var(--primary); outline-offset: -1px; }
+.payroll-value-control input[aria-invalid="true"] { border-color: var(--destructive); }
 .payroll-value-control input::placeholder { color: var(--muted-foreground); opacity: 1; }
-.employee-payroll .payroll-unit-switch { display: flex; flex-shrink: 0; gap: .25rem; margin: 0; padding: .25rem; border-radius: 6px; background: var(--muted); }
-.payroll-unit-switch button { min-width: 44px; min-height: 44px; border-radius: 4px; color: var(--foreground); font-size: .875rem; transition: color 160ms ease-out, background-color 160ms ease-out; }
-.payroll-unit-switch button[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); font-weight: 600; }
+.employee-payroll .payroll-unit-switch { display: flex; flex-shrink: 0; gap: 0; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px 0 0 8px; background: var(--muted); }
+.payroll-unit-switch button { min-width: 48px; min-height: 50px; border-radius: 0; color: var(--foreground); font-size: .875rem; transition: color 160ms ease-out, background-color 160ms ease-out; }
+.payroll-unit-switch button:first-child { border-radius: 7px 0 0 7px; }
+.payroll-unit-switch button[aria-pressed="true"] { background: var(--background); color: var(--primary); box-shadow: inset 0 -2px 0 var(--primary); font-weight: 600; }
 .payroll-unit-switch button[aria-pressed="false"]:hover { background: var(--background); }
-.payroll-unit-switch button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.payroll-unit-switch button:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
 .payroll-payment-basis { margin-top: .75rem; color: var(--muted-foreground); font-size: .875rem; line-height: 1.7; }
 .payroll-shortcuts { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: .5rem 1rem; }
 .payroll-shortcuts button { padding-inline: .75rem; color: var(--primary); font-size: .875rem; }
@@ -56,7 +57,7 @@
 .payroll-preview-ratios { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin-top: 1rem; font-size: .875rem; color: var(--muted-foreground); }
 .payroll-available { font-size: .875rem; color: var(--muted-foreground); }
 @media (prefers-reduced-motion: reduce) {
-  .payroll-value-control, .payroll-unit-switch button { transition: none; }
+  .payroll-value-control input, .payroll-unit-switch button { transition: none; }
 }
 .employee-opening-editor > form { padding-top: .75rem; }
 .employee-opening { background: var(--muted); }
