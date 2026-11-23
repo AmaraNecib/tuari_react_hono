@@ -174,6 +174,8 @@ export class StructuredLogger {
   private static outputUnchecked(entry: LogEntry): void {
     this.sink?.emit({ severity: entry.level, source: "api", message: entry.message,
       attributes: { ...entry.data, error: entry.error, requestId: entry.context.requestId } });
+    // Healthy file capture owns the record. Stderr is reserved for degraded fallback.
+    if (this.sink && !this.sink.degraded) return;
     const logLine = JSON.stringify({
       timestamp: localTimestamp(),
       level: entry.level.toUpperCase(),

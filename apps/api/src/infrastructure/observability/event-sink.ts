@@ -1,5 +1,6 @@
-import { appendFileSync, closeSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, statSync, truncateSync, unlinkSync, writeSync } from "node:fs";
+import { appendFileSync, closeSync, lstatSync, mkdirSync, openSync, readSync, readdirSync, statSync, truncateSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 export type LocalEvent = {
   timestamp?: string;
@@ -16,7 +17,7 @@ export interface EventSink {
 }
 type Captured = LocalEvent & { timestamp: string };
 type Options = { ringSize?: number; chunkBytes?: number; totalBytes?: number; retentionDays?: number; now?: () => Date; prefix?: string };
-type Duplicate = { path: string; offset: number; count: number; instant: number };
+type Duplicate = { path: string; offset: number; count: number; instant: number; marker: string };
 
 export function localTimestamp(date = new Date()): string {
   const offset = -date.getTimezoneOffset();
@@ -31,6 +32,7 @@ export class LocalEventSink implements EventSink {
   private readonly ring: Captured[] = [];
   private readonly duplicates = new Map<string, Duplicate>();
   private readonly prefix: string;
+  private readonly chunks = new Map<string, number>();
   constructor(private readonly root: string, private readonly options: Options = {}) {
     this.prefix = options.prefix ?? "app";
     if (!/^[a-z-]+$/.test(this.prefix)) throw new Error("Invalid log prefix");
@@ -57,14 +59,10 @@ export class LocalEventSink implements EventSink {
       for (const [key, duplicate] of this.duplicates) {
         if (instant - duplicate.instant >= 60_000 || instant < duplicate.instant) this.duplicates.delete(key);
       }
-      const signature = JSON.stringify([event.source, event.message, event.attributes?.error]);
+      const a = event.attributes;
+      const signature = JSON.stringify([timestamp.slice(0, 10), event.source, event.message, a?.error, a?.method, a?.path, a?.status, a?.errorCode, a?.errorMessage, a?.encodeFailed]);
       const duplicate = event.severity === "error" ? this.duplicates.get(signature) : undefined;
-      if (duplicate) {
-        duplicate.count++;
-        const fd = openSync(duplicate.path, "r+");
-        try { writeSync(fd, String(duplicate.count).padStart(12), duplicate.offset, "utf8"); }
-        finally { closeSync(fd); }
-      } else {
+      if (!duplicate || !this.updateDuplicate(duplicate)) {
         const record = this.write(captured);
         if (event.severity === "error") {
           if (this.duplicates.size >= 1000) this.duplicates.delete(this.duplicates.keys().next().value!);
@@ -74,16 +72,32 @@ export class LocalEventSink implements EventSink {
       this.cleanup();
     });
   }
-  private write(event: Captured): { path: string; offset: number } {
+  private updateDuplicate(duplicate: Duplicate): boolean {
+    let fd: number;
+    try { fd = openSync(duplicate.path, "r+"); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
+    try {
+      const marker = Buffer.alloc(Buffer.byteLength(duplicate.marker));
+      if (readSync(fd, marker, 0, marker.length, duplicate.offset + 12) !== marker.length || marker.toString() !== duplicate.marker) return false;
+      duplicate.count++;
+      writeSync(fd, String(duplicate.count).padStart(12), duplicate.offset, "utf8");
+      return true;
+    } finally { closeSync(fd); }
+  }
+  private write(event: Captured): { path: string; offset: number; marker: string } {
     const dir = join(this.root, event.timestamp.slice(0, 10));
     mkdirSync(dir, { recursive: true });
     if (lstatSync(dir).isSymbolicLink()) throw new Error("Log directory is a link");
     const payload = JSON.stringify({ ...event, schemaVersion: 1 });
-    const line = '{"count":' + String(1).padStart(12) + ',' + payload.slice(1) + "\n";
+    const marker = ',"recordId":' + JSON.stringify(randomUUID()) + ',';
+    const line = '{"count":' + String(1).padStart(12) + marker + payload.slice(1) + "\n";
     const bytesToWrite = Buffer.byteLength(line);
     if (bytesToWrite > (this.options.totalBytes ?? 200 * 1024 * 1024)) throw new Error("Event exceeds log capacity");
     this.cleanup(bytesToWrite);
-    let index = 0;
+    let index = this.chunks.get(dir) ?? readdirSync(dir).reduce((max, name) => {
+      const match = new RegExp(`^${this.prefix}(?:\\.(\\d+))?\\.log$`).exec(name);
+      return match ? Math.max(max, Number(match[1] ?? 0)) : max;
+    }, 0);
     let path: string;
     let size: number;
     for (;;) {
@@ -93,17 +107,27 @@ export class LocalEventSink implements EventSink {
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       size = exists ? statSync(path).size : 0;
       if (size && exists) {
-        const bytes = readFileSync(path);
-        if (bytes[bytes.length - 1] !== 10) {
-          size = bytes.lastIndexOf(10) + 1;
-          truncateSync(path, size);
-        }
+        const fd = openSync(path, "r");
+        try {
+          const tail = Buffer.alloc(4096);
+          let end = size;
+          while (end > 0) {
+            const start = Math.max(0, end - tail.length);
+            const length = readSync(fd, tail, 0, end - start, start);
+            const newline = tail.subarray(0, length).lastIndexOf(10);
+            if (newline >= 0) { size = start + newline + 1; break; }
+            end = start;
+            if (end === 0) size = 0;
+          }
+        } finally { closeSync(fd); }
+        if (size !== statSync(path).size) truncateSync(path, size);
       }
       if (!size || size + Buffer.byteLength(line) <= (this.options.chunkBytes ?? 5 * 1024 * 1024)) break;
       index++;
     }
     appendFileSync(path, line);
-    return { path, offset: size + 9 };
+    this.chunks.set(dir, index);
+    return { path, offset: size + 9, marker };
   }
   private cleanup(reservedBytes = 0): void {
     const now = this.options.now?.() ?? new Date();
@@ -113,7 +137,7 @@ export class LocalEventSink implements EventSink {
     for (const day of readdirSync(this.root, { withFileTypes: true })) {
       if (!day.isDirectory() || !/^\d{4}-\d{2}-\d{2}$/.test(day.name)) continue;
       for (const file of readdirSync(join(this.root, day.name), { withFileTypes: true })) {
-        if (!file.isFile() || !/^(app|api|desktop)(\.\d+)?\.log$/.test(file.name)) continue;
+        if (!file.isFile() || !new RegExp(`^${this.prefix}(?:\\.(\\d+))?\\.log$`).test(file.name)) continue;
         const path = join(this.root, day.name, file.name);
         const stat = statSync(path);
         files.push({ path, size: stat.size, day: day.name, mtime: stat.mtimeMs });

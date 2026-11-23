@@ -206,7 +206,7 @@ fn wait_for_api_ready_with(
         match child.try_wait() {
             Ok(Some(status)) => {
                 return Err(format!(
-                    "The local API stopped before startup completed ({status}). Check {}.",
+                    "The local API stopped before startup completed ({status}). Check day-folder JSONL logs in {}.",
                     server_log_path.display()
                 ));
             }
@@ -224,7 +224,7 @@ fn wait_for_api_ready_with(
 
         if Instant::now() >= deadline {
             return Err(format!(
-                "Timed out while starting the local API. Check {}.",
+                "Timed out while starting the local API. Check day-folder JSONL logs in {}.",
                 server_log_path.display()
             ));
         }
@@ -404,7 +404,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
             }
         });
     }
-    ensure_ready(&mut child, |child| wait_for_api_ready(child, &server_log_path))?;
+    ensure_ready(&mut child, |child| wait_for_api_ready(child, logs_dir))?;
     Ok(child)
 }
 
@@ -476,7 +476,7 @@ mod tests {
             .spawn().unwrap();
         child.wait().unwrap();
         let error = wait_for_api_ready_with(
-            &mut child, Path::new("api-server.log"), Duration::ZERO, || true,
+            &mut child, Path::new("data/logs"), Duration::ZERO, || true,
         ).unwrap_err();
         assert!(error.contains("stopped before startup completed"), "{error}");
     }
@@ -485,9 +485,11 @@ mod tests {
     fn readiness_deadline_stops_a_live_child() {
         let mut child = child();
         let error = ensure_ready(&mut child, |child| wait_for_api_ready_with(
-            child, Path::new("api-server.log"), Duration::ZERO, || false,
+            child, Path::new("data/logs"), Duration::ZERO, || false,
         )).unwrap_err();
         assert!(error.contains("Timed out"), "{error}");
+        assert!(error.contains("day-folder JSONL logs in data/logs"), "{error}");
+        assert!(!error.contains("api-server.log"), "{error}");
         assert_stopped(&mut child);
     }
 

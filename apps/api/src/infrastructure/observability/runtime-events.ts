@@ -28,5 +28,5 @@ export function installRuntimeEvents(sink: EventSink, emitter: EventEmitter = pr
 
 export function createRuntimeSink(): LocalEventSink {
   const root = process.env.TUARI_LOGS_DIR ?? join(dirname(process.env.APP_DB_PATH ?? "data/tuari.sqlite"), "logs");
-  return new LocalEventSink(root, { prefix: "api" });
+  return new LocalEventSink(root, { prefix: "api", totalBytes: 100 * 1024 * 1024 });
 }

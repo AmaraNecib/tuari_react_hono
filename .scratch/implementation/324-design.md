@@ -74,7 +74,7 @@ Keep `StructuredLogger` as the API caller interface. Introduce an event-sink int
 
 The desktop already resolves portable and installed log roots. It must pass the resolved root to the API explicitly because the sidecar clears its environment and runs from a runtime directory. Do not derive portable storage from the API working directory.
 
-The shared event-sink protocol has native adapters in TypeScript and Rust. API owns api.log/api.N.log; desktop owns desktop.log/desktop.N.log under the same day folders. This avoids cross-process count-update and rotation races while keeping panic capture independent of API availability. The standalone sink default remains app.log/app.N.log. Both adapters share schemaVersion 1, timestamp, severity, source, message, lifecycle, attributes, and count. No new dependency is required. Cleanup recognizes only these owned chunk names.
+The shared event-sink protocol has native adapters in TypeScript and Rust. API owns api.log/api.N.log; desktop owns desktop.log/desktop.N.log under the same day folders. This avoids cross-process count-update and rotation races while keeping panic capture independent of API availability. The standalone sink default remains app.log/app.N.log. Both adapters share schemaVersion 1, timestamp, severity, source, message, lifecycle, attributes, and count. No new dependency is required. Cleanup touches only the current writer's chunk prefix. The API and desktop each receive a 100 MiB quota, so concurrent cleanup cannot delete another live writer's records or exceed the shared 200 MiB runtime budget. Standalone app-prefixed logs use a separate root and a 200 MiB quota. Duplicate updates validate a random recordId marker at the saved offset and fall back to a new record if the file was replaced or removed.
 
 ### Confirmed test seam
 
@@ -86,13 +86,14 @@ Capture-adapter integration checks should prove that logger output, uncaught fai
 
 ### Storage decisions and review risks
 
-- The first error is durable immediately. A twelve-byte padded JSON numeric count permits in-place updates without rewriting or shifting subsequent records. The duplicate table is bounded to 1000 signatures and expires per one-minute window. A torn count update remains an inherent removable-media risk.
+- The first error is durable immediately. A twelve-byte padded JSON numeric count permits in-place updates without rewriting or shifting subsequent records. Signatures include local date and stable failure details, but not request identifiers. Midnight starts a new record even within one minute. The duplicate table is bounded to 1000 signatures and expires per one-minute window. A torn count update remains an inherent removable-media risk.
 - Lifecycle milestones bypass the routine debug/info ring. The API ring retains 1000 events and drains before each error. Rust emits lifecycle/error records only.
-- Before appending, trim only a non-newline-terminated trailing record. Complete earlier records remain intact.
-- Startup and durable emits enforce 30 local calendar days and a 200 MiB total cap. Capacity for the serialized record is reclaimed before appending. Oversized records are dropped with degraded state and console fallback rather than evicting valid history. Cleanup touches only owned day-folder log names, not arbitrary files.
+- Cache the latest chunk per day and inspect only its tail when appending. Repair a non-newline-terminated trailing record with backward 4096-byte reads, without rereading older chunks. Complete earlier records remain intact.
+- Startup and durable emits enforce 30 local calendar days and the writer's fixed share of the 200 MiB runtime cap. Capacity for the serialized record is reclaimed before appending. Oversized records are dropped with degraded state and console fallback rather than evicting valid history. Cleanup touches only owned day-folder log names, not arbitrary files.
 - The API receives TUARI_LOGS_DIR from the desktop. The legacy unbounded api-server.log writer is removed; raw sidecar stderr is captured in bounded 8192-byte reads through the desktop sink. Log-directory creation failures no longer abort runtime file initialization.
 - Caller-level proof imports the actual API entry with controlled composition dependencies and inspects serialized startup/database success/failure events. Rust caller tests exercise real license initialization on temporary files and the actual update command implementation with a fake provider. They capture serialized sink records, not emitted-call counts.
 - Panic capture uses try_lock and best-effort stderr fallback. The original panic hook is preserved. A subprocess regression proves panic capture without changing the test runner's global hook.
+- Healthy StructuredLogger sink capture suppresses its redundant console copy. Degraded capture still uses console fallback; raw sidecar stderr remains captured. Readiness errors direct users to day-folder logs, not obsolete api-server.log.
 - Never record license keys, database keys, authentication secrets, or entire process environments.
 
 ## Out of scope

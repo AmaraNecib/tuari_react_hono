@@ -1,9 +1,11 @@
 import { mkdtempSync, readFileSync, rmSync, readdirSync, mkdirSync, writeFileSync, existsSync, statSync } from "node:fs";
+import * as fs from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { LocalEventSink } from "./event-sink";
 
+vi.mock("node:fs", { spy: true });
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 it("keeps only the last buffered events and flushes them once on an error", () => {
@@ -85,6 +87,46 @@ it("marks degraded and falls back when a buffered day fails but the error day re
     expect(fallback).toHaveBeenCalledWith("Local logging degraded");
     expect(JSON.parse(readFileSync(join(dir, "2025-08-11", "app.log"), "utf8")).message).toBe("failure");
   } finally { fallback.mockRestore(); }
+});
+it("starts a fresh error record when the local day changes", () => {
+  const dir = root(); const sink = new LocalEventSink(dir, { now: () => new Date("2025-08-11T12:00:00Z") });
+  sink.emit({ severity: "error", source: "api", message: "repeat", timestamp: "2025-08-10T23:59:50.000+01:00" });
+  sink.emit({ severity: "error", source: "api", message: "repeat", timestamp: "2025-08-11T00:00:10.000+01:00" });
+  expect(JSON.parse(readFileSync(join(dir, "2025-08-11", "app.log"), "utf8")).count).toBe(1);
+});
+it("keeps distinct request failures separate while ignoring request identifiers", () => {
+  const dir = root(); const sink = new LocalEventSink(dir);
+  for (const [path, requestId] of [["/a", "1"], ["/b", "2"], ["/a", "3"]]) {
+    sink.emit({ severity: "error", source: "api", message: "Request failed", attributes: { path, requestId, status: 400, errorCode: "INVALID" } });
+  }
+  const day = readdirSync(dir)[0]!;
+  expect(readFileSync(join(dir, day, "app.log"), "utf8").trim().split("\n").map(line => JSON.parse(line).count)).toEqual([2, 1]);
+});
+it("never cleans another writer's chunks or patches a replaced record", () => {
+  const dir = root(); const now = () => new Date("2025-08-10T12:00:00Z");
+  const api = new LocalEventSink(dir, { prefix: "api", now, totalBytes: 1000 });
+  const event = { severity: "error" as const, source: "api", message: "original" };
+  api.emit(event);
+  const file = join(dir, "2025-08-10", "api.log");
+  const original = readFileSync(file, "utf8");
+  new LocalEventSink(dir, { prefix: "desktop", now, totalBytes: 1 });
+  expect(readFileSync(file, "utf8")).toBe(original);
+  writeFileSync(file, '{"count":1,"message":"replacement"}\n');
+  api.emit(event);
+  expect(readFileSync(file, "utf8").trim().split("\n").map(line => JSON.parse(line).message)).toEqual(["replacement", "original"]);
+});
+it("reads only a bounded tail of the latest chunk during append", () => {
+  const dir = root(); const day = join(dir, "2025-08-10"); mkdirSync(day);
+  for (let n = 0; n < 10; n++) writeFileSync(join(day, n ? `app.${n}.log` : "app.log"), "x".repeat(4999) + "\n");
+  writeFileSync(join(day, "app.10.log"), '{"message":"kept"}\n{"partial');
+  const reads = vi.mocked(fs.readSync); reads.mockClear();
+  try {
+    const sink = new LocalEventSink(dir, { chunkBytes: 5000, now: () => new Date("2025-08-10T12:00:00Z") });
+    sink.emit({ severity: "warn", source: "api", message: "new" });
+    expect(reads.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(reads.mock.calls.every(call => call[1].byteLength <= 4096)).toBe(true);
+    expect(readFileSync(join(day, "app.10.log"), "utf8").trim().split("\n").map(line => JSON.parse(line).message)).toEqual(["kept", "new"]);
+  } finally { reads.mockClear(); }
 });
 function root() { const path = mkdtempSync(join(tmpdir(), "tuari-events-")); roots.push(path); return path; }
 it("routes each event by its own local date and retains its offset across midnight", () => {

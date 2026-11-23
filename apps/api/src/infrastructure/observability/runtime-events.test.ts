@@ -23,6 +23,7 @@ it("routes structured errors, fatal hooks, shutdown and slow operations through 
   expect(sink.emit).toHaveBeenCalledWith(expect.objectContaining({ message: "shutdown", lifecycle: true }));
   expect(sink.emit).toHaveBeenCalledWith(expect.objectContaining({ message: "slow slow operation", severity: "warn" }));
   expect(sink.flush).toHaveBeenCalledTimes(2);
+  expect(console.error).not.toHaveBeenCalled();
   uninstall();
   expect(events.listenerCount("uncaughtExceptionMonitor")).toBe(0);
   expect(events.listenerCount("unhandledRejection")).toBe(0);
