@@ -41,10 +41,10 @@ export function createInventoryHandlers(
       inventoryService.listInvoiceGroups(input as InventoryInvoiceGroupListInput)
     )),
     inventoryInvoiceGroupsGet: os.inventoryInvoiceGroupsGet.handler(m.queryAuth(async ({ input }) =>
-      inventoryService.getInvoiceGroup((input as IdInput).id)
-,
+      inventoryService.getInvoiceGroup((input as IdInput).id),
       toInventoryFailureResult,
-    )),    inventoryInvoiceGroupsCreate: os.inventoryInvoiceGroupsCreate.handler(m.mutationAudit(
+    )),
+    inventoryInvoiceGroupsCreate: os.inventoryInvoiceGroupsCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => inventoryService.createInvoiceGroup(input as InventoryInvoiceGroupCreateInput, auditContext),
       toInventoryFailureResult,
     )),
@@ -53,14 +53,14 @@ export function createInventoryHandlers(
       toInventoryFailureResult,
     )),
     inventoryLocationContentsGet: os.inventoryLocationContentsGet.handler(m.queryAuth(async ({ input }) =>
-      inventoryService.getLocationContents(input as InventoryLocationContentsInput)
-,
+      inventoryService.getLocationContents(input as InventoryLocationContentsInput),
       toInventoryFailureResult,
-    )),    inventoryAssetsGet: os.inventoryAssetsGet.handler(m.queryAuth(async ({ input }) =>
-      inventoryService.getAsset((input as IdInput).id)
-,
+    )),
+    inventoryAssetsGet: os.inventoryAssetsGet.handler(m.queryAuth(async ({ input }) =>
+      inventoryService.getAsset((input as IdInput).id),
       toInventoryFailureResult,
-    )),    inventoryAssetsTransfer: os.inventoryAssetsTransfer.handler(m.mutationAudit(
+    )),
+    inventoryAssetsTransfer: os.inventoryAssetsTransfer.handler(m.mutationAudit(
       ({ input, auditContext }) => inventoryService.transferAsset(input as InventoryAssetTransferInput, auditContext),
       toInventoryFailureResult,
     )),
@@ -117,10 +117,10 @@ export function createCatalogHandlers(
       inventoryService.listItemDefinitionOptions(input as InventoryItemDefinitionOptionsInput)
     )),
     inventoryItemDefinitionsGet: os.inventoryItemDefinitionsGet.handler(m.queryAuth(async ({ input }) =>
-      inventoryService.getItemDefinition((input as IdInput).id)
-,
+      inventoryService.getItemDefinition((input as IdInput).id),
       toInventoryFailureResult,
-    )),    inventoryItemDefinitionsCreate: os.inventoryItemDefinitionsCreate.handler(m.mutationAudit(
+    )),
+    inventoryItemDefinitionsCreate: os.inventoryItemDefinitionsCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => inventoryService.createItemDefinition(input as InventoryItemDefinitionCreateInput, auditContext),
       toInventoryFailureResult,
     )),
