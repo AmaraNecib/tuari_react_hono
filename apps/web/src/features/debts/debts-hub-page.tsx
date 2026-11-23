@@ -1,5 +1,7 @@
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
+import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import {
   Table,
@@ -13,11 +15,16 @@ import { AdvancedSearchBar } from "@/features/shared/advanced-search-bar"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { Surface } from "@/features/shared/page-primitives"
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
-import { getDebtBalanceMeta, formatDebtMoney } from "./debt-utils"
+import {
+  formatDebtAmount,
+  getNetDebtBalanceDisplay,
+  matchesDebtHubFilter,
+  type DebtHubFilter,
+} from "./debt-utils"
 
-type FilterOption = "all" | "owed-to-us" | "owed-by-us" | "settled"
+type FilterOption = DebtHubFilter
 
-function HubStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+function HubStatCard({ label, value, valueClassName }: { label: string; value: import("react").ReactNode; valueClassName?: string }) {
   return (
     <div className="px-5 py-4">
       <p className="text-sm text-muted-foreground">{label}</p>
@@ -27,13 +34,6 @@ function HubStatCard({ label, value, valueClassName }: { label: string; value: s
     </div>
   )
 }
-
-const FILTER_OPTIONS: Array<{ id: FilterOption; label: string }> = [
-  { id: "all", label: "الكل" },
-  { id: "owed-to-us", label: "لنا عنده" },
-  { id: "owed-by-us", label: "علينا له" },
-  { id: "settled", label: "مغلقة" },
-]
 
 const DEFAULT_PAGE_SIZE = 25
 
@@ -71,21 +71,19 @@ export function DebtsHubPage({
 
   const normalizedQuery = query.trim().toLowerCase()
 
+  const filterOptions = useMemo<Array<{ id: FilterOption; label: string }>>(
+    () => [
+      { id: "all", label: t("debtsHub.filters.all") },
+      { id: "owed-to-us", label: DEBT_BALANCE_STATE_PHRASE.owedToUs },
+      { id: "owed-by-us", label: DEBT_BALANCE_STATE_PHRASE.owedByUs },
+      { id: "settled", label: DEBT_BALANCE_STATE_PHRASE.settled },
+    ],
+    [t],
+  )
+
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
-      switch (filter) {
-        case "owed-to-us":
-          if (!(row.status === "OPEN" && row.balanceDzd > 0)) return false
-          break
-        case "owed-by-us":
-          if (!(row.status === "OPEN" && row.balanceDzd < 0)) return false
-          break
-        case "settled":
-          if (row.status !== "SETTLED") return false
-          break
-        default:
-          break
-      }
+      if (!matchesDebtHubFilter(row, filter)) return false
       if (normalizedQuery) {
         const haystack = `${row.name} ${row.phone}`.toLowerCase()
         if (!haystack.includes(normalizedQuery)) return false
@@ -108,22 +106,22 @@ export function DebtsHubPage({
     <RecordPageFrame
       action={
         <div className="flex gap-2">
-          <Button size="lg" onClick={onCreateDebt}>إضافة رصيد دين</Button>
+          <Button size="lg" onClick={onCreateDebt}>{t("debts.terminology.buttons.recordDebt")}</Button>
         </div>
       }
       title="مركز الديون"
-      description="ملخص سريع لحساب دين واحد لكل عامل أو طرف خارجي. الأخضر يعني أنهم مدينون لنا، والأحمر يعني أننا مدينون لهم."
+      description="ملخص سريع لحساب دين واحد لكل عامل أو طرف خارجي. الأخضر يعني مستحق لنا، والأحمر يعني مستحق علينا."
     >
       <div className="grid gap-4 md:grid-cols-4">
         <HubStatCard label="عدد الأرصدة المفتوحة" value={String(filter === "all" ? totals.openCount : filteredOpenCount)} />
-        <HubStatCard label="لنا عندهم" value={`دج ${formatDebtMoney(totals.owedToUsDzd)}`} valueClassName="text-emerald-700 dark:text-emerald-300" />
-        <HubStatCard label="علينا لهم" value={`دج ${formatDebtMoney(-totals.owedByUsDzd)}`} valueClassName="text-rose-700 dark:text-rose-300" />
+        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedToUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedToUsDzd)} currencyLabel="دج" />} valueClassName="text-emerald-700 dark:text-emerald-300" />
+        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedByUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedByUsDzd)} currencyLabel="دج" />} valueClassName="text-rose-700 dark:text-rose-300" />
         <HubStatCard label="عدد الحسابات" value={String(rows.length)} />
       </div>
 
       {/* Filter bar */}
       <div className="flex flex-wrap gap-2">
-        {FILTER_OPTIONS.map((option) => (
+        {filterOptions.map((option) => (
           <button
             key={option.id}
             className={`rounded-full border px-4 py-1.5 text-sm font-medium transition-colors ${
@@ -159,14 +157,13 @@ export function DebtsHubPage({
               <TableHead>الهاتف</TableHead>
               <TableHead>عدد الحسابات</TableHead>
               <TableHead>الرصيد</TableHead>
-              <TableHead>الدلالة</TableHead>
               <TableHead>الإجراء</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {pagedRows.length > 0 ? (
               pagedRows.map((row) => {
-                const balanceMeta = getDebtBalanceMeta(row.balanceDzd)
+                const balance = getNetDebtBalanceDisplay(row.balanceDzd)
 
                 return (
                   <TableRow
@@ -182,13 +179,15 @@ export function DebtsHubPage({
                     <TableCell className="text-muted-foreground">{row.type === "worker" ? "عامل داخلي" : "طرف خارجي"}</TableCell>
                     <TableCell><bdi dir="ltr">{row.phone}</bdi></TableCell>
                     <TableCell>{row.caseCount}</TableCell>
-                    <TableCell className={balanceMeta.textClassName} dir="ltr">
-                      دج {formatDebtMoney(row.balanceDzd)}
-                    </TableCell>
                     <TableCell>
-                      <span className={`rounded-full border px-3 py-1 text-xs font-medium ${balanceMeta.badgeClassName}`.trim()}>
-                        {balanceMeta.shortLabel}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`w-fit rounded-full border px-3 py-1 text-xs font-medium ${balance.badgeClassName}`.trim()}>
+                          {balance.phrase}
+                        </span>
+                        <span className={`font-mono text-sm ${balance.textClassName}`.trim()} dir="ltr">
+                          <CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel="دج" />
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Button
@@ -211,7 +210,7 @@ export function DebtsHubPage({
               })
             ) : (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                   {filter === "all" && !normalizedQuery
                     ? t("debtsHub.emptyAll")
                     : t("debtsHub.emptyFiltered")}

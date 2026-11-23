@@ -5,8 +5,14 @@ import { render, screen } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import { LicenseSettings } from "./license-settings";
-import { ar } from "@/i18n/resources/ar";
-import type { LicenseStatusData } from "./license-hooks";
+import "@/i18n";
+import type { LicenseStatusData } from "./license-hooks"
+import {
+  ALGERIA_DAY_LONG,
+  MIDNIGHT_CROSSING,
+  UTC_DAY_LONG,
+  pinUtcTimeZone,
+} from "@/test-utils/algeria-day";
 
 // ─── Mock useLicenseStatus ─────────────────────────────────────
 
@@ -14,31 +20,6 @@ const mockUseLicenseStatus = vi.fn();
 
 vi.mock("./license-hooks", () => ({
   useLicenseStatus: () => mockUseLicenseStatus(),
-}));
-
-// ─── Mock useTranslation with interpolation support ────────────
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, fallback?: string, options?: Record<string, unknown>) => {
-      let node: unknown = ar.translation;
-      for (const part of key.split(".")) {
-        if (node === null || typeof node !== "object" || !(part in node)) {
-          node = undefined;
-          break;
-        }
-        node = (node as Record<string, unknown>)[part];
-      }
-      let result = typeof node === "string" ? node : (fallback ?? key);
-      // Simple interpolation for {{var}} patterns
-      if (options) {
-        for (const [k, v] of Object.entries(options)) {
-          result = result.replace(new RegExp(`\\{\\{${k}\\}\\}`, "g"), String(v));
-        }
-      }
-      return result;
-    },
-  }),
 }));
 
 // ─── Helpers ───────────────────────────────────────────────────
@@ -271,5 +252,37 @@ describe("LicenseSettings", () => {
     renderWithQuery(<LicenseSettings />);
 
     expect(screen.queryByText("لا توجد ميزات إضافية في هذا الإصدار.")).toBeTruthy();
+  });
+});
+
+describe("stored business day timezone (#473)", () => {
+  let restoreTimeZone: () => void;
+
+  beforeEach(() => {
+    restoreTimeZone = pinUtcTimeZone();
+    mockUseLicenseStatus.mockReset();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    restoreTimeZone();
+  });
+
+  it("runs under UTC so the assertions are not vacuous", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC");
+    expect(ALGERIA_DAY_LONG).not.toBe(UTC_DAY_LONG);
+  });
+
+  it("renders the licence expiry date on its Algeria day, not the ambient UTC day", () => {
+    mockUseLicenseStatus.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: createLicenseData({ validUntil: MIDNIGHT_CROSSING }),
+    });
+
+    renderWithQuery(<LicenseSettings />);
+
+    expect(screen.queryByText(ALGERIA_DAY_LONG)).toBeTruthy();
+    expect(screen.queryByText(UTC_DAY_LONG)).toBeNull();
   });
 });

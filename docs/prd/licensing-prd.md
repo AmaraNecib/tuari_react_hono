@@ -101,7 +101,7 @@ Add an offline-capable licensing system to Tuari that enforces edition-based fea
 **Description:** Users can evaluate the application for 30 days without a license. After the grace period, non-licensed mode is locked.
 
 **Acceptance Criteria:**
-- [ ] On first launch, if no `install-timestamp` file exists, create it with the current time.
+- [ ] On first launch, if no `install-anchor.json` file exists, create it with the current time.
 - [ ] If no license is present and the install is < 30 days old, the app starts with Standard edition features.
 - [ ] A badge in the bottom-right corner shows "النسخة التجريبية — يتبقى N يوم".
 - [ ] The Settings → Licensing page shows a countdown and upgrade CTA.

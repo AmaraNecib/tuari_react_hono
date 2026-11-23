@@ -162,19 +162,80 @@ fn app_ready(
 // ─── API sidecar identity (stale-process cleanup) ──────────────────
 //
 // The API sidecar child is always spawned as
-// `node <install>/bin/api-runtime/dist/index.cjs`. These stable layout
-// markers (kept out of the absolute install path so they survive app updates
-// that relocate the install directory) identify OUR child and nothing else.
-const API_SIDECAR_CMD_MARKERS: [&str; 2] = ["api-runtime", "index.cjs"];
+// `node <install>/bin/api-runtime/dist/index.cjs`. The layout markers alone
+// (`api-runtime`, `index.cjs`) are install-relative, so matching on them killed
+// the sidecar of EVERY Tuari install on the machine — a portable build killed
+// a running installed build, and vice versa (#403). Identity is therefore the
+// absolute sidecar path of THIS installation's runtime directory.
 
-/// Returns `true` when `command_line` belongs to this application's API
-/// sidecar child rather than an unrelated process. Used to narrow stale
+/// The sidecar entry script inside this installation's runtime directory.
+/// Single-sourced so the spawn path and the cleanup predicate cannot drift.
+fn api_sidecar_entry_path(runtime_dir: &Path) -> PathBuf {
+    runtime_dir.join("dist").join("index.cjs")
+}
+
+/// Normalizes a path or command line for identity comparison: drops the
+/// Windows extended-length prefix, unifies separators, and folds case **on
+/// Windows only**, because Windows filesystems are case-insensitive while
+/// POSIX paths are not.
+fn normalize_path_for_match(value: &str) -> String {
+    let stripped = strip_windows_extended_path_prefix(value);
+    let unified = stripped.replace('\\', "/");
+    if cfg!(target_os = "windows") {
+        unified.to_ascii_lowercase()
+    } else {
+        unified
+    }
+}
+
+/// Returns `true` when `command_line` belongs to **this** installation's API
+/// sidecar child, i.e. it references
+/// `<install_runtime_dir>/dist/index.cjs`. A sidecar from a different install
+/// carries a different absolute path and does not match. Used to narrow stale
 /// cleanup to our own child instead of "anything listening on the API port".
-fn is_api_sidecar_command_line(command_line: &str) -> bool {
-    let lower = command_line.to_ascii_lowercase();
-    API_SIDECAR_CMD_MARKERS
-        .iter()
-        .all(|marker| lower.contains(marker))
+///
+/// Pure, so the predicate is unit-testable without spawning or killing a
+/// process.
+fn is_api_sidecar_command_line(command_line: &str, install_runtime_dir: &Path) -> bool {
+    let sidecar_path = api_sidecar_entry_path(install_runtime_dir);
+    let expected = normalize_path_for_match(&sidecar_path.to_string_lossy());
+    command_line_contains_path(&normalize_path_for_match(command_line), &expected)
+}
+
+/// True when `command_line` contains `expected_path` as a whole argument —
+/// bounded by whitespace, a quote, or the start/end of the string — rather
+/// than as a substring of a longer path (`index.cjs.map`) or of another
+/// argument (`--entry=.../index.cjs`).
+fn command_line_contains_path(command_line: &str, expected_path: &str) -> bool {
+    command_line
+        .match_indices(expected_path)
+        .any(|(start, _)| {
+            is_argument_boundary_before(command_line, start)
+                && is_argument_boundary_after(command_line, start + expected_path.len())
+        })
+}
+
+/// True when the character before `index` bounds a command-line argument: the
+/// start of the string, whitespace, or a quote that itself begins an argument.
+/// A quote preceded by `=` (`--entry="<path>"`) is not an argument boundary.
+fn is_argument_boundary_before(command_line: &str, index: usize) -> bool {
+    let mut chars = command_line[..index].chars().rev();
+    match chars.next() {
+        None => true,
+        Some('"') | Some('\'') => chars.next().map_or(true, char::is_whitespace),
+        Some(c) => c.is_whitespace(),
+    }
+}
+
+/// True when the character after `index` bounds a command-line argument: the
+/// end of the string, whitespace, or a quote that itself ends an argument.
+fn is_argument_boundary_after(command_line: &str, index: usize) -> bool {
+    let mut chars = command_line[index..].chars();
+    match chars.next() {
+        None => true,
+        Some('"') | Some('\'') => chars.next().map_or(true, char::is_whitespace),
+        Some(c) => c.is_whitespace(),
+    }
 }
 
 /// Strips the Windows extended-length ("verbatim") path prefix.
@@ -1342,12 +1403,24 @@ fn has_portable_runtime_layout(root: &Path) -> bool {
     };
 
     root.join("bin").join(node_binary_name).exists()
-        && root
-            .join("bin")
-            .join("api-runtime")
-            .join("dist")
-            .join("index.cjs")
-            .exists()
+        && api_sidecar_entry_path(&api_runtime_dir(root)).exists()
+}
+
+/// This installation's `<install>/bin/api-runtime` directory — the directory
+/// `spawn_api_process` runs the sidecar from and the path prefix that
+/// identifies our own stale child (#403).
+fn api_runtime_dir(resource_dir: &Path) -> PathBuf {
+    resource_dir.join("bin").join("api-runtime")
+}
+
+/// This installation's runtime directory from the app's resource directory.
+/// Errors (rather than guessing) when the resource directory is unavailable,
+/// so stale cleanup can fail open and leave every process alone.
+fn resolve_api_runtime_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .resource_dir()
+        .map(|resource_dir| api_runtime_dir(&resource_dir))
+        .map_err(|error| error.to_string())
 }
 
 fn resolve_portable_data_dir() -> Result<Option<PathBuf>, String> {
@@ -1732,7 +1805,7 @@ fn load_runtime_secrets(app: &AppHandle) -> Result<RuntimeSecrets, String> {
     })
 }
 
-fn ensure_file_exists(file_path: &PathBuf) -> Result<(), String> {
+fn ensure_file_exists(file_path: &Path) -> Result<(), String> {
     if file_path.exists() {
         return Ok(());
     }
@@ -1742,8 +1815,8 @@ fn ensure_file_exists(file_path: &PathBuf) -> Result<(), String> {
 }
 
 fn migrate_legacy_db_if_needed(
-    current_path: &PathBuf,
-    legacy_path: &PathBuf,
+    current_path: &Path,
+    legacy_path: &Path,
 ) -> Result<(), String> {
     if current_path.exists() || !legacy_path.exists() {
         return Ok(());
@@ -1854,10 +1927,17 @@ fn resolve_attachments_root(app_db_path: &Path) -> PathBuf {
 /// (`node <install>/bin/api-runtime/dist/index.cjs`) — never by port. The
 /// previous port-based cleanup could terminate an unrelated process that
 /// happened to listen on `API_PORT`.
-fn cleanup_stale_api_processes() {
+fn cleanup_stale_api_processes(app: &AppHandle) {
     if cfg!(debug_assertions) {
         return;
     }
+
+    // Never guess: if we cannot determine this installation's runtime path we
+    // leave every process alone rather than risk killing a foreign sidecar.
+    let install_runtime_dir = match resolve_api_runtime_dir(app) {
+        Ok(dir) => dir,
+        Err(_) => return,
+    };
 
     #[cfg(target_os = "windows")]
     {
@@ -1881,7 +1961,7 @@ fn cleanup_stale_api_processes() {
                 let Some((pid, command_line)) = line.split_once('|') else {
                     continue;
                 };
-                if is_api_sidecar_command_line(command_line) {
+                if is_api_sidecar_command_line(command_line, &install_runtime_dir) {
                     let _ = Command::new("taskkill")
                         .args(["/PID", pid, "/T", "/F"])
                         .stdout(Stdio::null())
@@ -1910,7 +1990,7 @@ fn cleanup_stale_api_processes() {
                 let Some((pid, command_line)) = line.split_once(' ') else {
                     continue;
                 };
-                if is_api_sidecar_command_line(command_line) {
+                if is_api_sidecar_command_line(command_line, &install_runtime_dir) {
                     let _ = Command::new("kill")
                         .args(["-9", pid])
                         .stdout(Stdio::null())
@@ -2005,11 +2085,104 @@ fn wait_for_api_ready(child: &mut Child, server_log_path: &Path) -> Result<(), S
     }
 }
 
+/// Map a `LicenseManager::initialize` failure to the `TUARI_LICENSE_STATUS`
+/// string the API sidecar understands (see
+/// `apps/api/src/infrastructure/license.ts::LICENSE_STATUSES`).
+///
+/// `ClockTampered` is the only failure the shell can attribute to a specific
+/// cause, so it is the only one that becomes `suspicious` (the API's message
+/// tells the user to correct the system clock). Every other failure — a
+/// malformed, tampered, or unreadable `license.lic`, a crypto error, an IO
+/// error — is an opaque verification failure and fails closed as `unknown`,
+/// matching the API's default for a missing value. #399.
+fn license_status_for_error(error: &crate::error::RustCoreError) -> &'static str {
+    match error {
+        crate::error::RustCoreError::ClockTampered { .. } => "suspicious",
+        _ => "unknown",
+    }
+}
+
+/// Structured `TUARI_LICENSE_*` env block emitted when
+/// `LicenseManager::initialize` fails.
+///
+/// Mirrors the neutral defaults `getLicenseInfo` assumes when a variable is
+/// absent (`standard` edition, no features, unlimited seats, no customer, no
+/// expiry) so the sidecar sees the same shape it already handles — but sets
+/// `TUARI_LICENSE_STATUS` explicitly to the failure reason instead of leaving
+/// it unset. Before #399 the whole block was omitted on this path, so a corrupt
+/// `license.lic` and a tampered clock both surfaced as an opaque
+/// "license not verified" lock.
+fn license_failure_env_map(error: &crate::error::RustCoreError) -> HashMap<String, String> {
+    HashMap::from([
+        ("TUARI_LICENSE_EDITION".to_string(), "standard".to_string()),
+        ("TUARI_LICENSE_FEATURES".to_string(), String::new()),
+        ("TUARI_LICENSE_MAX_USERS".to_string(), "0".to_string()),
+        ("TUARI_LICENSE_CUSTOMER".to_string(), "null".to_string()),
+        ("TUARI_LICENSE_EXPIRES_AT".to_string(), String::new()),
+        (
+            "TUARI_LICENSE_STATUS".to_string(),
+            license_status_for_error(error).to_string(),
+        ),
+    ])
+}
+
+fn prepare_api_temp_directory(runtime_dir: &Path) -> Result<PathBuf, String> {
+    let temp_dir = runtime_dir.join("temp");
+    let failure =
+        |error: std::io::Error| format!("Failed to prepare API temporary directory: {error}");
+    create_dir_all(&temp_dir).map_err(failure)?;
+    let metadata = std::fs::symlink_metadata(&temp_dir).map_err(failure)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("API temporary directory must be a real directory".to_string());
+    }
+    let temp_dir = std::fs::canonicalize(temp_dir).map_err(failure)?;
+    static PROBE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let id = PROBE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| "API temporary directory probe clock is before Unix epoch".to_string())?
+        .as_nanos();
+    let probe = temp_dir.join(format!(".write-probe-{}-{stamp}-{id}", std::process::id()));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+        .map_err(failure)?;
+    let result = std::io::Write::write_all(&mut file, b"tuari-temp-probe");
+    drop(file);
+    let cleanup = remove_file(&probe);
+    result.and(cleanup).map_err(failure)?;
+    Ok(temp_dir)
+}
+
+fn configure_api_child_environment(command: &mut Command, development: bool, temp_dir: &Path) {
+    command.env_clear();
+    for key in ["TEMP", "TMP", "SQLITE_TMPDIR"] {
+        command.env(key, temp_dir);
+    }
+
+    // Bundled Node needs SystemRoot on Windows. Keep that existing exception to
+    // the cleared environment in both development and release.
+    #[cfg(target_os = "windows")]
+    if let Some(system_root) = std::env::var_os("SystemRoot") {
+        command.env("SystemRoot", system_root);
+    }
+
+    // Development tools such as pnpm.cmd invoke `node` through PATH. Release
+    // launches bundled Node by absolute path and does not inherit PATH.
+    if development {
+        if let Some(path) = std::env::var_os("PATH") {
+            command.env("PATH", path);
+        }
+    }
+}
+
 fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
+    let temp_dir = prepare_api_temp_directory(&resolve_private_runtime_dir(app)?)?;
     let attachments_root = resolve_attachments_root(&app_db_path);
     let runtime_secrets = load_runtime_secrets(app)?;
-    cleanup_stale_api_processes();
+    cleanup_stale_api_processes(app);
 
     let log_file = OpenOptions::new()
         .create(true)
@@ -2040,8 +2213,8 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
             "node"
         };
         let node_path = resource_dir.join("bin").join(node_binary_name);
-        let runtime_dir = resource_dir.join("bin").join("api-runtime");
-        let sidecar_path = runtime_dir.join("dist").join("index.cjs");
+        let runtime_dir = api_runtime_dir(&resource_dir);
+        let sidecar_path = api_sidecar_entry_path(&runtime_dir);
 
         let mut cmd = Command::new(node_path);
         cmd.arg(strip_windows_extended_path_prefix(
@@ -2054,33 +2227,20 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     #[cfg(target_os = "windows")]
     command.creation_flags(CREATE_NO_WINDOW);
 
+    configure_api_child_environment(&mut command, cfg!(debug_assertions), &temp_dir);
+
     command
-        .env_clear()
         .env("API_HOST", API_HOST)
         .env("API_PORT", API_PORT.to_string())
         .env("ALLOWED_ORIGINS", ALLOWED_ORIGINS)
         .env("BETTER_AUTH_SECRET", runtime_secrets.better_auth_secret)
-        .env(
-            "BETTER_AUTH_URL",
-            format!("http://{API_HOST}:{API_PORT}"),
-        )
+        .env("BETTER_AUTH_URL", format!("http://{API_HOST}:{API_PORT}"))
         .env("AUTH_DB_PATH", auth_db_path.as_os_str())
         .env("APP_DB_PATH", app_db_path.as_os_str())
         .env("APP_ATTACHMENTS_ROOT", attachments_root.as_os_str())
         .env("DATABASE_URL", to_sqlite_url(&app_db_path))
         .stdout(Stdio::from(log_file))
         .stderr(Stdio::from(error_log_file));
-
-    // The bundled Node runtime needs `SystemRoot`: Node seeds its OpenSSL CSPRNG
-    // from the Windows security provider through that path, and `env_clear()`
-    // above removes it. Without it Node aborts during startup with
-    // `Assertion failed: ncrypto::CSPRNG(nullptr, 0)` and the sidecar dies
-    // before it can bind the API port. `windir`, `PATH`, and `TEMP` were each
-    // tested and made no difference; see scripts/smoke/sidecar-env-repro.ps1.
-    #[cfg(target_os = "windows")]
-    if let Ok(system_root) = std::env::var("SystemRoot") {
-        command.env("SystemRoot", system_root);
-    }
 
     // Point the API sidecar at the user-editable config.json (may not exist
     // yet — the API treats a missing file as "use env/defaults").
@@ -2091,16 +2251,27 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         );
     }
 
-    // Set structured license env vars for the API sidecar per Licensing Architecture §15.5
+    // Set structured license env vars for the API sidecar per Licensing Architecture §15.5.
+    // #399: on an initialization failure the block is still emitted, with an
+    // explicit status (clock -> "suspicious", everything else -> "unknown"), so
+    // the API and support can tell WHY licensing failed instead of seeing an
+    // omitted variable. The API keeps its own fail-closed default regardless.
     if let Ok(tuari_dir) = resolve_tuari_dir(app) {
-        if let Ok(manager) = crate::license::LicenseManager::initialize(&tuari_dir) {
-            let env_map = manager.to_env_map();
-            for (key, value) in &env_map {
-                command.env(key, value);
+        match crate::license::LicenseManager::initialize(&tuari_dir) {
+            Ok(manager) => {
+                let env_map = manager.to_env_map();
+                for (key, value) in &env_map {
+                    command.env(key, value);
+                }
+                // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
+                if manager.has_feature("encrypted_db") {
+                    command.env("APP_DB_KEY", runtime_secrets.app_db_key);
+                }
             }
-            // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
-            if manager.has_feature("encrypted_db") {
-                command.env("APP_DB_KEY", runtime_secrets.app_db_key);
+            Err(error) => {
+                for (key, value) in license_failure_env_map(&error) {
+                    command.env(key, value);
+                }
             }
         }
     }
@@ -2221,21 +2392,156 @@ fn kill_api(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::{
-        copy_allowlisted_legacy_runtime_files_if_missing, encode_secret,
-        has_portable_runtime_layout, is_allowed_desktop_bridge_path,
+        api_sidecar_entry_path, clear_app_ready, complete_db_key_rotation_in_store,
+        configure_api_child_environment, copy_allowlisted_legacy_runtime_files_if_missing,
+        encode_secret, has_portable_runtime_layout, is_allowed_desktop_bridge_path,
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
-        load_or_create_secret, matches_inventory_attachment_download_path,
+        license_failure_env_map, license_status_for_error, load_or_create_secret,
+        mark_app_ready_if_first, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
-        complete_db_key_rotation_in_store, restore_db_key_in_store, rotate_db_key_in_store,
-        should_force_reveal_main_window, strip_windows_extended_path_prefix,
-        AppReadyState, DesktopApiBridgeError,
-        DESKTOP_API_BRIDGE_ERROR_KIND, APP_DB_KEY_ACCOUNT,
-        BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
-        SecretStore, clear_app_ready, mark_app_ready_if_first,
+        restore_db_key_in_store, rotate_db_key_in_store, should_force_reveal_main_window,
+        strip_windows_extended_path_prefix, AppReadyState, DesktopApiBridgeError, SecretStore,
+        APP_DB_KEY_ACCOUNT, BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES,
+        DESKTOP_API_BRIDGE_ERROR_KIND, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
+    use std::process::Command;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    use crate::error::RustCoreError;
+
+    #[test]
+    fn api_temp_directory_is_created_writable_and_reusable() {
+        let root = unique_temp_dir();
+        let path = super::prepare_api_temp_directory(&root).expect("prepare temp");
+        assert_eq!(path, std::fs::canonicalize(root.join("temp")).unwrap());
+        std::fs::write(path.join("sqlite-probe"), b"writable").unwrap();
+        assert_eq!(
+            std::fs::read(path.join("sqlite-probe")).unwrap(),
+            b"writable"
+        );
+        std::fs::write(path.join(".write-probe"), b"stale probe owned by another launch").unwrap();
+        assert_eq!(super::prepare_api_temp_directory(&root).unwrap(), path);
+        assert_eq!(std::fs::read_dir(&path).unwrap().count(), 2);
+        remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn api_temp_directory_refuses_a_file() {
+        let root = unique_temp_dir();
+        create_dir_all(&root).unwrap();
+        std::fs::write(root.join("temp"), b"do not replace").unwrap();
+        let error = super::prepare_api_temp_directory(&root).unwrap_err();
+        assert!(error.contains("API temporary directory"), "{error}");
+        assert_eq!(std::fs::read(root.join("temp")).unwrap(), b"do not replace");
+        remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn api_temp_environment_is_explicit_in_both_modes() {
+        let root = unique_temp_dir();
+        let path = super::prepare_api_temp_directory(&root).unwrap();
+        for development in [true, false] {
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command.env("TUARI_TEST_SECRET", "must-not-cross");
+            configure_api_child_environment(&mut command, development, &path);
+            let env: std::collections::HashMap<_, _> = command.get_envs().collect();
+            for key in ["TEMP", "TMP", "SQLITE_TMPDIR"] {
+                assert_eq!(
+                    env.get(std::ffi::OsStr::new(key)),
+                    Some(&Some(path.as_os_str()))
+                );
+            }
+            assert!(!env.contains_key(std::ffi::OsStr::new("TUARI_TEST_SECRET")));
+            command
+                .args(["--exact", "tests::environment_probe_child", "--nocapture"])
+                .env("TUARI_ENV_PROBE", "1")
+                .env("TUARI_EXPECTED_TEMP", &path);
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("SECRET_PRESENT=false"));
+        }
+        remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn development_api_process_can_resolve_node_through_host_path() {
+        let mut command = if cfg!(target_os = "windows") {
+            let system_root = std::env::var_os("SystemRoot").expect("Windows SystemRoot");
+            let mut command =
+                Command::new(PathBuf::from(system_root).join("System32").join("cmd.exe"));
+            command.args(["/d", "/c", "node --version"]);
+            command
+        } else {
+            let mut command = Command::new("/bin/sh");
+            command.args(["-c", "node --version"]);
+            command
+        };
+        let root = unique_temp_dir();
+        let temp_dir = super::prepare_api_temp_directory(&root).unwrap();
+        configure_api_child_environment(&mut command, true, &temp_dir);
+
+        let output = command.output().expect("launch node lookup probe");
+        assert!(
+            output.status.success(),
+            "development child could not resolve node: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .starts_with('v'));
+    }
+
+    #[test]
+    fn production_api_process_does_not_inherit_arbitrary_parent_secrets() {
+        let mut command = Command::new(std::env::current_exe().expect("test executable"));
+        command
+            .args(["--exact", "tests::environment_probe_child", "--nocapture"])
+            .env("PATH", "production-path-must-not-cross")
+            .env("TUARI_TEST_SECRET", "parent-secret-must-not-cross");
+        let root = unique_temp_dir();
+        let temp_dir = super::prepare_api_temp_directory(&root).unwrap();
+        configure_api_child_environment(&mut command, false, &temp_dir);
+        command
+            .env("TUARI_ENV_PROBE", "1")
+            .env("TUARI_EXPECTED_TEMP", &temp_dir);
+
+        let output = command.output().expect("launch isolated environment probe");
+        assert!(output.status.success(), "environment probe child failed");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("PATH_PRESENT=false"),
+            "unexpected child PATH: {stdout}"
+        );
+        assert!(
+            stdout.contains("SECRET_PRESENT=false"),
+            "parent secret leaked: {stdout}"
+        );
+    }
+
+    #[test]
+    fn environment_probe_child() {
+        if std::env::var_os("TUARI_ENV_PROBE").is_none() {
+            return;
+        }
+        let expected = std::env::var_os("TUARI_EXPECTED_TEMP").unwrap();
+        for key in ["TEMP", "TMP", "SQLITE_TMPDIR"] {
+            assert_eq!(std::env::var_os(key), Some(expected.clone()));
+        }
+        let probe = PathBuf::from(expected).join("child-writable");
+        std::fs::write(&probe, b"child").unwrap();
+        std::fs::remove_file(probe).unwrap();
+        println!("PATH_PRESENT={}", std::env::var_os("PATH").is_some());
+        println!(
+            "SECRET_PRESENT={}",
+            std::env::var_os("TUARI_TEST_SECRET").is_some()
+        );
+    }
 
     fn unique_temp_dir() -> PathBuf {
         let unique_suffix = SystemTime::now()
@@ -2243,6 +2549,106 @@ mod tests {
             .expect("system time before unix epoch")
             .as_nanos();
         std::env::temp_dir().join(format!("tuari-runtime-secrets-{unique_suffix}"))
+    }
+
+    #[test]
+    fn maps_every_initialize_failure_to_an_explicit_license_status() {
+        // The two categories from #399: clock inconsistency is the one failure
+        // the shell can attribute (`suspicious`); every other failure is an
+        // opaque verification failure that fails closed as `unknown`.
+        let cases: Vec<(RustCoreError, &str)> = vec![
+            (
+                RustCoreError::ClockTampered {
+                    estimated_time: chrono::Utc::now(),
+                    reason: "system clock moved backwards".to_string(),
+                },
+                "suspicious",
+            ),
+            (RustCoreError::InvalidFormat, "unknown"),
+            (RustCoreError::InvalidPayload, "unknown"),
+            (RustCoreError::InvalidSignature, "unknown"),
+            (RustCoreError::LicenseFileNotFound, "unknown"),
+            (RustCoreError::Expired, "unknown"),
+            (
+                RustCoreError::CryptoError("verify failed".to_string()),
+                "unknown",
+            ),
+            (RustCoreError::Internal("unexpected".to_string()), "unknown"),
+            (
+                RustCoreError::ActivationFailed("bad key".to_string()),
+                "unknown",
+            ),
+            (
+                RustCoreError::InsufficientDiskSpace {
+                    required: 10,
+                    available: 1,
+                },
+                "unknown",
+            ),
+            (
+                RustCoreError::IoError(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "license.lic is unreadable",
+                ))),
+                "unknown",
+            ),
+        ];
+
+        for (error, expected) in cases {
+            assert_eq!(
+                license_status_for_error(&error),
+                expected,
+                "unexpected status for {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn failed_init_env_map_contains_an_explicit_status_not_an_omitted_block() {
+        // A corrupt license.lic: previously the whole TUARI_LICENSE_* block was
+        // dropped, so the API saw no status at all. It must now be present,
+        // explicit, and non-blank.
+        let error = RustCoreError::InvalidFormat;
+        let env_map = license_failure_env_map(&error);
+
+        let status = env_map
+            .get("TUARI_LICENSE_STATUS")
+            .expect("failure env map must set TUARI_LICENSE_STATUS explicitly");
+        assert!(!status.trim().is_empty(), "status must not be blank");
+        assert_eq!(status, "unknown");
+
+        // The rest of the block carries the neutral defaults the API already
+        // assumes when a variable is absent (getLicenseInfo).
+        assert_eq!(
+            env_map.get("TUARI_LICENSE_EDITION").map(String::as_str),
+            Some("standard")
+        );
+        assert_eq!(
+            env_map.get("TUARI_LICENSE_FEATURES").map(String::as_str),
+            Some("")
+        );
+        assert_eq!(
+            env_map.get("TUARI_LICENSE_MAX_USERS").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            env_map.get("TUARI_LICENSE_CUSTOMER").map(String::as_str),
+            Some("null")
+        );
+        assert_eq!(
+            env_map.get("TUARI_LICENSE_EXPIRES_AT").map(String::as_str),
+            Some("")
+        );
+
+        // A tampered clock is the one failure that is attributed, not opaque.
+        let clock_map = license_failure_env_map(&RustCoreError::ClockTampered {
+            estimated_time: chrono::Utc::now(),
+            reason: "clock moved backwards".to_string(),
+        });
+        assert_eq!(
+            clock_map.get("TUARI_LICENSE_STATUS").map(String::as_str),
+            Some("suspicious")
+        );
     }
 
     #[test]
@@ -2610,34 +3016,104 @@ mod tests {
     }
 
     #[test]
-    fn identifies_only_api_sidecar_command_lines_for_stale_cleanup() {
-        // Our own child on Windows and POSIX install layouts.
+    fn stale_cleanup_matches_only_this_installations_api_sidecar() {
+        let install = if cfg!(target_os = "windows") {
+            PathBuf::from(r"C:\Program Files\Tuari\bin\api-runtime")
+        } else {
+            PathBuf::from("/opt/tuari/bin/api-runtime")
+        };
+        // Derived from the same helper the production predicate uses, so the
+        // test guards the single-sourced sidecar path.
+        let entry = api_sidecar_entry_path(&install);
+
+        // This installation's own child, quoted and unquoted, with trailing
+        // arguments, and Windows-only spelling variants.
+        if cfg!(target_os = "windows") {
+            assert!(is_api_sidecar_command_line(
+                r#""C:\Program Files\Tuari\bin\node.exe" "C:\Program Files\Tuari\bin\api-runtime\dist\index.cjs""#,
+                &install
+            ));
+            assert!(is_api_sidecar_command_line(
+                r#""C:\PROGRAM FILES\TUARI\BIN\NODE.EXE" "C:\PROGRAM FILES\TUARI\BIN\API-RUNTIME\DIST\INDEX.CJS""#,
+                &install
+            ));
+            assert!(is_api_sidecar_command_line(
+                "node C:/Program Files/Tuari/bin/api-runtime/dist/index.cjs",
+                &install
+            ));
+            assert!(is_api_sidecar_command_line(
+                r"node \\srv\share\tuari\bin\api-runtime\dist\index.cjs",
+                &PathBuf::from(r"\\srv\share\tuari\bin\api-runtime")
+            ));
+        } else {
+            assert!(is_api_sidecar_command_line(
+                "/opt/tuari/bin/node /opt/tuari/bin/api-runtime/dist/index.cjs",
+                &install
+            ));
+            // POSIX paths are case-sensitive: a different-case install is a
+            // different install.
+            assert!(!is_api_sidecar_command_line(
+                "node /OPT/TUARI/bin/api-runtime/dist/index.cjs",
+                &install
+            ));
+        }
+
         assert!(is_api_sidecar_command_line(
-            r#""C:\Program Files\Tuari\bin\node.exe" "C:\Program Files\Tuari\bin\api-runtime\dist\index.cjs""#
+            &format!("node {} --port 47821", entry.display()),
+            &install
         ));
         assert!(is_api_sidecar_command_line(
-            "/opt/tuari/bin/node /opt/tuari/bin/api-runtime/dist/index.cjs"
+            &entry.to_string_lossy(),
+            &install
         ));
-        // Windows command lines are case-insensitive.
-        assert!(is_api_sidecar_command_line(
-            r#""C:\PROGRAM FILES\TUARI\BIN\NODE.EXE" "C:\PROGRAM FILES\TUARI\BIN\API-RUNTIME\DIST\INDEX.CJS""#
-        ));
-        // An unrelated node process that merely listens on the API port.
+
+        // #403 regression: a second installation with the IDENTICAL
+        // `bin/api-runtime/dist/index.cjs` layout must not match.
         assert!(!is_api_sidecar_command_line(
-            "C:\\tools\\node.exe C:\\unrelated\\server.js"
-        ));
-        // An unrelated process owning port 4318.
-        assert!(!is_api_sidecar_command_line(
-            "C:\\Windows\\System32\\svchost.exe -k tuari-port-4318"
-        ));
-        // Both markers are required; a partial match is not our child.
-        assert!(!is_api_sidecar_command_line(
-            "node C:\\x\\api-runtime\\server.js"
+            r#""C:\Program Files\Other\bin\node.exe" "C:\Program Files\Other\bin\api-runtime\dist\index.cjs""#,
+            &install
         ));
         assert!(!is_api_sidecar_command_line(
-            "node C:\\x\\dist\\index.cjs"
+            "/opt/other/bin/node /opt/other/bin/api-runtime/dist/index.cjs",
+            &install
         ));
-        assert!(!is_api_sidecar_command_line(""));
+        assert!(!is_api_sidecar_command_line(
+            r#""D:\portable\Tuari\bin\node.exe" "D:\portable\Tuari\bin\api-runtime\dist\index.cjs""#,
+            &install
+        ));
+
+        // Same runtime directory, but not the sidecar entry script.
+        assert!(!is_api_sidecar_command_line(
+            r#""C:\Program Files\Tuari\bin\node.exe" "C:\Program Files\Tuari\bin\api-runtime\server.js""#,
+            &install
+        ));
+        assert!(!is_api_sidecar_command_line(
+            "/opt/tuari/bin/node /opt/tuari/bin/api-runtime/dist/other.cjs",
+            &install
+        ));
+
+        // The sidecar path as a substring of a longer path or of another
+        // argument — including the quoted value form — is not our child.
+        assert!(!is_api_sidecar_command_line(
+            &format!("node {}.map", entry.display()),
+            &install
+        ));
+        assert!(!is_api_sidecar_command_line(
+            &format!("node runner.js --entry={}", entry.display()),
+            &install
+        ));
+        assert!(!is_api_sidecar_command_line(
+            &format!("node runner.js --entry=\"{}\"", entry.display()),
+            &install
+        ));
+
+        // An unrelated node process that merely listens on the API port, and
+        // empty input.
+        assert!(!is_api_sidecar_command_line(
+            "C:\\tools\\node.exe C:\\unrelated\\server.js",
+            &install
+        ));
+        assert!(!is_api_sidecar_command_line("", &install));
     }
 
     #[test]

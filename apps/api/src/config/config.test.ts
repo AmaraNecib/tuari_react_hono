@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { appConfigSchema, createAppConfig, type AppConfig } from "./index";
+import { createConfigFileBackupFolderPersister } from "../infrastructure/config/backup-folder-persister";
 
 let configTempDir: string;
 beforeEach(() => {
@@ -74,6 +75,87 @@ describe("createAppConfig", () => {
     });
 
     expect(config.attachmentsRootPath).toMatch(/[\\/]private[\\/]invoices$/);
+  });
+
+  it("resolves the backups root as a sibling of the database directory", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+    });
+
+    // Sibling of `data`, not inside it, so a data-dir reset keeps backups.
+    expect(config.backupsRootPath).toMatch(/[\\/]backups$/);
+    expect(config.backupsRootPath).not.toMatch(/[\\/]data[\\/]backups$/);
+  });
+
+  it("respects APP_BACKUPS_ROOT for the backups path", () => {
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+      APP_BACKUPS_ROOT: "./private/backups",
+    });
+
+    expect(config.backupsRootPath).toMatch(/[\\/]private[\\/]backups$/);
+  });
+
+  it("resolves the config file's backups_root into the backups path when env is unset", () => {
+    // This is the desktop forwarding path (#436): the shell points the sidecar
+    // at config.json, and the chosen folder rides in as backups_root.
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ backups_root: "./usb/backups" }),
+      "utf8",
+    );
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+      TUARI_CONFIG_FILE: configPath,
+    });
+
+    expect(config.backupsRootPath).toMatch(/[\\/]usb[\\/]backups$/);
+  });
+
+  it("env APP_BACKUPS_ROOT wins over the config file's backups_root", () => {
+    const configPath = join(configTempDir, "config.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({ backups_root: "./usb/backups" }),
+      "utf8",
+    );
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+      TUARI_CONFIG_FILE: configPath,
+      APP_BACKUPS_ROOT: "./env/backups",
+    });
+
+    expect(config.backupsRootPath).toMatch(/[\\/]env[\\/]backups$/);
+  });
+
+  it("reads back a folder saved through the persister (restart durability, #436)", () => {
+    // The full #436 chain: the setting action writes the config file, and a
+    // fresh process reading that file resolves the chosen root. This is what
+    // "the choice survives a restart" means; a page reload alone only re-reads
+    // the running process's in-memory root.
+    const configPath = join(configTempDir, "restart.json");
+    const persister = createConfigFileBackupFolderPersister(configPath);
+    const savedPath = join(configTempDir, "usb-backups");
+
+    expect(persister.persistBackupsRoot(savedPath)).toEqual({
+      success: true,
+      persisted: true,
+    });
+
+    const config = createAppConfig({
+      ...requiredAuth,
+      APP_DB_PATH: "./data/tuari.sqlite",
+      TUARI_CONFIG_FILE: configPath,
+    });
+
+    expect(config.backupsRootPath).toBe(savedPath);
   });
 
   it("derives database path from DATABASE_URL when set", () => {
@@ -608,6 +690,7 @@ describe("createAppConfig", () => {
     expect(config).toHaveProperty("databaseUrl");
     expect(config).toHaveProperty("databaseKey");
     expect(config).toHaveProperty("attachmentsRootPath");
+    expect(config).toHaveProperty("backupsRootPath");
     expect(config).toHaveProperty("host");
     expect(config).toHaveProperty("port");
     expect(config).toHaveProperty("allowedOrigins");
@@ -624,6 +707,7 @@ describe("appConfigSchema port validation", () => {
     databasePath: "/tmp/tuari.sqlite",
     databaseUrl: "file:///tmp/tuari.sqlite",
     attachmentsRootPath: "/tmp/attachments",
+    backupsRootPath: "/tmp/backups",
     betterAuthSecret: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM",
     betterAuthUrl: "https://api.example.com",
   };
@@ -652,6 +736,7 @@ describe("appConfigSchema betterAuthUrl validation", () => {
     databasePath: "/tmp/tuari.sqlite",
     databaseUrl: "file:///tmp/tuari.sqlite",
     attachmentsRootPath: "/tmp/attachments",
+    backupsRootPath: "/tmp/backups",
     betterAuthSecret: "kV8xQ2mR9fT3zLpW6nY4aB7cD0eF1gH2jK5sA8dN3uM",
   };
 

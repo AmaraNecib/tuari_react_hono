@@ -10,6 +10,27 @@ const resolveAttachmentsRootPath = (source: NodeJS.ProcessEnv, databasePath: str
   return resolve(dirname(databasePath), "attachments", "invoices");
 };
 
+/**
+ * Resolve the root that holds the daily backup folders (#430).
+ *
+ * Defaults to a sibling of the database's directory (`../backups`), NOT a
+ * directory inside it: the data dir is the thing an operator resets when they
+ * want to start over, and that reset must not delete the backups. When
+ * `APP_BACKUPS_ROOT` is set it wins. On the desktop the shell does not forward
+ * this variable; instead the backup-folder setting (#436) writes `backups_root`
+ * into the config file the sidecar reads, which resolves here as well.
+ */
+export const resolveBackupsRootPath = (
+  source: NodeJS.ProcessEnv,
+  databasePath: string,
+) => {
+  if (source.APP_BACKUPS_ROOT?.trim()) {
+    return resolve(source.APP_BACKUPS_ROOT.trim());
+  }
+
+  return resolve(dirname(databasePath), "..", "backups");
+};
+
 const toSqliteUrl = (filePath: string) => {
   const normalized = filePath.replace(/\\/g, "/");
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { debtBalanceLabelSchema } from "./debt-helpers";
 import {
   algerianPhoneSchema,
   auditActorUserIdSchema,
@@ -11,6 +12,7 @@ import {
   debtPartyTypeSchema,
   debtReasonCategorySchema,
   entityIdSchema,
+  getLockedDirectionForCategory,
   nullableTextSchema,
   paymentMethodSchema,
   timestampSchema,
@@ -18,6 +20,22 @@ import {
 
 export { debtAccountDirectionSchema };
 export type DebtAccountDirection = z.infer<typeof debtAccountDirectionSchema>;
+
+/**
+ * Arabic message for a supplied direction that contradicts the direction
+ * locked by its reason category (D2). Shared by the wire schema and the
+ * finance service so the two rejections cannot drift.
+ */
+export const DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE =
+  "اتجاه الحساب محدد حسب سبب الدين.";
+
+/**
+ * Arabic message for an advance recorded as something other than a worker
+ * receivable (D1a): paying a worker ahead of earned work makes the worker the
+ * debtor, so the ledger must be RECEIVABLE.
+ */
+export const DEBT_ADVANCE_DIRECTION_MESSAGE =
+  "السلفة تجعل العامل مديناً لنا، فلا يمكن تسجيلها كدين علينا.";
 
 export const externalCounterpartySchema = z.object({
   id: entityIdSchema,
@@ -75,7 +93,7 @@ export const debtPartySummaryItemSchema = z.object({
   displayName: z.string().trim().min(1).max(160),
   phoneNumber: algerianPhoneSchema.nullable(),
   totalBalanceDzd: z.number(),
-  balanceLabel: z.enum(["لنا عنده", "علينا له", "مغلق"]),
+  balanceLabel: debtBalanceLabelSchema,
   openDebtCasesCount: z.number().int().nonnegative(),
   settledDebtCasesCount: z.number().int().nonnegative(),
   latestActivityAt: timestampSchema,
@@ -89,7 +107,7 @@ export const debtPartyDetailSchema = z.object({
   phoneNumber: algerianPhoneSchema.nullable(),
   note: nullableTextSchema,
   totalBalanceDzd: z.number(),
-  balanceLabel: z.enum(["لنا عنده", "علينا له", "مغلق"]),
+  balanceLabel: debtBalanceLabelSchema,
   debtAccounts: z.array(debtAccountSchema),
 });
 
@@ -103,7 +121,7 @@ export const debtSummaryItemSchema = z.object({
   status: debtAccountStatusSchema,
   direction: debtAccountDirectionSchema,
   currentBalance: z.number(),
-  balanceLabel: z.enum(["لنا عنده", "علينا له", "مغلق"]),
+  balanceLabel: debtBalanceLabelSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
@@ -139,9 +157,19 @@ export const debtAccountCreateInputSchema = z
     partyType: debtPartyTypeSchema,
     workerId: entityIdSchema.nullable().optional(),
     externalCounterpartyId: entityIdSchema.nullable().optional(),
-    direction: debtAccountDirectionSchema.optional(),
+    /**
+     * Which ledger the account is. Required: the direction carries the
+     * meaning of the balance, so there is no implicit PAYABLE default. A
+     * missing direction is a validation error.
+     */
+    direction: debtAccountDirectionSchema,
     note: z.string().trim().max(1000).nullable().optional(),
-    openingBalanceDzd: z.number().finite().optional(),
+    /**
+     * The opening magnitude. Optional (absent means no opening balance), but
+     * never negative: the direction carries the sign, so a signed opening is
+     * rejected rather than silently stored.
+     */
+    openingBalanceDzd: z.number().finite().positive().optional(),
     openingEntryDate: timestampSchema.optional(),
     openingEntryNote: z.string().trim().max(1000).nullable().optional(),
     reasonCategory: debtReasonCategorySchema.optional(),
@@ -172,6 +200,20 @@ export const debtAccountCreateInputSchema = z
         code: "custom",
         message: "يجب اختيار طرف خارجي صالح.",
         path: ["externalCounterpartyId"],
+      });
+    }
+
+    // D2: the direction is locked by the reason category; a supplied
+    // direction that contradicts it is rejected at the wire so no writer
+    // can store the intent backwards.
+    const lockedDirection = input.reasonCategory
+      ? getLockedDirectionForCategory(input.reasonCategory)
+      : null;
+    if (lockedDirection && input.direction && input.direction !== lockedDirection) {
+      ctx.addIssue({
+        code: "custom",
+        message: DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE,
+        path: ["direction"],
       });
     }
   });
@@ -296,18 +338,46 @@ export const debtPartyDetailInputSchema = z
     }
   });
 
-export const employeeDebtEntryCreateInputSchema = z.object({
-  employeeId: entityIdSchema,
-  entryType: z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "ADVANCE"]),
-  amountDzd: z.number().positive(),
-  entryDate: timestampSchema.optional(),
-  note: z.string().trim().max(1000).nullable().optional(),
-  reasonCategory: debtReasonCategorySchema.optional(),
-});
-
-export const employeeDebtAccountGetInputSchema = z.object({
-  employeeId: entityIdSchema,
-});
+export const employeeDebtEntryCreateInputSchema = z
+  .object({
+    employeeId: entityIdSchema,
+    entryType: z.enum(["OPENING", "PAYMENT", "ADJUSTMENT", "ADVANCE"]),
+    amountDzd: z.number().positive(),
+    /**
+     * Which worker ledger the entry targets. Optional: an `ADVANCE` defaults to
+     * RECEIVABLE (the worker owes us, D1a) and everything else to PAYABLE.
+     */
+    direction: debtAccountDirectionSchema.optional(),
+    entryDate: timestampSchema.optional(),
+    note: z.string().trim().max(1000).nullable().optional(),
+    reasonCategory: debtReasonCategorySchema.optional(),
+  })
+  .superRefine((input, ctx) => {
+    // D2 + D1a: the reason category locks the ledger direction and an advance
+    // is always a worker receivable. Reject a supplied direction that
+    // contradicts either, so no writer can store the intent backwards.
+    const lockedDirection = input.reasonCategory
+      ? getLockedDirectionForCategory(input.reasonCategory)
+      : null;
+    if (lockedDirection && input.direction && input.direction !== lockedDirection) {
+      ctx.addIssue({
+        code: "custom",
+        message: DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE,
+        path: ["direction"],
+      });
+      return;
+    }
+    if (input.entryType === "ADVANCE") {
+      const advanceDirection = lockedDirection ?? input.direction ?? "RECEIVABLE";
+      if (advanceDirection !== "RECEIVABLE") {
+        ctx.addIssue({
+          code: "custom",
+          message: DEBT_ADVANCE_DIRECTION_MESSAGE,
+          path: ["direction"],
+        });
+      }
+    }
+  });
 
 export type ExternalCounterparty = z.infer<typeof externalCounterpartySchema>;
 export type DebtAccount = z.infer<typeof debtAccountSchema>;
@@ -325,5 +395,4 @@ export type DirectDebtEntryCreateInput = z.infer<typeof directDebtEntryCreateInp
 export type DebtSettlementInput = z.infer<typeof debtSettlementInputSchema>;
 export type DebtPartyDetailInput = z.infer<typeof debtPartyDetailInputSchema>;
 export type EmployeeDebtEntryCreateInput = z.infer<typeof employeeDebtEntryCreateInputSchema>;
-export type EmployeeDebtAccountGetInput = z.infer<typeof employeeDebtAccountGetInputSchema>;
 export type DebtConsolidationInput = z.infer<typeof debtConsolidationInputSchema>;

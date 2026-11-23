@@ -29,6 +29,12 @@ The owner explicitly authorized proceeding with the ticket without further permi
 
 Run the failing regression first, implement, then rerun focused tests. Required final checks are contracts build, typecheck, lint, and pnpm test through the heavy-work queue, followed by current-head local reviews and Greptile gates.
 
+## Develop integration update
+
+PR #605 initially received Greptile 5/5 on 7a8fc995, but GitHub reported conflicts with develop. Integrated origin/develop ea4a1ffa without rewriting branch history. Keep upstream AppDate rendering, Algeria export timezone and TableQueryState. The DatePicker now emits canonical yyyy-MM-dd, so pass dates directly to the shared query, without the earlier dd/MM/yyyy conversion. Preserve upstream date/time regression tests and move the shared-query regressions to a separate file. Adapt the upstream date test to await the server-filtered query and verify its inclusive end parameter.
+
+Current verification policy after integration is focused-local / CI-final-pending until effective protection is checked. The former full local suite results belong to the pre-integration head, not the merged source. Focused audit and shell presentation tests passed 15/15. Initial typecheck found stale contract build artifacts; rebuild the existing contracts package before retrying. Full CI and a fresh hosted verdict are required on the new pushed head. Request one combined-delta local review rather than restarting the initial lenses. Owner UI approval remains required before merge.
+
 ## Risks
 
 Filtered cache entries are expected and must remain scoped to the authenticated user. Export must retain the filtered selection. Avoid duplicating date comparisons that conflict with the hook's inclusive Algeria day boundaries. No migration is required.

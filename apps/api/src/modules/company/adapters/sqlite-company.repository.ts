@@ -22,6 +22,7 @@ import {
   encodeCursor as encodeCursorToken,
   decodeCursor as decodeCursorToken,
 } from "../../shared/cursor";
+import { escapeLikePattern } from "../../shared/sql-search";
 import * as schema from "../../../schema";
 import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzle";
 import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock";
@@ -104,16 +105,6 @@ function normalizeAudit(ctx?: MutationAuditContext) {
 type WhereCond = SQL;
 
 /**
- * Escape SQL LIKE wildcards (`%`, `_`, and the `\` escape char itself) so a
- * search term matches literally, mirroring the frontend's old `includes()`
- * semantics instead of interpreting wildcards. SQLite LIKE has no default
- * escape char — the caller must pair this with `ESCAPE '\'`.
- */
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-}
-
-/**
  * Build the employee search WHERE clause: case-insensitive (ASCII) substring
  * match against first name, last name, phone, the concatenated first+last
  * name, or the name of the employee's role (the displayed role label). Uses
@@ -161,7 +152,7 @@ function toRole(r: typeof schema.role.$inferSelect): RoleRecord {
 
 /** Map Drizzle employee row to EmployeeRecord. */
 function toEmployee(r: typeof schema.employee.$inferSelect): EmployeeRecord {
-  return { id: r.id, firstName: r.firstName, lastName: r.lastName, phone: r.phone, roleId: r.roleId, status: r.status as EmployeeRecord["status"], salaryAmountDzd: r.salaryAmountDzd ?? null, salaryPeriod: r.salaryPeriod as EmployeeRecord["salaryPeriod"], notes: r.notes ?? null, occupation: r.occupation ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+  return { id: r.id, firstName: r.firstName, lastName: r.lastName, phone: r.phone, roleId: r.roleId, status: r.status as EmployeeRecord["status"], salaryReference: r.salaryReferencePeriod == null || r.salaryReferenceAmount == null ? null : { period: r.salaryReferencePeriod as NonNullable<EmployeeRecord["salaryReference"]>["period"], amount: r.salaryReferenceAmount }, notes: r.notes ?? null, occupation: r.occupation ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
 /** Map Drizzle project row to ProjectRecord. */
@@ -193,7 +184,7 @@ function toWarehouseAssignment(r: typeof schema.employeeWarehouseAssignment.$inf
 
 /** Map Drizzle state history row. */
 function toStateHistory(r: typeof schema.employeeStateHistory.$inferSelect): EmployeeStateHistoryRecord {
-  return { id: r.id, employeeId: r.employeeId, roleId: r.roleId, status: r.status as EmployeeStateHistoryRecord["status"], salaryAmountDzd: r.salaryAmountDzd ?? null, salaryPeriod: r.salaryPeriod as EmployeeStateHistoryRecord["salaryPeriod"], eventType: r.eventType as EmployeeStateHistoryRecord["eventType"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+  return { id: r.id, employeeId: r.employeeId, roleId: r.roleId, status: r.status as EmployeeStateHistoryRecord["status"], salaryReference: r.salaryReferencePeriod == null || r.salaryReferenceAmount == null ? null : { period: r.salaryReferencePeriod as NonNullable<EmployeeStateHistoryRecord["salaryReference"]>["period"], amount: r.salaryReferenceAmount }, eventType: r.eventType as EmployeeStateHistoryRecord["eventType"], startDate: r.startDate, endDate: r.endDate ?? null, notes: r.notes ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
 /** Map Drizzle project row to ProjectRecord. */
@@ -223,9 +214,25 @@ function toDebtEntry(r: typeof schema.debtEntry.$inferSelect): DebtEntryRecord {
   return { id: r.id, debtAccountId: r.debtAccountId, entryType: r.entryType as DebtEntryRecord["entryType"], signedAmountDzd: r.signedAmount, entryDate: r.entryDate, note: r.note ?? null, balanceAfterDzd: r.balanceAfter, reasonCategory: r.reasonCategory as DebtEntryRecord["reasonCategory"], reasonDetail: r.reasonDetail ?? null, paymentMethod: r.paymentMethod as DebtEntryRecord["paymentMethod"], status: r.status as DebtEntryRecord["status"], voidedAt: r.voidedAt ?? null, voidedBy: r.voidedBy ?? null, voidReason: r.voidReason ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
 }
 
-/** Map Drizzle salary payment row. */
-function toSalaryPayment(r: typeof schema.employeeSalaryPayment.$inferSelect): EmployeeSalaryPaymentRecord {
-  return { id: r.id, employeeId: r.employeeId, periodType: r.periodType as EmployeeSalaryPaymentRecord["periodType"], expectedAmountDzd: r.expectedAmountDzd, actualAmountDzd: r.actualAmountDzd, paymentDate: r.paymentDate, note: r.note ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+/** Map Drizzle salary payment row plus its per-project split lines. */
+function toSalaryPayment(
+  r: typeof schema.employeeSalaryPayment.$inferSelect,
+  projectSplits: EmployeeSalaryPaymentRecord["projectSplits"],
+): EmployeeSalaryPaymentRecord {
+  return { id: r.id, employeeId: r.employeeId, periodType: r.periodType as EmployeeSalaryPaymentRecord["periodType"], days: r.days, expectedAmountDzd: r.expectedAmountDzd, actualAmountDzd: r.actualAmountDzd, projectSplits, paymentDate: r.paymentDate, note: r.note ?? null, actorUserId: r.actorUserId ?? null, actorLabel: r.actorLabel ?? null, transactionId: r.transactionId ?? null, createdAt: r.createdAt, updatedAt: r.updatedAt };
+}
+
+/** Group split rows by payment id (one query for the whole list). */
+function groupSalaryPaymentSplits(
+  rows: Array<typeof schema.employeeSalaryPaymentSplit.$inferSelect>,
+): Map<string, EmployeeSalaryPaymentRecord["projectSplits"]> {
+  const byPayment = new Map<string, EmployeeSalaryPaymentRecord["projectSplits"]>();
+  for (const row of rows) {
+    const splits = byPayment.get(row.paymentId) ?? [];
+    splits.push({ projectId: row.projectId, days: row.days });
+    byPayment.set(row.paymentId, splits);
+  }
+  return byPayment;
 }
 
 /** Map Drizzle user profile history row. */
@@ -369,8 +376,8 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const ts = createAlgeriaTimestamp();
     const a = normalizeAudit(audit);
     runSyncTransaction(this.connectionLock, this.raw, () => {
-      this.db.insert(schema.employee).values({ id, firstName: data.firstName, lastName: data.lastName, phone: data.phone, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd ?? null, salaryPeriod: data.salaryPeriod ?? null, notes: data.notes ?? null, occupation: data.occupation ?? null, createdAt: ts, updatedAt: ts }).run();
-      this.insertStateHistory({ employeeId: id, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd ?? null, salaryPeriod: data.salaryPeriod ?? null, eventType: "CREATED", startDate: ts, notes: data.notes ?? null, ...a });
+      this.db.insert(schema.employee).values({ id, firstName: data.firstName, lastName: data.lastName, phone: data.phone, roleId: data.roleId, status: data.status, salaryReferencePeriod: data.salaryReference?.period ?? null, salaryReferenceAmount: data.salaryReference?.amount ?? null, notes: data.notes ?? null, occupation: data.occupation ?? null, createdAt: ts, updatedAt: ts }).run();
+      this.insertStateHistory({ employeeId: id, roleId: data.roleId, status: data.status, salaryReference: data.salaryReference ?? null, eventType: "CREATED", startDate: ts, notes: data.notes ?? null, ...a });
     });
     return this.getEmployeeById(id)!;
   }
@@ -383,7 +390,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
       for (const row of data) {
         const eid = crypto.randomUUID();
         const ts = createAlgeriaTimestamp();
-        this.db.insert(schema.employee).values({ id: eid, firstName: row.firstName, lastName: row.lastName, phone: row.phone, roleId: row.roleId, status: row.status, salaryAmountDzd: row.salaryAmountDzd ?? null, salaryPeriod: row.salaryPeriod ?? null, notes: row.notes ?? null, occupation: row.occupation ?? null, createdAt: ts, updatedAt: ts }).run();
+        this.db.insert(schema.employee).values({ id: eid, firstName: row.firstName, lastName: row.lastName, phone: row.phone, roleId: row.roleId, status: row.status, salaryReferencePeriod: row.salaryReference?.period ?? null, salaryReferenceAmount: row.salaryReference?.amount ?? null, notes: row.notes ?? null, occupation: row.occupation ?? null, createdAt: ts, updatedAt: ts }).run();
         employees.push(this.getEmployeeById(eid)!);
         if (row.managerId) managerAssignments.push(this.createManagerAssignment({ workerId: eid, managerId: row.managerId, status: "ACTIVE", startDate: ts, endDate: null, notes: null }, audit));
         if (row.projectId) projectAssignments.push(this.createProjectAssignment({ employeeId: eid, projectId: row.projectId, status: "ACTIVE", startDate: ts, endDate: null, notes: null }, audit));
@@ -404,14 +411,16 @@ export class SqliteCompanyRepository implements CompanyRepository {
       if (data.phone !== undefined) u.phone = data.phone;
       if (data.roleId !== undefined) u.roleId = data.roleId;
       if (data.status !== undefined) u.status = data.status;
-      if (data.salaryAmountDzd !== undefined) u.salaryAmountDzd = data.salaryAmountDzd;
-      if (data.salaryPeriod !== undefined) u.salaryPeriod = data.salaryPeriod;
+      if (data.salaryReference !== undefined) {
+        u.salaryReferencePeriod = data.salaryReference?.period ?? null;
+        u.salaryReferenceAmount = data.salaryReference?.amount ?? null;
+      }
       if (data.notes !== undefined) u.notes = data.notes;
       if (data.occupation !== undefined) u.occupation = data.occupation;
       this.db.update(schema.employee).set(u).where(eq(schema.employee.id, data.id)).run();
-      if (data.status !== undefined || data.roleId !== undefined || data.salaryAmountDzd !== undefined || data.salaryPeriod !== undefined) {
+      if (data.status !== undefined || data.roleId !== undefined || data.salaryReference !== undefined) {
         this.endActiveStateHistory(data.id, ts, a);
-        this.insertStateHistory({ employeeId: data.id, roleId: data.roleId ?? cur.roleId, status: data.status ?? cur.status, salaryAmountDzd: data.salaryAmountDzd !== undefined ? data.salaryAmountDzd : cur.salaryAmountDzd, salaryPeriod: data.salaryPeriod !== undefined ? data.salaryPeriod : cur.salaryPeriod, eventType: "UPDATED", startDate: ts, notes: data.notes ?? null, ...a });
+        this.insertStateHistory({ employeeId: data.id, roleId: data.roleId ?? cur.roleId, status: data.status ?? cur.status, salaryReference: data.salaryReference !== undefined ? data.salaryReference : cur.salaryReference, eventType: "UPDATED", startDate: ts, notes: data.notes ?? null, ...a });
       }
     });
     return this.getEmployeeById(data.id);
@@ -432,7 +441,7 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const ac = [...fc];
     if (query.cursor) {
       const d = decodeCursorToken(query.cursor);
-      ac.push(sql`(${schema.employee.createdAt} < ${d.createdAt} OR (${schema.employee.createdAt} = ${d.createdAt} AND ${schema.employee.id} < ${d.id}))`);
+      ac.push(sql`(${schema.employee.createdAt} < ${d.sortKey} OR (${schema.employee.createdAt} = ${d.sortKey} AND ${schema.employee.id} < ${d.id}))`);
     }
     const w = buildWhere(ac);
     const q = this.db.select().from(schema.employee);
@@ -440,13 +449,13 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const hasMore = rows.length > query.limit;
     const items = rows.slice(0, query.limit);
     const last = items[items.length - 1];
-    return { items, total, nextCursor: hasMore && last ? encodeCursorToken({ createdAt: last.createdAt, id: last.id }) : null };
+    return { items, total, nextCursor: hasMore && last ? encodeCursorToken({ sortKey: last.createdAt, id: last.id }) : null };
   }
 
   upsertEmployee(data: EmployeeCreateData | (EmployeeUpdateData & { id: string })): EmployeeRecord {
     const existing = this.getEmployeeById((data as { id: string }).id);
     if (existing) {
-      const r = this.updateEmployee({ id: (data as { id: string }).id, firstName: (data as Partial<EmployeeCreateData>).firstName, lastName: (data as Partial<EmployeeCreateData>).lastName, phone: (data as Partial<EmployeeCreateData>).phone, roleId: (data as Partial<EmployeeCreateData>).roleId, status: (data as Partial<EmployeeCreateData>).status, salaryAmountDzd: (data as Partial<EmployeeCreateData>).salaryAmountDzd, salaryPeriod: (data as Partial<EmployeeCreateData>).salaryPeriod, notes: (data as Partial<EmployeeCreateData>).notes, occupation: (data as Partial<EmployeeCreateData>).occupation });
+      const r = this.updateEmployee({ id: (data as { id: string }).id, firstName: (data as Partial<EmployeeCreateData>).firstName, lastName: (data as Partial<EmployeeCreateData>).lastName, phone: (data as Partial<EmployeeCreateData>).phone, roleId: (data as Partial<EmployeeCreateData>).roleId, status: (data as Partial<EmployeeCreateData>).status, salaryReference: (data as Partial<EmployeeCreateData>).salaryReference, notes: (data as Partial<EmployeeCreateData>).notes, occupation: (data as Partial<EmployeeCreateData>).occupation });
       if (!r) throw new Error(`Failed to upsert employee ${(data as { id: string }).id}`);
       return r;
     }
@@ -456,8 +465,8 @@ export class SqliteCompanyRepository implements CompanyRepository {
     const ca = (data as { createdAt?: string }).createdAt ?? createAlgeriaTimestamp();
     const ua = (data as { updatedAt?: string }).updatedAt ?? ca;
     runSyncTransaction(this.connectionLock, this.raw, () => {
-      this.db.insert(schema.employee).values({ id, firstName: cd.firstName, lastName: cd.lastName, phone: cd.phone, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, notes: cd.notes ?? null, occupation: cd.occupation ?? null, createdAt: ca, updatedAt: ua }).run();
-      this.insertStateHistory({ employeeId: id, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, eventType: "CREATED", startDate: ca, notes: cd.notes ?? null, actorUserId: null, actorLabel: null, transactionId: null });
+      this.db.insert(schema.employee).values({ id, firstName: cd.firstName, lastName: cd.lastName, phone: cd.phone, roleId: cd.roleId, status: cd.status, salaryReferencePeriod: cd.salaryReference?.period ?? null, salaryReferenceAmount: cd.salaryReference?.amount ?? null, notes: cd.notes ?? null, occupation: cd.occupation ?? null, createdAt: ca, updatedAt: ua }).run();
+      this.insertStateHistory({ employeeId: id, roleId: cd.roleId, status: cd.status, salaryReference: cd.salaryReference ?? null, eventType: "CREATED", startDate: ca, notes: cd.notes ?? null, actorUserId: null, actorLabel: null, transactionId: null });
     });
     return this.getEmployeeById(id)!;
   }
@@ -553,8 +562,8 @@ export class SqliteCompanyRepository implements CompanyRepository {
     return this.db.select().from(schema.debtAccount).where(eq(schema.debtAccount.id, id)).limit(1).all().map(toDebtAccount)[0] ?? null;
   }
 
-  getDebtAccountByWorkerId(workerId: string): DebtAccountRecord | null {
-    return this.db.select().from(schema.debtAccount).where(eq(schema.debtAccount.workerId, workerId)).orderBy(desc(schema.debtAccount.updatedAt), desc(schema.debtAccount.createdAt)).limit(1).all().map(toDebtAccount)[0] ?? null;
+  getDebtAccountByWorkerIdAndDirection(workerId: string, direction: DebtAccountRecord["direction"]): DebtAccountRecord | null {
+    return this.db.select().from(schema.debtAccount).where(and(eq(schema.debtAccount.workerId, workerId), eq(schema.debtAccount.direction, direction))).orderBy(desc(schema.debtAccount.updatedAt), desc(schema.debtAccount.createdAt)).limit(1).all().map(toDebtAccount)[0] ?? null;
   }
 
   getDebtAccountByExternalCounterpartyId(ecId: string): DebtAccountRecord | null {
@@ -857,13 +866,32 @@ export class SqliteCompanyRepository implements CompanyRepository {
     if (filters?.employeeId) conds.push(eq(schema.employeeSalaryPayment.employeeId, filters.employeeId));
     const w = buildWhere(conds);
     const q = this.db.select().from(schema.employeeSalaryPayment);
-    return (w ? q.where(w) : q).orderBy(desc(schema.employeeSalaryPayment.paymentDate), desc(schema.employeeSalaryPayment.createdAt)).all().map(toSalaryPayment);
+    const rows = (w ? q.where(w) : q).orderBy(desc(schema.employeeSalaryPayment.paymentDate), desc(schema.employeeSalaryPayment.createdAt)).all();
+    if (rows.length === 0) return [];
+    // Read the splits through a join instead of an `IN (…)` list of payment
+    // ids: binding one parameter per payment makes the query's variable count
+    // grow with the window, and a long history (the workspace snapshot and the
+    // system log read every payment) blows SQLite's bound-variable limit even
+    // when none of those payments has a split.
+    const splitQuery = this.db
+      .select({ split: schema.employeeSalaryPaymentSplit })
+      .from(schema.employeeSalaryPaymentSplit)
+      .innerJoin(
+        schema.employeeSalaryPayment,
+        eq(schema.employeeSalaryPaymentSplit.paymentId, schema.employeeSalaryPayment.id),
+      );
+    const splitRows = (w ? splitQuery.where(w) : splitQuery).all().map((row) => row.split);
+    const splitsByPayment = groupSalaryPaymentSplits(splitRows);
+    return rows.map((row) => toSalaryPayment(row, splitsByPayment.get(row.id) ?? []));
   }
 
   createSalaryPayment(data: EmployeeSalaryPaymentCreateData, audit?: MutationAuditContext): EmployeeSalaryPaymentRecord {
     const id = crypto.randomUUID(); const ts = createAlgeriaTimestamp(); const a = normalizeAudit(audit);
     runSyncTransaction(this.connectionLock, this.raw, () => {
-      this.db.insert(schema.employeeSalaryPayment).values({ id, employeeId: data.employeeId, periodType: data.periodType, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+      this.db.insert(schema.employeeSalaryPayment).values({ id, employeeId: data.employeeId, periodType: data.periodType, days: data.days, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts }).run();
+      for (const split of data.projectSplits) {
+        this.db.insert(schema.employeeSalaryPaymentSplit).values({ id: crypto.randomUUID(), paymentId: id, projectId: split.projectId, days: split.days, createdAt: ts }).run();
+      }
     });
     return this.listSalaryPayments({ employeeId: data.employeeId }).find((e) => e.id === id)!;
   }
@@ -881,9 +909,9 @@ export class SqliteCompanyRepository implements CompanyRepository {
   // ── Private helpers ──────────────────────────────────────────────────
 
   /** Insert an employee state history record (hire, update, termination). */
-  private insertStateHistory(data: { employeeId: string; roleId: string; status: string; salaryAmountDzd: number | null; salaryPeriod: string | null; eventType: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
+  private insertStateHistory(data: { employeeId: string; roleId: string; status: string; salaryReference: EmployeeRecord["salaryReference"]; eventType: string; startDate: string; notes: string | null; actorUserId: string | null; actorLabel: string | null; transactionId: string | null }) {
     runSyncTransaction(this.connectionLock, this.raw, () => {
-      this.db.insert(schema.employeeStateHistory).values({ id: crypto.randomUUID(), employeeId: data.employeeId, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd, salaryPeriod: data.salaryPeriod, eventType: data.eventType, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
+      this.db.insert(schema.employeeStateHistory).values({ id: crypto.randomUUID(), employeeId: data.employeeId, roleId: data.roleId, status: data.status, salaryReferencePeriod: data.salaryReference?.period ?? null, salaryReferenceAmount: data.salaryReference?.amount ?? null, eventType: data.eventType, startDate: data.startDate, endDate: null, notes: data.notes, actorUserId: data.actorUserId, actorLabel: data.actorLabel, transactionId: data.transactionId, createdAt: data.startDate, updatedAt: data.startDate }).run();
     });
   }
 

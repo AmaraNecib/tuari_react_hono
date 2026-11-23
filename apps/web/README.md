@@ -9,6 +9,15 @@ This app is the Vite-powered web shell for Tuari. It uses React, TanStack Router
 - `pnpm --filter @tuari/web test` - run the web Vitest suite
 - `pnpm --filter @tuari/web lint` - run the web ESLint checks
 
+To use a different web development port, set `WEB_PORT` in the shell before starting the app. For example, in PowerShell:
+
+```powershell
+$env:WEB_PORT = "3001"
+pnpm --filter @tuari/web dev
+```
+
+The Vite development server listens on `127.0.0.1` at that port. `WEB_PORT` defaults to `3000`; invalid values fall back to that default. This changes the web listener only. It does not change the API URL or guarantee that API CORS or authentication settings accept the new origin.
+
 ## Environment
 
 Copy `apps/web/.env.example` to a local env file before development.

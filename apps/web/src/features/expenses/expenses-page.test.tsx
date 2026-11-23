@@ -1,0 +1,391 @@
+// @vitest-environment jsdom
+
+import "@/i18n"
+
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+import { formatAlgeriaDate } from "@/lib/algeria-time"
+
+import { ExpensesPage } from "./expenses-page"
+
+const { useExpensesListQuery, voidMutateAsync } = vi.hoisted(() => ({
+  useExpensesListQuery: vi.fn(),
+  voidMutateAsync: vi.fn(async () => ({ id: "e-1" })),
+}))
+
+vi.mock("./expenses-queries", () => ({
+  useExpensesListQuery,
+  useCreateExpenseMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useUpdateExpenseMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useVoidExpenseMutation: () => ({ isPending: false, mutateAsync: voidMutateAsync }),
+}))
+
+// The expense dialog now owns its stock-item picker (active-only usage seam);
+// this suite does not exercise it, so stub the hooks without a QueryClient.
+vi.mock("@/features/inventory/inventory-hooks", () => ({
+  useItemDefinitionOptionsQuery: () => ({
+    options: [],
+    fetchNextPage: vi.fn(),
+    hasNextPage: false,
+    isFetchingNextPage: false,
+  }),
+  useInventoryItemDefinitionQuery: () => ({ data: undefined }),
+}))
+
+const ITEMS = [
+  {
+    id: "e-1",
+    amount: 12500,
+    expenseDate: "2026-10-03T10:00:00.000Z",
+    whatFor: "هاتف للورشة",
+    responsibleWorkerId: "worker-1",
+    sellerId: "seller-1",
+    projectId: "project-1",
+    stockItemId: null,
+    note: null,
+    status: "LIVE" as const,
+    voidedAt: null,
+    voidedBy: null,
+    voidReason: null,
+    actorUserId: "user-1",
+    actorLabel: "أمين",
+    transactionId: null,
+    createdAt: "2026-10-03T10:00:00.000Z",
+    updatedAt: "2026-10-03T10:00:00.000Z",
+  },
+  {
+    id: "e-2",
+    amount: 9500,
+    expenseDate: "2026-10-08T10:00:00.000Z",
+    whatFor: "نقل عتاد",
+    responsibleWorkerId: "worker-1",
+    sellerId: null,
+    projectId: null,
+    stockItemId: null,
+    note: null,
+    status: "LIVE" as const,
+    voidedAt: null,
+    voidedBy: null,
+    voidReason: null,
+    actorUserId: "user-1",
+    actorLabel: "أمين",
+    transactionId: null,
+    createdAt: "2026-10-08T10:00:00.000Z",
+    updatedAt: "2026-10-08T10:00:00.000Z",
+  },
+]
+
+const DATA = {
+  items: ITEMS,
+  totals: {
+    total: 22000,
+    count: 2,
+    taggedToProject: 12500,
+    notTaggedToProject: 9500,
+    heldByWorkers: 22000,
+    workerCount: 1,
+  },
+  groupsByProject: [
+    { projectId: "project-1", total: 12500, count: 1 },
+    { projectId: null, total: 9500, count: 1 },
+  ],
+}
+
+// DOM text assertions only check formatting. Physical placement needs browser geometry.
+function currencyDisplays(amount: string) {
+  return screen.queryAllByText((_text, element) =>
+    element?.tagName === "SPAN" &&
+    [`دج${amount}`, `${amount}دج`].includes(element.textContent?.replace(/\s/g, "") ?? ""))
+}
+
+function renderPage() {
+  return render(
+    <ExpensesPage
+      projects={[{ id: "project-1", label: "فيلا حيدرة" }]}
+      employees={[{ id: "worker-1", label: "كريم ب." }]}
+      sellers={[{ id: "seller-1", label: "محل الإلكترونيات" }]}
+    />,
+  )
+}
+
+describe("ExpensesPage", () => {
+  afterEach(() => {
+    cleanup()
+    useExpensesListQuery.mockReset()
+    voidMutateAsync.mockClear()
+    vi.useRealTimers()
+  })
+
+  it("renders the KPI totals, the total strip and the dense table", () => {
+    useExpensesListQuery.mockReturnValue({
+      data: DATA,
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    // KPI cards
+    expect(screen.getByText("إجمالي كل الفترات")).toBeTruthy()
+    // 22,000 appears in both the KPI card and the total strip.
+    expect(currencyDisplays("22,000").length).toBeGreaterThan(1)
+    expect(screen.getByText("مقيّد بمشروع")).toBeTruthy()
+    expect(currencyDisplays("12,500").length).toBeGreaterThan(0)
+    expect(screen.getByText("لدى العمال")).toBeTruthy()
+
+    // Total strip split
+    expect(screen.getByText("مقيّد بمشروع 12,500")).toBeTruthy()
+    expect(screen.getByText("بدون مشروع 9,500")).toBeTruthy()
+
+    // Table rows and lookups (the lookups also appear in the filter selects)
+    expect(screen.getByText("هاتف للورشة")).toBeTruthy()
+    expect(screen.getAllByText("كريم ب.").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("محل الإلكترونيات").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("فيلا حيدرة").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("بدون مشروع").length).toBeGreaterThan(0)
+  })
+
+  it("uses shared currency displays for legacy numeric cards, rows and project groups", () => {
+    useExpensesListQuery.mockReturnValue({ data: DATA, isPending: false, isError: false, refetch: vi.fn() })
+    renderPage()
+    const row = screen.getByRole("row", { name: /هاتف للورشة/ })
+    expect(row.textContent).toContain("دج")
+    // Each table amount must be inside the shared MoneyValue component.
+    expect(row.querySelector('span[dir="ltr"] > bdi')?.textContent).toBe("12,500")
+    fireEvent.click(screen.getByRole("button", { name: "تجميع حسب المشروع" }))
+    const item = screen.getAllByRole("listitem").find(item => item.textContent?.includes("هاتف للورشة"))!
+    expect(item.querySelector('span[dir="ltr"] > bdi')?.textContent).toBe("12,500")
+    expect(item.querySelector('span[dir="ltr"]')?.textContent).toContain("دج")
+  })
+
+  it("uses the shared page-frame spacing so its header aligns with other pages", () => {
+    useExpensesListQuery.mockReturnValue({
+      data: DATA,
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    // The page renders through `RecordPageFrame`, whose root is the bare
+    // `space-y-6` wrapper used by every list page. A local `PageSurfaceContent`
+    // wrapper previously added p-6/xl:p-7 and pushed this header down.
+    const heading = screen.getByRole("heading", { level: 1 })
+    const frame = heading.closest("header")?.parentElement
+    expect(frame).not.toBeNull()
+    expect(frame!.className).toContain("space-y-6")
+    expect(frame!.className).not.toContain("p-6")
+    expect(frame!.className).not.toContain("xl:p-7")
+  })
+
+  it("passes the filter bar's date range to the list query", () => {
+    useExpensesListQuery.mockReturnValue({
+      data: DATA,
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(useExpensesListQuery).toHaveBeenCalled()
+    const [filters] = useExpensesListQuery.mock.calls.at(-1)!
+    // A filter opens EMPTY — empty means "everything". A seeded range silently
+    // hid every expense older than it, which is the opposite of a filter's job.
+    expect(filters).toEqual({})
+  })
+
+  it("toggles the current Algeria month without changing project or worker filters", () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-09-30T23:30:00.000Z"))
+    useExpensesListQuery.mockReturnValue({ data: DATA, isPending: false, isError: false })
+    renderPage()
+
+    fireEvent.change(screen.getByRole("combobox", { name: "المشروع" }), {
+      target: { value: "project-1" },
+    })
+    fireEvent.change(screen.getByRole("combobox", { name: "المسؤول" }), {
+      target: { value: "worker-1" },
+    })
+    expect(screen.getByText("إجمالي كل الفترات")).toBeTruthy()
+    const toggle = screen.getByRole("button", { name: "الشهر الحالي" })
+    expect(toggle.getAttribute("aria-pressed")).toBe("false")
+    fireEvent.click(toggle)
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith({
+      projectId: "project-1",
+      responsibleWorkerId: "worker-1",
+      fromDate: "2026-09-30T23:00:00.000Z",
+      toDate: "2026-10-31T22:59:59.999Z",
+    })
+    expect(screen.getByText("إجمالي الفترة")).toBeTruthy()
+    expect(toggle.getAttribute("aria-pressed")).toBe("true")
+    expect(screen.getByRole("button", { name: "من" }).textContent).toContain("01/10/2026")
+    expect(screen.getByRole("button", { name: "إلى" }).textContent).toContain("31/10/2026")
+
+    fireEvent.click(toggle)
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith({
+      projectId: "project-1",
+      responsibleWorkerId: "worker-1",
+    })
+    expect(toggle.getAttribute("aria-pressed")).toBe("false")
+    expect(screen.getByText("إجمالي كل الفترات")).toBeTruthy()
+  })
+
+  it.each(["من", "إلى"])("uses period wording for a manually selected %s bound", (label) => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-15T12:00:00.000Z"))
+    useExpensesListQuery.mockReturnValue({ data: DATA, isPending: false, isError: false })
+    renderPage()
+
+    fireEvent.click(screen.getByRole("button", { name: label }))
+    const day = document.querySelector('[data-day="2026-10-15"] button')
+    expect(day).not.toBeNull()
+    fireEvent.click(day!)
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith(label === "من"
+      ? { fromDate: "2026-10-14T23:00:00.000Z" }
+      : { toDate: "2026-10-15T22:59:59.999Z" })
+    expect(screen.getByText("إجمالي الفترة")).toBeTruthy()
+    expect(screen.getByRole("button", { name: "الشهر الحالي" }).getAttribute("aria-pressed")).toBe("false")
+  })
+
+  it("tracks manual changes to the month range and restores it in one click", () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-15T12:00:00.000Z"))
+    useExpensesListQuery.mockReturnValue({ data: DATA, isPending: false, isError: false })
+    renderPage()
+    const toggle = screen.getByRole("button", { name: "الشهر الحالي" })
+    fireEvent.click(toggle)
+    fireEvent.click(screen.getByRole("button", { name: "من" }))
+    fireEvent.click(document.querySelector('[data-day="2026-10-15"] button')!)
+    expect(toggle.getAttribute("aria-pressed")).toBe("false")
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith({
+      fromDate: "2026-10-14T23:00:00.000Z",
+      toDate: "2026-10-31T22:59:59.999Z",
+    })
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute("aria-pressed")).toBe("true")
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith({
+      fromDate: "2026-09-30T23:00:00.000Z",
+      toDate: "2026-10-31T22:59:59.999Z",
+    })
+  })
+
+  it("computes the month when clicked even if the page opened before midnight", () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-09-30T22:30:00.000Z"))
+    useExpensesListQuery.mockReturnValue({ data: DATA, isPending: false, isError: false })
+    renderPage()
+    vi.setSystemTime(new Date("2026-09-30T23:30:00.000Z"))
+    fireEvent.click(screen.getByRole("button", { name: "الشهر الحالي" }))
+    expect(useExpensesListQuery).toHaveBeenLastCalledWith({
+      fromDate: "2026-09-30T23:00:00.000Z",
+      toDate: "2026-10-31T22:59:59.999Z",
+    })
+  })
+
+  it("switches the same list into project-grouped cards", () => {
+    useExpensesListQuery.mockReturnValue({
+      data: DATA,
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(screen.getByRole("columnheader", { name: "التاريخ" })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "تجميع حسب المشروع" }))
+
+    // The table is replaced by one card per project.
+    expect(screen.queryByRole("columnheader", { name: "التاريخ" })).toBeNull()
+    expect(screen.getByRole("heading", { name: "فيلا حيدرة" })).toBeTruthy()
+    expect(screen.getByRole("heading", { name: "بدون مشروع" })).toBeTruthy()
+    // The tagged amount now appears both in the KPI card and the group card.
+    expect(currencyDisplays("12,500").length).toBeGreaterThan(1)
+    expect(currencyDisplays("9,500").length).toBeGreaterThan(0)
+  })
+
+  it("shows the empty state when the filter matches nothing", () => {
+    useExpensesListQuery.mockReturnValue({
+      data: {
+        items: [],
+        totals: {
+          total: 0,
+          count: 0,
+          taggedToProject: 0,
+          notTaggedToProject: 0,
+          heldByWorkers: 0,
+          workerCount: 0,
+        },
+        groupsByProject: [],
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(screen.getByText("لا توجد مصروفات")).toBeTruthy()
+  })
+
+  it("renders the stored instant on its Algeria calendar day, not its UTC slice", () => {
+    // 2026-09-30T23:00Z is October 1 in Algeria (UTC+1). Slicing the UTC value
+    // would render 2026-09-30.
+    useExpensesListQuery.mockReturnValue({
+      data: {
+        ...DATA,
+        items: [{ ...ITEMS[0], expenseDate: "2026-09-30T23:00:00.000Z" }],
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(
+      screen.getByText(formatAlgeriaDate(new Date("2026-09-30T23:00:00.000Z"))),
+    ).toBeTruthy()
+    expect(screen.queryByText("2026-09-30")).toBeNull()
+  })
+
+  it("shows the fractional part of an amount instead of rounding it away", () => {
+    useExpensesListQuery.mockReturnValue({
+      data: {
+        ...DATA,
+        items: [{ ...ITEMS[0], amount: 0.1 }],
+        totals: { ...DATA.totals, total: 0.1 },
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(currencyDisplays("0.1").length).toBeGreaterThan(0)
+  })
+
+  it("offers no Edit button on a voided row", () => {
+    useExpensesListQuery.mockReturnValue({
+      data: {
+        ...DATA,
+        items: [{ ...ITEMS[0], id: "e-void", whatFor: "هاتف ملغى", status: "VOIDED" as const }],
+      },
+      isPending: false,
+      isError: false,
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    const row = screen.getByRole("row", { name: /هاتف ملغى/ })
+    expect(within(row).queryByRole("button", { name: "تعديل" })).toBeNull()
+    expect(within(row).getByText("لا يمكن تعديل مصروف ملغى")).toBeTruthy()
+  })
+})

@@ -8,6 +8,7 @@ export * from "./app";
 export * from "./company";
 export * from "./inventory";
 export * from "./payment";
+export * from "./expenses";
 export * from "./recovery-key";
 export * from "./invoice";
 export * from "./update";

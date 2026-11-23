@@ -4,20 +4,32 @@ import "@/i18n"
 
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
+import type { DebtAccount, DebtEntry, ExactDebtsClient } from "@tuari/contracts"
 
+import { ConsolidationDialog } from "@/features/debts/consolidation-dialog"
+import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
 import { DebtsHubPage } from "@/features/debts/debts-hub-page"
+import { DebtLedgerPanel } from "@/features/debts/debt-ledger-panel"
+import { DebtPartySummaryCard } from "@/features/debts/debt-party-summary-card"
+import { RecordEntryPaymentDialog } from "@/features/debts/record-entry-payment-dialog"
+import { VoidEntryDialog } from "@/features/debts/void-entry-dialog"
 import { ExternalCounterpartyCreatePage } from "@/features/externals/external-create-page"
 import { ExternalCounterpartyDetailsPage } from "@/features/externals/external-details-page"
 import { EmployeeDetailsPage } from "@/features/employees/employee-details-page"
+import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
 
 const {
   createDebtAccountMutateAsync,
   createDebtEntryMutate,
   createCounterpartyMutateAsync,
   settleDebtAccountMutate,
+  createSalaryPaymentMutate,
+  mutationPending,
 } = vi.hoisted(() => ({
+  mutationPending: { createDebtAccount: false, createDebtEntry: false },
   createDebtAccountMutateAsync: vi.fn(async () => ({
     item: {
       actorLabel: null,
@@ -38,6 +50,7 @@ const {
   createCounterpartyMutateAsync: vi.fn(async () => ({ item: { id: "external-2" } })),
   createDebtEntryMutate: vi.fn(),
   settleDebtAccountMutate: vi.fn(),
+  createSalaryPaymentMutate: vi.fn(),
 }))
 
 vi.mock("@tanstack/react-router", async () => {
@@ -49,18 +62,35 @@ vi.mock("@tanstack/react-router", async () => {
   }
 })
 
+vi.mock("@/features/session/use-session-query", () => ({
+  useSessionQuery: () => ({ data: { user: { id: "user-1" } } }),
+}))
+
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: () => null }))
+
+vi.mock("@/features/employees/employee-earnings-queries", async (importActual) => ({
+  ...(await importActual<typeof import("@/features/employees/employee-earnings-queries")>()),
+  useApproveEmployeeEarningMutation: () => ({ isPending: false, mutateAsync: vi.fn(async () => ({})) }),
+}))
+
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
-  useCreateDebtAccountMutation: () => ({ isPending: false, mutateAsync: createDebtAccountMutateAsync }),
-  useCreateDebtEntryMutation: () => ({ isPending: false, mutate: createDebtEntryMutate }),
+  useCreateDebtAccountMutation: () => ({ isPending: mutationPending.createDebtAccount, mutateAsync: createDebtAccountMutateAsync }),
+  useCreateDebtEntryMutation: () => ({ isPending: mutationPending.createDebtEntry, mutate: createDebtEntryMutate, mutateAsync: createDebtEntryMutate }),
   useSettleDebtAccountMutation: () => ({ isPending: false, mutate: settleDebtAccountMutate }),
   useCreateExternalCounterpartyMutation: () => ({
     isPending: false,
     mutateAsync: createCounterpartyMutateAsync,
   }),
-  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useCreateSalaryPaymentMutation: () => ({ isPending: false, mutate: createSalaryPaymentMutate, reset: vi.fn() }),
   useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useDebtEntriesConsolidateMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
 }))
+
+const exactDebtClient = {
+  summary: vi.fn(async () => ({ accounts: [], grossPayableDzd: "0.00", grossReceivableDzd: "0.00" })),
+  detail: vi.fn(), create: vi.fn(), post: vi.fn(), pay: vi.fn(), correct: vi.fn(), void: vi.fn(), settle: vi.fn(),
+} as unknown as ExactDebtsClient
 
 function renderWithProviders(ui: ReactNode) {
   const queryClient = new QueryClient({
@@ -75,6 +105,9 @@ function renderWithProviders(ui: ReactNode) {
 describe("debts MVP web UI", () => {
   afterEach(() => {
     cleanup()
+    vi.clearAllMocks()
+    mutationPending.createDebtAccount = false
+    mutationPending.createDebtEntry = false
   })
 
   it("renders hub balances with correct sign semantics", () => {
@@ -110,10 +143,13 @@ describe("debts MVP web UI", () => {
     )
 
     expect(screen.getByRole("heading", { name: "مركز الديون" })).toBeTruthy()
-    expect(screen.getAllByText("لنا عنده").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("علينا له").length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\+1500/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/-700/).length).toBeGreaterThan(0)
+    // Positive net (1500) reads "مستحق لنا"; negative net (-700) reads
+    // "مستحق علينا". Both amounts render positive.
+    expect(screen.getAllByText("مستحق لنا").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("مستحق علينا").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/1,500/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/700/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/-700/)).toBeNull()
   })
 
   it("submits external counterparty creation from dedicated page", async () => {
@@ -136,8 +172,8 @@ describe("debts MVP web UI", () => {
     })
   })
 
-  it("manages a unified external counterparty debt account", async () => {
-    render(
+  it("keeps external-counterparty metadata on the exact debt detail page", async () => {
+    renderWithProviders(
       <ExternalCounterpartyDetailsPage
         counterparty={{
           createdAt: "2026-03-27T10:00:00.000Z",
@@ -147,99 +183,314 @@ describe("debts MVP web UI", () => {
           phoneNumber: "0555000000",
           updatedAt: "2026-03-27T10:00:00.000Z",
         }}
-        debtAccounts={[
-          {
-            actorLabel: null,
-            actorUserId: null,
-            createdAt: "2026-03-27T10:00:00.000Z",
-            currentBalance: -700,
-            externalCounterpartyId: "external-1",
-            id: "debt-2",
-            note: "حساب موحد",
-            direction: "PAYABLE",
-            partyType: "EXTERNAL_COUNTERPARTY",
-            settledAt: null,
-            status: "OPEN",
-            transactionId: null,
-            updatedAt: "2026-03-27T10:00:00.000Z",
-            workerId: null,
-          },
-        ]}
-        debtEntriesByAccountId={{ "debt-2": [] }}
+        debtClient={exactDebtClient}
       />,
     )
 
-    fireEvent.change(screen.getByPlaceholderText("مثال: 2500 أو -2500"), { target: { value: "500" } })
-    fireEvent.click(screen.getAllByRole("button", { name: "تسجيل الدفعة" })[1]!)
+    expect(screen.getAllByText("شركة المورد").length).toBeGreaterThan(0)
+    expect(await screen.findByText("لا توجد حسابات ديون بعد.")).toBeTruthy()
+  })
 
-    expect(createDebtEntryMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ debtAccountId: "debt-2", signedAmountDzd: 500 }),
-    )
-
-    fireEvent.click(screen.getByRole("button", { name: "تسوية إلى صفر" }))
-
-    expect(settleDebtAccountMutate).toHaveBeenCalledWith(
-      expect.objectContaining({ debtAccountId: "debt-2" }),
-    )
-
-    fireEvent.change(screen.getByPlaceholderText("0 أو 2500 أو -2500"), { target: { value: "-1200" } })
-    fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), { target: { value: "دفعة شراء جديدة" } })
-    fireEvent.click(screen.getAllByRole("button", { name: "تسجيل الدفعة" })[0]!)
-
-    await waitFor(() => {
-      expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ externalCounterpartyId: "external-1", openingBalanceDzd: -1200 }),
+  describe("DebtCasesPanel sends the chosen direction with a positive opening", () => {
+    const renderCasesPanel = () => {
+      createDebtAccountMutateAsync.mockClear()
+      createDebtEntryMutate.mockClear()
+      return renderWithProviders(
+        <DebtCasesPanel
+          accounts={[]}
+          debtEntriesByAccountId={{}}
+          externalCounterpartyId="external-1"
+          title="طرف"
+        />,
       )
+    }
+
+    const submitOpening = async (
+      amount: string,
+      expected: { direction: "PAYABLE" | "RECEIVABLE"; openingBalanceDzd: number },
+    ) => {
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: amount } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
+      await waitFor(() =>
+        expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(expect.objectContaining(expected)),
+      )
+      // No account exists on the ledger, so the form opens one and posts nothing.
+      expect(createDebtEntryMutate).not.toHaveBeenCalled()
+    }
+
+    it("owed-to-us sends RECEIVABLE with a positive amount", async () => {
+      renderCasesPanel()
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
+      // A typed minus is normalized to a magnitude; the direction carries the meaning.
+      await submitOpening("-500", { direction: "RECEIVABLE", openingBalanceDzd: 500 })
+    })
+
+    it("owed-by-us sends PAYABLE with a positive amount", async () => {
+      renderCasesPanel()
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات علينا" }))
+      await submitOpening("500", { direction: "PAYABLE", openingBalanceDzd: 500 })
     })
   })
 
-  it("renders worker debt tab on employee detail page", () => {
+  describe("DebtCasesPanel records a payment on the ledger's existing account (#459)", () => {
+    const existingAccount: DebtAccount = {
+      actorLabel: null,
+      actorUserId: null,
+      createdAt: "2026-03-27T10:00:00.000Z",
+      currentBalance: 5000,
+      externalCounterpartyId: "external-1",
+      id: "debt-existing",
+      note: "حساب قائم",
+      direction: "PAYABLE",
+      partyType: "EXTERNAL_COUNTERPARTY",
+      settledAt: null,
+      status: "OPEN",
+      transactionId: null,
+      updatedAt: "2026-03-27T10:00:00.000Z",
+      workerId: null,
+    }
+
+    const renderExistingAccountPanel = () => {
+      createDebtAccountMutateAsync.mockClear()
+      createDebtEntryMutate.mockClear()
+      return renderWithProviders(
+        <DebtCasesPanel
+          accounts={[existingAccount]}
+          debtEntriesByAccountId={{ "debt-existing": [] }}
+          externalCounterpartyId="external-1"
+          title="طرف"
+        />,
+      )
+    }
+
+    it("posts a PAYMENT entry to the existing account and never opens a second one", async () => {
+      renderExistingAccountPanel()
+
+      // The label and the description name the action the submit performs.
+      expect(screen.getByText("تسجيل دفعة على الحساب")).toBeTruthy()
+      expect(screen.getAllByText(/لا يُنشأ حساب جديد/).length).toBeGreaterThan(0)
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "1200" } })
+      fireEvent.change(screen.getByPlaceholderText("مثال: دين جديد، دفعة وصلت، دفعة خرجت"), {
+        target: { value: "دفعة نقدية" },
+      })
+      fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
+
+      await waitFor(() => {
+        expect(createDebtEntryMutate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            debtAccountId: "debt-existing",
+            entryType: "PAYMENT",
+            signedAmountDzd: -1200,
+            entryDate: toAlgeriaDayBoundaryIso(getAlgeriaDateInputValue(), "start"),
+            note: "دفعة نقدية",
+          }),
+        )
+      })
+      expect(createDebtAccountMutateAsync).not.toHaveBeenCalled()
+    })
+
+    it("keeps the payment submit disabled until the amount is non-zero", () => {
+      renderExistingAccountPanel()
+      const paymentButton = screen.getAllByRole("button", { name: "تسجيل دفعة" })[0] as HTMLButtonElement
+
+      // Empty and an explicit zero are both "no action", not a zero payment.
+      expect(paymentButton.disabled).toBe(true)
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "0" } })
+      expect(paymentButton.disabled).toBe(true)
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      expect(paymentButton.disabled).toBe(false)
+    })
+
+    it("says why a zero payment submit is blocked", () => {
+      renderExistingAccountPanel()
+
+      // Empty and an explicit zero block the save, and the reason is on screen.
+      expect(screen.getByRole("status").textContent).toContain("لا يمكن تسجيل دفعة بمبلغ صفر")
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "0" } })
+      expect(screen.getByRole("status").textContent).toContain("لا يمكن تسجيل دفعة بمبلغ صفر")
+
+      // A valid amount clears the reason.
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      expect(screen.queryByRole("status")).toBeNull()
+    })
+
+    it("says a non-numeric payment is invalid, not a zero payment", () => {
+      renderExistingAccountPanel()
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "abc" } })
+
+      expect(screen.getByRole("status").textContent).toContain("أدخل مبلغًا رقميًا صالحًا")
+      expect(screen.getByRole("status").textContent).not.toContain("دفعة بمبلغ صفر")
+    })
+
+    it("stays blocked while the payment save is in flight", () => {
+      // The entry mutation half of the gate: without it a second click on an
+      // in-flight payment would post it again.
+      mutationPending.createDebtEntry = true
+      renderExistingAccountPanel()
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+
+      const paymentButton = screen.getAllByRole("button", { name: "تسجيل دفعة" })[0] as HTMLButtonElement
+      expect(paymentButton.disabled).toBe(true)
+      // The save itself is the reason, named on screen.
+      expect(screen.getByRole("status").textContent).toContain("جارٍ الحفظ")
+    })
+
+    it("stays blocked while the opening save is in flight, so a second click cannot post the opening amount as a payment", async () => {
+      const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } })
+      // The opening save never resolves: the account list refreshes (as the
+      // real query does on success) before the mutation settles.
+      createDebtAccountMutateAsync.mockImplementationOnce(() => new Promise(() => {}))
+      const view = render(
+        <QueryClientProvider client={queryClient}>
+          <DebtCasesPanel accounts={[]} debtEntriesByAccountId={{}} externalCounterpartyId="external-1" title="طرف" />
+        </QueryClientProvider>,
+      )
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
+      await waitFor(() => expect(createDebtAccountMutateAsync).toHaveBeenCalled())
+
+      // The refreshed account arrives while the save is still pending and the
+      // original amount has not been cleared: the form now says "record a
+      // payment", but the submit must stay blocked.
+      mutationPending.createDebtAccount = true
+      view.rerender(
+        <QueryClientProvider client={queryClient}>
+          <DebtCasesPanel accounts={[existingAccount]} debtEntriesByAccountId={{ "debt-existing": [] }} externalCounterpartyId="external-1" title="طرف" />
+        </QueryClientProvider>,
+      )
+
+      const paymentButton = screen.getAllByRole("button", { name: "تسجيل دفعة" })[0] as HTMLButtonElement
+      expect(paymentButton.disabled).toBe(true)
+      // Disabled is the guard: React's event plugin skips onClick on a disabled
+      // button, so the click itself cannot post the opening amount.
+      expect(screen.getByRole("status").textContent).toContain("جارٍ الحفظ")
+    })
+
+    it("treats a typed minus as a magnitude on the payment", async () => {
+      renderExistingAccountPanel()
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "-1200" } })
+      fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
+
+      await waitFor(() => {
+        expect(createDebtEntryMutate).toHaveBeenCalledWith(
+          expect.objectContaining({ signedAmountDzd: -1200 }),
+        )
+      })
+    })
+
+    it("posts a reducing movement even on a credited ledger", async () => {
+      createDebtAccountMutateAsync.mockClear()
+      createDebtEntryMutate.mockClear()
+      renderWithProviders(
+        <DebtCasesPanel
+          accounts={[{ ...existingAccount, currentBalance: -700 }]}
+          debtEntriesByAccountId={{ "debt-existing": [] }}
+          externalCounterpartyId="external-1"
+          title="طرف"
+        />,
+      )
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "200" } })
+      fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
+
+      await waitFor(() => {
+        expect(createDebtEntryMutate).toHaveBeenCalledWith(
+          expect.objectContaining({ signedAmountDzd: -200 }),
+        )
+      })
+    })
+
+    it("posts a reducing movement on a RECEIVABLE ledger too", async () => {
+      // A payment reduces the balance on either ledger; the direction only
+      // selected which account receives it.
+      createDebtEntryMutate.mockClear()
+      renderWithProviders(
+        <DebtCasesPanel
+          accounts={[{ ...existingAccount, direction: "RECEIVABLE", id: "debt-receivable" }]}
+          debtEntriesByAccountId={{ "debt-receivable": [] }}
+          externalCounterpartyId="external-1"
+          title="طرف"
+        />,
+      )
+
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      fireEvent.click(screen.getAllByRole("button", { name: "تسجيل دفعة" })[0]!)
+
+      await waitFor(() => {
+        expect(createDebtEntryMutate).toHaveBeenCalledWith(
+          expect.objectContaining({ debtAccountId: "debt-receivable", signedAmountDzd: -500 }),
+        )
+      })
+    })
+
+    it("labels a ledger with no account as an account creation, not a payment", () => {
+      renderExistingAccountPanel()
+
+      // owed-to-us has no account, so the honest label is "record a debt".
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
+
+      expect(screen.getByRole("button", { name: "تسجيل دين" })).toBeTruthy()
+      expect(screen.getByText("إنشاء الحساب")).toBeTruthy()
+      // The description names the selected ledger, not the party: this party
+      // already holds a PAYABLE account, so it has not "no account yet".
+      expect(screen.getByText(/لا يوجد حساب على الدفتر المختار بعد/)).toBeTruthy()
+      expect(screen.getByText(/سيُفتح حساب جديد/)).toBeTruthy()
+    })
+
+    it("says when the opening amount is not a number", () => {
+      renderWithProviders(
+        <DebtCasesPanel accounts={[]} debtEntriesByAccountId={{}} externalCounterpartyId="external-1" title="طرف" />,
+      )
+
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "abc" } })
+
+      expect(screen.getByRole("status").textContent).toContain("أدخل مبلغًا رقميًا صالحًا")
+    })
+
+    it("opens an account with no opening entry when the create amount is left empty", async () => {
+      // The create path's amount is optional by design: an empty one opens the
+      // account without an opening movement.
+      renderWithProviders(
+        <DebtCasesPanel accounts={[]} debtEntriesByAccountId={{}} externalCounterpartyId="external-1" title="طرف" />,
+      )
+
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
+
+      await waitFor(() =>
+        expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ openingBalanceDzd: undefined }),
+        ),
+      )
+    })
+
+    it("opens the chosen ledger's account when only the other ledger exists", async () => {
+      renderExistingAccountPanel()
+
+      // The party has a PAYABLE account only; owed-to-us is a different ledger.
+      fireEvent.click(screen.getByRole("button", { name: "مستحقات لنا" }))
+      fireEvent.change(screen.getByPlaceholderText("0 أو 2500"), { target: { value: "500" } })
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل دين" }))
+
+      await waitFor(() => {
+        expect(createDebtAccountMutateAsync).toHaveBeenCalledWith(
+          expect.objectContaining({ direction: "RECEIVABLE", openingBalanceDzd: 500 }),
+        )
+      })
+      expect(createDebtEntryMutate).not.toHaveBeenCalled()
+    })
+  })
+
+  it("renders worker debt tab on employee detail page", async () => {
     renderWithProviders(
       <EmployeeDetailsPage
         activeTab="debts"
-        debtAccounts={[
-          {
-            actorLabel: null,
-            actorUserId: null,
-            createdAt: "2026-03-27T10:00:00.000Z",
-            currentBalance: 300,
-            externalCounterpartyId: null,
-            id: "debt-worker-1",
-            note: "حساب العامل",
-            direction: "PAYABLE",
-            partyType: "INTERNAL_WORKER",
-            settledAt: null,
-            status: "OPEN",
-            transactionId: null,
-            updatedAt: "2026-03-27T10:00:00.000Z",
-            workerId: "worker-1",
-          },
-        ]}
-        debtEntriesByAccountId={{
-          "debt-worker-1": [
-            {
-              actorLabel: null,
-              actorUserId: null,
-              balanceAfterDzd: 300,
-              createdAt: "2026-03-27T10:00:00.000Z",
-              debtAccountId: "debt-worker-1",
-              entryDate: "2026-03-27T10:00:00.000Z",
-              entryType: "OPENING",
-              id: "entry-1",
-              note: "رصيد افتتاحي",
-              signedAmountDzd: 300,
-              transactionId: null,
-              updatedAt: "2026-03-27T10:00:00.000Z",
-              reasonCategory: "INVOICE_DRIVEN",
-              reasonDetail: null,
-              paymentMethod: null,
-              status: "LIVE",
-              voidedAt: null,
-              voidedBy: null,
-              voidReason: null,
-            },
-          ],
-        }}
+        debtClient={exactDebtClient}
         employee={{
           canDelete: false,
           canLeave: false,
@@ -265,21 +516,474 @@ describe("debts MVP web UI", () => {
           role: "عامل",
           roleId: "role-worker",
           roleKey: "worker",
-          salaryAmountDzd: 4500,
-          salaryPeriod: "DAILY",
+          salaryReference: { period: "DAILY", amount: "4500.0000" },
           status: "ACTIVE",
           updatedAt: "2026-03-27T10:00:00.000Z",
         }}
         managedProjects={[]}
         managedWarehouses={[]}
         onTabChange={vi.fn()}
-        salaryPayments={[]}
         workHistory={[]}
       />,
     )
 
-    expect(screen.getByText(/ديون العامل/)).toBeTruthy()
-    expect(screen.getAllByText("رصيد افتتاحي").length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\+300/).length).toBeGreaterThan(0)
+    expect(screen.getByRole("tab", { name: "الديون" })).toBeTruthy()
+    expect(await screen.findByText("لا توجد حسابات ديون بعد.")).toBeTruthy()
+  })
+
+  it("routes employee earnings approval without recording a salary payment", async () => {
+    const onApproveEarning = vi.fn()
+    renderWithProviders(
+      <EmployeeDetailsPage
+        activeTab="finance"
+        debtClient={exactDebtClient}
+        employee={{
+          canDelete: false,
+          canLeave: false,
+          createdAt: "2026-03-27T10:00:00.000Z",
+          currentManagerId: "manager-1",
+          currentProjectAssignmentId: null,
+          currentProjectId: null,
+          currentWarehouseAssignmentId: null,
+          currentWarehouseId: null,
+          currentWorkplace: "بدون مشروع نشط",
+          deleteDisabledReason: null,
+          firstName: "علي",
+          id: "worker-1",
+          isWorker: true,
+          lastName: "بن حميد",
+          leaveDisabledReason: null,
+          managerAssignmentId: "manager-assignment-1",
+          managerName: "أحمد بلخير",
+          name: "علي بن حميد",
+          notes: null,
+          occupation: "عامل بناء",
+          phone: "0555200120",
+          role: "عامل",
+          roleId: "role-worker",
+          roleKey: "worker",
+          salaryReference: { period: "DAILY", amount: "4500.0000" },
+          status: "ACTIVE",
+          updatedAt: "2026-03-27T10:00:00.000Z",
+        }}
+        managedProjects={[]}
+        managedWarehouses={[]}
+        onApproveEarning={onApproveEarning}
+        onTabChange={vi.fn()}
+        workHistory={[]}
+      />,
+    )
+
+    fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
+
+    expect(onApproveEarning).toHaveBeenCalledWith("worker-1")
+    expect(createSalaryPaymentMutate).not.toHaveBeenCalled()
+  })
+
+  describe("debt balance terminology", () => {
+    const makeAccount = (currentBalance: number, direction: "PAYABLE" | "RECEIVABLE") => ({
+      actorLabel: null,
+      actorUserId: null,
+      createdAt: "2026-03-27T10:00:00.000Z",
+      currentBalance,
+      direction,
+      externalCounterpartyId: "external-1",
+      id: `debt-${direction}-${currentBalance}`,
+      note: null,
+      partyType: "EXTERNAL_COUNTERPARTY" as const,
+      settledAt: null,
+      status: "OPEN" as const,
+      transactionId: null,
+      updatedAt: "2026-03-27T10:00:00.000Z",
+      workerId: null,
+    })
+
+    const renderLedger = (currentBalance: number, direction: "PAYABLE" | "RECEIVABLE") =>
+      renderWithProviders(
+        <DebtLedgerPanel debtAccount={makeAccount(currentBalance, direction)} debtEntries={[]} title="حساب" />,
+      )
+
+    it("states what we owe with a positive amount (PAYABLE +600)", () => {
+      const { container } = renderLedger(600, "PAYABLE")
+      expect(screen.getAllByText("مستحق علينا").length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/600/).length).toBeGreaterThan(0)
+      expect(container.textContent).not.toContain("-600")
+    })
+
+    it("states our credit when we overpaid with a positive amount (PAYABLE -50,000)", () => {
+      const { container } = renderLedger(-50_000, "PAYABLE")
+      expect(screen.getAllByText("رصيد مستحق لنا").length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/50,000/).length).toBeGreaterThan(0)
+      expect(container.textContent).not.toContain("-50,000")
+      expect(container.textContent).not.toContain("-50000")
+    })
+
+    it("states what they owe with a positive amount (RECEIVABLE +600)", () => {
+      const { container } = renderLedger(600, "RECEIVABLE")
+      expect(screen.getAllByText("مستحق لنا").length).toBeGreaterThan(0)
+      expect(container.textContent).not.toContain("-600")
+    })
+
+    it("states their credit when they overpaid with a positive amount (RECEIVABLE -600)", () => {
+      const { container } = renderLedger(-600, "RECEIVABLE")
+      expect(screen.getAllByText("رصيد مستحق لهم").length).toBeGreaterThan(0)
+      expect(container.textContent).not.toContain("-600")
+    })
+
+    it("shows the settled phrase for a zero balance, not 'مستحق علينا 0'", () => {
+      renderLedger(0, "PAYABLE")
+      expect(screen.getAllByText("مسوّى").length).toBeGreaterThan(0)
+      expect(screen.queryByText(/مستحق علينا 0/)).toBeNull()
+    })
+
+    it("labels a netted party balance without a signed number", () => {
+      const { container } = renderWithProviders(
+        <DebtPartySummaryCard
+          accounts={[makeAccount(2000, "PAYABLE"), makeAccount(500, "RECEIVABLE")]}
+          personName="شركة المورد"
+        />,
+      )
+      // Net = 500 - 2000 = -1500: we owe them.
+      expect(screen.getAllByText("مستحق علينا").length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/1,500/).length).toBeGreaterThan(0)
+      expect(container.textContent).not.toContain("-1,500")
+      expect(container.textContent).not.toContain("-1500")
+    })
+  })
+
+  describe("debt consolidation terminology", () => {
+    const account = (currentBalance: number, direction: "PAYABLE" | "RECEIVABLE"): DebtAccount => ({
+      actorLabel: null,
+      actorUserId: null,
+      createdAt: "2026-03-27T10:00:00.000Z",
+      currentBalance,
+      direction,
+      externalCounterpartyId: "external-1",
+      id: `acct-${direction}`,
+      note: null,
+      partyType: "EXTERNAL_COUNTERPARTY",
+      settledAt: null,
+      status: "OPEN",
+      transactionId: null,
+      updatedAt: "2026-03-27T10:00:00.000Z",
+      workerId: null,
+    })
+
+    const opening = (debtAccountId: string, signedAmountDzd: number, note: string): DebtEntry => ({
+      actorLabel: null,
+      actorUserId: null,
+      balanceAfterDzd: signedAmountDzd,
+      createdAt: "2026-03-27T10:00:00.000Z",
+      debtAccountId,
+      entryDate: "2026-03-01T10:00:00.000Z",
+      entryType: "OPENING",
+      id: `entry-${debtAccountId}`,
+      note,
+      paymentMethod: null,
+      reasonCategory: "INVOICE_DRIVEN",
+      reasonDetail: null,
+      signedAmountDzd,
+      status: "LIVE",
+      transactionId: null,
+      updatedAt: "2026-03-27T10:00:00.000Z",
+      voidReason: null,
+      voidedAt: null,
+      voidedBy: null,
+    })
+
+    const renderConsolidation = (
+      payableAccount: DebtAccount,
+      receivableAccount: DebtAccount,
+      payableEntries: DebtEntry[],
+      receivableEntries: DebtEntry[],
+    ) =>
+      renderWithProviders(
+        <ConsolidationDialog
+          payableAccount={payableAccount}
+          payableEntries={payableEntries}
+          receivableAccount={receivableAccount}
+          receivableEntries={receivableEntries}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+
+    const selectOpenings = (payableNote: string, receivableNote: string) => {
+      fireEvent.click(screen.getByText(payableNote).closest("button")!)
+      fireEvent.click(screen.getByText(receivableNote).closest("button")!)
+    }
+
+    it("phrases the remaining payable balance as owed by us, not owed to us", () => {
+      renderConsolidation(
+        account(5000, "PAYABLE"),
+        account(0, "RECEIVABLE"),
+        [opening("acct-PAYABLE", 5000, "افتتاحي علينا")],
+        [opening("acct-RECEIVABLE", 2000, "افتتاحي لنا")],
+      )
+      selectOpenings("افتتاحي علينا", "افتتاحي لنا")
+
+      // The remainder (5000 - 2000) stays on the payable side, so the phrase
+      // must state "we owe them", not the sign-only "they owe us".
+      const remaining = screen.getByText(/^يبقى (?!رصيد)/)
+      expect(remaining.querySelector('bdi[dir="ltr"]')?.textContent).toBe("3,000")
+      expect(remaining.querySelector('bdi')?.previousElementSibling?.textContent).toBe("دج")
+      expect(remaining.textContent).toContain("مستحق علينا")
+      expect(remaining.textContent).not.toContain("مستحق لنا")
+    })
+
+    it("phrases the remaining receivable balance as owed to us, not owed by us", () => {
+      renderConsolidation(
+        account(2000, "PAYABLE"),
+        account(5000, "RECEIVABLE"),
+        [opening("acct-PAYABLE", 2000, "افتتاحي علينا")],
+        [opening("acct-RECEIVABLE", 5000, "افتتاحي لنا")],
+      )
+      selectOpenings("افتتاحي علينا", "افتتاحي لنا")
+
+      const remaining = screen.getByText(/^يبقى (?!رصيد)/)
+      expect(remaining.textContent).toContain("مستحق لنا")
+      expect(remaining.textContent).not.toContain("مستحق علينا")
+    })
+
+    it("states the overpayment phrase for an overpaid payable account header", () => {
+      renderConsolidation(
+        account(-50_000, "PAYABLE"),
+        account(0, "RECEIVABLE"),
+        [],
+        [],
+      )
+
+      // -50,000 PAYABLE is a credit with us, not "we owe 50,000".
+      expect(screen.getByText(/رصيد مستحق لنا/)).toBeTruthy()
+    })
+
+    it("keeps opening-entry movement deltas signed", () => {
+      renderConsolidation(
+        account(5000, "PAYABLE"),
+        account(0, "RECEIVABLE"),
+        [opening("acct-PAYABLE", -5000, "افتتاحي علينا")],
+        [],
+      )
+
+      const amount = screen.getByText("-5000", { selector: 'bdi[dir="ltr"]' })
+      expect(amount.previousElementSibling?.textContent).toBe("دج")
+      expect(amount.parentElement?.getAttribute("dir")).toBe("ltr")
+    })
+
+    it("keeps a voided payment movement delta signed", () => {
+      const payment: DebtEntry = {
+        ...opening("acct-PAYABLE", -300, "دفعة"),
+        entryType: "PAYMENT",
+        id: "payment-1",
+      }
+      renderWithProviders(
+        <VoidEntryDialog
+          accountDirection="PAYABLE"
+          entry={payment}
+          livePaymentEntries={[]}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+
+      const amount = screen.getByText("-300", { selector: 'bdi[dir="ltr"]' })
+      expect(amount.previousElementSibling?.textContent).toBe("دج")
+      expect(amount.parentElement?.getAttribute("dir")).toBe("ltr")
+    })
+  })
+
+  describe("entry dialogs take the direction from the prop, not the amount's sign", () => {
+    const openingEntry = (signedAmountDzd: number): DebtEntry => ({
+      actorLabel: null,
+      actorUserId: null,
+      balanceAfterDzd: signedAmountDzd,
+      createdAt: "2026-03-01T10:00:00.000Z",
+      debtAccountId: "acct-1",
+      entryDate: "2026-03-01T10:00:00.000Z",
+      entryType: "OPENING",
+      id: "entry-1",
+      note: "افتتاحي",
+      paymentMethod: null,
+      reasonCategory: "INVOICE_DRIVEN",
+      reasonDetail: null,
+      signedAmountDzd,
+      status: "LIVE",
+      transactionId: null,
+      updatedAt: "2026-03-01T10:00:00.000Z",
+      voidReason: null,
+      voidedAt: null,
+      voidedBy: null,
+    })
+
+    it("VoidEntryDialog phrases the opening from accountDirection, not the sign", () => {
+      // A positive movement on both ledgers: only the prop can change the phrase.
+      const entry = openingEntry(5000)
+
+      const payable = renderWithProviders(
+        <VoidEntryDialog
+          accountDirection="PAYABLE"
+          entry={entry}
+          livePaymentEntries={[]}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByText("مستحق علينا")).toBeTruthy()
+      expect(screen.queryByText("مستحق لنا")).toBeNull()
+      payable.unmount()
+
+      renderWithProviders(
+        <VoidEntryDialog
+          accountDirection="RECEIVABLE"
+          entry={entry}
+          livePaymentEntries={[]}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByText("مستحق لنا")).toBeTruthy()
+      expect(screen.queryByText("مستحق علينا")).toBeNull()
+    })
+
+    it("RecordEntryPaymentDialog phrases the entry and the max from accountDirection, not the sign", () => {
+      const entry = openingEntry(5000)
+
+      const payable = renderWithProviders(
+        <RecordEntryPaymentDialog
+          accountCurrentBalance={-5000}
+          accountDirection="PAYABLE"
+          entry={entry}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+      // +5000 on a PAYABLE ledger is owed by us; the -5000 max is a credit with us.
+      expect(screen.getByText("مستحق علينا")).toBeTruthy()
+      expect(screen.getByText(/رصيد مستحق لنا/)).toBeTruthy()
+      expect(screen.queryByText("مستحق لنا")).toBeNull()
+      payable.unmount()
+
+      renderWithProviders(
+        <RecordEntryPaymentDialog
+          accountCurrentBalance={-5000}
+          accountDirection="RECEIVABLE"
+          entry={entry}
+          open
+          onOpenChange={vi.fn()}
+        />,
+      )
+      expect(screen.getByText("مستحق لنا")).toBeTruthy()
+      expect(screen.getByText(/رصيد مستحق لهم/)).toBeTruthy()
+      expect(screen.queryByText("مستحق علينا")).toBeNull()
+    })
+  })
+})
+
+describe("stored business day timezone (#473)", () => {
+  let restoreTimeZone: () => void
+
+  beforeEach(() => {
+    restoreTimeZone = pinUtcTimeZone()
+  })
+
+  afterEach(() => {
+    cleanup()
+    restoreTimeZone()
+  })
+
+  const account = (direction: "PAYABLE" | "RECEIVABLE"): DebtAccount => ({
+    actorLabel: null,
+    actorUserId: null,
+    createdAt: "2026-03-27T10:00:00.000Z",
+    currentBalance: 500,
+    direction,
+    externalCounterpartyId: "external-1",
+    id: `acct-${direction}`,
+    note: null,
+    partyType: "EXTERNAL_COUNTERPARTY",
+    settledAt: null,
+    status: "OPEN",
+    transactionId: null,
+    updatedAt: "2026-03-27T10:00:00.000Z",
+    workerId: null,
+  })
+
+  const entry = (overrides: Partial<DebtEntry> = {}): DebtEntry => ({
+    actorLabel: null,
+    actorUserId: null,
+    balanceAfterDzd: 500,
+    createdAt: "2026-03-27T10:00:00.000Z",
+    debtAccountId: "acct-PAYABLE",
+    entryDate: MIDNIGHT_CROSSING,
+    entryType: "OPENING",
+    id: "entry-1",
+    note: null,
+    paymentMethod: null,
+    reasonCategory: "INVOICE_DRIVEN",
+    reasonDetail: null,
+    signedAmountDzd: 500,
+    status: "LIVE",
+    transactionId: null,
+    updatedAt: "2026-03-27T10:00:00.000Z",
+    voidReason: null,
+    voidedAt: null,
+    voidedBy: null,
+    ...overrides,
+  })
+
+  it("actually runs under UTC, so the assertions are not vacuous", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
+    expect(ALGERIA_DAY).not.toBe(UTC_DAY)
+  })
+
+  it("DebtLedgerPanel renders the entry on its Algeria day", () => {
+    renderWithProviders(
+      <DebtLedgerPanel debtAccount={account("PAYABLE")} debtEntries={[entry()]} title="حساب" />,
+    )
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  })
+
+  it("ConsolidationDialog renders the openings on their Algeria day", () => {
+    renderWithProviders(
+      <ConsolidationDialog
+        open
+        onOpenChange={vi.fn()}
+        payableAccount={account("PAYABLE")}
+        payableEntries={[entry({ id: "payable-entry" })]}
+        receivableAccount={account("RECEIVABLE")}
+        receivableEntries={[entry({ id: "receivable-entry", debtAccountId: "acct-RECEIVABLE" })]}
+      />,
+    )
+    expect(screen.getAllByText(ALGERIA_DAY)).toHaveLength(2)
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  })
+
+  it("VoidEntryDialog renders the entry on its Algeria day", () => {
+    renderWithProviders(
+      <VoidEntryDialog
+        accountDirection="PAYABLE"
+        entry={entry()}
+        livePaymentEntries={[]}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  })
+
+  it("RecordEntryPaymentDialog renders the entry on its Algeria day", () => {
+    renderWithProviders(
+      <RecordEntryPaymentDialog
+        accountCurrentBalance={500}
+        accountDirection="PAYABLE"
+        entry={entry()}
+        open
+        onOpenChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
   })
 })

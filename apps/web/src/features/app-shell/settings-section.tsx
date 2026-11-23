@@ -5,10 +5,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PasswordInput } from "@/components/ui/password-input"
 import { Field } from "@/components/ui/field"
+import { MoneyFormatSetting } from "@/features/preferences/money-format-setting"
+import { DateFormatSetting } from "@/features/preferences/date-format-setting"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
 import { useUrlTab } from "@/hooks/use-url-state"
+import { AppDate } from "@/components/app-date"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
+import { BackupSettings } from "./backup-settings"
 import { RecoveryKeySettings } from "./recovery-key-settings"
 import { UpdateSection } from "@/features/update/update-section"
 import { useQueryClient } from "@tanstack/react-query"
@@ -131,11 +135,11 @@ export function SettingsSection({
   const { t } = useTranslation()
   const { state: checkUpdateState, checkUpdate } = useUpdateCheck()
 
-  function formatCheckedAt(checkedAt: string): string {
+  function formatCheckedAt(checkedAt: string) {
     try {
       const date = new Date(checkedAt)
       if (isNaN(date.getTime())) return "-"
-      return date.toLocaleString()
+      return <AppDate value={date} includeTime />
     } catch {
       return "-"
     }
@@ -380,6 +384,8 @@ export function SettingsSection({
               {themeValueLabel}
             </Button>
           </div>
+          <MoneyFormatSetting />
+          <DateFormatSetting />
         </div>
       )}
 
@@ -411,6 +417,7 @@ export function SettingsSection({
       {/* System Tab */}
       {activeTab === 'system' && (
         <div className="space-y-4">
+          <BackupSettings />
           {/* Check for Updates — only in desktop runtime */}
           {isDesktopRuntime() ? (
             <div className="p-5 border border-line rounded-xl">

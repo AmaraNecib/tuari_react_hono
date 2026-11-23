@@ -508,21 +508,25 @@ Tauri startup
   │
   ├── 4. Cache validated license in Rust memory (Mutex<Option<LicenseInfo>>)
   │
-  ├── 5. Prepare env vars for API sidecar (via LicenseManager.serialize_env())
+  ├── 5. Prepare env vars for API sidecar (via LicenseManager.to_env_map())
   │     • TUARI_LICENSE_EDITION: "professional"
   │     • TUARI_LICENSE_FEATURES: "lan_server,multi_user,advanced_reports,external_api"
   │     • TUARI_LICENSE_MAX_USERS: "10"
   │     • TUARI_LICENSE_CUSTOMER: JSON with customer name + email
   │     • TUARI_LICENSE_EXPIRES_AT: ISO date or empty
+  │     • TUARI_LICENSE_STATUS: "active" / "trial" / "grace" / ... (#399)
   │     • (APP_DB_KEY only if license_manager.has_feature(EncryptedDb))
   │     Note: Raw signed payload is NEVER passed to the sidecar.
+  │     If initialize() fails, the block is still emitted with neutral
+  │     defaults and an explicit status (clock → "suspicious", otherwise
+  │     "unknown") instead of being omitted (#399).
   │
   └── 6. Spawn API sidecar (or show activation screen if locked)
 ```
 
 ### 6.2 First-Run & Grace Period UX
 
-#### 6.2.1 First-Run Flow (no license, no install-timestamp)
+#### 6.2.1 First-Run Flow (no license, no install anchor)
 
 ```
 User opens Tuari for the first time
@@ -536,7 +540,7 @@ User opens Tuari for the first time
   │   │   [تخطي]                               │
   │   └─────────────────────────────────────┘
   │
-  ├── "Start trial" → create install-timestamp → grant Standard edition for 30 days
+  ├── "Start trial" → create install-anchor.json → grant Standard edition for 30 days
   ├── "Activate" → show file picker for license.lic
   └── "Skip" → show welcome screen on next startup too
 ```
@@ -544,12 +548,12 @@ User opens Tuari for the first time
 #### 6.2.2 Grace Period (post-install, no license)
 
 ```
-  ├── install-timestamp < 30 days from now
+  ├── install-anchor.json < 30 days from now
   │     → App functions normally with Standard edition features
   │     → Small banner in bottom-right: "النسخة التجريبية — يتبقى N يوم"
   │     → Settings → Licensing shows countdown and upgrade options
   │
-  └── install-timestamp ≥ 30 days from now
+  └── install-anchor.json ≥ 30 days from now
         → Full-screen lock: "انتهت الفترة التجريبية"
         → Buttons: "تفعيل الترخيص" | "شراء النسخة"
         → Existing data remains on disk, accessible after activation
@@ -872,7 +876,7 @@ The current design supports subscriptions via the `licenseType` field:
 |--------------|----------|
 | `perpetual` | No `validUntil` check, or distant future |
 | `subscription` | Must be renewed before `validUntil` |
-| `trial` | 30-day trial (also tracked via install-timestamp) |
+| `trial` | 30-day trial (also tracked via `install-anchor.json`) |
 | `grace` | Post-expiry reduced functionality |
 
 ### 13.2 Subscription Flow (Future)
@@ -925,13 +929,13 @@ Rust passes license information to the Node.js sidecar via **structured environm
 | Set clock back before trial expires | Yes (monotonic tracker) | Uses estimated time instead of wall clock |
 | Set clock forward to bypass validFrom | Yes (validFrom check) | N/A — validFrom prevents early access |
 | Pause the system clock entirely | Partially (monotonic clock stops) | We don't detect paused clocks. Accept. |
-| Delete clock-tracker.json | Partially (file can be recreated) | Tracker is recreated with current wall time, losing history |
+| Delete clock-tracker.json | Partially (file can be recreated) | Clears only the clock high-water mark, so the tamper warning goes away. `install-anchor.json` survives with the original install time, the trial window is unchanged, and the tracker is recreated from the anchor — not the current wall time. |
 
 ### 14.4 Grace Period Reset Abuse
 
-A user could delete the `install-timestamp` file to reset the 30-day grace period.
+A user could delete the trial anchor to reset the 30-day grace period.
 
-**Mitigation:** Store the timestamp in `<app_data>/runtime/state/`, which persists across reinstalls. We accept that a determined user can delete the state directory. This is a deliberate trade-off — the grace period is for evaluation, not security.
+**Mitigation:** The install time is held in `install-anchor.json` in the app state directory. It is written once and only ever moved earlier, never advanced, so setting the clock back — or deleting the resettable `clock-tracker.json` (the documented clock-tamper recovery) — clears the warning without restarting or extending the trial. The recovery must not delete `install-anchor.json`. We accept that a determined user can delete the whole state directory. This is a deliberate trade-off — the grace period is for evaluation, not security.
 
 ### 14.5 Operation-Count-Based Trial Hardening (Future Enhancement)
 
@@ -1005,7 +1009,7 @@ impl LicenseManager {
 **Design rules:**
 - `LicenseManager` is the **only** Rust struct that touches `license.lic` or `key-rotation-*.json` files.
 - The Tauri commands (`activate_license`, `get_license_status`) delegate to `LicenseManager`.
-- The startup flow creates `LicenseManager`, calls `initialize()`, then calls `to_env_map()` to prepare sidecar env vars.
+- The startup flow creates `LicenseManager`, calls `initialize()`, then calls `to_env_map()` to prepare sidecar env vars. If `initialize()` **fails**, the shell still emits the block via `license_failure_env_map()` with the neutral defaults plus an explicit `TUARI_LICENSE_STATUS` (`suspicious` for a clock inconsistency, `unknown` otherwise) instead of omitting it (#399).
 - No other Rust module imports Ed25519 types or license schemas.
 
 ### 15.2 Component Allocation
@@ -1071,7 +1075,7 @@ Rust exposes license information to the Node.js sidecar through **structured env
 | `TUARI_LICENSE_MAX_USERS` | integer string | `"10"` | `license_manager.max_users().to_string()` |
 | `TUARI_LICENSE_CUSTOMER` | JSON string | `{"name":"Acme","email":"a@b.com"}` | `license_manager.customer_json()` |
 | `TUARI_LICENSE_EXPIRES_AT` | ISO 8601 or empty | `"2027-07-01T00:00:00Z"` or `""` | `license_manager.expires_at()` |
-| `TUARI_LICENSE_STATUS` | string | `"active"`, `"trial"`, `"expired"`, `"grace"` | `license_manager.status().as_str()` |
+| `TUARI_LICENSE_STATUS` | string | `"active"`, `"trial"`, `"expired"`, `"grace"`, `"suspicious"`, `"unknown"` | `license_manager.status().as_str()`; `suspicious`/`unknown` also on init failure (#399) |
 
 **Rules for this interface:**
 1. **Read-only from TypeScript.** The sidecar reads these env vars on startup and caches them. It never writes back.
@@ -1079,6 +1083,7 @@ Rust exposes license information to the Node.js sidecar through **structured env
 3. **Subject to semantic versioning.** Changes to this interface require a major version bump.
 4. **Backward compatibility.** New env vars may be added; existing ones must not be removed or have their semantics changed without a deprecation period.
 5. **Validation on the Hono side.** The sidecar validates that env vars match their expected types/schemas on startup.
+6. **Init-failure path (#399).** When `LicenseManager::initialize` fails, the shell still emits the full block with neutral defaults and an explicit `TUARI_LICENSE_STATUS`: a clock inconsistency becomes `suspicious`, and a malformed/tampered/unreadable `license.lic` (or an IO/crypto failure) becomes `unknown`. The API's fail-closed default (a missing/blank/unrecognised status → `unknown`) is defence in depth and does not depend on the shell being correct.
 
 ```typescript
 // TypeScript side — reads the interface, never touches license.lic or Ed25519
@@ -1100,9 +1105,11 @@ function getLicenseInfo(): LicenseInfo {
       ? JSON.parse(process.env.TUARI_LICENSE_CUSTOMER)
       : null,
     expiresAt: process.env.TUARI_LICENSE_EXPIRES_AT || null,
-    // Fail CLOSED: the shell omits the whole license env block when license
-    // initialization fails, so a missing/blank status must NOT be a writable
-    // trial. Unrecognised values are coerced to 'unknown' too.
+    // Fail CLOSED: a missing or unrecognised status must never be a writable
+    // trial. The shell emits an explicit status even when initialization fails
+    // (clock -> 'suspicious', malformed/unreadable license.lic -> 'unknown',
+    // #399), but the API does not rely on that: a missing/blank/unrecognised
+    // value is coerced to 'unknown' here as defence in depth.
     status: parseLicenseStatus(process.env.TUARI_LICENSE_STATUS),
   };
 }

@@ -1,1 +1,6 @@
-pnpm --filter @tuari/contracts build && pnpm typecheck && pnpm lint && pnpm test:api && pnpm test:web
+#!/usr/bin/env sh
+set -eu
+
+# Focused local readiness is recorded by guard at the committed HEAD.
+# Hooks do not repeat complete API/web/browser suites; CI owns full acceptance.
+node --test tests/ci-final.test.mjs tests/workflow-policy.test.mjs

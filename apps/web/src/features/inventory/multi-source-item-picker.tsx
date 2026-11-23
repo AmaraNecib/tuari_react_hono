@@ -2,16 +2,26 @@
  * Multi-source item picker for selecting items from different locations.
  * Allows users to pick items from warehouses and projects in a single transfer.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
+import { matchesItemOfferFilter, outboundPickUsage, resolveItemOffer } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { SurfaceHeader } from "@/features/shared/page-primitives"
-import { useInventoryWarehousesQuery, useInventoryProjectsQuery, useInventoryLocationContentsQuery } from "./inventory-hooks"
+import {
+  useInventoryItemDefinitionsQuery,
+  useInventoryWarehousesQuery,
+  useInventoryProjectsQuery,
+  useInventoryLocationContentsQuery,
+} from "./inventory-hooks"
 
 export type SelectedItem = {
+  /** The concrete row selected (a balance id or asset-unit id); sent to the write gate. */
+  optionId: string
+  /** The definition id persisted on the transfer item; never the concrete row id. */
   itemId: string
   itemName: string
   itemType: "CONSUMABLE" | "ASSET"
@@ -46,32 +56,59 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
     warehouseId: sourceType === "WAREHOUSE" ? sourceId : undefined,
     projectId: sourceType === "PROJECT" ? sourceId : undefined,
   })
+  const itemDefinitionsQuery = useInventoryItemDefinitionsQuery({ enabled: Boolean(sourceId) })
+  const source = sourceType === "WAREHOUSE"
+    ? { locationType: "WAREHOUSE" as const, warehouseId: sourceId }
+    : { locationType: "PROJECT" as const, projectId: sourceId }
+  const offerFilter = sourceId ? resolveItemOffer(outboundPickUsage(source)) : null
+  const itemDefinitions = new Map((itemDefinitionsQuery.data?.items ?? []).map((definition) => [definition.id, definition]))
+  const definitionIsOffered = (definitionId: string | null | undefined, itemType: "CONSUMABLE" | "ASSET") => {
+    if (!definitionId || !offerFilter) return false
+    const definition = itemDefinitions.get(definitionId)
+    if (!definition || definition.itemType !== itemType) return false
 
-  const availableAssets = (sourceContentsQuery.data?.assets ?? []).map((asset) => ({
-    id: asset.id,
-    name: asset.assetName,
-    type: "ASSET" as const,
-    quantity: 1,
-    locationLabel: asset.currentLocationLabel ?? "",
-  }))
+    return matchesItemOfferFilter(offerFilter, {
+      itemType: definition.itemType,
+      isActive: definition.isActive,
+      stockWarehouseIds: sourceType === "WAREHOUSE" ? [sourceId] : [],
+      stockProjectIds: sourceType === "PROJECT" ? [sourceId] : [],
+    })
+  }
 
-  const availableConsumables = (sourceContentsQuery.data?.consumables ?? []).map((balance) => ({
-    id: balance.inventoryEntryId,
-    name: balance.itemName,
-    type: "CONSUMABLE" as const,
-    quantity: balance.quantity,
-    locationLabel: balance.locationLabel,
-  }))
+  const availableAssets = (sourceContentsQuery.data?.assets ?? []).flatMap((asset) =>
+    asset.itemDefinitionId && definitionIsOffered(asset.itemDefinitionId, "ASSET")
+      ? [{
+          optionId: asset.id,
+          id: asset.itemDefinitionId,
+          name: asset.assetName,
+          type: "ASSET" as const,
+          quantity: 1,
+          locationLabel: asset.currentLocationLabel ?? "",
+        }]
+      : [],
+  )
+
+  const availableConsumables = (sourceContentsQuery.data?.consumables ?? [])
+    .filter((balance) => definitionIsOffered(balance.itemDefinitionId, "CONSUMABLE"))
+    .map((balance) => ({
+      optionId: balance.id,
+      id: balance.itemDefinitionId,
+      name: balance.itemName,
+      type: "CONSUMABLE" as const,
+      quantity: balance.quantity,
+      locationLabel: balance.locationLabel,
+    }))
 
   const availableItems = [...availableAssets, ...availableConsumables]
 
-  const addItem = (itemId: string) => {
-    const item = availableItems.find((i) => i.id === itemId)
+  const addItem = (optionId: string) => {
+    const item = availableItems.find((i) => i.optionId === optionId)
     if (!item || !sourceId) return
 
-    // Check if already added from this source
+    // The same definition may be picked from two balances/units at one source;
+    // the concrete row (not the definition) is what dedupes.
     const exists = items.find(
-      (i) => i.itemId === item.id && i.sourceId === sourceId && i.sourceType === sourceType
+      (i) => i.optionId === item.optionId && i.sourceId === sourceId && i.sourceType === sourceType
     )
     if (exists) return
 
@@ -80,6 +117,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
     onItemsChange([
       ...items,
       {
+        optionId: item.optionId,
         itemId: item.id,
         itemName: item.name,
         itemType: item.type,
@@ -169,7 +207,11 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
           <p className="text-sm font-medium text-ink-3">
             {t("inventory.transfer.availableItems")}
           </p>
-          {availableItems.length === 0 ? (
+          {sourceContentsQuery.isError || itemDefinitionsQuery.isError ? (
+            <p role="alert" className="text-sm text-destructive">{t("common.error")}</p>
+          ) : sourceContentsQuery.isPending || itemDefinitionsQuery.isPending ? (
+            <p role="status" className="text-sm text-muted-foreground">{t("common.loading")}</p>
+          ) : availableItems.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               {t("inventory.transfer.noItems")}
             </p>
@@ -177,11 +219,11 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
             <div className="space-y-1">
               {availableItems.map((item) => {
                 const isAlreadyAdded = items.some(
-                  (i) => i.itemId === item.id && i.sourceId === sourceId && i.sourceType === sourceType
+                  (i) => i.optionId === item.optionId && i.sourceId === sourceId && i.sourceType === sourceType
                 )
                 return (
                   <div
-                    key={item.id}
+                    key={item.optionId}
                     className="flex items-center justify-between gap-3 rounded-lg border border-line/50 px-3 py-2 text-sm"
                   >
                     <div className="min-w-0">
@@ -196,7 +238,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
                       variant="outline"
                       size="sm"
                       disabled={isAlreadyAdded}
-                      onClick={() => addItem(item.id)}
+                      onClick={() => addItem(item.optionId)}
                     >
                       {isAlreadyAdded ? t("common.added") : t("common.add")}
                     </Button>
@@ -217,7 +259,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
           <div className="space-y-1">
             {items.map((item, index) => (
               <div
-                key={`${item.itemId}-${item.sourceId}-${index}`}
+                key={`${item.optionId}-${item.sourceId}-${index}`}
                 className="flex items-center gap-3 rounded-lg border border-line/50 px-3 py-2 text-sm"
               >
                 <div className="min-w-0 flex-1">
@@ -282,7 +324,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
           <div className="flex items-center justify-end gap-2 border-t border-line/50 pt-2">
             <span className="text-sm font-medium text-ink-4">{t("inventory.transfer.total", "الإجمالي")}:</span>
             <span className="text-lg font-display font-semibold tabular-nums">
-              {totalAmount.toLocaleString("ar-DZ")} {t("common.currency")}
+              <CurrencyRun amount={totalAmount.toLocaleString("ar-DZ")} currencyLabel={t("common.currency")} />
             </span>
           </div>
         </div>

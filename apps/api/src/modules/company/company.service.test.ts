@@ -530,7 +530,7 @@ describe("CompanyService", () => {
     expect(managed).toEqual(expect.arrayContaining([projectA.id, projectB.id]));
   });
 
-  it("stores actor metadata on salary payments", () => {
+  it("refuses legacy numeric salary payment writes", () => {
     const { service, roleIds } = createHarness();
     const audit = createAuditContext()
     const worker = service.createEmployee(
@@ -540,22 +540,20 @@ describe("CompanyService", () => {
         phone: "0612345640",
         roleId: roleIds.worker,
         status: "ACTIVE",
-        salaryAmountDzd: 6500,
-        salaryPeriod: "DAILY",
+        salaryReference: { period: "DAILY", amount: "6500.0000" },
       },
       audit,
     ).item;
 
-    const payment = service.createSalaryPayment(
+    expect(() => service.createSalaryPayment(
       {
         employeeId: worker.id,
         actualAmountDzd: 6200,
+        days: 1,
+        projectSplits: [],
       },
       audit,
-    ).item;
-
-    expect(payment.actorUserId).toBe(audit.actorUserId)
-    expect(payment.transactionId).toBe(audit.transactionId)
+    )).toThrow(/employeeEarningsApprove/)
   })
 
   it("rejects zero and negative salary payment amounts", () => {
@@ -566,8 +564,7 @@ describe("CompanyService", () => {
       phone: "0612345641",
       roleId: roleIds.worker,
       status: "ACTIVE",
-      salaryAmountDzd: 5000,
-      salaryPeriod: "DAILY",
+      salaryReference: { period: "DAILY", amount: "5000.0000" },
     }).item
 
     for (const amount of [0, -1]) {
@@ -575,6 +572,8 @@ describe("CompanyService", () => {
         service.createSalaryPayment({
           employeeId: worker.id,
           actualAmountDzd: amount,
+          days: 1,
+          projectSplits: [],
         }),
       ).toThrowError(CompanyError)
     }
@@ -591,6 +590,7 @@ describe("CompanyService", () => {
       status: "ACTIVE",
     }).item
     const account = service.createDebtAccount({
+        direction: "PAYABLE",
       partyType: "INTERNAL_WORKER",
       workerId: worker.id,
       openingBalanceDzd: 1000,
@@ -639,6 +639,7 @@ describe("CompanyService", () => {
 
     const account = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 1500,
@@ -685,6 +686,7 @@ describe("CompanyService", () => {
 
     const account = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 1500,
@@ -727,6 +729,7 @@ describe("CompanyService", () => {
 
     const account = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 1000,
@@ -789,6 +792,7 @@ describe("CompanyService", () => {
 
     const account = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 2000,
@@ -857,6 +861,7 @@ describe("CompanyService", () => {
     // PAYABLE: 500, RECEIVABLE: 500 → perfect cancellation
     const payableAccount = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 500,
@@ -914,6 +919,7 @@ describe("CompanyService", () => {
     // PAYABLE: 1000, RECEIVABLE: 600 → remainder 400 on PAYABLE
     const payableAccount = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 1000,
@@ -970,6 +976,7 @@ describe("CompanyService", () => {
     // PAYABLE: 300, RECEIVABLE: 800 → remainder 500 on RECEIVABLE
     const payableAccount = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 300,
@@ -1025,6 +1032,7 @@ describe("CompanyService", () => {
 
     const payableAccount = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 500,
@@ -1076,6 +1084,7 @@ describe("CompanyService", () => {
 
     const payableAccount = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 1000,
@@ -1168,15 +1177,17 @@ describe("CompanyService", () => {
 
     const account = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
-        openingBalanceDzd: -800,
+        openingBalanceDzd: 800,
       },
       audit,
     ).item
 
     const secondAccount = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterparty.id,
         openingBalanceDzd: 300,
@@ -1187,13 +1198,22 @@ describe("CompanyService", () => {
 
     expect(secondAccount.id).toBe(account.id)
 
+    // Overpay the payable ledger by 1600 to reach -500: a PAYABLE balance of
+    // -500 means the counterparty has a credit with us. (A negative opening is
+    // no longer a valid way to move a ledger; the direction carries the sign.)
+    service.createDebtEntry({
+      debtAccountId: account.id,
+      entryType: "ADJUSTMENT",
+      signedAmountDzd: -1600,
+    })
+
     const summary = service.listDebtsSummary()
     // Issue #22: a PAYABLE balance of -500 means the counterparty has
     // a credit with us (overpaid) — under the unified sign convention
     // PAYABLE balances are negated before summing, so the net is +500
-    // ("they effectively owe us 500") rather than -500. The test
-    // fixture is intentionally negative to exercise the sign-flip
-    // branch; the label reflects the post-fix direction-aware net.
+    // ("they effectively owe us 500") rather than -500. The fixture is
+    // intentionally negative to exercise the sign-flip branch; the label
+    // reflects the post-fix direction-aware net.
     expect(summary.debtAccounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1209,7 +1229,7 @@ describe("CompanyService", () => {
         expect.objectContaining({
           externalCounterpartyId: counterparty.id,
           totalBalanceDzd: 500,
-          balanceLabel: "لنا عنده",
+          balanceLabel: "مستحق لنا",
           openDebtCasesCount: 1,
         }),
       ]),
@@ -1220,7 +1240,7 @@ describe("CompanyService", () => {
       externalCounterpartyId: counterparty.id,
     }).item
     expect(detail.totalBalanceDzd).toBe(500)
-    expect(detail.balanceLabel).toBe("لنا عنده")
+    expect(detail.balanceLabel).toBe("مستحق لنا")
     expect(detail.debtAccounts).toHaveLength(1)
   })
 
@@ -1236,6 +1256,7 @@ describe("CompanyService", () => {
     }).item
 
     const firstAccount = service.createDebtAccount({
+        direction: "PAYABLE",
       partyType: "INTERNAL_WORKER",
       workerId: worker.id,
       openingBalanceDzd: 1000,
@@ -1243,19 +1264,20 @@ describe("CompanyService", () => {
     }, audit).item
 
     const secondMutation = service.createDebtAccount({
+        direction: "PAYABLE",
       partyType: "INTERNAL_WORKER",
       workerId: worker.id,
-      openingBalanceDzd: -600,
+      openingBalanceDzd: 600,
       openingEntryDate: "2026-03-21T00:00:00.000+01:00",
     }, audit).item
 
     expect(secondMutation.id).toBe(firstAccount.id)
-    expect(service.getDebtAccount(firstAccount.id).item.currentBalance).toBe(400)
+    expect(service.getDebtAccount(firstAccount.id).item.currentBalance).toBe(1600)
     expect(service.listDebtAccounts({ workerId: worker.id }).items).toHaveLength(1)
     expect(service.listDebtEntries({ debtAccountId: firstAccount.id }).items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ entryType: "OPENING", signedAmountDzd: 1000 }),
-        expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: -600, balanceAfterDzd: 400 }),
+        expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: 600, balanceAfterDzd: 1600 }),
       ]),
     )
   })
@@ -1270,6 +1292,7 @@ describe("CompanyService", () => {
       status: "ACTIVE",
     }).item
     const account = service.createDebtAccount({
+        direction: "PAYABLE",
       partyType: "INTERNAL_WORKER",
       workerId: worker.id,
     }).item
@@ -1315,28 +1338,28 @@ describe("CompanyService", () => {
     // Net = receivable(500) - payable(2000) = -1500 (we still owe them)
     expect(detail.debtAccounts).toHaveLength(2)
     expect(detail.totalBalanceDzd).toBe(-1500)
-    expect(detail.balanceLabel).toBe("علينا له")
+    expect(detail.balanceLabel).toBe("مستحق علينا")
 
     const summary = service.listDebtsSummary()
     const partyRow = summary.parties.find(
       (party) => party.externalCounterpartyId === counterparty.id,
     )
     expect(partyRow?.totalBalanceDzd).toBe(-1500)
-    expect(partyRow?.balanceLabel).toBe("علينا له")
+    expect(partyRow?.balanceLabel).toBe("مستحق علينا")
     expect(partyRow?.openDebtCasesCount).toBe(2)
 
     // Per-account balanceLabel must respect the direction sign
-    // convention (Greptile 3/5 → 5/5 fix). A positive PAYABLE
-    // balance is "علينا له" (we owe them), not "لنا عنده".
+    // convention. A positive PAYABLE balance is "مستحق علينا" (we owe
+    // them), not "مستحق لنا".
     const payableAccount = summary.debtAccounts.find(
       (row) => row.accountId === detail.debtAccounts.find((a) => a.direction === "PAYABLE")?.id,
     )
     const receivableAccount = summary.debtAccounts.find(
       (row) => row.accountId === detail.debtAccounts.find((a) => a.direction === "RECEIVABLE")?.id,
     )
-    expect(payableAccount?.balanceLabel).toBe("علينا له")
+    expect(payableAccount?.balanceLabel).toBe("مستحق علينا")
     expect(payableAccount?.currentBalance).toBe(2000)
-    expect(receivableAccount?.balanceLabel).toBe("لنا عنده")
+    expect(receivableAccount?.balanceLabel).toBe("مستحق لنا")
     expect(receivableAccount?.currentBalance).toBe(500)
   })
 
@@ -1374,7 +1397,7 @@ describe("CompanyService", () => {
 
     // Net = 3000 - 500 = +2500 (they owe us net 2 500)
     expect(detail.totalBalanceDzd).toBe(2500)
-    expect(detail.balanceLabel).toBe("لنا عنده")
+    expect(detail.balanceLabel).toBe("مستحق لنا")
   })
 
   it("splits a counterparty's debt into independent payable and receivable ledgers (issue #22)", () => {
@@ -1449,6 +1472,7 @@ describe("CompanyService", () => {
       status: "ACTIVE",
     }).item
     const account = service.createDebtAccount({
+        direction: "PAYABLE",
       partyType: "INTERNAL_WORKER",
       workerId: worker.id,
       openingBalanceDzd: 1000,
@@ -1476,6 +1500,7 @@ describe("CompanyService", () => {
       status: "ACTIVE",
     }).item
     const account = service.createDebtAccount({
+        direction: "PAYABLE",
       partyType: "INTERNAL_WORKER",
       workerId: worker.id,
     }, audit).item
@@ -1515,6 +1540,7 @@ describe("CompanyService", () => {
 
     expect(() =>
       service.createDebtAccount({
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 500,
@@ -1535,6 +1561,7 @@ describe("CompanyService", () => {
       status: "ACTIVE",
     }).item
     const account = service.createDebtAccount({
+        direction: "PAYABLE",
       partyType: "INTERNAL_WORKER",
       workerId: worker.id,
       openingBalanceDzd: 800,
@@ -1645,6 +1672,7 @@ describe("CompanyService", () => {
 
     const account = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 900,
@@ -1674,6 +1702,7 @@ describe("CompanyService", () => {
 
     const account = service.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: worker.id,
         openingBalanceDzd: 30000,

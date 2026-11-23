@@ -102,7 +102,7 @@ This PR is a **foundation**, not a complete migration. Next steps for Issue #8:
 - Update the database connection to use Drizzle
 
 ### Step 2: Add SQLCipher Encryption
-- Replace `better-sqlite3` with `better-sqlite3-sqlcipher`
+- Replace `better-sqlite3` with `better-sqlite3-multiple-ciphers`
 - Configure encryption key derivation
 - Verify the portable Tauri app builds with encryption
 

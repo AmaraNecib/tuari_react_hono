@@ -93,7 +93,7 @@ export const healthCheckSchema = z.object({
 });
 
 export const employeeStatusSchema = z.enum(["ACTIVE", "INACTIVE", "LEFT"]);
-export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"]);
+export const salaryPeriodSchema = z.enum(["DAILY", "WEEKLY", "MONTHLY"], { error: "دورية الأجر غير صالحة." });
 export const debtPartyTypeSchema = z.enum(["INTERNAL_WORKER", "EXTERNAL_COUNTERPARTY"]);
 export const debtAccountStatusSchema = z.enum(["OPEN", "SETTLED"]);
 export const debtAccountDirectionSchema = z.enum(["PAYABLE", "RECEIVABLE"]);
@@ -115,7 +115,7 @@ export const paymentMethodSchema = z.enum(["CASH", "BANK_TRANSFER", "CHECK"]);
  * Reason categories for a debt entry.
  * Each category (except INVOICE_DRIVEN and OTHER) locks the account direction
  * to either PAYABLE or RECEIVABLE. See {@link debtReasonCategoryDirectionMap}
- * and {@link deriveDirectionFromCategory}.
+ * and {@link getLockedDirectionForCategory}.
  */
 export const debtReasonCategorySchema = z.enum([
   "INVOICE_DRIVEN",
@@ -132,10 +132,15 @@ export const debtReasonCategorySchema = z.enum([
 /**
  * Maps each reason category to its locked direction.
  * "UNCONSTRAINED" means the caller provides the direction (INVOICE_DRIVEN, OTHER).
+ *
+ * SALARY_ADVANCE is RECEIVABLE (owner decision D1a): paying a worker ahead of
+ * work earned makes the worker the debtor, so the advance is an asset against
+ * him until it is offset against earned wages. The PRD's earlier PAYABLE row
+ * for SALARY_ADVANCE was the pre-D1a reading and is superseded.
  */
 export const debtReasonCategoryDirectionMap: Record<string, "PAYABLE" | "RECEIVABLE" | "UNCONSTRAINED"> = {
   INVOICE_DRIVEN: "UNCONSTRAINED",
-  SALARY_ADVANCE: "PAYABLE",
+  SALARY_ADVANCE: "RECEIVABLE",
   REIMBURSEMENT: "PAYABLE",
   CASH_TAKE: "RECEIVABLE",
   EQUIPMENT_DAMAGE: "RECEIVABLE",
@@ -146,22 +151,16 @@ export const debtReasonCategoryDirectionMap: Record<string, "PAYABLE" | "RECEIVA
 };
 
 /**
- * Derives the debt account direction from a reason category.
- * Throws if the category direction is unknown.
+ * Returns the direction locked by a reason category, or `null` when the
+ * category does not constrain it (INVOICE_DRIVEN, OTHER, unknown). This is the
+ * single accessor for {@link debtReasonCategoryDirectionMap}: callers that need
+ * to reject a missing direction branch on `null` themselves.
  */
-export function deriveDirectionFromCategory(
+export function getLockedDirectionForCategory(
   category: string,
-): "PAYABLE" | "RECEIVABLE" {
+): "PAYABLE" | "RECEIVABLE" | null {
   const mapped = debtReasonCategoryDirectionMap[category];
-  if (mapped === "UNCONSTRAINED") {
-    throw new Error(
-      `Category "${category}" does not lock direction; caller must provide it.`,
-    );
-  }
-  if (mapped === undefined) {
-    throw new Error(`Unknown reason category: "${category}"`);
-  }
-  return mapped;
+  return mapped === "UNCONSTRAINED" || mapped === undefined ? null : mapped;
 }
 export const projectStatusSchema = z.enum([
   "ACTIVE",
@@ -174,6 +173,7 @@ export const assignmentStatusSchema = z.enum(["ACTIVE", "ENDED", "ARCHIVED"]);
 export const inventoryItemTypeSchema = z.enum(["CONSUMABLE", "ASSET"]);
 export const inventoryAssetConditionSchema = z.enum(["NEW", "USED", "MAINTENANCE", "DAMAGED"]);
 export const inventoryMovementTypeSchema = z.enum(["PURCHASE", "TRANSFER", "OUTBOUND_SALE"]);
+export type InventoryMovementType = z.infer<typeof inventoryMovementTypeSchema>;
 export const inventoryLocationTypeSchema = z.enum(["WAREHOUSE", "PROJECT"]);
 export const inventoryPaymentInputTypeSchema = z.enum(["AMOUNT", "PERCENT"]);
 export const employeeBatchLimit = 24;

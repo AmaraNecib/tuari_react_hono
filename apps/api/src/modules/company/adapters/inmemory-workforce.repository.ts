@@ -127,12 +127,11 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
     const employee: EmployeeRecord = {
       id, firstName: data.firstName, lastName: data.lastName, phone: data.phone,
       roleId: data.roleId, status: data.status,
-      salaryAmountDzd: data.salaryAmountDzd ?? null,
-      salaryPeriod: data.salaryPeriod ?? null,
+      salaryReference: data.salaryReference ?? null,
       notes: data.notes ?? null, occupation: data.occupation ?? null, createdAt: ts, updatedAt: ts,
     };
     this.store.employees.set(id, employee);
-    this.insertStateHistory({ employeeId: id, roleId: data.roleId, status: data.status, salaryAmountDzd: data.salaryAmountDzd ?? null, salaryPeriod: data.salaryPeriod ?? null, eventType: "CREATED", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
+    this.insertStateHistory({ employeeId: id, roleId: data.roleId, status: data.status, salaryReference: data.salaryReference ?? null, eventType: "CREATED", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
     return employee;
   }
   createEmployeesBatch(data: EmployeeBatchCreateData[], audit?: MutationAuditContext): EmployeeBatchCreateResultRecord {
@@ -158,16 +157,15 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
       phone: data.phone ?? cur.phone,
       roleId: data.roleId ?? cur.roleId,
       status: data.status ?? cur.status,
-      salaryAmountDzd: data.salaryAmountDzd !== undefined ? data.salaryAmountDzd : cur.salaryAmountDzd,
-      salaryPeriod: data.salaryPeriod !== undefined ? data.salaryPeriod : cur.salaryPeriod,
+      salaryReference: data.salaryReference !== undefined ? data.salaryReference : cur.salaryReference,
       notes: data.notes !== undefined ? data.notes : cur.notes,
       occupation: data.occupation !== undefined ? data.occupation : cur.occupation,
       updatedAt: ts,
     };
     this.store.employees.set(data.id, employee);
-    if (data.status !== undefined || data.roleId !== undefined || data.salaryAmountDzd !== undefined || data.salaryPeriod !== undefined) {
+    if (data.status !== undefined || data.roleId !== undefined || data.salaryReference !== undefined) {
       this.endActiveStateHistory(data.id, ts, a);
-      this.insertStateHistory({ employeeId: data.id, roleId: data.roleId ?? cur.roleId, status: data.status ?? cur.status, salaryAmountDzd: data.salaryAmountDzd !== undefined ? data.salaryAmountDzd : cur.salaryAmountDzd, salaryPeriod: data.salaryPeriod !== undefined ? data.salaryPeriod : cur.salaryPeriod, eventType: "UPDATED", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
+      this.insertStateHistory({ employeeId: data.id, roleId: data.roleId ?? cur.roleId, status: data.status ?? cur.status, salaryReference: data.salaryReference !== undefined ? data.salaryReference : cur.salaryReference, eventType: "UPDATED", startDate: ts, notes: data.notes ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId });
     }
     return employee;
   }
@@ -188,9 +186,9 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
     const id = (data as { id?: string }).id ?? newId();
     const ca = (data as { createdAt?: string }).createdAt ?? now();
     const ua = (data as { updatedAt?: string }).updatedAt ?? ca;
-    const employee: EmployeeRecord = { id, firstName: cd.firstName, lastName: cd.lastName, phone: cd.phone, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, notes: cd.notes ?? null, occupation: cd.occupation ?? null, createdAt: ca, updatedAt: ua };
+    const employee: EmployeeRecord = { id, firstName: cd.firstName, lastName: cd.lastName, phone: cd.phone, roleId: cd.roleId, status: cd.status, salaryReference: cd.salaryReference ?? null, notes: cd.notes ?? null, occupation: cd.occupation ?? null, createdAt: ca, updatedAt: ua };
     this.store.employees.set(id, employee);
-    this.insertStateHistory({ employeeId: id, roleId: cd.roleId, status: cd.status, salaryAmountDzd: cd.salaryAmountDzd ?? null, salaryPeriod: cd.salaryPeriod ?? null, eventType: "CREATED", startDate: ca, notes: cd.notes ?? null, actorUserId: null, actorLabel: null, transactionId: null });
+    this.insertStateHistory({ employeeId: id, roleId: cd.roleId, status: cd.status, salaryReference: cd.salaryReference ?? null, eventType: "CREATED", startDate: ca, notes: cd.notes ?? null, actorUserId: null, actorLabel: null, transactionId: null });
     return employee;
   }
   assignEmployeeWorkplace(data: EmployeeWorkplaceAssignmentData, audit?: MutationAuditContext): void {
@@ -280,7 +278,7 @@ export class InMemoryWorkforceRepository implements WorkforceRepository {
   }
   createSalaryPayment(data: EmployeeSalaryPaymentCreateData, audit?: MutationAuditContext): EmployeeSalaryPaymentRecord {
     const id = newId(); const ts = now(); const a = normalizeAudit(audit);
-    const record: EmployeeSalaryPaymentRecord = { id, employeeId: data.employeeId, periodType: data.periodType, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts };
+    const record: EmployeeSalaryPaymentRecord = { id, employeeId: data.employeeId, periodType: data.periodType, days: data.days, expectedAmountDzd: data.expectedAmountDzd, actualAmountDzd: data.actualAmountDzd, projectSplits: data.projectSplits.map((split) => ({ ...split })), paymentDate: data.paymentDate, note: data.note ?? null, actorUserId: a.actorUserId, actorLabel: a.actorLabel, transactionId: a.transactionId, createdAt: ts, updatedAt: ts };
     this.store.salaryPayments.set(id, record);
     return record;
   }

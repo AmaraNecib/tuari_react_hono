@@ -1,25 +1,53 @@
+import {
+  Money,
+  MAX_MONEY_DZD,
+  invoiceLineUsage,
+  inventoryQuantitySchema,
+  matchesItemOfferFilter,
+  nonNegativePaymentAmountAtScaleSchema,
+  nonNegativePaymentAmountSchema,
+  nonNegativeUnitPriceSchema,
+  outboundPickUsage,
+  resolveItemOffer,
+} from "@tuari/contracts"
 import type {
   DebtAccountCreateInput,
   DebtEntryCreateInput,
+  InventoryAssetChargeDefaultInput,
+  InventoryAssetChargeUpdateInput,
+  InventoryAssetChargeVoidInput,
+  InventoryAssetChargesListByProjectInput,
+  InventoryAssetChargesListByUnitInput,
   InventoryInvoiceGroupCreateInput,
   InventoryItemDefinitionCreateInput,
   InventoryItemDefinitionUpdateInput,
+  InventoryOutboundTransferCreateInput,
+  InventoryItemOfferSource,
+  InventoryItemUsage,
   InventoryReport,
+  ItemOfferCandidate,
   MovementReport,
 } from "@tuari/contracts"
 
 import { InventoryError } from "./inventory.errors"
+import { addQuantity, quantityDifferenceMatches, roundQuantity, subtractQuantity } from "./inventory.helpers"
+import { normalizePageSize } from "../shared/cursor"
+import { StructuredLogger } from "../../infrastructure/observability/logger"
 import { CompanyError } from "../company/company.errors"
 import { createAlgeriaTimestamp } from "../company/company-time"
-import { ageInDays, resolveReportWindow, roundMoney } from "../company/report.helpers"
+import { accumulateReportMoney, ageInDays, REPORT_MONEY_OVERFLOW_MESSAGE, resolveReportWindow, roundMoney } from "../company/report.helpers"
 import type { MutationAuditContext } from "../company/company.types"
 import type {
   InventoryAssetUnitCreateData,
+  InventoryConsumableBalanceRecord,
+  InventoryItemDefinitionRecord,
+  InventoryItemStockHolding,
   InventoryUploadFile,
   InventoryStoredUpload,
 } from "./inventory.types"
 import type { InventoryRepository } from "./inventory.repository"
 import { InventoryAttachmentStorage } from "./inventory.storage"
+import type { AssetChargeService } from "./asset-charge.service"
 
 type DebtService = {
   createDebtAccount(input: DebtAccountCreateInput, auditContext?: MutationAuditContext): { success: true; item: { id: string } }
@@ -55,12 +83,149 @@ function normalizeText(value: string | null | undefined) {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function normalizeMoney(value: number, field: string) {
-  if (!Number.isFinite(value) || value < 0) {
-    throw new InventoryError("VALIDATION", "يجب إدخال مبلغ صالح.", [{ field, message: "يجب إدخال مبلغ صالح." }])
+/**
+ * The module seam for money that must also respect the wire contract's
+ * magnitude bound (`MAX_MONEY_DZD`). The wire gate and this seam parse the SAME
+ * schema, so a direct caller cannot store an amount the contract rejects
+ * (issue #289 defense-in-depth). Used for asset purchase prices (#413),
+ * invoice line/payment inputs (#429), record-payment amounts (#475), and
+ * outbound transfer inputs (#478).
+ */
+function normalizeMoneyWithinBound(value: number, field: string, message: string) {
+  const parsed = nonNegativePaymentAmountSchema.safeParse(value)
+  if (!parsed.success) {
+    throw new InventoryError("VALIDATION", message, [{ field, message }])
   }
 
-  return value
+  return parsed.data
+}
+
+function normalizeMoneyAtScale(value: number, field: string, message: string, scale: number) {
+  const parsed = nonNegativePaymentAmountAtScaleSchema(scale).safeParse(value)
+  if (!parsed.success) {
+    throw new InventoryError("VALIDATION", message, [{ field, message }])
+  }
+
+  return parsed.data
+}
+
+function normalizeInventoryPurchaseQuantity(value: number, field: string) {
+  const parsed = inventoryQuantitySchema.safeParse(value)
+  if (!parsed.success) {
+    const message = "الكمية خارج الدقة المسموح بها (6 منازل عشرية)."
+    throw new InventoryError("VALIDATION", message, [{ field, message }])
+  }
+  return parsed.data
+}
+
+function normalizeUnitPrice(value: number, field: string, message: string) {
+  const parsed = nonNegativeUnitPriceSchema.safeParse(value)
+  if (!parsed.success) throw new InventoryError("VALIDATION", message, [{ field, message }])
+  return parsed.data
+}
+
+type ExactDecimalOperand = { coefficient: bigint; scale: number };
+
+/** Convert the accepted legacy numeric operand to its canonical base-10 value. */
+function canonicalDecimalOperand(value: number): ExactDecimalOperand {
+  if (!Number.isFinite(value) || value < 0) throw new TypeError("Expected a finite nonnegative invoice operand");
+  const match = /^(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/.exec(String(value).toLowerCase());
+  if (!match) throw new TypeError("Expected a canonical numeric invoice operand");
+  const whole = match[1]!;
+  const fraction = match[2] ?? "";
+  const exponent = Number(match[3] ?? 0);
+  if (!Number.isInteger(exponent) || Math.abs(exponent) > 324) throw new RangeError("Invoice operand exceeds the numeric range");
+  let coefficient = BigInt(whole + fraction);
+  let scale = fraction.length - exponent;
+  if (scale < 0) {
+    coefficient *= 10n ** BigInt(-scale);
+    scale = 0;
+  }
+  while (scale > 0 && coefficient % 10n === 0n) {
+    coefficient /= 10n;
+    scale -= 1;
+  }
+  return { coefficient, scale };
+}
+
+/** Exact base-10 sum of invoice operands and unit-price products. */
+class InvoiceMoneyAccumulator {
+  private coefficient = 0n;
+  private scale = 0;
+
+  addAmount(value: number): void {
+    this.add(canonicalDecimalOperand(value));
+  }
+
+  addProduct(left: number, right: number): void {
+    const a = canonicalDecimalOperand(left);
+    const b = canonicalDecimalOperand(right);
+    this.add({ coefficient: a.coefficient * b.coefficient, scale: a.scale + b.scale });
+  }
+
+  toMoney(): Money {
+    const minorUnits = this.scale <= 2
+      ? this.coefficient * 10n ** BigInt(2 - this.scale)
+      : roundPositiveRatio(this.coefficient, 10n ** BigInt(this.scale - 2));
+    if (minorUnits > BigInt(MAX_MONEY_DZD) * 100n) throw invoiceTotalOutOfRange();
+    try {
+      return Money.fromMinorUnits(minorUnits.toString());
+    } catch {
+      throw invoiceTotalOutOfRange();
+    }
+  }
+
+  private add(value: ExactDecimalOperand): void {
+    if (value.scale > this.scale) {
+      this.coefficient *= 10n ** BigInt(value.scale - this.scale);
+      this.scale = value.scale;
+    }
+    this.coefficient += value.coefficient * 10n ** BigInt(this.scale - value.scale);
+    while (this.scale > 0 && this.coefficient % 10n === 0n) {
+      this.coefficient /= 10n;
+      this.scale -= 1;
+    }
+  }
+}
+
+function roundPositiveRatio(numerator: bigint, denominator: bigint): bigint {
+  return numerator / denominator + (2n * (numerator % denominator) >= denominator ? 1n : 0n);
+}
+
+function invoiceTotalOutOfRange(): InventoryError {
+  return new InventoryError("BUSINESS_RULE", `إجمالي الفاتورة يتجاوز الحد الأقصى المسموح به (${MAX_MONEY_DZD}).`);
+}
+
+function toLegacyMoneyNumber(money: Money): number {
+  const value = Number(money.toWire());
+  if (!Number.isFinite(value) || !nonNegativePaymentAmountSchema.safeParse(value).success) throw invoiceTotalOutOfRange();
+  try {
+    if (Money.parse(String(value)).toMinorUnits() !== money.toMinorUnits()) {
+      throw new Error("The finalized amount cannot be represented by the legacy REAL column without losing cents");
+    }
+  } catch {
+    throw new InventoryError("BUSINESS_RULE", "لا يمكن حفظ إجمالي الفاتورة بدقة في مخزن الأرقام القديم.");
+  }
+  return value;
+}
+
+function percentagePayment(gross: Money, percent: number): Money {
+  const percentage = canonicalDecimalOperand(percent);
+  const denominator = 10n ** BigInt(percentage.scale + 2);
+  const minorUnits = roundPositiveRatio(BigInt(gross.toMinorUnits()) * percentage.coefficient, denominator);
+  return Money.fromMinorUnits(minorUnits.toString());
+}
+
+/**
+ * The inventory/movement report aggregate guard. `accumulateReportMoney` owns
+ * the finite + `MAX_MONEY_DZD` rule; a report is computed at read time, so
+ * unlike a persisted column it refuses to emit an unrepresentable total with
+ * the module's typed BUSINESS_RULE error (#475).
+ */
+function accumulateInventoryReportMoney(currentDzd: number, amountDzd: number) {
+  return accumulateReportMoney(currentDzd, amountDzd, () => {
+    throw new InventoryError("BUSINESS_RULE", REPORT_MONEY_OVERFLOW_MESSAGE)
+  })
 }
 
 function normalizePositive(value: number, field: string) {
@@ -69,6 +234,24 @@ function normalizePositive(value: number, field: string) {
   }
 
   return value
+}
+
+/**
+ * Validate and round a requested quantity to the storage quantum.
+ *
+ * A request below the quantum (`0.0000004`) rounds to zero, which would write
+ * an empty balance or a zero-quantity movement the schema forbids, so it is
+ * refused as validation rather than silently consumed.
+ */
+function normalizeQuantity(value: number, field: string) {
+  const quantity = roundQuantity(normalizePositive(value, field))
+  if (quantity <= 0) {
+    throw new InventoryError("VALIDATION", "الكمية أصغر من الدقة المسموح بها.", [
+      { field, message: "الكمية أصغر من الدقة المسموح بها." },
+    ])
+  }
+
+  return quantity
 }
 
 function validateWarehouse(repository: InventoryRepository, warehouseId: string | null | undefined, field: string) {
@@ -111,6 +294,36 @@ function resolveOccurredAt(value?: string | null) {
   return value ?? createAlgeriaTimestamp()
 }
 
+/** The `from*` columns an outbound movement leaves from, for one source. */
+function outboundFromLocation(source: InventoryItemOfferSource) {
+  return source.locationType === "WAREHOUSE"
+    ? { fromWarehouseId: source.warehouseId, fromProjectId: undefined }
+    : { fromWarehouseId: undefined, fromProjectId: source.projectId }
+}
+
+/**
+ * The offer-rule evidence for a definition, projected from the stock rows the
+ * gate read. Both stock tables are read regardless of the definition's type, so
+ * this is the same evidence the picker's SQL `inStockAt` predicate sees.
+ */
+function itemOfferCandidate(
+  definition: InventoryItemDefinitionRecord,
+  holding: InventoryItemStockHolding,
+): ItemOfferCandidate {
+  return {
+    itemType: definition.itemType,
+    isActive: definition.isActive,
+    stockWarehouseIds: [
+      ...holding.consumableBalances.flatMap((balance) => (balance.warehouseId ? [balance.warehouseId] : [])),
+      ...holding.assetUnits.flatMap((asset) => (asset.currentWarehouseId ? [asset.currentWarehouseId] : [])),
+    ],
+    stockProjectIds: [
+      ...holding.consumableBalances.flatMap((balance) => (balance.projectId ? [balance.projectId] : [])),
+      ...holding.assetUnits.flatMap((asset) => (asset.currentProjectId ? [asset.currentProjectId] : [])),
+    ],
+  }
+}
+
 const ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
@@ -136,6 +349,15 @@ export class InventoryService {
     private readonly storage: InventoryAttachmentStorage,
     private readonly debtService?: DebtService,
     private readonly workspaceAdminAuthorizer?: WorkspaceAdminAuthorizer,
+    /**
+     * Project-charge rules for asset placements (#413). Optional so
+     * existing wiring/tests that never place a unit on a project keep
+     * working, but ANY path that can place a unit on a project calls
+     * `requireAssetChargeService()` and fails loudly when it is absent: a
+     * silently uncharged placement is exactly the failure this feature
+     * exists to prevent (#422 round 5).
+     */
+    private readonly assetChargeService?: AssetChargeService,
   ) {}
 
   /** createMutationAuditContext. */
@@ -156,6 +378,42 @@ export class InventoryService {
 /** List item definitions with optional filters. */
   listItemDefinitions(filters?: { itemType?: "CONSUMABLE" | "ASSET"; isActive?: boolean }) {
     return { items: this.repository.listItemDefinitions(filters) }
+  }
+
+  /**
+   * Usage-scoped, paged item options for a picker.
+   *
+   * The offer rule is resolved once here and handed to the repository as data,
+   * so the read and the write gate (`createInvoiceGroup`) cannot drift.
+   */
+  listItemDefinitionOptions(input: {
+    usage: InventoryItemUsage
+    search?: string
+    cursor?: string
+    limit?: number
+  }): { items: InventoryItemDefinitionRecord[]; total: number; nextCursor: string | null; hasMore: boolean } {
+    const page = this.repository.listItemDefinitionsPaged({
+      filter: resolveItemOffer(input.usage),
+      search: input.search,
+      cursor: input.cursor,
+      limit: normalizePageSize(input.limit),
+    })
+
+    if (page.cursorReset) {
+      // A cursor from a different filter/search is not an error the picker can
+      // act on; restart at the first page and leave a trace for operators.
+      StructuredLogger.warn("Item-options cursor reset", {
+        surface: input.usage.surface,
+        search: input.search ?? null,
+      })
+    }
+
+    return {
+      items: page.items,
+      total: page.total,
+      nextCursor: page.nextCursor,
+      hasMore: page.nextCursor !== null,
+    }
   }
 
   /** getItemDefinition. */
@@ -200,6 +458,15 @@ export class InventoryService {
 
     if (nextItemType === "CONSUMABLE" && !nextUnit) {
       throw new InventoryError("VALIDATION", "يجب إدخال وحدة قياس للمواد الاستهلاكية.", [{ field: "unit", message: "يجب إدخال وحدة قياس للمواد الاستهلاكية." }])
+    }
+
+    // Close the retroactive bypass: a definition's type is a fact the offer
+    // rule reads, so flipping it while entries reference it would make the rule
+    // a lie for existing rows. This is a behaviour change to an admin action.
+    if (nextItemType !== current.itemType && this.repository.countEntriesByItemDefinitionId(input.id) > 0) {
+      throw new InventoryError("CONFLICT", "لا يمكن تغيير نوع عنصر مستخدم في فواتير قائمة.", [
+        { field: "itemType", message: "لا يمكن تغيير نوع عنصر مستخدم في فواتير قائمة." },
+      ])
     }
 
     const item = this.repository.updateItemDefinition({
@@ -272,7 +539,7 @@ export class InventoryService {
       assets: InventoryAssetUnitCreateData[]
     }
     const preparedEntries: Array<PreparedConsumable | PreparedAsset> = []
-    let grossTotalDzd = 0
+    const invoiceTotal = new InvoiceMoneyAccumulator()
 
     for (const [index, entry] of input.entries.entries()) {
       const definition = this.repository.getItemDefinitionById(entry.itemDefinitionId)
@@ -300,15 +567,22 @@ export class InventoryService {
       validateProject(this.repository, effectiveProjectId, `entries.${index}.projectId`)
 
       if (entry.kind === "CONSUMABLE") {
-        if (definition.itemType !== "CONSUMABLE") {
+        // The same rule that offered the option accepts it here; the module
+        // owns both so they cannot drift.
+        if (!matchesItemOfferFilter(resolveItemOffer(invoiceLineUsage("CONSUMABLE")), definition)) {
           throw new InventoryError("VALIDATION", "تعريف العنصر لا يطابق نوع إدخال المواد الاستهلاكية.", [{ field: `entries.${index}.itemDefinitionId`, message: "تعريف العنصر لا يطابق نوع إدخال المواد الاستهلاكية." }])
         }
 
-        const quantity = normalizePositive(entry.quantity, `entries.${index}.quantity`)
-        const unitPriceDzd = normalizeMoney(entry.unitPriceDzd, `entries.${index}.unitPriceDzd`)
-        // Server derives total to prevent client-submitted inconsistencies
+        const quantity = normalizeInventoryPurchaseQuantity(entry.quantity, `entries.${index}.quantity`)
+        const unitPriceDzd = normalizeUnitPrice(
+          entry.unitPriceDzd,
+          `entries.${index}.unitPriceDzd`,
+          "سعر الوحدة خارج النطاق أو الدقة المسموح بها.",
+        )
+        // Keep the legacy REAL line product, but finalize the F document total from the original operands.
         const totalPriceDzd = quantity * unitPriceDzd
-        grossTotalDzd += totalPriceDzd
+        if (!Number.isFinite(totalPriceDzd)) throw invoiceTotalOutOfRange()
+        invoiceTotal.addProduct(quantity, unitPriceDzd)
         preparedEntries.push({
           kind: "CONSUMABLE",
           definitionId: definition.id,
@@ -324,7 +598,7 @@ export class InventoryService {
         continue
       }
 
-      if (definition.itemType !== "ASSET") {
+      if (!matchesItemOfferFilter(resolveItemOffer(invoiceLineUsage("ASSET")), definition)) {
         throw new InventoryError("VALIDATION", "تعريف العنصر لا يطابق نوع إدخال الأصول.", [{ field: `entries.${index}.itemDefinitionId`, message: "تعريف العنصر لا يطابق نوع إدخال الأصول." }])
       }
 
@@ -335,14 +609,23 @@ export class InventoryService {
         serialNumber: normalizeText(asset.serialNumber),
         condition: asset.condition ?? null,
         purchaseDate: asset.purchaseDate ?? null,
-        purchasePriceDzd: normalizeMoney(asset.purchasePriceDzd, `entries.${index}.assets.${assetIndex}.purchasePriceDzd`),
+        purchasePriceDzd: normalizeMoneyAtScale(
+          asset.purchasePriceDzd,
+          `entries.${index}.assets.${assetIndex}.purchasePriceDzd`,
+          "سعر الشراء خارج النطاق أو الدقة المسموح بها.",
+          2,
+        ),
         currentWarehouseId: effectiveWarehouseId,
         currentProjectId: effectiveProjectId,
         note: normalizeText(asset.note),
       }))
 
-      const totalPriceDzd = assets.reduce((sum, asset) => sum + asset.purchasePriceDzd, 0)
-      grossTotalDzd += totalPriceDzd
+      const assetEntryTotal = new InvoiceMoneyAccumulator()
+      for (const asset of assets) {
+        assetEntryTotal.addAmount(asset.purchasePriceDzd)
+        invoiceTotal.addAmount(asset.purchasePriceDzd)
+      }
+      const totalPriceDzd = toLegacyMoneyNumber(assetEntryTotal.toMoney())
       preparedEntries.push({
         kind: "ASSET",
         definitionId: definition.id,
@@ -355,21 +638,31 @@ export class InventoryService {
       })
     }
 
-    // Phase 2: calculate and validate payment amounts
-    const paidAmountDzd = input.createDebt
-      ? input.paymentInputType === "PERCENT"
-        ? normalizeMoney((grossTotalDzd * (input.paidPercent ?? 0)) / 100, "paidPercent")
-        : normalizeMoney(input.paidAmountDzd ?? 0, "paidAmountDzd")
-      : grossTotalDzd
+    // Phase 2: finalize the exact document sum before deriving any paid/debt totals.
+    const grossMoney = invoiceTotal.toMoney()
+    const grossTotalDzd = toLegacyMoneyNumber(grossMoney)
+    const paidMoney = !input.createDebt
+      ? grossMoney
+      : input.paymentInputType === "PERCENT"
+        ? percentagePayment(grossMoney, input.paidPercent ?? 0)
+        : Money.parse(String(normalizeMoneyAtScale(
+            input.paidAmountDzd ?? 0,
+            "paidAmountDzd",
+            "المبلغ المدفوع خارج النطاق أو الدقة المسموح بها.",
+            2,
+          )))
+    const paidAmountDzd = toLegacyMoneyNumber(paidMoney)
 
-    if (input.createDebt && paidAmountDzd > grossTotalDzd) {
+    if (input.createDebt && paidMoney.compare(grossMoney) > 0) {
       const overpaymentField = input.paymentInputType === "PERCENT" ? "paidPercent" : "paidAmountDzd"
       throw new InventoryError("VALIDATION", "لا يمكن أن يتجاوز المبلغ المدفوع إجمالي الفاتورة.", [
         { field: overpaymentField, message: "لا يمكن أن يتجاوز المبلغ المدفوع إجمالي الفاتورة." },
       ])
     }
 
-    const remainingDebtDzd = input.createDebt ? Math.max(0, grossTotalDzd - paidAmountDzd) : 0
+    const remainingDebtDzd = input.createDebt
+      ? toLegacyMoneyNumber(grossMoney.subtract(paidMoney))
+      : 0
 
     // Phase 3: persist everything in a single atomic transaction.
     // Both company and inventory repositories share the same database connection,
@@ -386,7 +679,8 @@ export class InventoryService {
           const debtResult = this.debtService.createDebtAccount({
             partyType: "EXTERNAL_COUNTERPARTY",
             externalCounterpartyId: input.externalCounterpartyId,
-            openingBalanceDzd: -grossTotalDzd,
+            direction: "PAYABLE",
+            openingBalanceDzd: grossTotalDzd,
             openingEntryDate: resolvedInvoiceDate,
             openingEntryNote: `إجمالي فاتورة شراء ${resolvedInvoiceNumber}`,
             note: normalizeText(input.note),
@@ -398,7 +692,7 @@ export class InventoryService {
             this.debtService.createDebtEntry({
               debtAccountId,
               entryType: "PAYMENT",
-              signedAmountDzd: paidAmountDzd,
+              signedAmountDzd: -paidAmountDzd,
               entryDate: resolvedInvoiceDate,
               note: `دفعة عند تسجيل الفاتورة ${resolvedInvoiceNumber}`,
             }, audit)
@@ -425,6 +719,12 @@ export class InventoryService {
         debtAccountId,
         note: normalizeText(input.note),
       })
+
+      // Placements are charged AFTER the entry loop, grouped per project, so a
+      // bulk purchase reads the project's live charges once instead of once per
+      // unit (#422 round 6). The charges still commit with the invoice: this
+      // runs inside the same transaction.
+      const pendingPlacements = new Map<string, Array<{ assetUnitId: string; movementId: string }>>()
 
       for (const entry of preparedEntries) {
         if (entry.kind === "CONSUMABLE") {
@@ -483,7 +783,7 @@ export class InventoryService {
             ...asset,
             inventoryEntryId: createdEntry.id,
           })
-          this.repository.createMovement({
+          const movement = this.repository.createMovement({
             movementType: "PURCHASE",
             itemType: "ASSET",
             inventoryEntryId: createdEntry.id,
@@ -494,7 +794,23 @@ export class InventoryService {
             note: entry.note,
             occurredAt: resolvedInvoiceDate,
           })
+
+          // A unit created directly on a project is a placement too: the same
+          // rule as a transfer charges it in the SAME transaction (its default
+          // is the purchase price, as it has no prior charge). A warehouse
+          // purchase writes no charge. A missing charge service is a wiring
+          // fault: fail loudly rather than book an uncharged placement (#422
+          // round 5).
+          if (entry.projectId) {
+            const placements = pendingPlacements.get(entry.projectId) ?? []
+            placements.push({ assetUnitId: createdAsset.id, movementId: movement.id })
+            pendingPlacements.set(entry.projectId, placements)
+          }
         }
+      }
+
+      for (const [projectId, placements] of pendingPlacements) {
+        this.requireAssetChargeService().createPlacementCharges({ projectId, placements }, audit)
       }
 
       return {
@@ -541,12 +857,13 @@ export class InventoryService {
       asset,
       invoiceGroup: group,
       movements: this.repository.listMovementsByAssetUnitId(asset.id),
+      charges: this.assetChargeService?.listByUnit({ assetUnitId: asset.id }).items ?? [],
     })
   }
 
   /** transferAsset. */
-  transferAsset(input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
-    this.createMutationAuditContext(auditContext)
+  transferAsset(input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; chargeAmountDzd?: number | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
+    const audit = this.createMutationAuditContext(auditContext)
 
     validateSingleDestination(input.toWarehouseId ?? null, input.toProjectId ?? null, "toWarehouseId")
     validateWarehouse(this.repository, input.toWarehouseId ?? null, "toWarehouseId")
@@ -566,7 +883,7 @@ export class InventoryService {
         currentWarehouseId: input.toWarehouseId ?? null,
         currentProjectId: input.toProjectId ?? null,
       })
-      this.repository.createMovement({
+      const movement = this.repository.createMovement({
         movementType: "TRANSFER",
         itemType: "ASSET",
         inventoryEntryId: asset.inventoryEntryId,
@@ -579,16 +896,63 @@ export class InventoryService {
         note: normalizeText(input.note),
         occurredAt: resolveOccurredAt(input.occurredAt),
       })
+
+      // A placement on a project books a charge in the SAME transaction; a
+      // warehouse destination writes none (the charge belongs to the
+      // placement, so a later move starts its own charge). A missing charge
+      // service is a wiring fault, not a reason to silently book an uncharged
+      // placement (#422 round 5).
+      if (input.toProjectId) {
+        this.requireAssetChargeService().createPlacementCharge({
+          assetUnitId: asset.id,
+          projectId: input.toProjectId,
+          movementId: movement.id,
+          amountDzd: input.chargeAmountDzd,
+        }, audit)
+      }
     })
 
     return this.getAsset(asset.id)
+  }
+
+  /** getAssetChargeDefault — resolve the prefill for a placement charge (#413). */
+  getAssetChargeDefault(input: InventoryAssetChargeDefaultInput) {
+    return this.requireAssetChargeService().getDefault(input)
+  }
+
+  /** listAssetChargesByUnit — a unit's charge chain, newest first. */
+  listAssetChargesByUnit(input: InventoryAssetChargesListByUnitInput) {
+    return this.requireAssetChargeService().listByUnit(input)
+  }
+
+  /** getProjectCharges — a project's live charges plus their total. */
+  getProjectCharges(input: InventoryAssetChargesListByProjectInput) {
+    return this.requireAssetChargeService().getProjectCharges(input)
+  }
+
+  /** updateAssetCharge — correct a past charge (records from → to + reason). */
+  updateAssetCharge(input: InventoryAssetChargeUpdateInput, auditContext?: MutationAuditContext) {
+    return this.requireAssetChargeService().updateCharge(input, auditContext)
+  }
+
+  /** voidAssetCharge — void a past charge, keeping its history. */
+  voidAssetCharge(input: InventoryAssetChargeVoidInput, auditContext?: MutationAuditContext) {
+    return this.requireAssetChargeService().voidCharge(input, auditContext)
+  }
+
+  private requireAssetChargeService() {
+    if (!this.assetChargeService) {
+      throw new InventoryError("BUSINESS_RULE", "خدمة احتساب العتاد غير متاحة الآن.")
+    }
+
+    return this.assetChargeService
   }
 
   /** transferConsumable. */
   transferConsumable(input: { inventoryEntryId: string; quantity: number; fromWarehouseId?: string | null; fromProjectId?: string | null; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }, auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 
-    normalizePositive(input.quantity, "quantity")
+    const quantity = normalizeQuantity(input.quantity, "quantity")
     validateSingleDestination(input.fromWarehouseId ?? null, input.fromProjectId ?? null, "fromWarehouseId")
     validateSingleDestination(input.toWarehouseId ?? null, input.toProjectId ?? null, "toWarehouseId")
     validateWarehouse(this.repository, input.fromWarehouseId ?? null, "fromWarehouseId")
@@ -611,12 +975,24 @@ export class InventoryService {
       throw new InventoryError("BUSINESS_RULE", "المصدر والوجهة متطابقان، لا توجد حركة مطلوبة.")
     }
 
-    if (!sourceBalance || sourceBalance.quantity < input.quantity) {
+    // Raw compare, not a rounded balance: a stored 0.4999996 must not satisfy a
+    // 0.5 request. The request is already rounded to the quantum above.
+    if (!sourceBalance || sourceBalance.quantity < quantity) {
       throw new InventoryError("BUSINESS_RULE", "الكمية المطلوبة غير متوفرة في الموقع الحالي.")
     }
 
     this.repository.withTransaction(() => {
-      const remainingQty = sourceBalance.quantity - input.quantity
+      // Reject a real shortage against the stored value above, then remove
+      // sub-quantum legacy noise before validating the six-decimal balance move.
+      const normalizedSourceQuantity = roundQuantity(sourceBalance.quantity)
+      const remainingQty = roundQuantity(subtractQuantity(normalizedSourceQuantity, quantity))
+      if (
+        !Number.isFinite(remainingQty) || remainingQty < 0 ||
+        !quantityDifferenceMatches(normalizedSourceQuantity, remainingQty, quantity)
+      ) {
+        throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل خصم الكمية بدقة المخزون.")
+      }
+
       if (remainingQty === 0) {
         // Delete the zero-balance record to satisfy the quantity > 0 DB constraint
         this.repository.deleteConsumableBalance(sourceBalance.id)
@@ -631,14 +1007,22 @@ export class InventoryService {
       })
 
       if (targetBalance) {
-        this.repository.updateConsumableBalanceQuantity(targetBalance.id, targetBalance.quantity + input.quantity)
+        const normalizedTargetQuantity = roundQuantity(targetBalance.quantity)
+        const nextTargetQuantity = roundQuantity(addQuantity(normalizedTargetQuantity, quantity))
+        if (
+          !Number.isFinite(nextTargetQuantity) ||
+          !quantityDifferenceMatches(nextTargetQuantity, normalizedTargetQuantity, quantity)
+        ) {
+          throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل إضافة الكمية بدقة المخزون.")
+        }
+        this.repository.updateConsumableBalanceQuantity(targetBalance.id, nextTargetQuantity)
       } else {
         this.repository.createConsumableBalance({
           inventoryEntryId: entry.id,
           itemDefinitionId: entry.itemDefinitionId,
           warehouseId: input.toWarehouseId ?? null,
           projectId: input.toProjectId ?? null,
-          quantity: input.quantity,
+          quantity,
         })
       }
 
@@ -646,7 +1030,7 @@ export class InventoryService {
         movementType: "TRANSFER",
         itemType: "CONSUMABLE",
         inventoryEntryId: entry.id,
-        quantity: input.quantity,
+        quantity,
         fromWarehouseId: input.fromWarehouseId ?? null,
         fromProjectId: input.fromProjectId ?? null,
         toWarehouseId: input.toWarehouseId ?? null,
@@ -663,8 +1047,7 @@ export class InventoryService {
   async addInvoiceAttachments(invoiceGroupId: string, files: InventoryUploadFile[], auditContext?: MutationAuditContext) {
     this.createMutationAuditContext(auditContext)
 
-    const group = this.repository.getInvoiceGroupById(invoiceGroupId)
-    if (!group) {
+    if (!this.repository.invoiceGroupExists(invoiceGroupId)) {
       throw new InventoryError("NOT_FOUND", "تعذر العثور على الفاتورة المطلوبة.")
     }
 
@@ -685,18 +1068,19 @@ export class InventoryService {
       ])
     }
 
+    for (const file of files) {
+      if (!ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES.has(file.type)) {
+        throw new InventoryError("VALIDATION", `نوع الملف غير مدعوم: ${file.name}`)
+      }
+      if (file.size > MAX_INVOICE_ATTACHMENT_SIZE) {
+        throw new InventoryError("VALIDATION", `حجم الملف كبير جدًا: ${file.name}`)
+      }
+    }
+
     const savedFiles: Array<InventoryStoredUpload> = []
 
     try {
       for (const file of files) {
-        if (!ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES.has(file.type)) {
-          throw new InventoryError("VALIDATION", `نوع الملف غير مدعوم: ${file.name}`)
-        }
-
-        if (file.size > MAX_INVOICE_ATTACHMENT_SIZE) {
-          throw new InventoryError("VALIDATION", `حجم الملف كبير جدًا: ${file.name}`)
-        }
-
         // Read the bytes only after every limit check passes — over-limit
         // requests are rejected before any byte-array copy is allocated
         // (issue #214: lazy bytes owned by the module, not the transport).
@@ -771,6 +1155,14 @@ export class InventoryService {
     }
 
     const amountToRecord = normalizePositive(input.amountDzd, "amountDzd")
+    // Defense-in-depth beyond the wire bound (#475): a legacy invoice row whose
+    // remaining debt is above MAX_MONEY_DZD must not accept an over-bound
+    // payment from a direct caller either (#289 pattern).
+    normalizeMoneyWithinBound(
+      amountToRecord,
+      "amountDzd",
+      `مبلغ الدفع يتجاوز الحد الأقصى المسموح به (${MAX_MONEY_DZD}).`,
+    )
     if (amountToRecord > invoice.remainingDebtDzd) {
       throw new InventoryError("VALIDATION", "المبلغ المدفوع يتجاوز الدين المتبقي.", [
         { field: "amountDzd", message: `لا يمكن دفع أكثر من ${invoice.remainingDebtDzd} دزد.` },
@@ -802,8 +1194,74 @@ export class InventoryService {
     })
   }
 
-/** Create an outbound transfer. */
-  createOutboundTransfer(input: { fromType: "WAREHOUSE" | "PROJECT"; fromId: string; counterpartyId: string; transferType: "SALE" | "GIFT" | "RETURN"; items: Array<{ itemId: string; quantity: number; unitPriceDzd?: number }>; debtAmountDzd?: number; notes?: string | null }, auditContext?: MutationAuditContext) {
+/**
+   * Consume `quantity` of a definition from the balances at one source, oldest
+   * stock first. One `OUTBOUND_SALE` movement is written per balance consumed,
+   * so every movement names the inventory entry it actually drew from — never
+   * the definition id the operator picked.
+   */
+  private consumeConsumableFromSource(input: {
+    balances: InventoryConsumableBalanceRecord[]
+    quantity: number
+    definitionName: string
+    from: { fromWarehouseId?: string; fromProjectId?: string }
+    note: string
+    occurredAt: string
+  }) {
+    // Normalize legacy sub-quantum noise, but roundQuantity leaves values already
+    // on the six-decimal grid untouched. Guard both deltas before any write.
+    const balances = input.balances.map((balance) => ({ ...balance, quantity: roundQuantity(balance.quantity) }))
+
+    let remaining = input.quantity
+    for (const balance of balances) {
+      if (remaining <= 0) break
+      if (balance.quantity <= 0) continue
+
+      const consumed = roundQuantity(Math.min(balance.quantity, remaining))
+      const left = roundQuantity(subtractQuantity(balance.quantity, consumed))
+      const nextRemaining = roundQuantity(subtractQuantity(remaining, consumed))
+      const stockDeltaMatches = quantityDifferenceMatches(balance.quantity, left, consumed)
+      const requestDeltaMatches = quantityDifferenceMatches(remaining, nextRemaining, consumed)
+
+      // At large magnitudes subtraction can do nothing or remove the wrong
+      // quantum. Reject inside the transaction rather than fund a movement
+      // with stock or request remainder that did not decrease by its normalized quantity.
+      if (
+        !Number.isFinite(left) || !Number.isFinite(nextRemaining) ||
+        left < 0 || nextRemaining < 0 ||
+        left >= balance.quantity || nextRemaining >= remaining ||
+        !stockDeltaMatches || !requestDeltaMatches
+      ) {
+        throw new InventoryError("BUSINESS_RULE", "لا يمكن تمثيل خصم الكمية بدقة المخزون.")
+      }
+      if (left > 0) {
+        this.repository.updateConsumableBalanceQuantity(balance.id, left)
+      } else {
+        this.repository.deleteConsumableBalance(balance.id)
+      }
+
+      this.repository.createMovement({
+        movementType: "OUTBOUND_SALE",
+        itemType: "CONSUMABLE",
+        inventoryEntryId: balance.inventoryEntryId,
+        quantity: consumed,
+        ...input.from,
+        note: input.note,
+        occurredAt: input.occurredAt,
+      })
+
+      remaining = nextRemaining
+    }
+
+    // Throw inside the outbound transaction so no partial stock or transfer
+    // writes survive if allocation cannot fulfill the normalized request.
+    if (remaining > 0) {
+      throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${input.definitionName} غير متوفرة.`)
+    }
+  }
+
+  /** Create an outbound transfer. */
+  createOutboundTransfer(input: InventoryOutboundTransferCreateInput, auditContext?: MutationAuditContext) {
     if (!this.debtService) {
       throw new InventoryError("BUSINESS_RULE", "خدمة الدين غير متاحة.")
     }
@@ -820,70 +1278,122 @@ export class InventoryService {
 
     validateExternalCounterparty(this.repository, input.counterpartyId, "counterpartyId")
 
+    const moneyMessage = `يجب إدخال مبلغ صالح لا يتجاوز ${MAX_MONEY_DZD}.`
+    const items = input.items.map((item, index) => ({
+      ...item,
+      quantity: normalizeQuantity(item.quantity, `items.${index}.quantity`),
+      unitPriceDzd: item.unitPriceDzd === undefined
+        ? undefined
+        : normalizeMoneyWithinBound(item.unitPriceDzd, `items.${index}.unitPriceDzd`, moneyMessage),
+    }))
+    const debtAmountDzd = normalizeMoneyWithinBound(input.debtAmountDzd === undefined ? 0 : input.debtAmountDzd, "debtAmountDzd", moneyMessage)
+    const firstPaymentAmountDzd = normalizeMoneyWithinBound(input.firstPaymentAmountDzd === undefined ? 0 : input.firstPaymentAmountDzd, "firstPaymentAmountDzd", moneyMessage)
+
     return this.repository.withTransaction(() => {
       let associatedDebtAccountId: string | undefined
 
-      if (input.debtAmountDzd && input.debtAmountDzd > 0) {
+      if (firstPaymentAmountDzd > debtAmountDzd) {
+        throw new InventoryError("VALIDATION", "الدفعة الأولى تتجاوز مبلغ الدين.", [
+          { field: "firstPaymentAmountDzd", message: "لا يمكن أن تتجاوز الدفعة الأولى مبلغ الدين." },
+        ])
+      }
+
+      if (debtAmountDzd > 0) {
+        // D8: the counterparty received goods, so the debt is a receivable
+        // (they owe us). `debtAmountDzd` is the full transfer value; the ledger
+        // keeps it as the OPENING and posts the collected first payment as a
+        // real PAYMENT, so the running balance is the amount still on credit.
+        const occurredAt = createAlgeriaTimestamp()
         const debtResult = this.debtService!.createDebtAccount(
           {
             partyType: "EXTERNAL_COUNTERPARTY",
             externalCounterpartyId: input.counterpartyId,
-            openingBalanceDzd: input.debtAmountDzd,
+            direction: "RECEIVABLE",
+            openingBalanceDzd: debtAmountDzd,
+            openingEntryDate: occurredAt,
             openingEntryNote: `دين من تحويل إلى ${input.counterpartyId}`,
           },
           auditContext,
         )
         associatedDebtAccountId = debtResult.item.id
+
+        if (firstPaymentAmountDzd > 0) {
+          this.debtService!.createDebtEntry(
+            {
+              debtAccountId: associatedDebtAccountId,
+              entryType: "PAYMENT",
+              signedAmountDzd: -firstPaymentAmountDzd,
+              entryDate: occurredAt,
+              note: `الدفعة الأولى عند التحويل إلى ${input.counterpartyId}`,
+            },
+            auditContext,
+          )
+        }
       }
 
-      for (const item of input.items) {
-        const itemDef = this.repository.getItemDefinitionById(item.itemId)
-        if (!itemDef) {
+      // `item.itemId` is the definition FK; V2 also sends `optionId` for the
+      // concrete balance or asset unit selected. Re-evaluate the shared offer
+      // rule against this source before touching either row.
+      const source: InventoryItemOfferSource = input.fromType === "WAREHOUSE"
+        ? { locationType: "WAREHOUSE", warehouseId: input.fromId }
+        : { locationType: "PROJECT", projectId: input.fromId }
+      const from = outboundFromLocation(source)
+      const note = `تحويل خارجي إلى ${input.counterpartyId}`
+
+      for (const item of items) {
+        const quantity = item.quantity
+
+        const definition = this.repository.getItemDefinitionById(item.itemId)
+        if (!definition) {
           throw new InventoryError("NOT_FOUND", `العنصر ${item.itemId} غير موجود.`)
         }
 
-        if (itemDef.itemType === "CONSUMABLE") {
-          const balance = this.repository.getConsumableBalanceByEntryAndLocation({
-            inventoryEntryId: item.itemId,
-            warehouseId: input.fromType === "WAREHOUSE" ? input.fromId : null,
-            projectId: input.fromType === "PROJECT" ? input.fromId : null,
-          })
+        const stockAtSource = this.repository.listItemStockAtSource({
+          itemDefinitionId: definition.id,
+          source,
+        })
 
-          if (!balance || balance.quantity < item.quantity) {
-            throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${itemDef.name} غير متوفرة.`)
-          }
-
-          const newQuantity = balance.quantity - item.quantity
-          if (newQuantity > 0) {
-            this.repository.updateConsumableBalanceQuantity(balance.id, newQuantity)
-          } else {
-            this.repository.deleteConsumableBalance(balance.id)
-          }
-        } else {
-          const assets = this.repository.listAssetUnitsByLocation({
-            warehouseId: input.fromType === "WAREHOUSE" ? input.fromId : undefined,
-            projectId: input.fromType === "PROJECT" ? input.fromId : undefined,
-          }).slice(0, item.quantity)
-
-          if (assets.length < item.quantity) {
-            throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${itemDef.name} غير متوفرة.`)
-          }
-
-          for (const asset of assets) {
-            this.repository.updateAssetUnitLocation(asset.id, { currentWarehouseId: null, currentProjectId: null })
-          }
+        if (!matchesItemOfferFilter(resolveItemOffer(outboundPickUsage(source)), itemOfferCandidate(definition, stockAtSource))) {
+          throw new InventoryError("BUSINESS_RULE", `العنصر ${definition.name} غير متوفر في الموقع المحدد.`)
         }
 
-        this.repository.createMovement({
-          movementType: "OUTBOUND_SALE",
-          itemType: itemDef.itemType,
-          inventoryEntryId: itemDef.itemType === "CONSUMABLE" ? item.itemId : undefined,
-          quantity: item.quantity,
-          fromWarehouseId: input.fromType === "WAREHOUSE" ? input.fromId : undefined,
-          fromProjectId: input.fromType === "PROJECT" ? input.fromId : undefined,
-          note: `تحويل خارجي إلى ${input.counterpartyId}`,
-          occurredAt: createAlgeriaTimestamp(),
-        })
+        const occurredAt = createAlgeriaTimestamp()
+        if (definition.itemType === "CONSUMABLE") {
+          const balances = item.optionId
+            ? stockAtSource.consumableBalances.filter((balance) => balance.id === item.optionId)
+            : stockAtSource.consumableBalances
+          this.consumeConsumableFromSource({
+            balances,
+            quantity,
+            definitionName: definition.name,
+            from,
+            note,
+            occurredAt,
+          })
+          continue
+        }
+
+        const availableAssets = item.optionId
+          ? stockAtSource.assetUnits.filter((asset) => asset.id === item.optionId)
+          : stockAtSource.assetUnits
+        const assets = availableAssets.slice(0, quantity)
+        if (assets.length < quantity) {
+          throw new InventoryError("BUSINESS_RULE", `الكمية المطلوبة من ${definition.name} غير متوفرة.`)
+        }
+
+        for (const asset of assets) {
+          this.repository.updateAssetUnitLocation(asset.id, { currentWarehouseId: null, currentProjectId: null })
+          this.repository.createMovement({
+            movementType: "OUTBOUND_SALE",
+            itemType: "ASSET",
+            inventoryEntryId: asset.inventoryEntryId,
+            assetUnitId: asset.id,
+            quantity: 1,
+            ...from,
+            note,
+            occurredAt,
+          })
+        }
       }
 
       const transfer = this.repository.createOutboundTransfer(
@@ -892,14 +1402,17 @@ export class InventoryService {
           fromId: input.fromId,
           counterpartyId: input.counterpartyId,
           transferType: input.transferType,
-          items: input.items,
+          items: items.map(({ itemId, quantity, unitPriceDzd }) => ({ itemId, quantity, unitPriceDzd })),
           associatedDebtAccountId,
           notes: input.notes,
         },
         auditContext,
       )
 
-      return transfer
+      // The create contract is `createEntityResultSchema`; the client's
+      // `requireEntitySuccess` reads `.item`, so the bare record here failed
+      // ORPC output validation after a successful write.
+      return successResult("تم إنشاء التحويل الخارجي بنجاح.", transfer)
     })
   }
 
@@ -965,14 +1478,15 @@ export class InventoryService {
     let totalConsumablesRaw = 0
     for (const row of rows) {
       if (row.itemType === "ASSET") {
-        totalAssetsRaw += row.totalPriceDzd
+        totalAssetsRaw = accumulateInventoryReportMoney(totalAssetsRaw, row.totalPriceDzd)
       } else {
-        totalConsumablesRaw += row.totalPriceDzd
+        totalConsumablesRaw = accumulateInventoryReportMoney(totalConsumablesRaw, row.totalPriceDzd)
       }
     }
     const totalAssetsDzd = roundMoney(totalAssetsRaw)
     const totalConsumablesDzd = roundMoney(totalConsumablesRaw)
-    const totalValueDzd = roundMoney(totalAssetsRaw + totalConsumablesRaw)
+    // The cross-sum can leave the bound even when each side is inside it.
+    const totalValueDzd = roundMoney(accumulateInventoryReportMoney(totalAssetsRaw, totalConsumablesRaw))
 
     const locations = new Map<string, {
       locationId: string | null
@@ -995,7 +1509,7 @@ export class InventoryService {
       }
       if (row.itemType === "ASSET") {
         current.assetCount += row.quantity
-        current.assetValueDzd += row.totalPriceDzd
+        current.assetValueDzd = accumulateInventoryReportMoney(current.assetValueDzd, row.totalPriceDzd)
       } else {
         current.consumableCount += row.quantity
       }
@@ -1019,7 +1533,7 @@ export class InventoryService {
         lastUpdated: row.lastUpdated,
       }
       current.quantity += row.quantity
-      current.valueDzd += row.totalPriceDzd
+      current.valueDzd = accumulateInventoryReportMoney(current.valueDzd, row.totalPriceDzd)
       if (row.lastUpdated > current.lastUpdated) {
         current.lastUpdated = row.lastUpdated
       }
@@ -1043,7 +1557,10 @@ export class InventoryService {
       const category =
         age <= 30 ? "0-30_DAYS" : age <= 89 ? "31-90_DAYS" : age <= 179 ? "90-180_DAYS" : "180+_DAYS"
       agingAccumulators[category].count += 1
-      agingAccumulators[category].valueDzd += row.totalPriceDzd
+      agingAccumulators[category].valueDzd = accumulateInventoryReportMoney(
+        agingAccumulators[category].valueDzd,
+        row.totalPriceDzd,
+      )
     }
     const agingAnalysis = (["0-30_DAYS", "31-90_DAYS", "90-180_DAYS", "180+_DAYS"] as const).map(
       (ageCategory) => ({
@@ -1099,10 +1616,10 @@ export class InventoryService {
 
     const byType = (["PURCHASE", "TRANSFER", "OUTBOUND_SALE"] as const).map((movementType) => {
       const ofType = rows.filter(({ movement }) => movement.movementType === movementType)
-      const valueDzd = ofType.reduce(
-        (sum, { movement, unitPriceDzd }) => sum + (unitPriceDzd ?? 0) * movement.quantity,
-        0,
-      )
+      let valueDzd = 0
+      for (const { movement, unitPriceDzd } of ofType) {
+        valueDzd = accumulateInventoryReportMoney(valueDzd, (unitPriceDzd ?? 0) * movement.quantity)
+      }
       return { movementType, count: ofType.length, valueDzd: roundMoney(valueDzd) }
     })
 
@@ -1111,7 +1628,7 @@ export class InventoryService {
       const period = movement.occurredAt.slice(0, 7)
       const current = periods.get(period) ?? { count: 0, valueDzd: 0 }
       current.count += 1
-      current.valueDzd += (unitPriceDzd ?? 0) * movement.quantity
+      current.valueDzd = accumulateInventoryReportMoney(current.valueDzd, (unitPriceDzd ?? 0) * movement.quantity)
       periods.set(period, current)
     }
     const byPeriod = Array.from(periods.entries())
@@ -1134,7 +1651,7 @@ export class InventoryService {
         valueDzd: 0,
       }
       current.receiveCount += 1
-      current.valueDzd += (unitPriceDzd ?? 0) * movement.quantity
+      current.valueDzd = accumulateInventoryReportMoney(current.valueDzd, (unitPriceDzd ?? 0) * movement.quantity)
       destinations.set(key, current)
     }
     const topDestinations = Array.from(destinations.values())

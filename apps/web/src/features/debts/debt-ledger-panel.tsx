@@ -1,8 +1,12 @@
+import { AppDate } from "@/components/app-date"
 /**
  * Debt ledger panel for viewing transaction history.
  * Displays all debt entries with filtering and sorting.
  */
+import { CurrencyProse } from "@/features/shared/currency-prose"
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
 import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
@@ -16,15 +20,18 @@ import {
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
 import { cn } from "@/lib/utils"
 
-import { formatDebtMoney, getDebtAccountBalance, getDebtAccountBalanceMeta, getDebtBalanceMeta, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
+import { formatDebtAmount, formatDebtMoney, getDebtAccountBalanceDisplay, getDebtDirectionLabel, getDebtEntryTypeLabel, sortDebtEntries } from "./debt-utils"
 import { RecordEntryPaymentDialog } from "./record-entry-payment-dialog"
+import { resolveDebtPaymentAction } from "./debt-payment"
+import { DebtPaymentPreview } from "./debt-payment-preview"
 import { VoidEntryDialog } from "./void-entry-dialog"
 
-function DebtStatCard({ label, value, valueClassName }: { label: string; value: string; valueClassName?: string }) {
+function DebtStatCard({ label, value, valueClassName, phrase }: { label: string; value: import("react").ReactNode; valueClassName?: string; phrase?: string }) {
   return (
     <Surface className="rounded-xl px-5 py-4" variant="card">
       <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={cn("mt-2 font-mono text-xl font-semibold", valueClassName)} dir="ltr">
+      {phrase ? <p className={cn("mt-2 text-sm font-semibold", valueClassName)}>{phrase}</p> : null}
+      <p className={cn("mt-1 font-mono text-xl font-semibold", valueClassName)} dir="ltr">
         {value}
       </p>
     </Surface>
@@ -39,56 +46,50 @@ export function DebtLedgerPanel({
   debtEntries,
   title,
 }: {
-  debtAccount: DebtAccount | null
+  debtAccount: DebtAccount
   debtEntries: DebtEntry[]
   title: string
 }) {
   const createDebtEntryMutation = useCreateDebtEntryMutation()
   const settleDebtAccountMutation = useSettleDebtAccountMutation()
+  const { t } = useTranslation()
   const [paymentTargetEntry, setPaymentTargetEntry] = useState<DebtEntry | null>(null)
   const [voidTargetEntry, setVoidTargetEntry] = useState<DebtEntry | null>(null)
   const [entryDate, setEntryDate] = useState(() => getAlgeriaDateInputValue())
   const [note, setNote] = useState("")
   const [signedAmount, setSignedAmount] = useState("")
   const sortedEntries = useMemo(() => sortDebtEntries(debtEntries), [debtEntries])
-  const balanceDzd = getDebtAccountBalance(debtAccount)
-  // Issue #22: the running balance is per-account, so its color and
-  // Arabic label must respect the account's direction. The
-  // direction-agnostic `getDebtBalanceMeta` would label a positive
-  // PAYABLE balance as "لنا عنده" when it actually means "we owe
-  // them" (علينا له).
-  const balanceMeta = debtAccount
-    ? getDebtAccountBalanceMeta(debtAccount)
-    : getDebtAccountBalanceMeta({ currentBalance: 0, direction: "PAYABLE" })
-  const normalizedAmount = signedAmount.trim()
-  const signedAmountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : null
-  const hasValidAmount = signedAmountValue !== null && Number.isFinite(signedAmountValue) && signedAmountValue !== 0
+  const balanceDzd = debtAccount.currentBalance
+  // Issue #22: the running balance is per-account, so its phrase and color
+  // must respect the account's direction. The display helper flips a signed
+  // balance into a positive amount plus a phrase, so a negative balance can
+  // never contradict the direction words.
+  const balance = getDebtAccountBalanceDisplay(debtAccount)
+  const paymentAction = resolveDebtPaymentAction(debtAccount, signedAmount)
+  const paymentBlockedReason = !paymentAction ? "debts.cases.amountInvalid" : createDebtEntryMutation.isPending ? "debts.cases.saving" : null
 
   useEffect(() => {
     setEntryDate(getAlgeriaDateInputValue())
     setNote("")
     setSignedAmount("")
-  }, [debtAccount?.id])
+  }, [debtAccount.id])
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <DebtStatCard
-          label={debtAccount ? `الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}` : "الرصيد الحالي"}
-          value={`دج ${formatDebtMoney(balanceDzd)}`}
-          valueClassName={balanceMeta.textClassName}
+          label={`الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}`}
+          phrase={balance.phrase}
+          value={<CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel="دج" />}
+          valueClassName={balance.textClassName}
         />
-        <DebtStatCard label="الحالة" value={balanceMeta.shortLabel} valueClassName={balanceMeta.textClassName} />
+        <DebtStatCard label="الحالة" value={balance.phrase} valueClassName={balance.textClassName} />
         <DebtStatCard label="عدد القيود" value={String(sortedEntries.length)} />
       </div>
 
       <Surface className="p-5" variant="card">
         <SurfaceHeader
-          description={
-            debtAccount
-              ? "أدخل مبلغًا موجبًا إذا زاد ما لنا عند الطرف، وأدخل مبلغًا سالبًا إذا نزل الرصيد. مثال: +5000 دين جديد، -2000 دفعة وصلت إلينا، +2000 دفعة دفعناها لطرف كنا مدينين له."
-              : "أنشئ الحساب أولًا قبل إضافة الحركات."
-          }
+          description={t("debts.cases.recordPaymentDescription")}
           title={title}
         />
 
@@ -98,31 +99,33 @@ export function DebtLedgerPanel({
             <DatePicker value={entryDate} onChange={setEntryDate} />
           </label>
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">المبلغ الموقّع</span>
-            <CurrencyInput placeholder="مثال: 2500 أو -2500" value={signedAmount} onChange={(event) => setSignedAmount(event.target.value)} />
+            <span className="text-sm font-medium text-foreground">{t("debts.payment.amount")}</span>
+            <CurrencyInput placeholder={t("debts.payment.groupedAmountPlaceholder")} value={signedAmount} onChange={(event) => setSignedAmount(event.target.value)} />
           </label>
           <label className="flex flex-col gap-2 md:col-span-2 xl:col-span-2">
             <span className="text-sm font-medium text-foreground">ملاحظة</span>
-            <Textarea placeholder="وصف مختصر للحركة" value={note} onChange={(event) => setNote(event.target.value)} />
+            <Textarea placeholder={t("debts.payment.ledgerNotePlaceholder")} value={note} onChange={(event) => setNote(event.target.value)} />
           </label>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-muted-foreground">المبلغ يغيّر الرصيد مباشرة: موجب يرفع الرصيد، وسالب يخفضه.</p>
+        <div className="mt-4 space-y-3">
+          {paymentAction ? <DebtPaymentPreview action={paymentAction} direction={debtAccount.direction} /> : null}
+          {paymentBlockedReason ? <p className="text-sm text-destructive" aria-live="polite">{t(paymentBlockedReason)}</p> : null}
           <Button
-            disabled={!debtAccount || !hasValidAmount || createDebtEntryMutation.isPending}
-            onClick={() =>
-              debtAccount
-                ? createDebtEntryMutation.mutate({
-                    debtAccountId: debtAccount.id,
-                    entryDate: entryDate ? toAlgeriaDayBoundaryIso(entryDate, "start") : undefined,
-                    note: note.trim() || null,
-                    signedAmountDzd: signedAmountValue!,
-                  })
-                : undefined
-            }
+            disabled={!paymentAction || createDebtEntryMutation.isPending}
+            onClick={() => {
+              if (!paymentAction) return
+              createDebtEntryMutation.mutate({
+                ...paymentAction.input,
+                entryDate: entryDate ? toAlgeriaDayBoundaryIso(entryDate, "start") : undefined,
+                note: note.trim() || null,
+              }, { onSuccess: () => {
+                setSignedAmount((current) => current === signedAmount ? "" : current)
+                setNote((current) => current === note ? "" : current)
+              } })
+            }}
           >
-            تسجيل الدفعة
+            {t("debts.terminology.buttons.recordPayment")}
           </Button>
         </div>
       </Surface>
@@ -132,26 +135,24 @@ export function DebtLedgerPanel({
           description={
             balanceDzd === 0
               ? "الرصيد مغلق بالفعل."
-              : `سيتم إنشاء حركة تسوية بقيمة ${formatDebtMoney(-balanceDzd)} دج لإرجاع الرصيد إلى صفر.`
+              : <CurrencyProse text={`سيتم إنشاء حركة تسوية بقيمة ${formatDebtAmount(balanceDzd)} دج لإرجاع الرصيد إلى صفر.`} />
           }
           title="تسوية الرصيد"
         />
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <span className={cn("rounded-full border px-3 py-1 text-sm font-medium", balanceMeta.badgeClassName)}>
-            {balanceMeta.description}
+          <span className={cn("rounded-full border px-3 py-1 text-sm font-medium", balance.badgeClassName)}>
+            {balance.description}
           </span>
           <Button
-            disabled={!debtAccount || balanceDzd === 0 || settleDebtAccountMutation.isPending}
+            disabled={balanceDzd === 0 || settleDebtAccountMutation.isPending}
             variant="outline"
             onClick={() =>
-              debtAccount
-                ? settleDebtAccountMutation.mutate({
-                    debtAccountId: debtAccount.id,
-                    entryDate: entryDate ? toAlgeriaDayBoundaryIso(entryDate, "start") : undefined,
-                    note: note.trim() || null,
-                  })
-                : undefined
+              settleDebtAccountMutation.mutate({
+                debtAccountId: debtAccount.id,
+                entryDate: entryDate ? toAlgeriaDayBoundaryIso(entryDate, "start") : undefined,
+                note: note.trim() || null,
+              })
             }
           >
             تسوية إلى صفر
@@ -176,32 +177,35 @@ export function DebtLedgerPanel({
             <tbody>
               {sortedEntries.length > 0 ? (
                 sortedEntries.map((entry) => {
-                  const amountMeta = getDebtBalanceMeta(entry.signedAmountDzd)
+                  // Movement tone follows the account direction: a positive
+                  // movement on a PAYABLE account increases what we owe.
+                  const amountDisplay = getDebtAccountBalanceDisplay({
+                    currentBalance: entry.signedAmountDzd,
+                    direction: debtAccount.direction,
+                  })
                   // balanceAfterDzd is the per-account running balance,
-                  // so its color follows the account direction (same
-                  // convention as the stat card above).
-                  const balanceAfterMeta = debtAccount
-                    ? getDebtAccountBalanceMeta({
-                        currentBalance: entry.balanceAfterDzd,
-                        direction: debtAccount.direction,
-                      })
-                    : getDebtBalanceMeta(entry.balanceAfterDzd)
+                  // so its phrase and color follow the account direction.
+                  const balanceAfter = getDebtAccountBalanceDisplay({
+                    currentBalance: entry.balanceAfterDzd,
+                    direction: debtAccount.direction,
+                  })
 
                   const isLive = entry.status === "LIVE"
 
                   return (
                     <tr key={entry.id} className={cn("border-t border-border/60", !isLive && "opacity-50")}>
                       <td className="px-4 py-4 text-start text-foreground">
-                        {new Intl.DateTimeFormat("ar-DZ").format(new Date(entry.entryDate))}
+                        {<AppDate value={entry.entryDate} />}
                       </td>
                       <td className="px-4 py-4 text-start text-muted-foreground">
                         {getDebtEntryTypeLabel(entry.entryType)}
                       </td>
-                      <td className={cn("px-4 py-4 text-start font-mono", amountMeta.textClassName)} dir="ltr">
-                        دج {formatDebtMoney(entry.signedAmountDzd)}
+                      <td className={cn("px-4 py-4 text-start font-mono", amountDisplay.textClassName)} dir="ltr">
+                        <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel="دج" />
                       </td>
-                      <td className={cn("px-4 py-4 text-start font-mono", balanceAfterMeta.textClassName)} dir="ltr">
-                        دج {formatDebtMoney(entry.balanceAfterDzd)}
+                      <td className={cn("px-4 py-4 text-start font-mono", balanceAfter.textClassName)}>
+                        <span className="block text-xs font-medium">{balanceAfter.phrase}</span>
+                        <span dir="ltr"><CurrencyRun amount={formatDebtAmount(balanceAfter.amount)} currencyLabel="دج" /></span>
                       </td>
                       <td className="px-4 py-4 text-start">
                         {isLive ? (
@@ -257,12 +261,14 @@ export function DebtLedgerPanel({
 
       <RecordEntryPaymentDialog
         entry={paymentTargetEntry}
-        accountCurrentBalance={debtAccount?.currentBalance ?? 0}
+        accountCurrentBalance={debtAccount.currentBalance}
+        accountDirection={debtAccount.direction}
         open={paymentTargetEntry !== null}
         onOpenChange={() => setPaymentTargetEntry(null)}
       />
       <VoidEntryDialog
         entry={voidTargetEntry}
+        accountDirection={debtAccount.direction}
         livePaymentEntries={sortedEntries.filter(e => e.entryType === "PAYMENT" && e.status === "LIVE")}
         open={voidTargetEntry !== null}
         onOpenChange={() => setVoidTargetEntry(null)}

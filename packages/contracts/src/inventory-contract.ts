@@ -1,12 +1,24 @@
 import { oc } from "@orpc/contract"
+import { z } from "zod"
 
 import {
   createDeleteResultSchema,
   createEntityResultSchema,
   createListSchema,
+  cursorPaginationInputSchema,
   idInputSchema,
+  paginatedResultSchema,
 } from "./core"
+import { inventoryItemUsageSchema } from "./inventory-item-usage"
 import {
+  inventoryAssetChargeDefaultInputSchema,
+  inventoryAssetChargeDefaultSchema,
+  inventoryAssetChargeDetailSchema,
+  inventoryAssetChargeSchema,
+  inventoryAssetChargesListByProjectInputSchema,
+  inventoryAssetChargesListByUnitInputSchema,
+  inventoryAssetChargeUpdateInputSchema,
+  inventoryAssetChargeVoidInputSchema,
   inventoryAssetDetailSchema,
   inventoryAssetTransferInputSchema,
   inventoryConsumableTransferInputSchema,
@@ -17,6 +29,7 @@ import {
   inventoryInvoiceGroupRecordPaymentInputSchema,
   inventoryItemDefinitionCreateInputSchema,
   inventoryItemDefinitionListInputSchema,
+  inventoryItemDefinitionOptionSchema,
   inventoryItemDefinitionSchema,
   inventoryItemDefinitionUpdateInputSchema,
   inventoryLocationContentsInputSchema,
@@ -24,6 +37,7 @@ import {
   inventoryMovementSchema,
   inventoryOutboundTransferCreateInputSchema,
   inventoryOutboundTransferSchema,
+  inventoryProjectChargesSchema,
   inventoryTransferHistoryInputSchema,
 } from "./inventory"
 
@@ -37,6 +51,22 @@ export const inventoryContract = {
   inventoryItemDefinitionsGet: oc
     .input(idInputSchema)
     .output(createEntityResultSchema(inventoryItemDefinitionSchema)),
+  /**
+   * inventoryItemDefinitionOptions procedure.
+   *
+   * The paged, usage-scoped read for pickers. Separate from
+   * `inventoryItemDefinitionsList` (unpaged) because the catalog page, the
+   * global search index and the home-view expense selector all depend on the
+   * full unpaged read.
+   */
+  inventoryItemDefinitionOptions: oc
+    .input(
+      cursorPaginationInputSchema.extend({
+        usage: inventoryItemUsageSchema,
+        search: z.string().trim().max(160).optional(),
+      }),
+    )
+    .output(paginatedResultSchema(inventoryItemDefinitionOptionSchema)),
   /** inventoryItemDefinitionsCreate procedure. */
   inventoryItemDefinitionsCreate: oc
     .input(inventoryItemDefinitionCreateInputSchema)
@@ -73,6 +103,26 @@ export const inventoryContract = {
   inventoryAssetsTransfer: oc
     .input(inventoryAssetTransferInputSchema)
     .output(createEntityResultSchema(inventoryAssetDetailSchema)),
+  /** inventoryAssetChargeDefault procedure — resolve the prefill for a placement. */
+  inventoryAssetChargeDefault: oc
+    .input(inventoryAssetChargeDefaultInputSchema)
+    .output(createEntityResultSchema(inventoryAssetChargeDefaultSchema)),
+  /** inventoryAssetChargesListByUnit procedure. */
+  inventoryAssetChargesListByUnit: oc
+    .input(inventoryAssetChargesListByUnitInputSchema)
+    .output(createListSchema(inventoryAssetChargeDetailSchema)),
+  /** inventoryAssetChargesListByProject procedure — charges + project total. */
+  inventoryAssetChargesListByProject: oc
+    .input(inventoryAssetChargesListByProjectInputSchema)
+    .output(createEntityResultSchema(inventoryProjectChargesSchema)),
+  /** inventoryAssetChargesUpdate procedure — correct a past charge. */
+  inventoryAssetChargesUpdate: oc
+    .input(inventoryAssetChargeUpdateInputSchema)
+    .output(createEntityResultSchema(inventoryAssetChargeDetailSchema)),
+  /** inventoryAssetChargesVoid procedure — void a past charge, keeping history. */
+  inventoryAssetChargesVoid: oc
+    .input(inventoryAssetChargeVoidInputSchema)
+    .output(createEntityResultSchema(inventoryAssetChargeDetailSchema)),
   /** inventoryConsumablesTransfer procedure. */
   inventoryConsumablesTransfer: oc
     .input(inventoryConsumableTransferInputSchema)

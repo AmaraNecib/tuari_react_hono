@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { AppShellEmptyHint } from "@/features/shared/table-primitives"
+import { AppShellEmptyHint, TableQueryState, usePaginatedRows } from "@/features/shared/table-primitives"
+import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
 import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
 
 import { useCreateInventoryItemDefinitionMutation, useInventoryItemDefinitionsQuery } from "./inventory-hooks"
@@ -30,9 +31,10 @@ export function InventoryItemDefinitionsPage() {
   const [itemType, setItemType] = useState<"CONSUMABLE" | "ASSET">("CONSUMABLE")
   const [unit, setUnit] = useState("")
   const [description, setDescription] = useState("")
+  const [pendingCreatedId, setPendingCreatedId] = useState<string | null>(null)
 
   async function handleCreate() {
-    await createMutation.mutateAsync({
+    const { item } = await createMutation.mutateAsync({
       name,
       itemType,
       unit: itemType === "CONSUMABLE" ? unit || null : null,
@@ -43,9 +45,24 @@ export function InventoryItemDefinitionsPage() {
     setUnit("")
     setDescription("")
     setItemType("CONSUMABLE")
+    setPendingCreatedId(item.id)
   }
 
-  const items = listQuery.data?.items ?? []
+  const items = useMemo(() => listQuery.data?.items ?? [], [listQuery.data?.items])
+  const { page, pageSize, pagedRows, setPage, setPageSize } = usePaginatedRows({ rows: items })
+
+  // The catalog is ordered by name, and a created definition is inserted in
+  // name order, so it can land on any page. Follow it to the page that now
+  // holds it; otherwise the operator stays on an unchanged page that looks
+  // like a failed create. Set after `mutateAsync` resolves (the hook awaits
+  // its `onSuccess` refetch), so `items` normally already contains the row.
+  useEffect(() => {
+    if (!pendingCreatedId) return
+    const createdIndex = items.findIndex((item) => item.id === pendingCreatedId)
+    if (createdIndex === -1) return
+    setPage(Math.floor(createdIndex / pageSize) + 1)
+    setPendingCreatedId(null)
+  }, [items, pageSize, pendingCreatedId, setPage])
 
   return (
     <div className="space-y-6">
@@ -82,44 +99,59 @@ export function InventoryItemDefinitionsPage() {
       <Surface variant="panel">
         <PageSurfaceContent>
           <SurfaceHeader title={t("inventoryPage.itemDefinitions.currentTitle")} description={t("inventoryPage.itemDefinitions.currentDescription")} />
-          {items.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("inventoryPage.itemDefinitions.nameLabel")}</TableHead>
-                  <TableHead>{t("inventoryPage.itemDefinitions.typeLabel")}</TableHead>
-                  <TableHead>{t("inventoryPage.itemDefinitions.unitLabel")}</TableHead>
-                  <TableHead>{t("inventoryPage.itemDefinitions.descriptionLabel")}</TableHead>
-                  <TableHead>{t("columns.status")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.name}</TableCell>
-                    <TableCell>
-                      {item.itemType === "CONSUMABLE" ? t("inventoryPage.itemDefinitions.typeConsumable") : t("inventoryPage.itemDefinitions.typeAsset")}
-                    </TableCell>
-                    <TableCell>{item.unit ?? "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{item.description ?? "—"}</TableCell>
-                    <TableCell>
-                      <span className={item.isActive ? "text-good" : "text-muted-foreground"}>
-                        {item.isActive ? t("inventoryPage.itemDefinitions.statusActive") : t("inventoryPage.itemDefinitions.statusArchived")}
-                      </span>
-                    </TableCell>
+          <TableQueryState query={listQuery} resource={t("inventoryPage.itemDefinitions.title")}>
+            {items.length > 0 ? (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("inventoryPage.itemDefinitions.nameLabel")}</TableHead>
+                    <TableHead>{t("inventoryPage.itemDefinitions.typeLabel")}</TableHead>
+                    <TableHead>{t("inventoryPage.itemDefinitions.unitLabel")}</TableHead>
+                    <TableHead>{t("inventoryPage.itemDefinitions.descriptionLabel")}</TableHead>
+                    <TableHead>{t("columns.status")}</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <p className="text-sm text-muted-foreground">{t("inventoryPage.itemDefinitions.empty")}</p>
-              <AppShellEmptyHint>{t("inventoryPage.itemDefinitions.emptyHint")}</AppShellEmptyHint>
-              <Button size="sm" onClick={() => void handleCreate()} disabled={name.trim().length === 0}>
-                {t("inventoryPage.itemDefinitions.createButton")}
-              </Button>
-            </div>
-          )}
+                </TableHeader>
+                <TableBody>
+                  {pagedRows.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell>
+                        {item.itemType === "CONSUMABLE" ? t("inventoryPage.itemDefinitions.typeConsumable") : t("inventoryPage.itemDefinitions.typeAsset")}
+                      </TableCell>
+                      <TableCell>{item.unit ?? "—"}</TableCell>
+                      <TableCell className="text-muted-foreground">{item.description ?? "—"}</TableCell>
+                      <TableCell>
+                        <span className={item.isActive ? "text-good" : "text-muted-foreground"}>
+                          {item.isActive ? t("inventoryPage.itemDefinitions.statusActive") : t("inventoryPage.itemDefinitions.statusArchived")}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-12 text-center">
+                <p className="text-sm text-muted-foreground">{t("inventoryPage.itemDefinitions.empty")}</p>
+                <AppShellEmptyHint>{t("inventoryPage.itemDefinitions.emptyHint")}</AppShellEmptyHint>
+                <Button size="sm" onClick={() => void handleCreate()} disabled={name.trim().length === 0}>
+                  {t("inventoryPage.itemDefinitions.createButton")}
+                </Button>
+              </div>
+            )}
+
+            {items.length > 0 && (
+              <TablePaginationControls
+                page={page}
+                pageSize={pageSize}
+                totalCount={items.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize: number) => {
+                  setPage(1)
+                  setPageSize(nextPageSize)
+                }}
+              />
+            )}
+          </TableQueryState>
         </PageSurfaceContent>
       </Surface>
     </div>

@@ -130,6 +130,47 @@ describe("usePaginatedRows", () => {
     await waitFor(() => expect(screen.getByTestId("page").textContent).toBe("2"))
   })
 
+  it("clamps rows on the first render after a shrink, before effects flush", () => {
+    const snapshots: Array<{ page: number; rendered: number }> = []
+
+    function RecordingHarness() {
+      const [rows, setRows] = React.useState(twentyFiveRows)
+      const { page, pagedRows, setPage } = usePaginatedRows({ rows })
+      // Render-phase capture: the first entry after the shrink is the pre-effect
+      // paint, which is exactly the frame a user sees.
+      snapshots.push({ page, rendered: pagedRows.length })
+      return (
+        <div>
+          <button type="button" onClick={() => setPage(3)}>
+            record-page-3
+          </button>
+          <button type="button" onClick={() => setRows(rows.slice(0, 12))}>
+            record-shrink-12
+          </button>
+          <ul>
+            {pagedRows.map((row) => (
+              <li key={row}>{row}</li>
+            ))}
+          </ul>
+        </div>
+      )
+    }
+
+    render(<RecordingHarness />)
+    fireEvent.click(screen.getByText("record-page-3"))
+    expect(screen.getAllByRole("listitem")).toHaveLength(5)
+
+    snapshots.length = 0
+    fireEvent.click(screen.getByText("record-shrink-12"))
+
+    // 12 rows / pageSize 10 → max page 2. The first render after the shrink must
+    // already show page 2 with its 2 rows; a clamp that ran only in an effect
+    // returned page 3 / [] here.
+    expect(snapshots[0]).toEqual({ page: 2, rendered: 2 })
+    expect(screen.getByText("row-11")).toBeTruthy()
+    expect(screen.getByText("row-12")).toBeTruthy()
+  })
+
   it("lands on page 1 when the rows shrink all the way to empty", async () => {
     function EmptyShrinkHarness() {
       const [rows, setRows] = React.useState(twentyFiveRows)
@@ -283,6 +324,30 @@ describe("DateRangeFilter", () => {
     expect(screen.getByText("إلى تاريخ")).toBeTruthy()
     // Two DatePicker trigger buttons (placeholders render inside them).
     expect(screen.getAllByRole("button")).toHaveLength(2)
+  })
+
+  it("emits the picked day as canonical yyyy-MM-dd, not the dd/MM/yyyy display (#428)", () => {
+    const onFrom = vi.fn()
+
+    render(
+      <DateRangeFilter
+        fromLabel="من تاريخ"
+        toLabel="إلى تاريخ"
+        fromDate="2026-10-01"
+        toDate=""
+        onFromDateChange={onFrom}
+        onToDateChange={vi.fn()}
+      />,
+    )
+
+    const trigger = document.querySelector<HTMLElement>('[data-slot="popover-trigger"]')
+    expect(trigger).not.toBeNull()
+    fireEvent.click(trigger!)
+    const cell = document.querySelector('[data-day="2026-10-15"]')
+    expect(cell).not.toBeNull()
+    fireEvent.click(cell!.querySelector("button")!)
+
+    expect(onFrom).toHaveBeenCalledWith("2026-10-15")
   })
 })
 

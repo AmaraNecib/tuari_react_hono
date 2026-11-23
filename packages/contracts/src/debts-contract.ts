@@ -21,7 +21,6 @@ import {
   debtPartyDetailSchema,
   debtSettlementInputSchema,
   debtsSummarySchema,
-  employeeDebtAccountGetInputSchema,
   employeeDebtEntryCreateInputSchema,
   externalCounterpartyCreateInputSchema,
   externalCounterpartyListInputSchema,
@@ -72,9 +71,6 @@ export const debtsContract = {
   employeeDebtEntryCreate: oc
     .input(employeeDebtEntryCreateInputSchema)
     .output(createEntityResultSchema(debtEntrySchema)),
-  employeeDebtAccountGet: oc
-    .input(employeeDebtAccountGetInputSchema)
-    .output(createEntityResultSchema(debtAccountSchema)),
 } as const
 
 export type DebtsContract = typeof debtsContract

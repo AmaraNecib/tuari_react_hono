@@ -16,6 +16,7 @@ import {
   debtConsolidationInputSchema,
   debtEntryVoidInputSchema,
   debtReasonCategoryDirectionMap,
+  getLockedDirectionForCategory,
   debtSummaryItemSchema,
   debtsSummarySchema,
   directDebtEntryCreateInputSchema,
@@ -25,6 +26,7 @@ import {
   employeeBatchCreateRowInputSchema,
   employeeBatchLimit,
   employeeCreateInputSchema,
+  employeeDebtEntryCreateInputSchema,
   employeeProjectAssignmentSchema,
   employeeSalaryPaymentCreateInputSchema,
   employeeUpdateInputSchema,
@@ -34,16 +36,43 @@ import {
   invoiceDirectionSchema,
   invoiceMarkPaidInputSchema,
   invoiceSchema,
+  inventoryAssetChargeDefaultSchema,
+  inventoryAssetChargeRevisionSchema,
+  inventoryAssetChargeSchema,
+  inventoryAssetDetailSchema,
+  inventoryAssetTransferInputSchema,
+  inventoryAssetUnitCreateInputSchema,
+  inventoryAssetUnitSchema,
+  inventoryConsumableEntryCreateInputSchema,
+  inventoryContract,
+  inventoryInvoiceGroupCreateInputSchema,
+  inventoryInvoiceGroupDetailSchema,
+  inventoryInvoiceGroupRecordPaymentInputSchema,
+  inventoryInvoiceGroupSchema,
+  inventoryLocationContentsSchema,
+  inventoryProjectChargesSchema,
+  inventoryReportSchema,
+  debtReportSchema,
+  movementReportSchema,
+  MAX_MONEY_DZD,
   managerAssignmentCreateInputSchema,
   phonePasswordSignInSchema,
   projectAssignmentCreateInputSchema,
   projectSchema,
+  projectCostInputSchema,
+  projectCostSchema,
+  projectCostExpenseRowSchema,
+  projectCostMaterialMovementSchema,
+  projectCostPartsSchema,
   recurringPatternSchema,
   reportFilterInputSchema,
   paymentAmountSchema,
+  roundMoney,
   paymentListLimitSchema,
   paymentListInputSchema,
+  nonNegativePaymentAmountSchema,
   revokeRecoveryKeyInputSchema,
+  storedMoneyDzdSchema,
   roleCreateInputSchema,
   sessionUserSchema,
   systemLogEntrySchema,
@@ -369,15 +398,14 @@ describe("contracts", () => {
 
   it("accepts a required employee identity shape", () => {
     expect(
-        employeeSchema.parse({
-          id: "employee-1",
-          firstName: "Amara",
-          lastName: "Necib",
-          phone: "0612345678",
-          roleId: "role-worker",
-          status: "ACTIVE",
-          salaryAmountDzd: 4500,
-          salaryPeriod: "DAILY",
+      employeeSchema.parse({
+        id: "employee-1",
+        firstName: "Amara",
+        lastName: "Necib",
+        phone: "0612345678",
+        roleId: "role-worker",
+        status: "ACTIVE",
+        salaryReference: null,
         notes: null,
         occupation: null,
         createdAt: "2026-03-13T10:00:00.000Z",
@@ -536,6 +564,7 @@ describe("contracts", () => {
       debtAccountCreateInputSchema.parse({
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: "counterparty-1",
+        direction: "PAYABLE",
         openingBalanceDzd: 1200,
       }).partyType,
     ).toBe("EXTERNAL_COUNTERPARTY")
@@ -555,8 +584,140 @@ describe("contracts", () => {
         partyType: "INTERNAL_WORKER",
         workerId: "worker-1",
         externalCounterpartyId: "counterparty-1",
+        direction: "PAYABLE",
       }),
     ).toThrowError()
+  })
+
+  it("requires a direction on createDebtAccount (no silent PAYABLE default)", () => {
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        openingBalanceDzd: 500,
+      }),
+    ).toThrowError()
+
+    // The direction is required even when a category locks it: the caller
+    // must still state the ledger it means.
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        openingBalanceDzd: 500,
+        reasonCategory: "SALARY_ADVANCE",
+      }),
+    ).toThrowError()
+
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 500,
+      }).direction,
+    ).toBe("RECEIVABLE")
+  })
+
+  it("rejects a negative opening balance (the direction carries the sign)", () => {
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+        openingBalanceDzd: -500,
+      }),
+    ).toThrowError()
+
+    // Zero is not a positive opening; omit the field to open an empty account.
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 0,
+      }),
+    ).toThrowError()
+
+    // A positive opening, or no opening at all, is accepted.
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+        openingBalanceDzd: 500,
+      }).openingBalanceDzd,
+    ).toBe(500)
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+      }).openingBalanceDzd,
+    ).toBeUndefined()
+  })
+
+  it("rejects a debt account whose direction contradicts its reason category (D2)", () => {
+    expect(() =>
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "PAYABLE",
+        reasonCategory: "SALARY_ADVANCE",
+      }),
+    ).toThrowError()
+
+    // A matching direction is accepted; the category locks it.
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "RECEIVABLE",
+        reasonCategory: "SALARY_ADVANCE",
+      }).direction,
+    ).toBe("RECEIVABLE")
+
+    // An explicit direction with no reason category is accepted (the debt
+    // cases panel shape); the lock only applies when a category is present.
+    expect(
+      debtAccountCreateInputSchema.parse({
+        partyType: "INTERNAL_WORKER",
+        workerId: "worker-1",
+        direction: "PAYABLE",
+      }).direction,
+    ).toBe("PAYABLE")
+  })
+
+  it("rejects an employee debt entry whose direction contradicts its reason category (D2)", () => {
+    expect(() =>
+      employeeDebtEntryCreateInputSchema.parse({
+        employeeId: "worker-1",
+        entryType: "OPENING",
+        amountDzd: 500,
+        direction: "PAYABLE",
+        reasonCategory: "SALARY_ADVANCE",
+      }),
+    ).toThrowError()
+  })
+
+  it("rejects an employee ADVANCE sent as PAYABLE (D1a)", () => {
+    expect(() =>
+      employeeDebtEntryCreateInputSchema.parse({
+        employeeId: "worker-1",
+        entryType: "ADVANCE",
+        amountDzd: 500,
+        direction: "PAYABLE",
+      }),
+    ).toThrowError()
+
+    expect(
+      employeeDebtEntryCreateInputSchema.parse({
+        employeeId: "worker-1",
+        entryType: "ADVANCE",
+        amountDzd: 500,
+        direction: "RECEIVABLE",
+      }).direction,
+    ).toBe("RECEIVABLE")
   })
 
   it("accepts debt entities in the shared contract", () => {
@@ -624,7 +785,7 @@ describe("contracts", () => {
         status: "OPEN",
         direction: "RECEIVABLE",
         currentBalance: 500,
-        balanceLabel: "لنا عنده",
+        balanceLabel: "مستحق لنا",
         createdAt: "2026-03-17T10:00:00.000Z",
         updatedAt: "2026-03-17T10:00:00.000Z",
       }).direction,
@@ -667,7 +828,7 @@ describe("contracts", () => {
         phoneNumber: "0612345678",
         note: null,
         totalBalanceDzd: 200,
-        balanceLabel: "لنا عنده",
+        balanceLabel: "مستحق لنا",
         debtAccounts: [],
       }).totalBalanceDzd,
     ).toBe(200)
@@ -682,7 +843,7 @@ describe("contracts", () => {
             displayName: "عامل واحد",
             phoneNumber: "0612345678",
             totalBalanceDzd: 200,
-            balanceLabel: "لنا عنده",
+            balanceLabel: "مستحق لنا",
             openDebtCasesCount: 1,
             settledDebtCasesCount: 1,
             latestActivityAt: "2026-03-17T10:00:00.000Z",
@@ -712,8 +873,10 @@ describe("contracts", () => {
   })
 
   it("derives direction from reason category (category locks direction)", () => {
-    // SALARY_ADVANCE and REIMBURSEMENT are PAYABLE
-    expect(debtReasonCategoryDirectionMap.SALARY_ADVANCE).toBe("PAYABLE");
+    // SALARY_ADVANCE is RECEIVABLE: paying a worker ahead of earned work makes
+    // the worker the debtor (owner decision D1a).
+    expect(debtReasonCategoryDirectionMap.SALARY_ADVANCE).toBe("RECEIVABLE");
+    // REIMBURSEMENT and DIRECT_LOAN_TAKEN stay PAYABLE.
     expect(debtReasonCategoryDirectionMap.REIMBURSEMENT).toBe("PAYABLE");
     expect(debtReasonCategoryDirectionMap.DIRECT_LOAN_TAKEN).toBe("PAYABLE");
 
@@ -728,6 +891,10 @@ describe("contracts", () => {
 
     // INVOICE_DRIVEN is unconstrained (derived from invoice direction)
     expect(debtReasonCategoryDirectionMap.INVOICE_DRIVEN).toBe("UNCONSTRAINED");
+
+    // getLockedDirectionForCategory returns null for unconstrained categories
+    expect(getLockedDirectionForCategory("OTHER")).toBeNull();
+    expect(getLockedDirectionForCategory("SALARY_ADVANCE")).toBe("RECEIVABLE");
   });
 
   it("validates reason category on debt entry create input", () => {
@@ -1600,6 +1767,16 @@ describe("contracts", () => {
       expect(paymentListInputSchema.parse({}).limit).toBe(50);
       expect(paymentListInputSchema.safeParse({ limit: 2.5 }).success).toBe(false);
     });
+
+    it("roundMoney snaps float noise to cents and leaves cent-less magnitudes unchanged", () => {
+      expect(roundMoney(0.1 + 0.2)).toBe(0.3);
+      expect(roundMoney(1.006)).toBe(1.01);
+      expect(roundMoney(1.004)).toBe(1);
+      // Past MAX_MONEY_DZD / 100 the multiply overflows integer precision, so
+      // the value is returned unchanged rather than corrupted (the old helper
+      // returned MAX - 2 for an input of MAX - 1).
+      expect(roundMoney(Number.MAX_SAFE_INTEGER - 1)).toBe(Number.MAX_SAFE_INTEGER - 1);
+    });
   });
 
   describe("recurring patterns contract surface", () => {
@@ -1642,6 +1819,642 @@ describe("contracts", () => {
       expect(() =>
         recurringPatternSchema.parse({ ...input, frequency: "YEARLY" }),
       ).toThrow();
+    });
+  });
+  describe("inventory stock charge contracts (#413)", () => {
+    const charge = {
+      id: "charge-1",
+      assetUnitId: "asset-1",
+      projectId: "project-a",
+      projectName: "مشروع أ",
+      movementId: "movement-1",
+      amountDzd: 100_000,
+      status: "LIVE" as const,
+      voidedAt: null,
+      voidReason: null,
+      createdAt: "2026-06-01T00:00:00.000Z",
+      updatedAt: "2026-06-01T00:00:00.000Z",
+    };
+
+    it("nonNegativePaymentAmountSchema allows zero but shares the paymentAmountSchema magnitude bound", () => {
+      for (const bad of [-1, -0.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1, 2 ** 53]) {
+        expect(nonNegativePaymentAmountSchema.safeParse(bad).success).toBe(false);
+      }
+      for (const good of [0, 0.5, 1, Number.MAX_SAFE_INTEGER]) {
+        expect(nonNegativePaymentAmountSchema.safeParse(good).success).toBe(true);
+      }
+      // One money rule: the two schemas agree on the magnitude boundary.
+      expect(nonNegativePaymentAmountSchema.safeParse(Number.MAX_SAFE_INTEGER).success).toBe(
+        paymentAmountSchema.safeParse(Number.MAX_SAFE_INTEGER).success,
+      );
+    });
+
+    it("storedMoneyDzdSchema is a permissive read boundary: it represents an above-bound row, not an invalid one", () => {
+      // The read shape spans the DDL's real domain (`>= 0`), so a legacy row
+      // above MAX_MONEY_DZD must parse; non-finite and negative values must not.
+      expect(storedMoneyDzdSchema.safeParse(Number.MAX_SAFE_INTEGER + 1).success).toBe(true);
+      expect(storedMoneyDzdSchema.safeParse(0).success).toBe(true);
+      for (const bad of [-1, -0.5, NaN, Infinity, -Infinity]) {
+        expect(storedMoneyDzdSchema.safeParse(bad).success).toBe(false);
+      }
+    });
+
+    it("the transfer input accepts an omitted/null/zero charge and rejects a negative one", () => {
+      const base = { assetUnitId: "asset-1", toProjectId: "project-a" };
+      expect(inventoryAssetTransferInputSchema.safeParse(base).success).toBe(true);
+      expect(inventoryAssetTransferInputSchema.safeParse({ ...base, chargeAmountDzd: null }).success).toBe(true);
+      expect(inventoryAssetTransferInputSchema.safeParse({ ...base, chargeAmountDzd: 0 }).success).toBe(true);
+      expect(inventoryAssetTransferInputSchema.safeParse({ ...base, chargeAmountDzd: 80_000 }).success).toBe(true);
+      expect(inventoryAssetTransferInputSchema.safeParse({ ...base, chargeAmountDzd: -1 }).success).toBe(false);
+    });
+
+    it("the charge schema requires a project and a LIVE/VOID status", () => {
+      expect(inventoryAssetChargeSchema.safeParse(charge).success).toBe(true);
+      expect(inventoryAssetChargeSchema.safeParse({ ...charge, status: "ARCHIVED" }).success).toBe(false);
+      expect(inventoryAssetChargeSchema.safeParse({ ...charge, amountDzd: -1 }).success).toBe(false);
+      expect(inventoryAssetChargeSchema.safeParse({ ...charge, projectId: undefined }).success).toBe(false);
+    });
+
+    it("the revision schema records from → to (null on a void)", () => {
+      const revision = {
+        id: "rev-1",
+        chargeId: "charge-1",
+        previousAmountDzd: 100_000,
+        newAmountDzd: 75_000,
+        reason: "خصم",
+        actorUserId: "user-1",
+        actorLabel: "مدير",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      };
+      expect(inventoryAssetChargeRevisionSchema.safeParse(revision).success).toBe(true);
+      expect(inventoryAssetChargeRevisionSchema.safeParse({ ...revision, newAmountDzd: null }).success).toBe(true);
+      expect(inventoryAssetChargeRevisionSchema.safeParse({ ...revision, previousAmountDzd: -1 }).success).toBe(false);
+    });
+
+    it("the default schema carries the resolved amount, purchase price and source", () => {
+      expect(
+        inventoryAssetChargeDefaultSchema.safeParse({
+          assetUnitId: "asset-1",
+          amountDzd: 100_000,
+          purchasePriceDzd: 100_000,
+          source: "PURCHASE_PRICE",
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryAssetChargeDefaultSchema.safeParse({
+          assetUnitId: "asset-1",
+          amountDzd: 80_000,
+          purchasePriceDzd: 100_000,
+          source: "LAST_CHARGE",
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryAssetChargeDefaultSchema.safeParse({
+          assetUnitId: "asset-1",
+          amountDzd: 1,
+          purchasePriceDzd: 1,
+          source: "GUESS",
+        }).success,
+      ).toBe(false);
+    });
+
+    it("the project charges schema exposes a non-negative total", () => {
+      expect(
+        inventoryProjectChargesSchema.safeParse({ projectId: "project-a", totalDzd: 0, charges: [] }).success,
+      ).toBe(true);
+      expect(
+        inventoryProjectChargesSchema.safeParse({ projectId: "project-a", totalDzd: Number.MAX_SAFE_INTEGER, charges: [] })
+          .success,
+      ).toBe(true);
+      expect(
+        inventoryProjectChargesSchema.safeParse({ projectId: "project-a", totalDzd: -1, charges: [] }).success,
+      ).toBe(false);
+      // The aggregate obeys the same magnitude bound as each charge, so a sum
+      // above it cannot be represented and must not be emitted (#422 round 2).
+      expect(
+        inventoryProjectChargesSchema.safeParse({
+          projectId: "project-a",
+          totalDzd: Number.MAX_SAFE_INTEGER + 1,
+          charges: [],
+        }).success,
+      ).toBe(false);
+    });
+
+    it("bounds the invoice asset purchase price INPUT with the same money rule as the charge", () => {
+      const assetInput = { assetName: "مثقاب", purchasePriceDzd: Number.MAX_SAFE_INTEGER };
+      expect(inventoryAssetUnitCreateInputSchema.safeParse(assetInput).success).toBe(true);
+      expect(
+        inventoryAssetUnitCreateInputSchema.safeParse({ ...assetInput, purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 })
+          .success,
+      ).toBe(false);
+
+      const invoiceInput = {
+        entries: [
+          {
+            kind: "ASSET" as const,
+            itemDefinitionId: "def-1",
+            projectId: "project-a",
+            assets: [assetInput],
+          },
+        ],
+      };
+      expect(inventoryInvoiceGroupCreateInputSchema.safeParse(invoiceInput).success).toBe(true);
+      expect(
+        inventoryInvoiceGroupCreateInputSchema.safeParse({
+          ...invoiceInput,
+          entries: [
+            {
+              ...invoiceInput.entries[0],
+              assets: [{ assetName: "مثقاب", purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 }],
+            },
+          ],
+        }).success,
+      ).toBe(false);
+    });
+
+    it("reads back an asset stored above the write bound through the detail and list responses (#413 round 3)", () => {
+      // The DDL only enforces `purchase_price_dzd >= 0`, and the field predates
+      // the MAX_MONEY_DZD gate, so a row above the bound genuinely exists. The
+      // READ schemas must represent it — only the INPUT gate refuses a new one.
+      const storedAsset = {
+        id: "asset-1",
+        inventoryEntryId: "entry-1",
+        assetName: "مثقاب",
+        assetTag: null,
+        serialNumber: null,
+        condition: null,
+        purchaseDate: null,
+        purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1,
+        currentWarehouseId: null,
+        currentProjectId: "project-a",
+        currentLocationLabel: null,
+        note: null,
+        createdAt: "2026-06-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+      };
+
+      expect(inventoryAssetUnitSchema.safeParse(storedAsset).success).toBe(true);
+
+      const invoiceGroup = {
+        id: "group-1",
+        invoiceNumber: null,
+        supplierName: null,
+        invoiceDate: null,
+        warehouseId: null,
+        projectId: "project-a",
+        externalCounterpartyId: null,
+        grossTotalDzd: 0,
+        paidAmountDzd: 0,
+        remainingDebtDzd: 0,
+        debtAccountId: null,
+        note: null,
+        createdAt: "2026-06-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+      };
+      const movement = {
+        id: "movement-1",
+        movementType: "PURCHASE",
+        itemType: "ASSET",
+        inventoryEntryId: "entry-1",
+        assetUnitId: "asset-1",
+        quantity: 1,
+        fromWarehouseId: null,
+        fromProjectId: null,
+        toWarehouseId: null,
+        toProjectId: "project-a",
+        note: null,
+        occurredAt: "2026-06-01T00:00:00.000Z",
+        createdAt: "2026-06-01T00:00:00.000Z",
+      };
+
+      // asset detail (the `asset` field is the same read schema)
+      expect(
+        inventoryAssetDetailSchema.safeParse({
+          asset: storedAsset,
+          invoiceGroup,
+          movements: [movement],
+          charges: [{ ...charge, revisions: [] }],
+        }).success,
+      ).toBe(true);
+
+      // invoice detail (entry + asset)
+      expect(
+        inventoryInvoiceGroupDetailSchema.safeParse({
+          group: invoiceGroup,
+          entries: [
+            {
+              id: "entry-1",
+              invoiceGroupId: "group-1",
+              itemDefinitionId: "def-1",
+              warehouseId: null,
+              projectId: "project-a",
+              itemType: "ASSET",
+              itemName: "مثقاب",
+              unit: null,
+              quantity: 1,
+              unitPriceDzd: Number.MAX_SAFE_INTEGER + 1,
+              totalPriceDzd: Number.MAX_SAFE_INTEGER + 1,
+              note: null,
+              createdAt: "2026-06-01T00:00:00.000Z",
+              updatedAt: "2026-06-01T00:00:00.000Z",
+              assets: [storedAsset],
+            },
+          ],
+          attachments: [],
+          movements: [movement],
+          consumableBalances: [],
+        }).success,
+      ).toBe(true);
+
+      // location contents (list path)
+      expect(inventoryLocationContentsSchema.safeParse({ assets: [storedAsset], consumables: [] }).success).toBe(true);
+
+      // a charge row and its revision read back with their stored amounts
+      expect(
+        inventoryAssetChargeSchema.safeParse({ ...charge, amountDzd: Number.MAX_SAFE_INTEGER + 1 }).success,
+      ).toBe(true);
+      expect(
+        inventoryAssetChargeRevisionSchema.safeParse({
+          id: "rev-1",
+          chargeId: "charge-1",
+          previousAmountDzd: Number.MAX_SAFE_INTEGER + 1,
+          newAmountDzd: null,
+          reason: null,
+          actorUserId: null,
+          actorLabel: null,
+          createdAt: "2026-06-01T00:00:00.000Z",
+        }).success,
+      ).toBe(true);
+    });
+
+    it("refuses to USE an unrepresentable default while echoing a legacy above-bound price (#413 round 3)", () => {
+      // The echoed purchase price may be a legacy row, so it reads back; the
+      // amount a placement would USE keeps the write bound.
+      expect(
+        inventoryAssetChargeDefaultSchema.safeParse({
+          assetUnitId: "asset-1",
+          amountDzd: 80_000,
+          purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1,
+          source: "LAST_CHARGE",
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryAssetChargeDefaultSchema.safeParse({
+          assetUnitId: "asset-1",
+          amountDzd: Number.MAX_SAFE_INTEGER + 1,
+          purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1,
+          source: "PURCHASE_PRICE",
+        }).success,
+      ).toBe(false);
+    });
+
+    it("the asset detail requires a charges array", () => {
+      // Omit `charges` entirely. The other fields are deliberately empty, but
+      // the error list must still name `charges` as missing. Asserting only
+      // that the schema has a `charges` key would pass even if it were optional.
+      const parsed = inventoryAssetDetailSchema.safeParse({
+        asset: {},
+        invoiceGroup: {},
+        movements: [],
+      });
+      expect(parsed.success).toBe(false);
+      if (parsed.success) throw new Error("expected the parse to fail");
+      expect(parsed.error.issues.some((issue) => issue.path[0] === "charges")).toBe(true);
+
+      // Required, not non-empty: an empty chain is a legal asset detail.
+      expect(inventoryAssetDetailSchema.shape.charges.safeParse([]).success).toBe(true);
+    });
+
+    it("advertises the charge procedures on the inventory contract", () => {
+      for (const key of [
+        "inventoryAssetChargeDefault",
+        "inventoryAssetChargesListByUnit",
+        "inventoryAssetChargesListByProject",
+        "inventoryAssetChargesUpdate",
+        "inventoryAssetChargesVoid",
+      ]) {
+        expect(key in inventoryContract).toBe(true);
+        expect(key in appContract).toBe(true);
+      }
+    });
+  });
+
+  describe("invoice money bound (#429)", () => {
+    const consumableInput = {
+      kind: "CONSUMABLE" as const,
+      itemDefinitionId: "def-1",
+      warehouseId: "wh-1",
+      quantity: 2,
+      unitPriceDzd: 500,
+      totalPriceDzd: 1_000,
+    };
+
+    it("bounds the consumable line money INPUT with the shared money rule", () => {
+      expect(inventoryConsumableEntryCreateInputSchema.safeParse(consumableInput).success).toBe(true);
+      // Unit prices use the exact four-place codec's signed-int64 range.
+      expect(
+        inventoryConsumableEntryCreateInputSchema.safeParse({
+          ...consumableInput,
+          unitPriceDzd: 922_337_203_685_477.5,
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryConsumableEntryCreateInputSchema.safeParse({
+          ...consumableInput,
+          unitPriceDzd: 922_337_203_685_477.6,
+        }).success,
+      ).toBe(false);
+      expect(
+        inventoryConsumableEntryCreateInputSchema.safeParse({
+          ...consumableInput,
+          unitPriceDzd: Number.MAX_SAFE_INTEGER,
+        }).success,
+      ).toBe(false);
+      // Final line totals retain the shared money schema's separate bound.
+      expect(
+        inventoryConsumableEntryCreateInputSchema.safeParse({
+          ...consumableInput,
+          totalPriceDzd: MAX_MONEY_DZD,
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryConsumableEntryCreateInputSchema.safeParse({
+          ...consumableInput,
+          totalPriceDzd: MAX_MONEY_DZD + 1,
+        }).success,
+      ).toBe(false);
+    });
+
+    it("bounds the initial paid amount INPUT, keeping the omitted/null/zero forms", () => {
+      const debtInvoiceInput = {
+        externalCounterpartyId: "cp-1",
+        createDebt: true,
+        paymentInputType: "AMOUNT" as const,
+        entries: [consumableInput],
+      };
+      for (const paidAmountDzd of [undefined, null, 0]) {
+        expect(
+          inventoryInvoiceGroupCreateInputSchema.safeParse({ ...debtInvoiceInput, paidAmountDzd }).success,
+        ).toBe(true);
+      }
+      expect(
+        inventoryInvoiceGroupCreateInputSchema.safeParse({
+          ...debtInvoiceInput,
+          paidAmountDzd: Number.MAX_SAFE_INTEGER,
+        }).success,
+      ).toBe(true);
+      expect(
+        inventoryInvoiceGroupCreateInputSchema.safeParse({
+          ...debtInvoiceInput,
+          paidAmountDzd: Number.MAX_SAFE_INTEGER + 1,
+        }).success,
+      ).toBe(false);
+    });
+
+    it("reads the invoice group totals back as a permissive stored shape, not a strict output bound (#429)", () => {
+      const group = {
+        id: "group-1",
+        invoiceNumber: null,
+        supplierName: null,
+        invoiceDate: null,
+        warehouseId: null,
+        projectId: null,
+        externalCounterpartyId: null,
+        grossTotalDzd: 1_000,
+        paidAmountDzd: 200,
+        remainingDebtDzd: 800,
+        debtAccountId: null,
+        note: null,
+        createdAt: "2026-06-01T00:00:00.000Z",
+        updatedAt: "2026-06-01T00:00:00.000Z",
+      };
+      expect(inventoryInvoiceGroupSchema.safeParse(group).success).toBe(true);
+      for (const field of ["grossTotalDzd", "paidAmountDzd", "remainingDebtDzd"] as const) {
+        // A legacy row above MAX_MONEY_DZD must still read back: the write
+        // gate (`accumulateGrossTotal` + the input bounds), not the read
+        // shape, is what keeps a new total in range (#413 round 3).
+        expect(
+          inventoryInvoiceGroupSchema.safeParse({ ...group, [field]: Number.MAX_SAFE_INTEGER + 1 }).success,
+        ).toBe(true);
+        for (const bad of [-1, NaN, Infinity, -Infinity]) {
+          expect(inventoryInvoiceGroupSchema.safeParse({ ...group, [field]: bad }).success).toBe(false);
+        }
+      }
+    });
+  });
+
+  describe("remaining inventory money bound + report aggregates (#475)", () => {
+    const aboveBound = MAX_MONEY_DZD + 1;
+
+    it("bounds the record-payment amount INPUT with the shared positive money rule", () => {
+      const valid = { invoiceGroupId: "group-1", amountDzd: 500 };
+      expect(inventoryInvoiceGroupRecordPaymentInputSchema.safeParse(valid).success).toBe(true);
+      expect(
+        inventoryInvoiceGroupRecordPaymentInputSchema.safeParse({
+          ...valid,
+          amountDzd: MAX_MONEY_DZD,
+        }).success,
+      ).toBe(true);
+      // Above the bound the payment is no longer representable.
+      expect(
+        inventoryInvoiceGroupRecordPaymentInputSchema.safeParse({
+          ...valid,
+          amountDzd: aboveBound,
+        }).success,
+      ).toBe(false);
+      // Still a POSITIVE amount: zero and negatives stay refused.
+      for (const bad of [0, -1, NaN, Infinity]) {
+        expect(
+          inventoryInvoiceGroupRecordPaymentInputSchema.safeParse({ ...valid, amountDzd: bad }).success,
+        ).toBe(false);
+      }
+    });
+
+    it("bounds the computed report money fields with the shared money rule", () => {
+      const inventoryReport = {
+        type: "INVENTORY",
+        generatedAt: "2026-06-01T00:00:00.000Z",
+        summary: { totalAssetsDzd: 100, totalConsumablesDzd: 20, totalValueDzd: 120 },
+        byLocation: [
+          { locationId: null, locationLabel: "مستودع", assetCount: 1, assetValueDzd: 100, consumableCount: 0 },
+        ],
+        byItemType: [
+          { itemName: "مثقاب", quantity: 1, valueDzd: 100, lastUpdated: "2026-06-01T00:00:00.000Z" },
+        ],
+        agingAnalysis: [{ ageCategory: "0-30_DAYS", count: 1, valueDzd: 100 }],
+      };
+      expect(inventoryReportSchema.safeParse(inventoryReport).success).toBe(true);
+      // A computed aggregate above the bound is refused (it is not a stored row).
+      expect(
+        inventoryReportSchema.safeParse({
+          ...inventoryReport,
+          summary: { ...inventoryReport.summary, totalValueDzd: aboveBound },
+        }).success,
+      ).toBe(false);
+      expect(
+        inventoryReportSchema.safeParse({
+          ...inventoryReport,
+          byItemType: [{ ...inventoryReport.byItemType[0], valueDzd: aboveBound }],
+        }).success,
+      ).toBe(false);
+      // Counts are not money and stay unbounded.
+      expect(
+        inventoryReportSchema.safeParse({
+          ...inventoryReport,
+          byLocation: [{ ...inventoryReport.byLocation[0], assetCount: aboveBound }],
+        }).success,
+      ).toBe(true);
+
+      const debtReport = {
+        type: "DEBT",
+        generatedAt: "2026-06-01T00:00:00.000Z",
+        summary: { totalOutstandingDzd: 100, totalSettledDzd: 50, overdueDzd: 10, partyCount: 1 },
+        agingBreakdown: [{ ageCategory: "0-30_DAYS", countOpen: 1, amountDzd: 10 }],
+        byParty: [
+          {
+            partyId: "party-1",
+            partyName: "طرف",
+            partyType: "EXTERNAL_COUNTERPARTY",
+            outstandingDzd: 10,
+            settledDzd: 0,
+            lastTransaction: null,
+          },
+        ],
+        topDebtors: [{ partyName: "طرف", amountDzd: 10, daysSinceLastPayment: 3 }],
+      };
+      expect(debtReportSchema.safeParse(debtReport).success).toBe(true);
+      expect(
+        debtReportSchema.safeParse({
+          ...debtReport,
+          summary: { ...debtReport.summary, totalOutstandingDzd: aboveBound },
+        }).success,
+      ).toBe(false);
+
+      const movementReport = {
+        type: "MOVEMENT",
+        generatedAt: "2026-06-01T00:00:00.000Z",
+        summary: { totalMovements: 1, assetTransfers: 0, consumableTransfers: 0, outboundSales: 1 },
+        byType: [{ movementType: "OUTBOUND_SALE", count: 1, valueDzd: 100 }],
+        byPeriod: [{ period: "2026-06", count: 1, valueDzd: 100 }],
+        topDestinations: [{ destinationLabel: "مستودع", receiveCount: 1, valueDzd: 100 }],
+      };
+      expect(movementReportSchema.safeParse(movementReport).success).toBe(true);
+      expect(
+        movementReportSchema.safeParse({
+          ...movementReport,
+          byPeriod: [{ ...movementReport.byPeriod[0], valueDzd: aboveBound }],
+        }).success,
+      ).toBe(false);
+    });
+  });
+
+  describe("project cost contract (issue #414)", () => {
+    it("requires a project id and accepts a signed-but-bounded computed total", () => {
+      expect(projectCostInputSchema.safeParse({ projectId: "" }).success).toBe(false);
+      expect(projectCostInputSchema.safeParse({ projectId: "11111111-1111-4111-8111-111111111111" }).success).toBe(true);
+
+      const base = {
+        projectId: "11111111-1111-4111-8111-111111111111",
+        currencyCode: "DZD",
+        totalAmount: "0.00",
+        parts: { expensesAmount: "0.00", salariesAmount: "0.00", stockAmount: "0.00", chargedMaterialsAmount: "0.00" },
+        expenses: [],
+        salaries: [],
+        stock: [],
+        materialMovements: [],
+        parkedInventory: { totalAmount: "0.00", assets: [] },
+      };
+      expect(projectCostSchema.safeParse(base).success).toBe(true);
+      // A negative total is a legal computed value (a negative material net can
+      // outweigh the positive parts). It must not lock the operator out of the
+      // screen; the UI warns instead.
+      expect(projectCostSchema.safeParse({ ...base, totalAmount: "-0.01" }).success).toBe(true);
+      // The wire remains an exact string outside JavaScript's safe-integer range.
+      expect(
+        projectCostSchema.safeParse({ ...base, totalAmount: "-9007199254740992.00" }).success,
+      ).toBe(true);
+      expect(
+        projectCostSchema.safeParse({
+          ...base,
+          parts: { ...base.parts, chargedMaterialsAmount: "-0.01" },
+        }).success,
+      ).toBe(true);
+      // Signed material totals are valid exact report amounts.
+      expect(
+        projectCostSchema.safeParse({
+          ...base,
+          parts: { ...base.parts, chargedMaterialsAmount: "-9007199254740992.00" },
+        }).success,
+      ).toBe(true);
+      expect(
+        projectCostSchema.safeParse({
+          ...base,
+          parts: { expensesAmount: "0.00", salariesAmount: "0.00", stockAmount: "0.00" },
+        }).success,
+      ).toBe(false);
+    });
+
+    it("labels material charged to the project, not consumed", () => {
+      // The direction carries the sign; valueAmount stays a positive exact magnitude.
+      expect(
+        projectCostMaterialMovementSchema.safeParse({
+          id: "11111111-1111-4111-8111-111111111111",
+          itemDefinitionId: null,
+          itemName: null,
+          unit: null,
+          quantity: "3",
+          unitPrice: "500.0000",
+          valueAmount: "1500.00",
+          direction: "OUT",
+          occurredAt: "2026-05-20T00:00:00.000Z",
+        }).success,
+      ).toBe(true);
+      // A direction outside IN/OUT is refused.
+      expect(
+        projectCostMaterialMovementSchema.safeParse({
+          id: "11111111-1111-4111-8111-111111111111",
+          itemDefinitionId: null,
+          itemName: null,
+          unit: null,
+          quantity: "3",
+          unitPrice: "500.0000",
+          valueAmount: "1500.00",
+          direction: "CONSUMED",
+          occurredAt: "2026-05-20T00:00:00.000Z",
+        }).success,
+      ).toBe(false);
+    });
+
+    it("advertises projectCostGet on the app contract", () => {
+      expect("projectCostGet" in appContract).toBe(true);
+    });
+
+    it("keeps project-cost money in exact decimal strings, including wide aggregates", () => {
+      const aboveSafeInteger = "9007199254740992.00";
+      expect(
+        projectCostExpenseRowSchema.safeParse({
+          id: "11111111-1111-4111-8111-111111111111",
+          expenseDate: "2026-05-10T00:00:00.000Z",
+          whatFor: null,
+          amount: aboveSafeInteger,
+          responsibleWorkerId: null,
+          responsibleWorkerName: null,
+          sellerId: null,
+          sellerName: null,
+        }).success,
+      ).toBe(true);
+      expect(projectCostPartsSchema.safeParse({
+        expensesAmount: aboveSafeInteger,
+        salariesAmount: "0.00",
+        stockAmount: "0.00",
+        chargedMaterialsAmount: "0.00",
+      }).success).toBe(true);
+      expect(projectCostPartsSchema.safeParse({
+        expensesAmount: 1,
+        salariesAmount: "0.00",
+        stockAmount: "0.00",
+        chargedMaterialsAmount: "0.00",
+      }).success).toBe(false);
     });
   });
 });

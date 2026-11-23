@@ -96,6 +96,10 @@ Both `beta.yml` and `release.yml` run this sequence:
    installer, the portable zip, the `.update` package, and `updates.json`.
 7. Run `scripts/verify-release-assets.mjs`, which checks that the portable zip
    contains `Tuari.exe` and that the `.update` signature verifies.
+8. Run `scripts/smoke/installer-smoke.mjs` against the staged portable zip and
+   installer. This extracts the zip, launches `Tuari.exe`, waits for the API
+   sidecar and `/health`, and confirms the app wrote its SQLite database. A
+   non-zero exit fails the job, so the release is never created.
 
 `beta.yml` additionally patches `apps/desktop/src-tauri/tauri.conf.json` with the
 version from the dispatch input before building, then deletes and recreates the
@@ -104,6 +108,40 @@ dispatched commit).
 
 `release.yml` takes the version from the tag, requires the tag to be an ancestor
 of `main`, and creates a normal release with generated release notes.
+
+## The installer smoke gate
+
+Step 8 is the only gate that runs the built artifact instead of its source.
+`verify-release-assets.mjs` proves the zip contains `Tuari.exe`; the installer
+smoke proves `Tuari.exe` starts. It launches the app exactly as a customer
+would:
+
+- extracts the staged `tuari-<version>-<channel>-portable.zip` to a temp
+  directory,
+- checks `Tuari.exe`, the bundled `bin/node.exe`, the `api-runtime` sidecar
+  entry, the SQLite native binding, and every `tauri.conf.json`
+  `bundle.resources` entry are present,
+- starts `Tuari.exe`, waits for the `node.exe ... api-runtime/dist/index.cjs`
+  child, and requires `GET /health` to return `{"status":"ok"}`,
+- confirms the app wrote a fresh, schema-complete SQLite database and its clock
+  tracker, then shuts both processes down and removes the temp directory.
+
+It runs after packaging and before the upload, on `beta.yml`, `release.yml`, and
+`nightly.yml`, all on `windows-latest`. It does not run in `ci.yml`: a full
+desktop build is required, so the check belongs at the publish gate.
+
+When it fails, nothing is published. The step prints one line per check, and the
+failing check names the cause (a missing bundle entry, an app that exited before
+spawning the sidecar, a sidecar that never bound the port, a missing or stale
+database, or an unexpected license handoff). The full check list and the two
+startup defects it was built to catch are in `docs/release-verification.md`.
+
+The gate needs an interactive Windows session: it launches a GUI process, and it
+reads the child sidecar's environment block, which needs a same-user,
+non-elevated process read. GitHub-hosted `windows-latest` runners meet both. A
+non-zero exit on a machine that cannot (no desktop session, or an elevated user)
+is an infrastructure problem, not a broken installer; the failing check names
+which read failed.
 
 ## Publishing the beta channel
 

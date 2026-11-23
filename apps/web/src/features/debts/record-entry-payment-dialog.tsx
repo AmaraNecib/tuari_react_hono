@@ -1,9 +1,11 @@
+import { AppDate } from "@/components/app-date"
 /**
  * Record entry payment dialog for recording payments against debt entries.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import type { DebtEntry } from "@tuari/contracts"
+import type { DebtAccount, DebtEntry } from "@tuari/contracts"
 
 import {
   Dialog,
@@ -18,7 +20,7 @@ import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import {
   useRecordDebtPaymentMutation,
 } from "@/features/app-shell/mock-dashboard"
-import { formatDebtMoney, getDebtBalanceMeta } from "./debt-utils"
+import { formatDebtAmount, getDebtAccountBalanceDisplay } from "./debt-utils"
 import { cn } from "@/lib/utils"
 
 /**
@@ -27,12 +29,15 @@ import { cn } from "@/lib/utils"
 export function RecordEntryPaymentDialog({
   entry,
   accountCurrentBalance,
+  accountDirection,
   open,
   onOpenChange,
 }: {
   entry: DebtEntry | null
   /** The account's current balance at dialog open time (used for max-payment validation) */
   accountCurrentBalance: number
+  /** The account's ledger direction, so the balance is phrased unambiguously. */
+  accountDirection: DebtAccount["direction"]
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -57,7 +62,11 @@ export function RecordEntryPaymentDialog({
 
   if (!entry) return null
 
-  const amountMeta = getDebtBalanceMeta(entry.signedAmountDzd)
+  const openingBalance = getDebtAccountBalanceDisplay({ currentBalance: entry.signedAmountDzd, direction: accountDirection })
+  const maxPaymentDisplay = getDebtAccountBalanceDisplay({
+    currentBalance: accountCurrentBalance,
+    direction: accountDirection,
+  })
 
   const handleSubmit = async () => {
     if (!hasValidAmount || amountExceedsMax || !entry) return
@@ -87,16 +96,17 @@ export function RecordEntryPaymentDialog({
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">{t("debts.payment.openingBalance")}</span>
-              <span className={cn("font-mono text-lg font-semibold", amountMeta.textClassName)} dir="ltr">
-                دج {formatDebtMoney(entry.signedAmountDzd)}
+              <span className={cn("font-mono text-lg font-semibold", openingBalance.textClassName)} dir="ltr">
+                <CurrencyRun amount={formatDebtAmount(openingBalance.amount)} currencyLabel="دج" />
               </span>
             </div>
+            <p className={cn("mt-1 text-xs font-medium", openingBalance.textClassName)}>{openingBalance.phrase}</p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {new Intl.DateTimeFormat("ar-DZ").format(new Date(entry.entryDate))}
+              {<AppDate value={entry.entryDate} />}
               {entry.note?.trim() ? ` — ${entry.note.trim()}` : ""}
             </p>
             <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-              {t("debts.payment.maxAmount")} دج {formatDebtMoney(maxPayment)}
+              {t("debts.payment.maxAmount")} {maxPaymentDisplay.phrase} <CurrencyRun amount={formatDebtAmount(maxPaymentDisplay.amount)} currencyLabel="دج" />
             </p>
           </div>
 

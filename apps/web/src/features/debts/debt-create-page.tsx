@@ -8,11 +8,12 @@ import { CurrencyInput, Textarea } from "@/components/ui/form-controls"
 import { Field } from "@/components/ui/field"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { Surface } from "@/features/shared/page-primitives"
-import { useCreateDebtAccountMutation, useCreateExternalCounterpartyMutation, useCreateEmployeesBatchMutation } from "@/features/app-shell/mock-dashboard"
+import { useCreateDebtAccountMutation, useCreateExternalCounterpartyMutation } from "@/features/app-shell/mock-dashboard"
 import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
+import { debtDirectionFromAlias, type DebtDirectionAlias } from "./debt-utils"
 import { cn } from "@/lib/utils"
 import type { useHomeViewNavigation } from "@/features/app-shell/home-view-navigation"
-import type { ExternalCounterparty } from "@tuari/contracts"
+import { getLockedDirectionForCategory, type ExternalCounterparty } from "@tuari/contracts"
 
 /**
  * Reason category → direction mapping.
@@ -23,7 +24,6 @@ const DEBT_CATEGORIES: Array<{
   value: ReasonCategory
   labelAr: string
   labelEn: string
-  impliedDirection: "PAYABLE" | "RECEIVABLE" | "UNCONSTRAINED"
   descriptionAr: string
   descriptionEn: string
 }> = [
@@ -31,7 +31,6 @@ const DEBT_CATEGORIES: Array<{
     value: "SALARY_ADVANCE",
     labelAr: "سلفة راتب",
     labelEn: "Salary Advance",
-    impliedDirection: "PAYABLE",
     descriptionAr: "صرفنا للعامل مال قبل استحقاقه",
     descriptionEn: "We gave the worker money before they earned it",
   },
@@ -39,7 +38,6 @@ const DEBT_CATEGORIES: Array<{
     value: "REIMBURSEMENT",
     labelAr: "تعويض مصاريف",
     labelEn: "Reimbursement",
-    impliedDirection: "PAYABLE",
     descriptionAr: "العامل دفع شيء نيابة عنا (ماء، مواد، نقل)",
     descriptionEn: "Worker paid something on our behalf",
   },
@@ -47,7 +45,6 @@ const DEBT_CATEGORIES: Array<{
     value: "CASH_TAKE",
     labelAr: "أخذ كاش",
     labelEn: "Cash Take",
-    impliedDirection: "RECEIVABLE",
     descriptionAr: "العامل أخذ كاش من الصندوق",
     descriptionEn: "Worker took cash from the till",
   },
@@ -55,7 +52,6 @@ const DEBT_CATEGORIES: Array<{
     value: "EQUIPMENT_DAMAGE",
     labelAr: "تلف معدات",
     labelEn: "Equipment Damage",
-    impliedDirection: "RECEIVABLE",
     descriptionAr: "العامل مدين لنا بسبب تلف معدات",
     descriptionEn: "Worker owes us for damaged equipment",
   },
@@ -63,7 +59,6 @@ const DEBT_CATEGORIES: Array<{
     value: "PERSONAL_LOAN",
     labelAr: "قرض شخصي",
     labelEn: "Personal Loan",
-    impliedDirection: "RECEIVABLE",
     descriptionAr: "أعطينا العامل قرض نقدي ليرجعه",
     descriptionEn: "We gave the worker a cash loan to be repaid",
   },
@@ -71,7 +66,6 @@ const DEBT_CATEGORIES: Array<{
     value: "DIRECT_LOAN_GIVEN",
     labelAr: "قرض مباشر (أعطينا)",
     labelEn: "Direct Loan (Given)",
-    impliedDirection: "RECEIVABLE",
     descriptionAr: "أعطينا الطرف الخارجي قرض",
     descriptionEn: "We gave an external counterparty a loan",
   },
@@ -79,7 +73,6 @@ const DEBT_CATEGORIES: Array<{
     value: "DIRECT_LOAN_TAKEN",
     labelAr: "قرض مباشر (أخذنا)",
     labelEn: "Direct Loan (Taken)",
-    impliedDirection: "PAYABLE",
     descriptionAr: "طرف خارجي أقرضنا مال",
     descriptionEn: "An external counterparty lent us money",
   },
@@ -87,7 +80,6 @@ const DEBT_CATEGORIES: Array<{
     value: "OTHER",
     labelAr: "أخرى",
     labelEn: "Other",
-    impliedDirection: "UNCONSTRAINED",
     descriptionAr: "سبب آخر — يرجى تقديم تفصيل",
     descriptionEn: "Other — please provide details",
   },
@@ -119,7 +111,6 @@ export function DebtCreatePage({
   const { t } = useTranslation()
   const createDebtAccountMutation = useCreateDebtAccountMutation()
   const createExternalMutation = useCreateExternalCounterpartyMutation()
-  const createEmployeeMutation = useCreateEmployeesBatchMutation()
 
   // Form state
   const [partyType, setPartyType] = useState<"INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY">(
@@ -128,25 +119,29 @@ export function DebtCreatePage({
   const [selectedPartyId, setSelectedPartyId] = useState(preselectedExternalCounterpartyId || preselectedWorkerId || "")
   const [reasonCategory, setReasonCategory] = useState<ReasonCategory>("SALARY_ADVANCE")
   const [reasonDetail, setReasonDetail] = useState("")
-  const [direction, setDirection] = useState<"owed-to-us" | "owed-by-us">("owed-to-us")
+  const [direction, setDirection] = useState<DebtDirectionAlias>("owed-to-us")
   const [amount, setAmount] = useState("")
   const [note, setNote] = useState("")
   const [createDate, setCreateDate] = useState(() => getAlgeriaDateInputValue())
 
   const selectedCategory = DEBT_CATEGORIES.find((c) => c.value === reasonCategory)
-  const isCategoryDirectionLocked = selectedCategory?.impliedDirection !== "UNCONSTRAINED"
+  // One derivation: the category's locked direction comes from the contracts
+  // helper, never a second hand-copied map. `null` means unconstrained (OTHER).
+  const impliedDirection = selectedCategory
+    ? getLockedDirectionForCategory(selectedCategory.value)
+    : null
+  const isCategoryDirectionLocked = impliedDirection !== null
 
   // When category locks direction, sync the direction state
   const resolvedDirection = useMemo(() => {
-    if (!selectedCategory) return direction
-    if (selectedCategory.impliedDirection === "PAYABLE") return "owed-by-us"
-    if (selectedCategory.impliedDirection === "RECEIVABLE") return "owed-to-us"
+    if (impliedDirection === "PAYABLE") return "owed-by-us"
+    if (impliedDirection === "RECEIVABLE") return "owed-to-us"
     return direction
-  }, [selectedCategory, direction])
+  }, [impliedDirection, direction])
 
   // Update direction when category changes
   if (isCategoryDirectionLocked) {
-    const implied = selectedCategory!.impliedDirection === "PAYABLE" ? "owed-by-us" : "owed-to-us"
+    const implied = impliedDirection === "PAYABLE" ? "owed-by-us" : "owed-to-us"
     if (direction !== implied) {
       setDirection(implied)
     }
@@ -158,19 +153,22 @@ export function DebtCreatePage({
   const normalizedAmount = amount.trim()
   const amountValue = normalizedAmount.length > 0 ? Number(normalizedAmount) : 0
   const hasValidAmount = Number.isFinite(amountValue) && amountValue > 0
-  const directionLabel = resolvedDirection === "owed-to-us" ? t("detailPages.debt.direction.owedToUs") : t("detailPages.debt.direction.owedByUs")
+  const accountDirection = debtDirectionFromAlias(resolvedDirection)
+  const directionLabel = accountDirection === "RECEIVABLE" ? t("detailPages.debt.direction.owedToUs") : t("detailPages.debt.direction.owedByUs")
 
   const handleCreateDebt = async () => {
     if (!selectedPartyId || !hasValidAmount || !hasValidReasonDetail) return
 
-    const signedAmount = resolvedDirection === "owed-to-us" ? amountValue : -amountValue
-
+    // The direction carries the meaning; the opening amount is always positive
+    // (a signed balance is never stored or shown). The direction is required by
+    // the contract, so it is always sent with the opening.
     await createDebtAccountMutation.mutateAsync({
       partyType,
       workerId: partyType === "INTERNAL_WORKER" ? selectedPartyId : null,
       externalCounterpartyId: partyType === "EXTERNAL_COUNTERPARTY" ? selectedPartyId : null,
+      direction: accountDirection,
       note: note.trim() || null,
-      openingBalanceDzd: signedAmount,
+      openingBalanceDzd: amountValue,
       openingEntryDate: createDate ? toAlgeriaDayBoundaryIso(createDate, "start") : undefined,
       openingEntryNote: note.trim() || null,
       reasonCategory,
@@ -231,6 +229,13 @@ export function DebtCreatePage({
 
           {/* Party Selection */}
           <Field label={t("detailPages.debt.partySelect")}>
+            {/*
+             * Inline create is offered for external counterparties only. The
+             * internal-worker create could never succeed: the API rejects an
+             * ACTIVE worker that has no project and no direct manager, and this
+             * text-only dialog cannot collect either. Creating a worker belongs
+             * in the employees form, which collects the workplace.
+             */}
             <CreateableSelect
               value={selectedPartyId}
               onChange={setSelectedPartyId}
@@ -240,46 +245,23 @@ export function DebtCreatePage({
                   : externalCounterparties.map((p) => ({ id: p.id, name: p.fullName }))
               }
               emptyLabel={t("detailPages.debt.partySelect")}
-              createLabel={partyType === "INTERNAL_WORKER" ? t("detailPages.debt.createEmployee") : t("detailPages.debt.createExternal")}
+              createLabel={partyType === "EXTERNAL_COUNTERPARTY" ? t("detailPages.debt.createExternal") : undefined}
               createFields={
-                partyType === "INTERNAL_WORKER"
+                partyType === "EXTERNAL_COUNTERPARTY"
                   ? [
-                      { key: "firstName", label: t("detailPages.debt.employeeFields.firstName"), placeholder: t("detailPages.debt.employeeFields.firstNamePlaceholder"), required: true },
-                      { key: "lastName", label: t("detailPages.debt.employeeFields.lastName"), placeholder: t("detailPages.debt.employeeFields.lastNamePlaceholder"), required: true },
-                      { key: "phone", label: t("detailPages.debt.employeeFields.phone"), placeholder: t("detailPages.debt.employeeFields.phonePlaceholder") },
-                    ]
-                  : [
                       { key: "fullName", label: t("detailPages.debt.externalFields.fullName"), placeholder: t("detailPages.debt.externalFields.fullNamePlaceholder"), required: true },
-                      { key: "phone", label: t("detailPages.debt.externalFields.phone"), placeholder: t("detailPages.debt.externalFields.phonePlaceholder") },
+                      { key: "phone", label: t("detailPages.debt.externalFields.phone"), placeholder: t("detailPages.debt.externalFields.phonePlaceholder"), required: true },
                     ]
+                  : undefined
               }
-              onCreate={async (data) => {
-                if (partyType === "INTERNAL_WORKER") {
-                  const result = await createEmployeeMutation.mutateAsync({
-                    employees: [{
-                      firstName: data.firstName ?? "",
-                      lastName: data.lastName ?? "",
-                      phone: data.phone || "",
-                      roleId: "",
-                      status: "ACTIVE",
-                      managerId: null,
-                      salaryAmountDzd: null,
-                      salaryPeriod: null,
-                      notes: null,
-                    }],
-                  })
-                  return result.createdCount > 0
-                    ? { id: "new", name: `${data.firstName} ${data.lastName}` }
-                    : { id: "", name: "" }
-                } else {
-                  const result = await createExternalMutation.mutateAsync({
-                    fullName: data.fullName ?? "",
-                    phoneNumber: data.phone || "",
-                    note: null,
-                  })
-                  return { id: result.item.id, name: data.fullName ?? "" }
-                }
-              }}
+              onCreate={partyType === "EXTERNAL_COUNTERPARTY" ? async (data) => {
+                const result = await createExternalMutation.mutateAsync({
+                  fullName: data.fullName ?? "",
+                  phoneNumber: data.phone || "",
+                  note: null,
+                })
+                return { id: result.item.id, name: data.fullName ?? "" }
+              } : undefined}
             />
           </Field>
 

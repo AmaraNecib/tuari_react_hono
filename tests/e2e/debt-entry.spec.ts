@@ -1,109 +1,99 @@
-import { expect, test } from "@playwright/test"
-
-import { resetE2eDatabase } from "./helpers/db-isolation"
+import { installManagedApiLifecycle, expect, test, type Page } from "./helpers/test"
+import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
-import { databaseFixturesAvailable } from "./helpers/db-isolation"
-
-
+installManagedApiLifecycle()
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 test.describe.configure({ mode: "serial" })
-
-test.beforeAll(() => {
-  resetE2eDatabase()
-})
-
+test.beforeAll(async () => { await resetE2eDatabase() })
 let counterpartyName = ""
+
+async function openAccount(page: Page) {
+  await page.getByRole("link", { name: "الديون", exact: true }).first().click()
+  await expect(page.getByRole("heading", { name: "الديون", exact: true })).toBeVisible()
+  const account = page.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: new RegExp(counterpartyName) })
+  await expect(account).toContainText("مستحقات علينا")
+  await account.click()
+  return account
+}
+
+async function pay(page: Page, amount: string) {
+  const opening = page.getByRole("row").filter({ hasText: "رصيد افتتاحي" })
+  await opening.getByRole("button", { name: "تسجيل دفعة", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "تسجيل دفعة", exact: true })
+  await dialog.getByRole("textbox", { name: "مبلغ الدفعة", exact: true }).fill(amount)
+  await dialog.getByRole("button", { name: "تأكيد الحفظ", exact: true }).click()
+  await expect(dialog).toBeHidden()
+}
 
 test.describe("debt entry — critical path", () => {
   test("admin creates an external counterparty and opens a debt we owe them", async ({ page }) => {
     await bootstrapOrSignIn(page)
-
-    await page.getByRole("link", { name: "الديون" }).first().click()
-    await expect(page.getByRole("heading", { name: "مركز الديون" })).toBeVisible()
-
     const suffix = uniqueSuffix()
     counterpartyName = `طرف خارجي ${suffix}`
-    // Derive the phone from every character of the same per-attempt suffix as
-    // the name so retries cannot reuse a fixed fallback phone.
-    const phoneSalt = Array.from(suffix).reduce(
-      (hash, character) => (hash * 31 + character.charCodeAt(0)) % 90_000_000,
-      0,
-    )
-    const phone = `07${String(phoneSalt).padStart(8, "0")}`
-
+    const salt = Array.from(suffix).reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) % 90_000_000, 0)
     await page.getByRole("link", { name: "الجهات الخارجية" }).first().click()
-    await expect(page.getByRole("heading", { name: "الجهات الخارجية" })).toBeVisible()
     await page.getByRole("button", { name: /إضافة جهة خارجية/ }).first().click()
-    await expect(page.getByRole("heading", { name: /إضافة جهة خارجية/ })).toBeVisible()
-
     await page.getByLabel("الاسم الكامل").first().fill(counterpartyName)
-    await page.getByLabel("رقم الهاتف").first().fill(phone)
+    await page.getByLabel("رقم الهاتف").first().fill(`07${String(salt).padStart(8, "0")}`)
     await page.getByRole("button", { name: /حفظ الطرف الخارجي/ }).first().click()
-
-    // Land on the counterparty details page and record an opening debt balance
-    // (positive signed amount on a PAYABLE account = we owe them).
-    await expect(page.getByRole("heading", { name: counterpartyName })).toBeVisible({ timeout: 10_000 })
-    await page.getByPlaceholder("0 أو 2500 أو -2500").fill("5000")
-    await page.getByRole("button", { name: "إنشاء الحساب" }).click()
-
-    // The account is reflected once the feature-scoped useDebtPartyDetailQuery
-    // refetch completes (issue #177 Phase 4 debts migration).
-    await expect(
-      page.getByRole("heading", { name: "تسجيل دفعة على الحساب" }),
-    ).toBeVisible({ timeout: 15_000 })
-
-    // The ledger shows the opening entry fetched by the same query.
-    await expect(
-      page.getByRole("cell", { name: /رصيد افتتاحي/ }).first(),
-    ).toBeVisible({ timeout: 15_000 })
-
-    // The debts hub reflects the new party and its balance (PAYABLE +5000
-    // renders as "دج -5000" — we owe the counterparty). Scope to the party's
-    // row so the signed amount can't match unrelated page text.
-    await page.getByRole("link", { name: "الديون" }).first().click()
-    await expect(page.getByRole("heading", { name: "مركز الديون" })).toBeVisible()
-    const hubRow = page.getByRole("row", { name: new RegExp(counterpartyName) }).first()
-    await expect(hubRow).toBeVisible({ timeout: 10_000 })
-    await expect(hubRow).toContainText(/-5\s?000/)
+    await expect(page.getByRole("heading", { name: counterpartyName })).toBeVisible()
+    await page.getByRole("link", { name: "الديون", exact: true }).first().click()
+    await page.getByRole("combobox", { name: "الطرف", exact: true }).selectOption({ label: counterpartyName })
+    await page.getByRole("combobox", { name: "اتجاه الحساب", exact: true }).selectOption("PAYABLE")
+    await page.getByRole("textbox", { name: "الرصيد الافتتاحي، اختياري", exact: true }).fill("5000")
+    await page.getByRole("textbox", { name: "سبب الدين", exact: true }).fill("رصيد افتتاحي للاختبار")
+    await page.getByRole("button", { name: "حفظ الحساب", exact: true }).click()
+    const account = await openAccount(page)
+    await expect(account).toContainText("5,000")
+    await expect(page.getByRole("row").filter({ hasText: "رصيد افتتاحي" })).toContainText("5,000")
+    await pay(page, "500")
+    await expect(account).toContainText("4,500")
+    await expect(account).not.toContainText("-4,500")
+    await expect(page.getByRole("row").filter({ has: page.getByRole("cell", { name: /^دفعة/ }) })).toHaveCount(1)
+    await page.reload()
+    const persisted = await openAccount(page)
+    await expect(persisted).toContainText("4,500")
   })
 
   test("admin records a partial payment and the balance drops by the paid amount", async ({ page }) => {
     await bootstrapOrSignIn(page)
+    const account = await openAccount(page)
+    await expect(account).toContainText("4,500")
+    await pay(page, "2000")
+    await expect(account).toContainText("2,500")
+    await expect(account).toContainText("مستحقات علينا")
+    await expect(account).not.toContainText("-2,500")
+    const opening = page.getByRole("row").filter({ hasText: "رصيد افتتاحي" })
+    await expect(opening).toContainText("2,500")
+    await expect(page.getByRole("row").filter({ has: page.getByRole("cell", { name: /^دفعة/ }) })).toHaveCount(2)
+    await page.reload()
+    await expect(await openAccount(page)).toContainText("2,500")
+  })
 
-    // Reuse the counterparty created in the first test (serial mode).
-    await page.getByRole("link", { name: "الديون" }).first().click()
-    await expect(page.getByRole("heading", { name: "مركز الديون" })).toBeVisible()
-
-    // Open the first external row in the hub.
-    const openButtons = page.getByRole("button", { name: /فتح التفاصيل/ })
-    await expect(openButtons.first()).toBeVisible({ timeout: 10_000 })
-    await openButtons.first().click()
-
-    // Record a payment on the OPENING entry (live entries show a payment button).
-    await expect(page.getByRole("heading", { name: /دفتر الدين/ })).toBeVisible({ timeout: 10_000 })
-    const payButton = page.getByRole("button", { name: "دفعة", exact: true }).first()
-    await expect(payButton).toBeVisible({ timeout: 10_000 })
-    await payButton.click()
-
-    // The record-payment dialog subtracts from the balance.
-    await expect(page.getByRole("heading", { name: "تسديد دفعة" })).toBeVisible()
-    const paymentAmount = page.getByPlaceholder("أدخل المبلغ المدفوع").first()
-    await paymentAmount.fill("2000")
-    await page.getByRole("button", { name: "تأكيد الدفعة" }).click()
-
-    // The ledger refreshes (debtsDetail invalidation → useDebtPartyDetailQuery)
-    // and the balance drops from +5000 to +3000 after the 2000 payment.
-    await expect(page.getByText(/\+3000/).first()).toBeVisible({ timeout: 15_000 })
-    await expect(
-      page.getByRole("cell", { name: /دفعة/ }).first(),
-    ).toBeVisible({ timeout: 10_000 })
-
-    // The hub must reflect the reduced balance after the detail mutation.
-    await page.getByRole("link", { name: "الديون" }).first().click()
-    await expect(page.getByRole("heading", { name: "مركز الديون" })).toBeVisible()
-    const hubRow = page.getByRole("row", { name: new RegExp(counterpartyName) }).first()
-    await expect(hubRow).toBeVisible({ timeout: 10_000 })
-    await expect(hubRow).toContainText(/-3\s?000/)
+  test("ledger previews grouped decimal payments and persists them as PAYMENT entries", async ({ page }, testInfo) => {
+    await bootstrapOrSignIn(page)
+    await openAccount(page)
+    await page.getByRole("row").filter({ hasText: "رصيد افتتاحي" }).getByRole("button", { name: "تسجيل دفعة", exact: true }).click()
+    const form = page.getByRole("dialog", { name: "تسجيل دفعة", exact: true })
+    const amount = form.getByRole("textbox", { name: "مبلغ الدفعة", exact: true })
+    await amount.fill("20 00.50")
+    await amount.blur()
+    await expect(form.getByRole("button", { name: "تأكيد الحفظ", exact: true })).toBeDisabled()
+    await expect(amount).toHaveAttribute("aria-invalid", "true")
+    await form.screenshot({ path: testInfo.outputPath("ledger-invalid-grouping.png") })
+    await amount.fill("2 000.50")
+    // Preserve the preview contract until its missing exact-screen equivalent is resolved.
+    const preview = form.getByLabel("معاينة الدفعة")
+    await expect(preview).toContainText("2,000.5")
+    await expect(preview).toContainText("499.5")
+    await expect(amount).toHaveValue("2 000.50")
+    await form.screenshot({ path: testInfo.outputPath("ledger-payment-preview.png") })
+    await form.getByRole("button", { name: "تأكيد الحفظ", exact: true }).click()
+    await expect(form).toBeHidden()
+    const paymentRow = page.getByRole("row").filter({ has: page.getByRole("cell", { name: /-2,000.5/ }) })
+    await expect(paymentRow).toContainText("دفعة")
+    await expect(paymentRow).toContainText("499.5")
+    await expect(await openAccount(page)).toContainText("499.5")
   })
 })

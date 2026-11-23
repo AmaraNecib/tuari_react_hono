@@ -1,21 +1,51 @@
 // @vitest-environment jsdom
 import "@/i18n"
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { act, cleanup, fireEvent, render, renderHook, screen } from "@testing-library/react"
 
-import { UserJourneyTour } from "./use-user-journey"
+import { UserJourneyTour, useUserJourney } from "./use-user-journey"
 
 const STEPS = [
   { id: "sidebar", target: "[data-tour=sidebar]", title: "الشريط الجانبي", content: "استخدم الشريط الجانبي للتنقل" },
   { id: "search", target: "[data-tour=search]", title: "البحث", content: "اضغط Ctrl+K للبحث" },
 ]
 
-afterEach(() => cleanup())
+const networkRequest = vi.fn(() => Promise.reject(new Error("Onboarding must stay local")))
+
+beforeEach(() => {
+  networkRequest.mockClear()
+  vi.stubGlobal("fetch", networkRequest)
+})
+
+afterEach(() => {
+  cleanup()
+  vi.unstubAllGlobals()
+  expect(networkRequest).not.toHaveBeenCalled()
+})
 
 describe("UserJourneyTour", () => {
   beforeEach(() => {
     localStorage.clear()
+  })
+
+  it("persists journey progress and level locally across remounts", () => {
+    sessionStorage.clear()
+    const { result, unmount } = renderHook(() => useUserJourney({ key: "home-tour" }))
+    act(() => result.current.start())
+    act(() => result.current.advance())
+    expect(localStorage.getItem("journey-home-tour-status")).toBe("active")
+    expect(localStorage.getItem("journey-home-tour-step")).toBe("1")
+    act(() => result.current.complete())
+    expect(localStorage.getItem("journey-home-tour-status")).toBe("completed")
+    expect(localStorage.getItem("user-onboarding-level")).toBe("2")
+    unmount()
+
+    const restored = renderHook(() => useUserJourney({ key: "home-tour" }))
+    expect(restored.result.current.isCompleted).toBe(true)
+    expect(restored.result.current.state.currentStep).toBe(1)
+    expect(restored.result.current.state.level).toBe(2)
+    expect(sessionStorage.getItem("analytics-session-id")).toBeNull()
   })
 
   it("renders the children when the tour is not active", () => {

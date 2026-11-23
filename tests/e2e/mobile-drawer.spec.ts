@@ -1,6 +1,9 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { bootstrapOrSignIn } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 /**
  * Issue #284 item 5 — the mobile sidebar drawer must open as an overlay,

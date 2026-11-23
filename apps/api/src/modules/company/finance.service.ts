@@ -24,17 +24,22 @@ import {
   type DebtReport,
   type DebtSettlementInput,
   type ExternalCounterpartyCreateInput,
+  DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE,
+  DEBT_ADVANCE_DIRECTION_MESSAGE,
+  DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE,
   getDebtAccountNetContribution,
+  getLockedDirectionForCategory,
   getNetDebtBalance,
 } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
+import { CounterpartyService } from "./counterparty.service";
 import {
   assertDebtEntryDateNotBackdated,
   buildDebtPartyKey,
   getDebtAccountBalanceLabel,
   getDebtAccountStatus,
-  getDebtBalanceLabel,
+  getNetDebtBalanceLabel,
   normalizeSignedMoneyAmount,
   normalizeText,
   successResult,
@@ -50,13 +55,25 @@ import {
   type MutationAuditContext,
 } from "./company.types";
 import { createAlgeriaTimestamp, normalizeAlgeriaTimestamp } from "./company-time";
-import { MS_PER_DAY, resolveReportWindow, roundMoney } from "./report.helpers";
+import { accumulateReportMoney, MS_PER_DAY, REPORT_MONEY_OVERFLOW_MESSAGE, resolveReportWindow, roundMoney } from "./report.helpers";
 import {
   requireDebtAccount,
   requireEmployee,
   requireEmployeeWorker,
   requireExternalCounterparty,
 } from "./company.entity-resolvers";
+
+/**
+ * The debt report aggregate guard. `accumulateReportMoney` owns the finite +
+ * `MAX_MONEY_DZD` rule; a report is computed at read time, so unlike a
+ * persisted column it refuses to emit an unrepresentable total with the
+ * module's typed BUSINESS_RULE error (#475).
+ */
+function accumulateDebtReportMoney(currentDzd: number, amountDzd: number) {
+  return accumulateReportMoney(currentDzd, amountDzd, () => {
+    throw new CompanyError("BUSINESS_RULE", REPORT_MONEY_OVERFLOW_MESSAGE);
+  });
+}
 
 export class FinanceService {
   constructor(
@@ -76,17 +93,12 @@ export class FinanceService {
   // callers that prefer the cross-domain coordinator.
   // ---------------------------------------------------------------------------
 
-  getEmployeeDebtAccount(employeeId: string) {
-    requireEmployee(this.workforceRepo, employeeId);
-    const accounts = this.listDebtAccounts({ workerId: employeeId }).items;
-    return accounts[0] ?? null;
-  }
-
   createEmployeeDebtEntry(
     input: {
       employeeId: string;
       entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE";
       amountDzd: number;
+      direction?: DebtAccountCreateInput["direction"];
       entryDate?: string;
       note?: string | null;
       reasonCategory?: DebtEntry["reasonCategory"];
@@ -94,25 +106,32 @@ export class FinanceService {
     auditContext?: MutationAuditContext,
   ) {
     const employee = requireEmployee(this.workforceRepo, input.employeeId);
+    const direction = this.resolveEmployeeEntryDirection(
+      input.employeeId,
+      input.entryType,
+      input.direction,
+      input.reasonCategory,
+    );
 
-    let account = this.getEmployeeDebtAccount(input.employeeId);
-    if (!account) {
-      const createResult = this.createDebtAccount(
-        {
-          partyType: "INTERNAL_WORKER",
-          workerId: input.employeeId,
-          note: `حساب الدين للعامل: ${employee.firstName} ${employee.lastName}`,
-        },
-        auditContext,
-      );
-      account = createResult.item;
-    }
+    const account = this.createDebtAccount(
+      {
+        partyType: "INTERNAL_WORKER",
+        workerId: input.employeeId,
+        direction,
+        note: `حساب الدين للعامل: ${employee.firstName} ${employee.lastName}`,
+      },
+      auditContext,
+    ).item;
+
+    // D7: sign by entry type. A PAYMENT reduces the outstanding balance;
+    // every other type increases it in the ledger's own direction.
+    const signedAmountDzd = input.entryType === "PAYMENT" ? -input.amountDzd : input.amountDzd;
 
     const result = this.createDebtEntry(
       {
         debtAccountId: account.id,
         entryType: input.entryType,
-        signedAmountDzd: input.amountDzd,
+        signedAmountDzd,
         entryDate: input.entryDate,
         note: input.note || `${input.entryType}: ${employee.firstName} ${employee.lastName}`,
         reasonCategory: input.reasonCategory,
@@ -123,37 +142,73 @@ export class FinanceService {
     return result.item;
   }
 
+  /**
+   * Resolve which worker ledger an employee-debt entry targets.
+   *
+   * The reason category locks the direction (D2) and an ADVANCE is always a
+   * worker receivable (D1a); a supplied direction that contradicts either is
+   * rejected rather than silently stored backwards. With no lock, a PAYMENT
+   * follows the ledger that still has a balance so a repayment offsets the
+   * advance instead of opening a second account; everything else lands on the
+   * PAYABLE ledger.
+   */
+  private resolveEmployeeEntryDirection(
+    workerId: string,
+    entryType: "OPENING" | "PAYMENT" | "ADJUSTMENT" | "ADVANCE",
+    explicit?: DebtAccountCreateInput["direction"],
+    reasonCategory?: DebtEntry["reasonCategory"],
+  ): "PAYABLE" | "RECEIVABLE" {
+    const lockedDirection = reasonCategory
+      ? getLockedDirectionForCategory(reasonCategory)
+      : null;
+    if (lockedDirection && explicit && explicit !== lockedDirection) {
+      throw new CompanyError("VALIDATION", DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE, [
+        { field: "direction", message: DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE },
+      ]);
+    }
+    if (entryType === "ADVANCE") {
+      const advanceDirection = lockedDirection ?? explicit ?? "RECEIVABLE";
+      if (advanceDirection !== "RECEIVABLE") {
+        throw new CompanyError("VALIDATION", DEBT_ADVANCE_DIRECTION_MESSAGE, [
+          { field: "direction", message: DEBT_ADVANCE_DIRECTION_MESSAGE },
+        ]);
+      }
+      return "RECEIVABLE";
+    }
+    if (lockedDirection) {
+      return lockedDirection;
+    }
+    if (explicit) {
+      return explicit;
+    }
+    if (entryType === "PAYMENT") {
+      const receivable = this.repository.getDebtAccountByWorkerIdAndDirection(workerId, "RECEIVABLE");
+      if (receivable && receivable.currentBalance !== 0) {
+        return "RECEIVABLE";
+      }
+    }
+    return "PAYABLE";
+  }
+
   // ---------------------------------------------------------------------------
   // External counterparties
   // ---------------------------------------------------------------------------
 
+  private get counterpartyService() {
+    return this._counterpartyService ??= new CounterpartyService(this.repository, this.mutation);
+  }
+  private _counterpartyService?: CounterpartyService;
+
   listExternalCounterparties(filters?: ExternalCounterpartyListFilters) {
-    return { items: this.repository.listExternalCounterparties(filters) };
+    return this.counterpartyService.listExternalCounterparties(filters);
   }
 
   getExternalCounterparty(id: string) {
-    const counterparty = this.repository.getExternalCounterpartyById(id);
-    if (!counterparty) {
-      throw new CompanyError("NOT_FOUND", "تعذر العثور على الطرف الخارجي المطلوب.");
-    }
-
-    return successResult("تم تحميل الطرف الخارجي بنجاح.", counterparty);
+    return this.counterpartyService.getExternalCounterparty(id);
   }
 
-  createExternalCounterparty(
-    input: ExternalCounterpartyCreateInput,
-    auditContext?: MutationAuditContext,
-  ) {
-    this.mutation.createMutationAuditContext(auditContext);
-    return this.mutation.withTransaction(() => {
-      const counterparty = this.repository.createExternalCounterparty({
-        fullName: input.fullName.trim(),
-        phoneNumber: input.phoneNumber.trim(),
-        note: normalizeText(input.note),
-      });
-
-      return successResult("تم إنشاء الطرف الخارجي بنجاح.", counterparty);
-    });
+  createExternalCounterparty(input: ExternalCounterpartyCreateInput, auditContext?: MutationAuditContext) {
+    return this.counterpartyService.createExternalCounterparty(input, auditContext);
   }
 
   // ---------------------------------------------------------------------------
@@ -209,25 +264,43 @@ export class FinanceService {
     }
 
     const openingBalance = input.openingBalanceDzd ?? 0;
-    if (!Number.isFinite(openingBalance)) {
-      throw new CompanyError("VALIDATION", "يجب إدخال رصيد افتتاحي صالح.", [
-        { field: "openingBalanceDzd", message: "يجب إدخال رصيد افتتاحي صالح." },
+    if (!Number.isFinite(openingBalance) || openingBalance < 0) {
+      throw new CompanyError("VALIDATION", "لا يمكن أن يكون الرصيد الافتتاحي سالباً؛ الاتجاه هو ما يحمل المعنى.", [
+        {
+          field: "openingBalanceDzd",
+          message: "لا يمكن أن يكون الرصيد الافتتاحي سالباً؛ الاتجاه هو ما يحمل المعنى.",
+        },
       ]);
     }
     const entryDate = normalizeAlgeriaTimestamp(input.openingEntryDate);
 
+    // D2: the reason category locks the direction. A supplied direction that
+    // contradicts it is rejected, so no writer can store the intent backwards.
+    // The direction itself is required: there is no implicit PAYABLE default.
+    const lockedDirection = input.reasonCategory
+      ? getLockedDirectionForCategory(input.reasonCategory)
+      : null;
+    if (lockedDirection && input.direction && input.direction !== lockedDirection) {
+      throw new CompanyError(
+        "VALIDATION",
+        DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE,
+        [{ field: "direction", message: DEBT_DIRECTION_CATEGORY_MISMATCH_MESSAGE }],
+      );
+    }
+    const direction = lockedDirection ?? input.direction;
+    if (direction !== "PAYABLE" && direction !== "RECEIVABLE") {
+      throw new CompanyError("VALIDATION", DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE, [
+        { field: "direction", message: DEBT_ACCOUNT_DIRECTION_REQUIRED_MESSAGE },
+      ]);
+    }
+
     const existingAccount =
       input.partyType === "INTERNAL_WORKER"
-        ? this.repository.getDebtAccountByWorkerId(workerId!)
-        : input.direction === "RECEIVABLE"
-          ? this.repository.getDebtAccountByExternalCounterpartyIdAndDirection(
-              externalCounterpartyId!,
-              "RECEIVABLE",
-            )
-          : this.repository.getDebtAccountByExternalCounterpartyIdAndDirection(
-              externalCounterpartyId!,
-              "PAYABLE",
-            );
+        ? this.repository.getDebtAccountByWorkerIdAndDirection(workerId!, direction)
+        : this.repository.getDebtAccountByExternalCounterpartyIdAndDirection(
+            externalCounterpartyId!,
+            direction,
+          );
 
     if (existingAccount) {
       if (openingBalance !== 0) {
@@ -258,7 +331,7 @@ export class FinanceService {
           partyType: input.partyType,
           workerId,
           externalCounterpartyId,
-          direction: input.direction ?? "PAYABLE",
+          direction,
           status,
           currentBalance: openingBalance,
           note: normalizeText(input.note),
@@ -370,9 +443,6 @@ export class FinanceService {
     }
     if (entry.status !== "LIVE") {
       throw new CompanyError("BUSINESS_RULE", "لا يمكن تسديد حركة دين ملغية.");
-    }
-    if (entry.entryType !== "OPENING") {
-      throw new CompanyError("BUSINESS_RULE", "يمكن تسديد حركات الفتح فقط.");
     }
     const account = requireDebtAccount(this.repository, entry.debtAccountId);
     if (input.amountDzd > account.currentBalance) {
@@ -730,7 +800,7 @@ export class FinanceService {
         phoneNumber: employee.phone,
         note: employee.notes,
         totalBalanceDzd,
-        balanceLabel: getDebtBalanceLabel(totalBalanceDzd),
+        balanceLabel: getNetDebtBalanceLabel(totalBalanceDzd),
         debtAccounts,
       });
     }
@@ -752,7 +822,7 @@ export class FinanceService {
       phoneNumber: counterparty.phoneNumber,
       note: counterparty.note,
       totalBalanceDzd,
-      balanceLabel: getDebtBalanceLabel(totalBalanceDzd),
+      balanceLabel: getNetDebtBalanceLabel(totalBalanceDzd),
       debtAccounts,
     });
   }
@@ -840,7 +910,7 @@ export class FinanceService {
     const parties = Array.from(partyMap.values())
       .map((party) => ({
         ...party,
-        balanceLabel: getDebtBalanceLabel(party.totalBalanceDzd),
+        balanceLabel: getNetDebtBalanceLabel(party.totalBalanceDzd),
       }))
       .sort((left, right) => Date.parse(right.latestActivityAt) - Date.parse(left.latestActivityAt));
 
@@ -945,11 +1015,14 @@ export class FinanceService {
         account.status === "SETTLED"
           ? entries
               .filter((entry) => entry.entryType === "SETTLEMENT")
-              .reduce((sum, entry) => sum + Math.abs(entry.signedAmountDzd), 0)
+              .reduce(
+                (sum, entry) => accumulateDebtReportMoney(sum, Math.abs(entry.signedAmountDzd)),
+                0,
+              )
           : 0;
 
-      totalOutstandingDzd += accountOutstanding;
-      totalSettledDzd += accountSettled;
+      totalOutstandingDzd = accumulateDebtReportMoney(totalOutstandingDzd, accountOutstanding);
+      totalSettledDzd = accumulateDebtReportMoney(totalSettledDzd, accountSettled);
 
       if (account.status === "OPEN") {
         // Boundary: age 60 lands in "60+_DAYS" so the 60+ bucket always equals
@@ -957,9 +1030,12 @@ export class FinanceService {
         const ageCategory =
           age <= 30 ? "0-30_DAYS" : age <= 59 ? "31-60_DAYS" : "60+_DAYS";
         agingAccumulators[ageCategory].countOpen += 1;
-        agingAccumulators[ageCategory].amountDzd += account.currentBalance;
+        agingAccumulators[ageCategory].amountDzd = accumulateDebtReportMoney(
+          agingAccumulators[ageCategory].amountDzd,
+          account.currentBalance,
+        );
         if (age >= 60) {
-          overdueDzd += account.currentBalance;
+          overdueDzd = accumulateDebtReportMoney(overdueDzd, account.currentBalance);
         }
       }
 
@@ -992,8 +1068,8 @@ export class FinanceService {
           ? `${employee.firstName} ${employee.lastName}`
           : counterparty?.fullName ?? account.id,
         partyType: account.partyType,
-        outstandingDzd: (current?.outstandingDzd ?? 0) + accountOutstanding,
-        settledDzd: (current?.settledDzd ?? 0) + accountSettled,
+        outstandingDzd: accumulateDebtReportMoney(current?.outstandingDzd ?? 0, accountOutstanding),
+        settledDzd: accumulateDebtReportMoney(current?.settledDzd ?? 0, accountSettled),
         lastTransaction:
           !previous || Date.parse(latestTransaction) > Date.parse(previous)
             ? latestTransaction

@@ -6,8 +6,13 @@ import { useTranslation } from "react-i18next"
 import { useMobileLayout } from "@/hooks/use-mobile-layout"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { useDebouncedValue } from "@/hooks/use-debounced-value"
-import { useEmployeesQuery, useProjectsQuery, useWarehousesQuery, useDebtAccountsQuery, useExternalCounterpartiesQuery } from "./workspace-queries"
-import { useInventoryItemDefinitionsQuery, useInventoryInvoiceGroupsQuery } from "@/features/inventory/inventory-hooks"
+import { useEmployeesQuery, useProjectsQuery, useWarehousesQuery, useExternalCounterpartiesQuery } from "./workspace-queries"
+import { useInventoryItemDefinitionsQuery } from "@/features/inventory/inventory-hooks"
+import { useExactDebtSummary } from "@/features/debts/debts-exact-queries"
+import { useExactInventoryInvoices } from "@/features/inventory/inventory-exact-queries"
+import { DEBT_BALANCE_STATE_PHRASE, getDebtAccountBalanceState } from "@tuari/contracts"
+import { formatExactMoney } from "@/features/shared/exact-money-display"
+import { financialClient } from "@/lib/orpc-client"
 import { UserJourneyTour } from "@/hooks/use-user-journey"
 import { SearchDialog, type SearchItem } from "@/components/ui/search-dialog"
 import { KeyboardShortcutsHelp } from "@/components/ui/keyboard-shortcuts-provider"
@@ -121,10 +126,10 @@ export function HomeViewSignedInShell({
   const employeesQuery = useEmployeesQuery({ enabled: searchOpen })
   const projectsQuery = useProjectsQuery({ enabled: searchOpen })
   const warehousesQuery = useWarehousesQuery({ enabled: searchOpen })
-  const debtAccountsQuery = useDebtAccountsQuery({ enabled: searchOpen })
+  const debtAccountsQuery = useExactDebtSummary(financialClient.debts, { enabled: searchOpen })
   const externalsQuery = useExternalCounterpartiesQuery({ enabled: searchOpen })
   const inventoryQuery = useInventoryItemDefinitionsQuery({ enabled: searchOpen })
-  const invoicesQuery = useInventoryInvoiceGroupsQuery({ enabled: searchOpen })
+  const invoicesQuery = useExactInventoryInvoices(financialClient.inventory, { enabled: searchOpen })
 
   // Build the unified search corpus + Fuse index lazily — they only exist
   // while the dialog is open and rebuild only when the query DATA changes,
@@ -234,21 +239,28 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = `/warehouses/${w.id}` },
     }))
 
-    const debts: SearchItem[] = (debtAccountsQuery.data?.items ?? []).map((d) => {
+    const debts: SearchItem[] = (debtAccountsQuery.data?.accounts ?? []).map((account) => {
       const empList = employeesQuery.data?.items ?? []
       const extList = externalsQuery.data?.items ?? []
-      const partyName = d.partyType === "INTERNAL_WORKER"
-        ? empList.find((e) => e.id === d.workerId)
-        : extList.find((e) => e.id === d.externalCounterpartyId)
+      const partyName = account.partyType === "INTERNAL_WORKER"
+        ? empList.find((employee) => employee.id === account.workerId)
+        : extList.find((counterparty) => counterparty.id === account.externalCounterpartyId)
       const name = partyName && "firstName" in partyName
         ? `${partyName.firstName} ${partyName.lastName}`
         : partyName && "fullName" in partyName
           ? partyName.fullName
           : t("search.unknownParty")
+      const balance = account.currentBalance
+      const zero = /^-?0\.00$/.test(balance)
+      const negative = balance.startsWith("-") && !zero
+      const balanceSign = zero ? 0 : negative ? -1 : 1
+      const state = getDebtAccountBalanceState({ currentBalance: balanceSign, direction: account.direction })
+      const phrase = DEBT_BALANCE_STATE_PHRASE[state]
+      const amount = formatExactMoney(negative ? balance.slice(1) : balance, { aggregate: true, grouped: true }).text
       return {
-        id: `debt-${d.id}`,
+        id: `debt-${account.id}`,
         title: name,
-        description: `${d.direction === "PAYABLE" ? t("search.payable") : t("search.receivable")} · ${d.currentBalance.toLocaleString("ar-DZ")} ${t("search.currency")}`,
+        description: `${phrase} ${amount} ${t("search.currency")}`,
         category: t("debts.label"),
         action: () => { window.location.href = "/debts" },
       }
@@ -270,7 +282,7 @@ export function HomeViewSignedInShell({
       action: () => { window.location.href = "/inventory" },
     }))
 
-    const invoices: SearchItem[] = (invoicesQuery.data?.items ?? []).map((inv) => ({
+    const invoices: SearchItem[] = (invoicesQuery.data ?? []).map((inv) => ({
       id: `invgrp-${inv.id}`,
       title: inv.invoiceNumber ?? t("search.unknownParty"),
       description: inv.supplierName ?? undefined,
@@ -360,6 +372,7 @@ export function HomeViewSignedInShell({
         dashboardLabel={copy.sections.dashboard.label}
         debtsLabel={copy.sections.debts.label}
         employeesLabel={copy.sections.employees.label}
+        expensesLabel={t("expenses.title")}
         externalsLabel={copy.sections.externals.label}
         expandLabel={copy.shell.expand}
         inventoryLabel={t("shell.itemsGuide")}

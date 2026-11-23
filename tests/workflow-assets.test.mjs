@@ -38,7 +38,7 @@ test('branch workflow doc and PR templates stay aligned', async () => {
   const agentTemplate = await readRepoFile('.github/PULL_REQUEST_TEMPLATE/agent-branch.md');
   const integrationTemplate = await readRepoFile('.github/PULL_REQUEST_TEMPLATE/integration-branch.md');
 
-  assert.equal(packageJson.scripts['check:workflow-assets'], 'node --test ./tests/workflow-assets.test.mjs');
+  assert.equal(packageJson.scripts['check:workflow-assets'], 'node --test ./tests/workflow-assets.test.mjs ./tests/nightly-tag-build-identity.test.mjs');
   assert.match(packageJson.scripts.lint, /check:workflow-assets/);
   assert.match(readme, /docs\/branch-workflow\.md/);
   assert.match(readme, /plans\/tuari-multi-agent-delivery-plan\.md/);
@@ -57,6 +57,15 @@ test('CI/CD workflow files exist and have correct triggers', async () => {
   const release = await readRepoFile('.github/workflows/release.yml');
   const nightly = await readRepoFile('.github/workflows/nightly.yml');
   const beta = await readRepoFile('.github/workflows/beta.yml');
+  const ci = await readRepoFile('.github/workflows/ci.yml');
+  const e2eJob = ci.split(/^  test-e2e:\s*$/m)[1]?.split(/^  [\w-]+:\s*$/m)[0];
+
+  assert.ok(e2eJob, 'CI must define the test-e2e job');
+  assert.match(
+    e2eJob,
+    /^    runs-on: ubuntu-24\.04\s*$/m,
+    'Playwright 1.58.2 requires the supported Ubuntu 24.04 runner',
+  );
 
   // Release: tag push trigger
   assert.match(release, /on:/);
@@ -86,6 +95,215 @@ test('CI/CD workflow files exist and have correct triggers', async () => {
   assert.match(beta, /sign-update\.mjs/);
   assert.match(beta, /verify-release-assets\.mjs/);
   assert.match(beta, /Rust Core boundaries/);
+});
+
+test('publish workflows run the installer smoke test after packaging and before the upload', async () => {
+  const channels = [
+    { name: 'beta.yml', channel: 'beta', uploadMarker: 'gh release create' },
+    { name: 'release.yml', channel: 'stable', uploadMarker: 'softprops/action-gh-release' },
+    { name: 'nightly.yml', channel: 'nightly', uploadMarker: 'gh release create' },
+  ];
+
+  for (const { name, channel, uploadMarker } of channels) {
+    const source = await readRepoFile(path.join('.github/workflows', name));
+    const lines = source.split('\n');
+
+    // Find a real step by name. A commented-out step does not match, because the
+    // regex requires the line to START with `- name:` (a `# - name:` line is a
+    // comment, not a step) — plain text search would happily match the smoke
+    // command inside a comment.
+    const stepStart = (needle) =>
+      lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes(needle));
+    const stepAt = (index) => {
+      const indent = lines[index].match(/^\s*/)[0];
+      let end = lines.length;
+      for (let i = index + 1; i < lines.length; i += 1) {
+        if (lines[i].startsWith(`${indent}- name:`)) {
+          end = i;
+          break;
+        }
+      }
+      return lines.slice(index, end).join('\n');
+    };
+    const stepContaining = (needle) =>
+      lines.findIndex((line, index) =>
+        /^\s*- name:/.test(line) && stepAt(index).includes(needle),
+      );
+
+    const smokeStep = stepStart('Run installer smoke test');
+    assert.ok(smokeStep !== -1, `${name} must have a 'Run installer smoke test' step`);
+    const smokeBlock = stepAt(smokeStep);
+
+    // The gate must run the built artifact. An index of -1 means the workflow
+    // does not run it at all.
+    assert.ok(
+      smokeBlock.includes('scripts/smoke/installer-smoke.mjs'),
+      `${name} must run scripts/smoke/installer-smoke.mjs`,
+    );
+
+    // A disabled step is not a gate: `if: false` (or a false expression) would
+    // keep the command in the file while skipping it at run time.
+    assert.doesNotMatch(
+      smokeBlock,
+      /^\s*if:\s*(false|\$\{\{\s*false\s*\}\})\s*$/m,
+      `${name} must not disable the installer smoke test step`,
+    );
+
+    // It must run after packaging (no rebuild) and before the release upload,
+    // or a non-starting installer can still be published.
+    const packageStep = channel === 'nightly'
+      ? stepStart('Create portable package')
+      : stepContaining('portable:only');
+    assert.ok(packageStep !== -1, `${name} should build the portable package`);
+    const packageCommand = channel === 'nightly'
+      ? await readRepoFile('scripts/packaging/portable-packaging-capture.ps1')
+      : stepAt(packageStep);
+    assert.match(packageCommand, /portable:only/, `${name} must invoke the real portable package command`);
+    assert.ok(
+      packageStep < smokeStep,
+      `${name} must run the installer smoke test after packaging`,
+    );
+
+    const uploadStep = stepContaining(uploadMarker);
+    assert.ok(uploadStep !== -1, `${name} should upload a release`);
+    assert.ok(
+      smokeStep < uploadStep,
+      `${name} must run the installer smoke test before the release upload`,
+    );
+
+    // It must point at the staged artifact the release uploads, not at a
+    // rebuild in the bundle directory. These arguments are asserted INSIDE the
+    // smoke step: searching the whole file would pass if the smoke command lost
+    // its arguments while the same filenames appeared elsewhere in the workflow.
+    assert.match(
+      smokeBlock,
+      new RegExp(`tuari-\\$version-${channel}-portable\\.zip`),
+      `${name} must point the installer smoke test at the staged portable zip`,
+    );
+    assert.match(
+      smokeBlock,
+      /--installer/,
+      `${name} must pass the staged NSIS installer to the smoke test`,
+    );
+  }
+});
+
+test('Nightly checks the produced portable ZIP through Windows Shell before signing or publication', async () => {
+  const nightly = await readRepoFile('.github/workflows/nightly.yml');
+  const lines = nightly.split('\n');
+  const stepIndex = lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes('Check portable ZIP in Windows Shell'));
+  assert.ok(stepIndex >= 0, 'nightly must run the Windows Shell archive check');
+  const indent = lines[stepIndex].match(/^\s*/)[0];
+  const next = lines.findIndex((line, index) => index > stepIndex && line.startsWith(`${indent}- name:`));
+  const step = lines.slice(stepIndex, next === -1 ? lines.length : next).join('\n');
+  const packageIndex = lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes('Create portable package'));
+  const signingIndex = lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes('Generate or resolve signing keys'));
+  assert.ok(packageIndex < stepIndex && stepIndex < signingIndex, 'Shell check must inspect the produced ZIP before signing');
+  assert.match(step, /scripts\/smoke\/check-portable-zip-shell\.ps1/);
+  assert.match(step, /Tuari-portable\*\.zip/);
+  assert.match(step, /Sort-Object LastWriteTimeUtc -Descending/);
+  assert.doesNotMatch(step, /\$LASTEXITCODE/);
+  assert.match(step, /\$ErrorActionPreference = 'Stop'/);
+  assert.match(step, /id: portable/);
+  assert.match(step, /path=\$\(\$portableZip\.FullName\).*GITHUB_OUTPUT/);
+  const manifest = nightly.split('      - name: Compute checksum and create update manifest')[1].split('      # ── Smoke test')[0];
+  assert.match(manifest, /\$portableZipPath = "\$\{\{ steps\.portable\.outputs\.path \}\}"/);
+  assert.match(manifest, /Get-FileHash -Path \$portableZipPath/);
+  assert.match(manifest, /Copy-Item -LiteralPath \$portableZipPath/);
+  assert.doesNotMatch(manifest, /\$portableZip\s*=\s*Get-ChildItem/);
+});
+
+test('Nightly captures only scoped portable rename diagnostics after package failure', async () => {
+  const nightly = await readRepoFile('.github/workflows/nightly.yml');
+  const lines = nightly.split('\n');
+  const stepStart = (needle) => lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes(needle));
+  const stepAt = (index) => {
+    const indent = lines[index].match(/^\s*/)[0];
+    const next = lines.findIndex((line, lineIndex) => lineIndex > index && line.startsWith(`${indent}- name:`));
+    return lines.slice(index, next === -1 ? lines.length : next).join('\n');
+  };
+  const packageIndex = stepStart('Create portable package');
+  const uploadIndex = stepStart('Upload portable rename diagnostics');
+  const shellCheckIndex = stepStart('Check portable ZIP in Windows Shell');
+  assert.ok(packageIndex >= 0 && uploadIndex > packageIndex && shellCheckIndex > uploadIndex);
+
+  const packageStep = stepAt(packageIndex);
+  assert.match(packageStep, /portable-packaging-capture\.ps1/);
+  assert.match(packageStep, /exit \$LASTEXITCODE/);
+  const upload = stepAt(uploadIndex);
+  assert.match(upload, /failure\(\) && steps\.portable_package\.outcome == 'failure'/);
+  assert.match(upload, /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  assert.match(upload, /retention-days: 3/);
+  assert.match(upload, /portable-rename-failure\.json/);
+  assert.match(upload, /portable-rename\.etl/);
+  assert.doesNotMatch(upload, /Tuari-portable\.zip|api-runtime|signing-key|APP_DB_PATH/);
+  assert.match(nightly, /- name: Check portable ZIP in Windows Shell/);
+  assert.match(nightly, /- name: Run installer smoke test/);
+});
+
+test('Nightly preserves only failed portable verifier evidence without weakening release gates', async () => {
+  const nightly = await readRepoFile('.github/workflows/nightly.yml');
+  const lines = nightly.split('\n');
+  const stepStart = (needle) => lines.findIndex((line) => /^\s*- name:/.test(line) && line.includes(needle));
+  const stepAt = (index) => {
+    const indent = lines[index].match(/^\s*/)[0];
+    const next = lines.findIndex((line, lineIndex) => lineIndex > index && line.startsWith(`${indent}- name:`));
+    return lines.slice(index, next === -1 ? lines.length : next).join('\n');
+  };
+  const verifierIndex = stepStart('Smoke test nightly artifacts');
+  const captureIndex = stepStart('Capture failed portable verifier evidence');
+  const uploadIndex = stepStart('Upload failed portable verifier evidence');
+  const installerIndex = stepStart('Run installer smoke test');
+  const releaseUploadIndex = stepStart('Upload to nightly release');
+  assert.ok(verifierIndex >= 0 && captureIndex > verifierIndex);
+  assert.ok(uploadIndex > captureIndex && installerIndex > uploadIndex);
+  assert.ok(releaseUploadIndex > installerIndex);
+
+  const verifier = stepAt(verifierIndex);
+  assert.match(verifier, /id: verify/);
+  assert.match(verifier, /--diagnostics-dir/);
+  const capture = stepAt(captureIndex);
+  assert.match(capture, /if: failure\(\) && steps\.verify\.outcome == 'failure'/);
+  assert.match(capture, /bundle\/portable/);
+  assert.match(capture, /\*-portable\.zip/);
+  assert.match(capture, /nightly-verifier-diagnostics/);
+  assert.match(capture, /GITHUB_SHA/);
+  assert.match(capture, /Get-FileHash/);
+  assert.doesNotMatch(capture, /signing-key\.pem|verification-key\.pem|Get-ChildItem\s+-Path\s+\$env:RUNNER_TEMP/);
+
+  const upload = stepAt(uploadIndex);
+  assert.match(upload, /if: failure\(\) && steps\.verify\.outcome == 'failure'/);
+  assert.match(upload, /actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  assert.match(upload, /retention-days: 3/);
+  assert.match(upload, /if-no-files-found: error/);
+});
+
+test('the gated release workflow owns publication', async () => {
+  // A tag push runs release.yml (with the smoke gate) and release-metadata.yml
+  // at the same time. If metadata publishes the release, a tag can go public
+  // while the gate is still running — or after it failed, because the gate only
+  // stops the binary upload. Publication therefore belongs to the gated
+  // workflow, and metadata must never un-draft a release.
+  const release = await readRepoFile('.github/workflows/release.yml');
+  const metadata = await readRepoFile('.github/workflows/release-metadata.yml');
+
+  const lines = release.split("\n");
+  const smoke = lines.findIndex((l) => /^\s*- name:/.test(l) && l.includes('Run installer smoke test'));
+  const publish = lines.findIndex((l) => /^\s*- name:/.test(l) && l.includes('Publish release'));
+  assert.ok(smoke !== -1, 'release.yml must run the installer smoke test');
+  assert.ok(publish !== -1, 'release.yml must publish the release');
+  assert.ok(smoke < publish, 'release.yml must publish only after the smoke gate');
+  assert.match(
+    lines.slice(publish, publish + 24).join("\n"),
+    /--draft=false/,
+    'release.yml must un-draft the release after the gate passes',
+  );
+
+  assert.doesNotMatch(
+    metadata,
+    /--draft=false/,
+    'release-metadata.yml must not publish the release: release.yml owns publication after the smoke gate',
+  );
 });
 
 test('workflow files do not embed a column-0 PowerShell here-string terminator', async () => {

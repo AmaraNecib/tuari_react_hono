@@ -3,6 +3,9 @@ import path from "path"
 
 export default defineConfig({
   test: {
+    // Same worker cap as the API config: see the note there. The default is
+    // (cores - 1), which is more of the machine than a local test run needs.
+    maxWorkers: Number(process.env.VITEST_MAX_WORKERS ?? 2),
     environment: "jsdom",
     globals: true,
     coverage: {

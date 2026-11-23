@@ -41,7 +41,7 @@ export function TablePaginationControls({
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">{t("tables.rowsPerPage")}</span>
           <div className="w-24">
-            <NativeSelect value={String(pageSize)} onChange={(event) => onPageSizeChange(Number(event.target.value) || 10)}>
+            <NativeSelect aria-label={t("tables.rowsPerPage")} value={String(pageSize)} onChange={(event) => onPageSizeChange(Number(event.target.value) || 10)}>
               {presetPageSizes.map((size) => (
                 <option key={size} value={size}>
                   {size}

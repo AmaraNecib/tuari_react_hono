@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   rbacRolesList: vi.fn(),
   rolesList: vi.fn(),
   workspaceSnapshot: vi.fn(),
+  financialMetadata: vi.fn(),
   employeesListPaged: vi.fn(),
+  systemLogList: vi.fn(),
 }))
 
 vi.mock("@tanstack/react-query", async () => ({
@@ -20,11 +22,13 @@ vi.mock("@/features/session/use-session-query", () => ({
 }))
 
 vi.mock("@/lib/orpc-client", () => ({
+  financialClient: { metadata: mocks.financialMetadata },
   rpcClient: {
     rbacRolesList: mocks.rbacRolesList,
     rolesList: mocks.rolesList,
     workspaceSnapshot: mocks.workspaceSnapshot,
     employeesListPaged: mocks.employeesListPaged,
+    systemLogList: mocks.systemLogList,
   },
   // workspace-keys evaluates `sessionQueryKey` at module load from
   // `orpc.session.queryOptions().queryKey` — mirror the mounted key shape.
@@ -41,6 +45,7 @@ import {
   useCompositeWorkspaceQuery,
   useEmployeesPagedQuery,
   useRolesQuery,
+  useSystemLogQuery,
   useWorkspaceScopedQuery,
 } from "./workspace-queries"
 import { workspaceQueryKeys } from "./workspace-keys"
@@ -100,32 +105,17 @@ describe("useEmployeesPagedQuery server-side search (issue #183)", () => {
   })
 })
 
-describe("useCompositeWorkspaceQuery — single workspaceSnapshot RPC (issue #276)", () => {
-  const snapshotData = {
-    roles: [],
-    employees: [],
-    externalCounterparties: [],
-    debtAccounts: [],
-    debtEntries: [],
-    projects: [],
-    warehouses: [],
-    managerAssignments: [],
-    projectAssignments: [],
-    warehouseAssignments: [],
-    employeeStateHistory: [],
-    projectManagerOwnershipHistory: [],
-    warehouseManagerOwnershipHistory: [],
-    salaryPayments: [],
-  }
+describe("useCompositeWorkspaceQuery — financial metadata RPC", () => {
+  const metadata = { roles: [], employees: [], externalCounterparties: [], projects: [], warehouses: [], managerAssignments: [], projectAssignments: [], warehouseAssignments: [], employeeStateHistory: [], projectManagerOwnershipHistory: [], warehouseManagerOwnershipHistory: [] }
 
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.useSessionQuery.mockReturnValue({ data: { user: { id: "user-1" } } })
     mocks.useQuery.mockImplementation((options) => options)
-    mocks.workspaceSnapshot.mockResolvedValue(snapshotData)
+    mocks.financialMetadata.mockResolvedValue(metadata)
   })
 
-  it("mounts one query that resolves the whole workspace from the snapshot RPC", async () => {
+  it("mounts one query that resolves metadata from the authenticated financial route", async () => {
     useCompositeWorkspaceQuery()
 
     const options = mocks.useQuery.mock.calls[0]?.[0] as {
@@ -136,8 +126,9 @@ describe("useCompositeWorkspaceQuery — single workspaceSnapshot RPC (issue #27
     expect(options.queryKey).toEqual(["phase1", "workspace", "user-1"])
     expect(options.enabled).toBe(true)
 
-    await expect(options.queryFn()).resolves.toEqual(snapshotData)
-    expect(mocks.workspaceSnapshot).toHaveBeenCalledTimes(1)
+    await expect(options.queryFn()).resolves.toEqual(metadata)
+    expect(mocks.financialMetadata).toHaveBeenCalledTimes(1)
+    expect(mocks.workspaceSnapshot).not.toHaveBeenCalled()
     // The composite must not fan out to the individual list endpoints anymore.
     expect(mocks.rbacRolesList).not.toHaveBeenCalled()
   })
@@ -258,5 +249,39 @@ describe("useWorkspaceScopedQuery session gate", () => {
 
     const options = mocks.useQuery.mock.calls[0]?.[0]
     expect(options.placeholderData).toBe(keepPreviousData)
+  })
+})
+
+describe("useSystemLogQuery date range (#428 round 2)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.useSessionQuery.mockReturnValue({ data: { user: { id: "user-1" } } })
+    mocks.useQuery.mockImplementation((options) => options)
+  })
+
+  it("expands the picked days to inclusive Algeria bounds on the wire", async () => {
+    useSystemLogQuery({ filters: { fromDate: "2026-10-01", toDate: "2026-10-15" } })
+
+    const options = mocks.useQuery.mock.calls[0]?.[0] as { queryFn: () => Promise<unknown> }
+    await options.queryFn()
+
+    expect(mocks.systemLogList).toHaveBeenCalledWith({
+      actionType: undefined,
+      actorUserId: undefined,
+      entityType: undefined,
+      // 00:00 Africa/Algiers on the picked start day.…
+      fromDate: "2026-09-30T23:00:00.000Z",
+      // …and 23:59:59.999 on the picked end day, so the whole day is in range.
+      toDate: "2026-10-15T22:59:59.999Z",
+    })
+  })
+
+  it("sends no filter object when no filters are given", async () => {
+    useSystemLogQuery()
+
+    const options = mocks.useQuery.mock.calls[0]?.[0] as { queryFn: () => Promise<unknown> }
+    await options.queryFn()
+
+    expect(mocks.systemLogList).toHaveBeenCalledWith(undefined)
   })
 })

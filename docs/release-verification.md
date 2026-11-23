@@ -10,14 +10,47 @@ it, how to run the smoke test that launches it, and what still needs a human.
 | --- | --- | --- |
 | `pnpm test:api`, `pnpm test:web`, Rust tests | source behaviour | yes |
 | `scripts/verify-release-assets.mjs` | the portable zip exists and contains `Tuari.exe`, and the signed update manifest verifies | yes, in the release workflow |
-| `scripts/smoke/installer-smoke.mjs` | the built bundle launches, the sidecar starts, `/health` answers, and the app writes a schema-complete SQLite database | no, it needs a Windows desktop session |
+| `scripts/smoke/installer-smoke.mjs` | the packaged **portable** build launches, the sidecar starts, `/health` answers, and the app writes a schema-complete SQLite database. The NSIS setup file is only checked for existence, a PE header and a hash — it is never executed | yes, at the publish gate (`beta.yml`, `release.yml`, `nightly.yml`) |
 
 The smoke test closes the gap between "the zip contains an exe" and "the exe
-runs". It does not replace a human looking at the window.
+runs". It launches the portable layout, which is the same app the installer
+unpacks, but it does not run the installer itself and it does not replace a
+human looking at the window.
 
 Current status: the smoke test passes 22/22 with exit 0 on a locally built
-artifact. Two startup blockers it found are fixed; the story and the remaining
-known gaps are at the end of this document.
+artifact, and it runs at the publish gate. Two startup blockers it found are
+fixed; the story and the remaining known gaps are at the end of this document.
+
+## The publish gate
+
+`beta.yml`, `release.yml`, and `nightly.yml` run this script automatically after
+they build and stage the portable zip, and before they create the release. The
+step extracts the same `tuari-<version>-<channel>-portable.zip` the release will
+upload and passes the staged installer with `--installer`; it never rebuilds.
+`ci.yml` does not run it, because the check needs a full desktop build.
+
+The step fails the job on any non-zero exit, so a build whose packaged app cannot
+start never reaches a release. The failure modes it reports:
+
+- a staged artifact is missing or too small,
+- the bundle is missing `Tuari.exe`, `bin/node.exe`, the `api-runtime` sidecar
+  entry, the SQLite native binding, or a declared `bundle.resources` entry,
+- `Tuari.exe` exits before the sidecar appears (the exit-101 class from #404),
+- the sidecar never starts, never binds the port, or `/health` never returns
+  `{"status":"ok"}`,
+- the database is missing, carries a legacy mtime, or lacks an expected table,
+- the license handoff is not `trial` on a fresh install.
+
+A red installer-smoke step means the artifact is not safe to publish. Read the
+failed check in the job log; it names the artifact, the path, or the process
+exit code. `verify-release-assets.mjs` passing is not a substitute: it only
+proves the zip contains an exe.
+
+The gate needs an interactive Windows session and a same-user, non-elevated
+process read for the sidecar environment check. GitHub-hosted `windows-latest`
+runners provide both. If the runner lacks a desktop session or the process read
+is blocked, the run fails on a named check rather than passing quietly; that is
+an infrastructure failure, not proof the installer is broken.
 
 ## Build the artifacts
 
@@ -31,8 +64,9 @@ pnpm --filter @tuari/desktop portable:only
 ```
 
 `@tuari/desktop build` runs `build-sidecar.mjs` first. That script builds the
-API, copies `dist/` plus the `better-sqlite3` (or `better-sqlite3-sqlcipher`)
-native binding into `apps/desktop/src-tauri/bin/api-runtime`, and copies the
+API, copies `dist/` plus both `better-sqlite3` and
+`better-sqlite3-multiple-ciphers` into `apps/desktop/src-tauri/bin/api-runtime`,
+requires their native binaries to load, and copies the
 current Node binary to `apps/desktop/src-tauri/bin/node.exe`. Tauri then compiles
 the Rust shell and runs `pnpm --filter @tuari/web build` for the frontend.
 
@@ -53,6 +87,7 @@ Tuari-portable/
       package.json
       dist/index.cjs
       node_modules/better-sqlite3/build/Release/better_sqlite3.node
+      node_modules/better-sqlite3-multiple-ciphers/prebuilds/win32-x64.node
 ```
 
 The smoke script adds one file of its own to a directory it extracts into:
@@ -190,7 +225,7 @@ manual:
 - The desktop IPC bridge (`desktop_api_request`, `activate_license`,
   `check_for_updates`). These need the webview.
 - The encrypted-database path. It needs a license with `encrypted_db` and a
-  build that includes the `better-sqlite3-sqlcipher` native binding.
+  build that includes the `better-sqlite3-multiple-ciphers` native binding.
 - Update download, signature verification, and restart.
 - Codesigning and notarisation. The local build is unsigned.
 
@@ -270,18 +305,17 @@ written by this run, and clean shutdown. `cargo test` and
 
 ## Known gaps
 
-These are real but out of scope for the smoke-test lane. They are reported to the
-parent as separate issues.
+The smoke-test result above records its original verification run. Current
+packaging behavior and remaining release gaps are separate:
 
-- The sidecar build falls back to plain `better-sqlite3` when the
-  `better-sqlite3-sqlcipher` native binding is not present, and it prints a
-  warning rather than failing. The portable artifact then ships without
-  encryption support, so a customer with the `encrypted_db` feature would get
-  `APP_DB_KEY` set and a driver that cannot use it. The build should fail, or at
-  least the packaging step should record which driver was bundled.
-- `cleanup_stale_api_processes` kills any `node.exe` whose command line contains
-  `api-runtime` and `index.cjs`, regardless of install path. Launching the
-  portable build kills a running installed build's sidecar.
+- The sidecar build now requires both SQLite drivers. It loads the encrypted
+  driver's shipped prebuild before packaging and checks the copied prebuild.
+  Missing native support fails the build; it does not warn and fall back to a
+  plain-only runtime. This fixes the packaging omission identified by the
+  original smoke-test lane. The built-artifact proof still must pass on the
+  Windows runner: exact correct-key readback, wrong-key/no-key/plain-SQLite
+  rejection, and those same checks against the actual runtime-created backup.
+  `PRAGMA cipher_version` is not part of acceptance; it is SQLCipher-specific.
 - The shell migrates a legacy database from `Documents/Tuari` into the data dir
   with `std::fs::copy`, which preserves the source mtime. That is deliberate
   product behaviour, but it means a first-run check must neutralize the source

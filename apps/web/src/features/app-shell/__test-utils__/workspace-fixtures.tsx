@@ -28,7 +28,7 @@ import type { ReactNode } from "react"
 
 import { AppPreferencesProvider } from "@/features/preferences/preferences"
 import { HomeView, type HomeViewPage } from "../home-view"
-import type { InventoryInvoiceGroupDetail, WorkspaceSnapshot } from "@tuari/contracts"
+import type { InventoryInvoiceGroupDetail, WorkspaceMetadata } from "@tuari/contracts"
 
 // ─── Hoisted: navigateMock + AppMutationError must exist before vi.mock factories ───
 const { navigateMock, AppMutationError } = vi.hoisted(() => {
@@ -69,11 +69,12 @@ const mockState: {
   setupStatus: { hasUsers: boolean; requiresSetupKey?: boolean } | undefined
   setupPending: boolean
   setupError: Error | null
-  workspaceData: WorkspaceSnapshot | undefined
+  workspaceData: WorkspaceMetadata | undefined
   workspacePending: boolean
   workspaceError: Error | null
   debtsSummaryError: boolean
   debtsSummaryPending: boolean
+  debtSearchAccounts: Array<Record<string, unknown>>
   systemLogData: { items: Array<Record<string, unknown>> }
   invoiceGroupDetail: InventoryInvoiceGroupDetail | undefined
 } = {
@@ -88,6 +89,7 @@ const mockState: {
   workspaceError: null,
   debtsSummaryError: false,
   debtsSummaryPending: false,
+  debtSearchAccounts: [],
   systemLogData: defaultSystemLogData,
   invoiceGroupDetail: undefined,
 }
@@ -339,7 +341,7 @@ vi.mock("../mock-dashboard", () => ({
   useCreateEmployeesBatchMutation: () => ({ isPending: false, mutateAsync: mockFns.createEmployeesBatchMutate }),
   useCreateExternalCounterpartyMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useCreateDebtAccountMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  useCreateDebtEntryMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useCreateDebtEntryMutation: () => ({ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }),
   useSettleDebtAccountMutation: () => ({ isPending: false, mutate: vi.fn() }),
   useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
@@ -358,12 +360,17 @@ vi.mock("../mock-dashboard", () => ({
     isPending: false,
     mutate: mockFns.createSalaryPaymentMutate,
     mutateAsync: mockFns.createSalaryPaymentMutate,
+    reset: vi.fn(),
   }),
   useAddWorkspaceRecordMutation: () => ({ isPending: false, mutate: mockFns.addMutate }),
   useRemoveWorkspaceRecordMutation: () => ({ isPending: false, mutateAsync: mockFns.removeMutate }),
   useResetWorkspaceMutation: () => ({ isPending: false, mutateAsync: mockFns.resetMutate }),
   useUpdateAccountSettingsMutation: () => ({ isPending: false, mutateAsync: mockFns.updateAccountMutateAsync }),
   AppMutationError,
+}))
+
+vi.mock("@/features/session/use-session-query", () => ({
+  useSessionQuery: () => ({ data: { user: { id: "user-1" } } }),
 }))
 
 vi.mock("../workspace-mutations", () => ({
@@ -387,9 +394,10 @@ vi.mock("../workspace-mutations", () => ({
     isPending: false,
     mutate: mockFns.createSalaryPaymentMutate,
     mutateAsync: mockFns.createSalaryPaymentMutate,
+    reset: vi.fn(),
   }),
   useCreateDebtAccountMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  useCreateDebtEntryMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useCreateDebtEntryMutation: () => ({ isPending: false, mutate: vi.fn(), mutateAsync: vi.fn() }),
   useSettleDebtAccountMutation: () => ({ isPending: false, mutate: vi.fn() }),
   useRecordDebtPaymentMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
   useVoidDebtEntryMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
@@ -420,6 +428,7 @@ vi.mock("../workspace-mutations", () => ({
 }))
 
 vi.mock("../workspace-queries", () => ({
+  useWorkspaceScopedQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
   // Hooks used by home-view-signed-in-shell (enabled only when search is open)
   useEmployeesQuery: ({ enabled = true }: { enabled?: boolean } = {}) => {
     searchState.employees = enabled
@@ -538,6 +547,12 @@ vi.mock("@/features/inventory/inventory-hooks", async (importOriginal) => ({
     isError: false,
   }),
   useInventoryAssetQuery: () => ({ data: undefined, isPending: false, isError: false }),
+  // Charge queries go through the shared workspace query helper, which this
+  // fixture's `workspace-queries` partial mock does not provide; keep them
+  // offline too so detail pages render without a real RPC call (#413).
+  useAssetChargeDefaultQuery: () => ({ data: undefined, isPending: false, isError: false }),
+  useAssetChargesByUnitQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
+  useProjectChargesQuery: () => ({ data: undefined, isPending: false, isError: false }),
   useInventoryWarehousesQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
   useInventoryProjectsQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
   useInventoryExternalCounterpartiesQuery: () => ({ data: { items: [] }, isPending: false, isError: false }),
@@ -555,12 +570,21 @@ vi.mock("@/features/inventory/transfer-history-hooks", () => ({
 
 // Debts pages own their data via feature-scoped queries. Keep the workspace
 // fixture fully offline so debts routes never race a real RPC request.
+vi.mock("@/features/debts/debts-exact-queries", () => ({
+  useExactDebtSummary: (_client: unknown, options?: { enabled?: boolean }) => {
+    if (options) searchState.debts = options.enabled
+    return {
+      data: mockState.debtsSummaryPending || mockState.debtsSummaryError ? undefined : { accounts: mockState.debtSearchAccounts, grossPayableDzd: "0.00", grossReceivableDzd: "0.00" },
+      isPending: mockState.debtsSummaryPending,
+      isError: mockState.debtsSummaryError,
+      refetch: vi.fn(),
+    }
+  },
+  useExactDebtDetail: () => ({ data: undefined, isPending: false, isError: false, refetch: vi.fn() }),
+  useExactDebtCommand: () => ({ isPending: false, isError: false, mutateAsync: vi.fn(), reset: vi.fn() }),
+}))
+
 vi.mock("@/features/debts/debts-queries", () => ({
-  useDebtsSummaryQuery: () => ({
-    data: { parties: [], debtAccounts: [] },
-    isPending: mockState.debtsSummaryPending,
-    isError: mockState.debtsSummaryError,
-  }),
   useDebtPartyDetailQuery: () => ({
     data: undefined,
     isPending: mockState.debtsSummaryPending,
@@ -573,13 +597,51 @@ vi.mock("@/features/debts/debts-queries", () => ({
   buildExternalCounterpartyRows: () => [],
 }))
 
+vi.mock("@/features/inventory/inventory-exact-queries", () => ({
+  useExactInventoryInvoices: (_client: unknown, options?: { enabled?: boolean }) => {
+    if (options) searchState.invoices = options.enabled
+    return { data: [], isPending: false, isError: false }
+  },
+  useExactInventoryDefinitions: () => ({ data: [], isPending: false, isError: false }),
+  // Keep the real stock page mounted before navigating to the catalog. These
+  // query mocks expose overrides for tests of loading and error states.
+  useExactInventoryOutbounds: vi.fn(() => ({ data: [], isPending: false, isError: false, refetch: vi.fn() })),
+  useExactInventoryDetail: vi.fn(() => ({ data: undefined, isPending: false, isError: false, refetch: vi.fn() })),
+  useExactInventoryLocation: vi.fn(() => ({ data: { assets: [], consumables: [] }, isPending: false, isError: false, refetch: vi.fn() })),
+  useExactProjectCharges: vi.fn((_client: unknown, projectId: string | null) => ({
+    data: projectId ? { projectId, totalDzd: "0.00", charges: [] } : undefined,
+    isPending: false, isError: false, refetch: vi.fn(),
+  })),
+  useExactProjectContribution: vi.fn((_client: unknown, projectId: string | null) => ({
+    data: projectId ? { projectId, chargedMaterialsDzd: "0.00", equipmentChargesDzd: "0.00", totalDzd: "0.00", parkedAssetValueDzd: "0.00", parkedAssets: [], materialMovements: [] } : undefined,
+    isPending: false, isError: false, refetch: vi.fn(),
+  })),
+  useExactInventoryAction: vi.fn(() => ({
+    isPending: false, isError: false, reset: vi.fn(),
+    mutateAsync: vi.fn().mockRejectedValue(new Error("Configure an inventory action for this test")),
+  })),
+}))
+
+// HomeView tests pin composition and route intent. Exact page tests exercise
+// invoice details and payroll state through their own typed query seams.
+vi.mock("@/features/employees/employee-payroll-panel", () => ({
+  EmployeePayrollPanel: ({ employeeId }: { employeeId: string }) => <div data-payroll-employee={employeeId} />,
+}))
+vi.mock("@/features/inventory/inventory-exact-page", () => ({
+  ExactInventoryPage: ({ initialInvoiceId }: { initialInvoiceId?: string }) => {
+    invoiceGroupQueryState.invoiceId = initialInvoiceId
+    invoiceGroupQueryState.enabled = Boolean(initialInvoiceId)
+    return <h1>{initialInvoiceId ?? "exact-purchases"}</h1>
+  },
+}))
+
 // ─── Helper: default workspace data ──────────────────────────────
-// Matches the WorkspaceSnapshot shape used throughout the test suite.
+// Matches the WorkspaceMetadata shape used throughout the test suite.
 
 export function makeWorkspaceData(
-  overrides?: Partial<WorkspaceSnapshot>,
-): WorkspaceSnapshot {
-  const data: Record<string, unknown> = {
+  overrides?: Partial<WorkspaceMetadata>,
+): WorkspaceMetadata {
+  const data: WorkspaceMetadata = {
     roles: [
       {
         id: "role-worker",
@@ -587,6 +649,7 @@ export function makeWorkspaceData(
         name: "عامل",
         description: "الدور التنفيذي الميداني ضمن فرق المشاريع.",
         isSystem: true,
+        permissions: [],
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -596,6 +659,7 @@ export function makeWorkspaceData(
         name: "مدير مشروع",
         description: "يشرف على فرق العمل ويقود المشاريع النشطة.",
         isSystem: true,
+        permissions: [],
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -605,6 +669,7 @@ export function makeWorkspaceData(
         name: "مدير مخزن",
         description: "يدير المستودعات النشطة.",
         isSystem: true,
+        permissions: [],
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -617,8 +682,7 @@ export function makeWorkspaceData(
         phone: "0555200100",
         roleId: "role-project-manager",
         status: "ACTIVE",
-        salaryAmountDzd: 95000,
-        salaryPeriod: "MONTHLY",
+        salaryReference: { period: "MONTHLY", amount: "95000" },
         notes: null,
         occupation: null,
         createdAt: "2026-03-13T10:00:00.000Z",
@@ -631,8 +695,7 @@ export function makeWorkspaceData(
         phone: "0555200120",
         roleId: "role-worker",
         status: "ACTIVE",
-        salaryAmountDzd: 4500,
-        salaryPeriod: "DAILY",
+        salaryReference: { period: "DAILY", amount: "4500.0000" },
         notes: "عامل ميداني",
         occupation: "عامل بناء",
         createdAt: "2026-03-13T10:00:00.000Z",
@@ -640,8 +703,6 @@ export function makeWorkspaceData(
       },
     ],
     externalCounterparties: [],
-    debtAccounts: [],
-    debtEntries: [],
     projects: [
       {
         id: "project-1",
@@ -675,6 +736,8 @@ export function makeWorkspaceData(
         startDate: "2026-03-13T10:00:00.000Z",
         endDate: null,
         notes: null,
+        actorUserId: null,
+        transactionId: null,
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -688,6 +751,8 @@ export function makeWorkspaceData(
         startDate: "2026-03-13T10:00:00.000Z",
         endDate: null,
         notes: null,
+        actorUserId: null,
+        transactionId: null,
         createdAt: "2026-03-13T10:00:00.000Z",
         updatedAt: "2026-03-13T10:00:00.000Z",
       },
@@ -696,26 +761,13 @@ export function makeWorkspaceData(
     employeeStateHistory: [],
     projectManagerOwnershipHistory: [],
     warehouseManagerOwnershipHistory: [],
-    salaryPayments: [
-      {
-        id: "salary-payment-1",
-        employeeId: "employee-worker-1",
-        paymentDate: "2026-03-18T08:00:00.000Z",
-        expectedAmountDzd: 4500,
-        actualAmountDzd: 5000,
-        periodType: "DAILY",
-        note: "دفعة مع زيادة",
-        createdAt: "2026-03-18T08:00:00.000Z",
-        updatedAt: "2026-03-18T08:00:00.000Z",
-      },
-    ],
   }
 
   if (overrides) {
     Object.assign(data, overrides)
   }
 
-  return data as WorkspaceSnapshot
+  return data
 }
 
 // Initialize default workspace data
@@ -857,8 +909,10 @@ export function renderWorkspace(
     debtsSummaryError?: boolean
     /** True to simulate the feature-scoped debts summary query loading. */
     debtsSummaryPending?: boolean
+    /** Exact account rows returned by the global-search debt query. */
+    debtSearchAccounts?: Array<Record<string, unknown>>
     /** Full workspace data override. */
-    workspaceData?: WorkspaceSnapshot | undefined
+    workspaceData?: WorkspaceMetadata | undefined
     /** Detail tab within a detail page (e.g. "finance"). */
     detailTab?: string
     /** Currently viewed employee id. */
@@ -884,6 +938,7 @@ export function renderWorkspace(
   mockState.workspaceData = "workspaceData" in opts ? opts.workspaceData : makeWorkspaceData()
   mockState.debtsSummaryError = "debtsSummaryError" in opts ? opts.debtsSummaryError! : false
   mockState.debtsSummaryPending = "debtsSummaryPending" in opts ? opts.debtsSummaryPending! : false
+  mockState.debtSearchAccounts = opts.debtSearchAccounts ?? []
   mockState.invoiceGroupDetail = "invoiceGroupDetail" in opts ? opts.invoiceGroupDetail : undefined
   const queryClient = new QueryClient({
     defaultOptions: {

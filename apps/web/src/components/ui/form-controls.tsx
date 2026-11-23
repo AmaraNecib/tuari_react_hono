@@ -1,9 +1,19 @@
 import { useTranslation } from "react-i18next"
-import type { ComponentProps, ReactNode } from "react"
+import { useState, type ComponentProps, type ReactNode } from "react"
 
 import { ChevronDown } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+
+/**
+ * Placeholder ink shared by every control that renders a placeholder.
+ *
+ * Light keeps the muted token at 80% opacity. Dark overrides it to the
+ * full-opacity token: the /80 composite over the dark input surface lands at
+ * roughly 5:1, while the full token reaches roughly 7:1, so the override is
+ * what keeps a dark placeholder comfortably above AA.
+ */
+export const placeholderContrastClassName = "placeholder:text-muted-foreground/80 dark:placeholder:text-muted-foreground"
 
 /**
  * formControlClassName = component.
@@ -12,7 +22,7 @@ export const formControlClassName =
 /**
  * formTextareaClassName = cn(formControlClassName, "min-h-24 py-3") component.
  */
-  "w-full rounded-xl border border-border/75 bg-background/82 px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.48)_inset] outline-none transition-[color,background-color,border-color,box-shadow] duration-200 placeholder:text-muted-foreground/80 focus-visible:border-primary/45 focus-visible:ring-4 focus-visible:ring-primary/10 aria-invalid:border-destructive/60 aria-invalid:ring-4 aria-invalid:ring-destructive/15 aria-invalid:animate-shake dark:bg-background dark:[color-scheme:dark] dark:shadow-none dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
+  "w-full rounded-xl border border-border/75 bg-background/82 px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.48)_inset] outline-none transition-[color,background-color,border-color,box-shadow] duration-200 " + placeholderContrastClassName + " focus-visible:border-primary/45 focus-visible:ring-4 focus-visible:ring-primary/10 aria-invalid:border-destructive/60 aria-invalid:ring-4 aria-invalid:ring-destructive/15 aria-invalid:animate-shake dark:bg-background dark:[color-scheme:dark] dark:shadow-none dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40"
 
 export const formInputClassName = cn(formControlClassName, "h-10")
 export const formTextareaClassName = cn(formControlClassName, "min-h-24 py-3")
@@ -66,16 +76,18 @@ function CurrencyInput({
   currencyLabel?: string
   inputClassName?: string
 }) {
+  const { i18n } = useTranslation()
+  const rightAligned = i18n.dir?.() !== "ltr"
   return (
-    <span className={cn(
+    <span dir="ltr" className={cn(
       "flex w-full items-center gap-2 rounded-xl border border-border/75 bg-background/82 px-4 shadow-[0_1px_0_rgba(255,255,255,0.48)_inset] focus-within:border-primary/45 focus-within:ring-4 focus-within:ring-primary/10 aria-invalid:border-destructive/60 aria-invalid:ring-4 aria-invalid:ring-destructive/15 dark:bg-background dark:shadow-none dark:focus-within:ring-destructive/40",
       className
     )}>
-      <span className="shrink-0 text-sm font-medium text-muted-foreground" dir="rtl">
+      <span className="flex h-10 shrink-0 items-center border-r border-border/75 pr-3 text-sm font-medium text-muted-foreground select-none" dir="rtl">
         {currencyLabel ?? "دج"}
       </span>
       <input
-        className={cn("h-10 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/80", inputClassName)}
+        className={cn("h-10 min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none", rightAligned ? "text-right" : "text-left", placeholderContrastClassName, inputClassName)}
         dir="ltr"
         inputMode="decimal"
         {...props}
@@ -84,21 +96,36 @@ function CurrencyInput({
   )
 }
 
-/** Styled file input with translated "No file chosen" / "Choose Files" text. */
-function FileInput({ className, label, chooseLabel, ...props }: ComponentProps<"input"> & { label?: string; chooseLabel?: string }) {
+/**
+ * Styled file input that reflects the chosen files (so a selection is
+ * visibly acknowledged) while still forwarding the native `onChange` to its
+ * owner. It shows the file name for a single selection and a count for a
+ * multiple one.
+ */
+function FileInput({ className, label, chooseLabel, onChange, ...props }: ComponentProps<"input"> & { label?: string; chooseLabel?: string }) {
   const { t } = useTranslation()
-  const resolvedLabel = label ?? t("common.noFileChosen")
+  const [selectedNames, setSelectedNames] = useState<string[]>([])
   const resolvedChooseLabel = chooseLabel ?? t("common.chooseFile")
+  const displayLabel =
+    selectedNames.length === 0
+      ? label ?? t("common.noFileChosen")
+      : selectedNames.length === 1
+        ? selectedNames[0]
+        : t("common.filesChosen", { files: selectedNames.length })
   return (
     <span className={cn("relative block w-full", className)}>
       <input
         type="file"
         className="peer absolute inset-0 cursor-pointer opacity-0"
         {...props}
+        onChange={(event) => {
+          setSelectedNames(Array.from(event.target.files ?? []).map((file) => file.name))
+          onChange?.(event)
+        }}
       />
       <span className={cn(formInputClassName, "flex items-center gap-2 pointer-events-none")}>
-        <span className="truncate text-muted-foreground">
-          {props.multiple ? resolvedLabel : resolvedLabel}
+        <span className={cn("truncate", selectedNames.length === 0 ? "text-muted-foreground" : "text-foreground")}>
+          {displayLabel}
         </span>
         <span className="ms-auto text-primary text-xs font-medium">{resolvedChooseLabel}</span>
       </span>

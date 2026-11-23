@@ -5,8 +5,22 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { createElement, type ReactNode } from "react"
 
-import { AppMutationError, useResetWorkspaceMutation } from "./workspace-mutations"
+import { AppMutationError, useCreateDebtAccountMutation, useCreateEmployeesBatchMutation, useResetWorkspaceMutation, useSaveEmployeeMutation } from "./workspace-mutations"
 import { workspaceDomainQueryPrefix, workspaceQueryPrefix } from "./workspace-keys"
+
+const rpcMocks = vi.hoisted(() => ({ employeesBatchCreate: vi.fn(), employeesSave: vi.fn(), debtAccountsCreate: vi.fn() }))
+
+vi.mock("@/lib/orpc-client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/orpc-client")>("@/lib/orpc-client")
+  return {
+    ...actual,
+    rpcClient: {
+      employeesBatchCreate: rpcMocks.employeesBatchCreate,
+      employeesSave: rpcMocks.employeesSave,
+      debtAccountsCreate: rpcMocks.debtAccountsCreate,
+    },
+  }
+})
 
 describe("useResetWorkspaceMutation — snapshot-aware reset (issue #276)", () => {
   function wrapper(queryClient: QueryClient) {
@@ -36,6 +50,42 @@ describe("useResetWorkspaceMutation — snapshot-aware reset (issue #276)", () =
     // PR #304).
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceDomainQueryPrefix })
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: workspaceQueryPrefix })
+  })
+})
+
+describe("useCreateDebtAccountMutation — no silent direction or opening default (issue #458)", () => {
+  function wrapper(queryClient: QueryClient) {
+    return function Wrapper({ children }: { children: ReactNode }) {
+      return createElement(QueryClientProvider, { client: queryClient }, children)
+    }
+  }
+
+  it("passes the chosen direction and leaves an absent opening balance absent", async () => {
+    rpcMocks.debtAccountsCreate.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { id: "acc-1" },
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const { result } = renderHook(() => useCreateDebtAccountMutation(), {
+      wrapper: wrapper(queryClient),
+    })
+
+    await result.current.mutateAsync({
+      partyType: "INTERNAL_WORKER",
+      workerId: "w-1",
+      direction: "RECEIVABLE",
+    })
+
+    // A missing opening must stay absent: the wire rejects a supplied 0, so a
+    // mutation that coerces `undefined ?? 0` would break empty-account creation.
+    expect(rpcMocks.debtAccountsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: "RECEIVABLE",
+        openingBalanceDzd: undefined,
+      }),
+    )
   })
 })
 
@@ -223,5 +273,85 @@ describe("mutation result validation", () => {
       expect(result.error).toBeDefined()
       expect(result.error.message).toBeDefined()
     }
+  })
+})
+
+describe("employee mutation adapters", () => {
+  function wrapper(queryClient: QueryClient) {
+    return function Wrapper({ children }: { children: ReactNode }) {
+      return createElement(QueryClientProvider, { client: queryClient }, children)
+    }
+  }
+
+  it("passes exact salary references through batch create and save while returning created ids", async () => {
+    const employee = { id: "emp-new-1", firstName: "سعيد", lastName: "بلقاسم" }
+    rpcMocks.employeesBatchCreate.mockResolvedValue({
+      success: true,
+      message: "ok",
+      item: { employees: [employee], managerAssignments: [], projectAssignments: [] },
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const { result } = renderHook(() => useCreateEmployeesBatchMutation(), {
+      wrapper: wrapper(queryClient),
+    })
+
+    const output = await result.current.mutateAsync({
+      employees: [
+        {
+          firstName: "سعيد",
+          lastName: "بلقاسم",
+          phone: "0661112233",
+          roleId: "role-project-manager",
+          status: "ACTIVE",
+          managerId: null,
+          salaryReference: { period: "DAILY", amount: "900719925474.0993" },
+          notes: null,
+        },
+      ],
+    })
+
+    // Inline-create callers select `employees[0].id`; a regression to
+    // `{ id: "new" }` would be invisible without this pin.
+    expect(output.createdCount).toBe(1)
+    expect(output.employees).toEqual([employee])
+    expect(rpcMocks.employeesBatchCreate).toHaveBeenCalledWith({
+      employees: [expect.objectContaining({
+        salaryReference: { period: "DAILY", amount: "900719925474.0993" },
+      })],
+    })
+
+    rpcMocks.employeesSave.mockResolvedValue({ success: true, message: "Saved", item: employee })
+    const saveMutation = renderHook(() => useSaveEmployeeMutation(), { wrapper: wrapper(queryClient) })
+    const saveInput = {
+      id: "emp-new-1",
+      salaryReference: { period: "MONTHLY" as const, amount: "1000000000000000.01" },
+    }
+    await saveMutation.result.current.mutateAsync(saveInput)
+
+    expect(rpcMocks.employeesSave).toHaveBeenCalledWith(saveInput)
+  })
+
+  it("translates structured salary-reference field errors and retains paths", async () => {
+    rpcMocks.employeesSave.mockResolvedValue({
+      success: false,
+      error: {
+        message: "Validation failed",
+        code: "VALIDATION",
+        fieldErrors: [
+          { field: "salaryReference.amount", message: "workforce.validation.salaryReference.precision" },
+          { field: "notes", message: "Server supplied literal" },
+        ],
+      },
+    })
+
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    const { result } = renderHook(() => useSaveEmployeeMutation(), { wrapper: wrapper(queryClient) })
+    const error = await result.current.mutateAsync({ id: "emp-1" }).catch((reason: unknown) => reason)
+
+    expect(error).toBeInstanceOf(AppMutationError)
+    expect((error as AppMutationError).fieldErrors[0]).toMatchObject({ field: "salaryReference.amount" })
+    expect((error as AppMutationError).fieldErrors[0]?.message).not.toBe("workforce.validation.salaryReference.precision")
+    expect((error as AppMutationError).fieldErrors[1]).toEqual({ field: "notes", message: "Server supplied literal" })
   })
 })

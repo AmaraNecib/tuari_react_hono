@@ -54,6 +54,8 @@ export function HomeViewPageSectionContent({
   onThemeToggle,
   onUpdateApplied,
   page,
+  salariesSearch,
+  onSalariesSearchChange,
   resetWorkspacePending,
   session,
   systemLogFilters,
@@ -78,6 +80,8 @@ export function HomeViewPageSectionContent({
   | "paginationCursor"
   | "paginationLimit"
   | "paginationPrevCursors"
+  | "salariesSearch"
+  | "onSalariesSearchChange"
   | "page"
   | "resetWorkspacePending"
   | "session"
@@ -180,9 +184,13 @@ export function HomeViewPageSectionContent({
     case "salaries":
       return renderSection(
         <SalariesSection
-          recentPayments={derived.recentSalaryPayments}
           workers={derived.salariedEmployees}
+          employees={derived.employeeRows}
+          projects={derived.salaryProjects}
           onEditSalary={(employeeId) => void navigation.goToEmployeeEdit(employeeId)}
+          onAddPayment={(employeeId) => void navigation.goToEmployeeEarningCreate(employeeId, "salaries")}
+          routeSearch={salariesSearch}
+          onRouteSearchChange={onSalariesSearchChange}
         />,
       )
 
@@ -221,8 +229,7 @@ export function HomeViewPageSectionContent({
         <SystemLogSection
           entries={systemLogState.entries}
           filters={systemLogFilters}
-          isError={systemLogState.isError}
-          isLoading={systemLogState.isLoading}
+          query={systemLogState}
           title={copy.sections.transactions.label}
           onFiltersChange={onSystemLogFiltersChange}
         />,

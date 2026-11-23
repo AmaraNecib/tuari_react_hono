@@ -29,6 +29,13 @@ export const configFileSchema = z.object({
    * `resolveDatabaseConstructor`), defeating encryption on restart.
    */
   db_key: z.string().min(8).optional(),
+  /**
+   * Root directory for daily backups (maps to APP_BACKUPS_ROOT). Written by
+   * the backup-folder setting (#436) so the desktop can move snapshots off the
+   * system drive. A sibling of the data dir by default; an absolute path here
+   * wins over the default, and env APP_BACKUPS_ROOT still wins over this.
+   */
+  backups_root: z.string().min(1).optional(),
   // Postgres fields are accepted for forward compatibility (adapter not yet shipped).
   pg_host: z.string().optional(),
   pg_port: z.number().int().positive().max(65535).optional(),
@@ -100,6 +107,9 @@ export function mergeConfigIntoEnv(
   }
   if (file.db_key !== undefined && merged.APP_DB_KEY === undefined) {
     merged.APP_DB_KEY = file.db_key;
+  }
+  if (file.backups_root !== undefined && merged.APP_BACKUPS_ROOT === undefined) {
+    merged.APP_BACKUPS_ROOT = file.backups_root;
   }
   if (file.pg_host !== undefined && merged.PG_HOST === undefined) {
     merged.PG_HOST = file.pg_host;

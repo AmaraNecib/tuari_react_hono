@@ -26,6 +26,28 @@ type RouterDependencies = {
 
 export type RpcMiddleware = ReturnType<typeof createRpcMiddleware>;
 
+/**
+ * Settle a caught handler error the way its `errorResolver` intends.
+ *
+ * An `errorResolver` in this codebase returns one of two things:
+ *  - a failure OUTPUT (`toFailureResult` → `{ success: false, error }`) that the
+ *    procedure's discriminated-union output schema accepts, or
+ *  - an `ORPCError` naming the wire error (payment/invoice handlers).
+ *
+ * The second shape must be THROWN, not returned: a returned `ORPCError` is
+ * treated as procedure output and fails output validation, so the client sees
+ * `INTERNAL_SERVER_ERROR: Output validation failed` instead of the documented
+ * code. This is part of the #421 fix — awaiting the handler only makes the
+ * rejection reach the resolver; the resolver's ORPCError must still be thrown
+ * to reach the wire.
+ */
+function settleResolvedError(resolved: unknown): unknown {
+  if (resolved instanceof ORPCError) {
+    throw resolved;
+  }
+  return resolved;
+}
+
 export function createRpcMiddleware(dependencies: RouterDependencies) {
   // Initialize rate limiter: 100 requests per 15 minutes per client
   const rateLimiter = new SlidingWindowRateLimiter(100, 15 * 60 * 1000);
@@ -150,12 +172,31 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       checkRateLimit(context);
     },
 
+    /**
+     * Authenticated READ wrapper.
+     *
+     * `errorResolver` is optional so the existing read handlers keep their
+     * current behaviour. A handler whose contract output carries a failure
+     * branch (an entity result) passes its module's `toFailureResult`, exactly
+     * like `mutationAudit`: a domain error then becomes the documented
+     * `{ success: false, error }` envelope instead of escaping as an unmapped
+     * raw error (#422 round 5). The `await` is deliberate — the resolver must
+     * see an async rejection, not a floating promise (#421).
+     */
     queryAuth<TInput, TOutput>(
       handler: (params: { context: RpcContext; input: TInput }) => Promise<TOutput>,
+      errorResolver?: (error: unknown) => unknown,
     ): (params: { context: RpcContext; input: TInput }) => Promise<TOutput> {
       return async ({ context, input }) => {
         await requireWorkspaceAdmin(context);
-        return handler({ context, input });
+        if (!errorResolver) {
+          return handler({ context, input });
+        }
+        try {
+          return await handler({ context, input });
+        } catch (error) {
+          return settleResolvedError(errorResolver(error)) as TOutput;
+        }
       };
     },
 
@@ -166,9 +207,12 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       return async ({ context, input }) => {
         const auditContext = await createMutationAuditContext(context);
         try {
-          return handler({ context, input, auditContext });
+          // `await` so an async handler's rejection settles INSIDE this try:
+          // without it the promise escapes the catch and `errorResolver`
+          // never runs for any async handler (#421).
+          return await handler({ context, input, auditContext });
         } catch (error) {
-          return errorResolver(error);
+          return settleResolvedError(errorResolver(error));
         }
       };
     },
@@ -191,9 +235,11 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
         checkRateLimit(context);
         const auditContext = await createMutationAuditContext(context);
         try {
-          return handler({ context, input, auditContext });
+          // See `mutationAudit`: awaiting keeps the rejection in the catch so
+          // `errorResolver` maps async failures too (#421).
+          return await handler({ context, input, auditContext });
         } catch (error) {
-          return errorResolver(error);
+          return settleResolvedError(errorResolver(error));
         }
       };
     },
@@ -218,9 +264,12 @@ export function createRpcMiddleware(dependencies: RouterDependencies) {
       return async ({ context, input }) => {
         const auditContext = await createAuditContextForUser(context);
         try {
-          return handler({ context, input, auditContext });
+          // The #421 bug: returning the handler's promise without awaiting let
+          // an async rejection escape this catch, so the resolver — and the
+          // documented error envelope — never ran for payment/invoice handlers.
+          return await handler({ context, input, auditContext });
         } catch (error) {
-          return errorResolver(error);
+          return settleResolvedError(errorResolver(error));
         }
       };
     },

@@ -1,0 +1,43 @@
+/** Inert DDL for isolated exact fixtures/copy rehearsal, never startup initialization. */
+export const exactExpenseSchemaStatements = [
+  `CREATE TABLE IF NOT EXISTS exact_money_schema(slice TEXT PRIMARY KEY, version INTEGER NOT NULL)`,
+  `INSERT INTO exact_money_schema(slice, version) VALUES ('expenses', 1)`,
+  `CREATE TABLE expense (
+    id TEXT NOT NULL PRIMARY KEY,
+    amount_minor INTEGER NOT NULL CHECK(typeof(amount_minor) = 'integer' AND amount_minor > 0),
+    currency TEXT NOT NULL DEFAULT 'DZD' CHECK(currency = 'DZD'),
+    expense_date DATETIME NOT NULL,
+    what_for TEXT,
+    responsible_worker_id TEXT,
+    seller_id TEXT,
+    project_id TEXT,
+    stock_item_id TEXT,
+    note TEXT,
+    status TEXT NOT NULL DEFAULT 'LIVE' CHECK(status IN ('LIVE', 'VOIDED')),
+    voided_at DATETIME,
+    voided_by TEXT,
+    void_reason TEXT,
+    actor_user_id TEXT,
+    actor_label TEXT,
+    transaction_id TEXT,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+  )`,
+  `CREATE TABLE expense_revision (
+    id TEXT NOT NULL PRIMARY KEY,
+    expense_id TEXT NOT NULL,
+    previous_amount_minor INTEGER CHECK(previous_amount_minor IS NULL OR (typeof(previous_amount_minor) = 'integer' AND previous_amount_minor > 0)),
+    new_amount_minor INTEGER NOT NULL CHECK(typeof(new_amount_minor) = 'integer' AND new_amount_minor > 0),
+    changed_fields TEXT NOT NULL DEFAULT '[]',
+    reason TEXT,
+    actor_user_id TEXT,
+    actor_label TEXT,
+    transaction_id TEXT,
+    created_at DATETIME NOT NULL,
+    FOREIGN KEY(expense_id) REFERENCES expense(id) ON DELETE RESTRICT ON UPDATE CASCADE
+  )`,
+  `CREATE INDEX expense_expense_date_idx ON expense(expense_date)`,
+  `CREATE INDEX expense_project_id_idx ON expense(project_id)`,
+  `CREATE INDEX expense_responsible_worker_id_idx ON expense(responsible_worker_id)`,
+  `CREATE INDEX expense_revision_expense_id_idx ON expense_revision(expense_id)`,
+] as const;

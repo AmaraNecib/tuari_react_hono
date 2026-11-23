@@ -1,5 +1,7 @@
 import type {
   InventoryAssetDetail,
+  InventoryItemOfferFilter,
+  InventoryItemOfferSource,
   InventoryAssetUnit,
   InventoryConsumableBalance,
   InventoryInvoiceAttachment,
@@ -34,10 +36,47 @@ export type InventoryLocationContentsRecord = InventoryLocationContents
 /** InventoryInvoiceGroupDetailRecord. */
 export type InventoryInvoiceGroupDetailRecord = InventoryInvoiceGroupDetail
 
+/**
+ * The stock a definition currently holds at one source, as the rows that prove
+ * it: a consumable balance with `quantity > 0`, or an asset unit physically at
+ * the source whose entry references the definition.
+ *
+ * This is the read behind the item-offer `inStockAt` rule. The picker compiles
+ * that rule to SQL and the outbound write gate evaluates it in JS over these
+ * rows, so the two cannot disagree about what is available where.
+ */
+export type InventoryItemStockHolding = {
+  consumableBalances: InventoryConsumableBalanceRecord[]
+  assetUnits: InventoryAssetUnitRecord[]
+}
+
+/** A definition read together with the stock it holds at a source. */
+export type InventoryItemStockAtSourceQuery = {
+  itemDefinitionId: string
+  source: InventoryItemOfferSource
+}
+
 /** InventoryItemDefinitionListFilters. */
 export type InventoryItemDefinitionListFilters = {
   itemType?: InventoryItemDefinition["itemType"]
   isActive?: boolean
+}
+
+/** Query for the usage-scoped, keyset-paged item-option read. */
+export type InventoryItemDefinitionPageQuery = {
+  filter: InventoryItemOfferFilter
+  search?: string
+  cursor?: string
+  limit: number
+}
+
+/** One page of item-definition options plus the total match count. */
+export type InventoryItemDefinitionPage = {
+  items: InventoryItemDefinitionRecord[]
+  total: number
+  nextCursor: string | null
+  /** True when a stale cursor (different filter/search) was ignored. */
+  cursorReset: boolean
 }
 
 /** InventoryInvoiceGroupListFilters. */

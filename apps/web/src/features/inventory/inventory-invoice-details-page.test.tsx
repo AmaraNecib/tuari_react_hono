@@ -8,21 +8,40 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { InventoryInvoiceGroupDetail } from "@tuari/contracts"
 
 import { InventoryInvoiceDetailsPage } from "./inventory-invoice-details-page"
+import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
 
 const mocks = vi.hoisted(() => ({
   invoiceGroupQuery: vi.fn(),
   warehousesQuery: vi.fn(),
   projectsQuery: vi.fn(),
+  chargeQueryIds: [] as Array<string | undefined>,
   transferAssetMutation: { isPending: false, mutateAsync: vi.fn() },
   transferConsumableMutation: { isPending: false, mutateAsync: vi.fn() },
 }))
 
 vi.mock("./inventory-hooks", () => ({
   useInventoryInvoiceGroupQuery: () => mocks.invoiceGroupQuery(),
-  useInventoryWarehousesQuery: () => mocks.warehousesQuery(),
-  useInventoryProjectsQuery: () => mocks.projectsQuery(),
+  useInventoryWarehousesQuery: (enabled?: boolean) => mocks.warehousesQuery(enabled),
+  useInventoryProjectsQuery: (enabled?: boolean) => mocks.projectsQuery(enabled),
   useTransferInventoryAssetMutation: () => mocks.transferAssetMutation,
   useTransferInventoryConsumableMutation: () => mocks.transferConsumableMutation,
+  // The page now embeds AssetChargeHistory so a unit with no location keeps its
+  // charge editor reachable (#422 round 6).
+  useAssetChargesByUnitQuery: (assetUnitId?: string) => {
+    mocks.chargeQueryIds.push(assetUnitId)
+    return { data: { items: [] }, isPending: false, isError: false }
+  },
+  useUpdateAssetChargeMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useVoidAssetChargeMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  // The invoice screen routes asset transfers through TransferItemDialog (#413).
+  useAssetChargeDefaultQuery: () => ({
+    data: {
+      assetUnitId: "asset-1",
+      amountDzd: 3000,
+      purchasePriceDzd: 3000,
+      source: "PURCHASE_PRICE",
+    },
+  }),
 }))
 
 vi.mock("./record-invoice-payment-dialog", () => ({
@@ -268,12 +287,96 @@ describe("InventoryInvoiceDetailsPage error surface (issue #34)", () => {
 
     expect(screen.getByRole("heading", { name: "FAC-2026-001" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "العودة إلى الفواتير" })).toBeTruthy()
-    expect(screen.getAllByText("الإجمالي: 1500.00 دج").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("1500.00", { selector: 'bdi[dir="ltr"]' }).length).toBeGreaterThan(0)
     expect(screen.getAllByText("أسمنت").length).toBeGreaterThan(0)
     expect(screen.getByText("عدد الأصول: 1")).toBeTruthy()
     expect(screen.getAllByText("حاسوب محمول").length).toBeGreaterThan(0)
     expect(screen.getAllByText(/شراء - مادة/).length).toBeGreaterThan(0)
     expect(screen.getByText("فاتورة-المورد.pdf")).toBeTruthy()
     expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("routes an asset transfer through the charge-aware dialog (#413)", () => {
+    renderPage(successQuery())
+
+    fireEvent.click(screen.getByRole("button", { name: "تحويل الأصل" }))
+    // Destination defaults to a warehouse; pick a project so the charge fields
+    // appear. The operator must be able to say what to charge from this screen.
+    fireEvent.change(screen.getByLabelText("نوع الوجهة"), { target: { value: "PROJECT" } })
+
+    expect(screen.getByLabelText("مبلغ الاحتساب")).toBeTruthy()
+  })
+
+  it("keeps the destination lists disabled until a transfer dialog opens (#422 round 6)", () => {
+    renderPage(successQuery())
+
+    expect(mocks.warehousesQuery).toHaveBeenCalledWith(false)
+    expect(mocks.projectsQuery).toHaveBeenCalledWith(false)
+
+    fireEvent.click(screen.getByRole("button", { name: "تحويل الأصل" }))
+
+    expect(mocks.warehousesQuery).toHaveBeenCalledWith(true)
+    expect(mocks.projectsQuery).toHaveBeenCalledWith(true)
+  })
+
+  it("routes a consumable transfer through the shared dialog too (#422 round 6)", () => {
+    renderPage(successQuery())
+
+    fireEvent.click(screen.getByRole("button", { name: "تحويل الكمية" }))
+
+    expect(screen.getByRole("heading", { name: "تحويل عنصر" })).toBeTruthy()
+  })
+
+  it("keeps the charge editor reachable for a unit with no location (#422 round 6)", () => {
+    // An outbound sale/gift/return clears the unit's location, so it drops out
+    // of the location-contents view. The invoice's own asset list is the
+    // per-unit view that keeps its charge history and correction reachable.
+    const detail = makeInvoiceGroupDetail()
+    const asset = detail.entries[1]!.assets[0]!
+    detail.entries[1]!.assets = [
+      { ...asset, currentWarehouseId: null, currentProjectId: null, currentLocationLabel: null },
+    ]
+    renderPage({ data: detail, isPending: false, isError: false, refetch: vi.fn() })
+
+    expect(screen.getByText("المكان الحالي: غير محدد")).toBeTruthy()
+    mocks.chargeQueryIds.length = 0
+    fireEvent.click(screen.getByRole("button", { name: "سجل الاحتساب" }))
+
+    expect(screen.getByTestId("asset-charge-history")).toBeTruthy()
+    // The history read is scoped to the rendered unit, not an arbitrary one.
+    expect(mocks.chargeQueryIds).toContain(asset.id)
+  })
+})
+
+describe("InventoryInvoiceDetailsPage pins the invoice day (#473)", () => {
+  let restoreTimeZone: () => void
+
+  beforeEach(() => {
+    restoreTimeZone = pinUtcTimeZone()
+  })
+
+  afterEach(() => {
+    restoreTimeZone()
+  })
+
+  it("renders a movement instant in Algeria with its time and seconds under a UTC machine", () => {
+    const detail = makeInvoiceGroupDetail()
+    detail.movements[0]!.occurredAt = MIDNIGHT_CROSSING
+    renderPage({ data: detail, isPending: false, isError: false, refetch: vi.fn() })
+
+    expect(screen.getByText((_, element) => element?.textContent === "01/10/2026 12:00:00 ص")).toBeTruthy()
+    expect(screen.queryByText("30/09/2026")).toBeNull()
+  })
+
+  it("renders the invoice on its Algeria day under a UTC machine", () => {
+    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
+    expect(ALGERIA_DAY).not.toBe(UTC_DAY)
+
+    const detail = makeInvoiceGroupDetail()
+    detail.group.invoiceDate = MIDNIGHT_CROSSING
+    renderPage({ data: detail, isPending: false, isError: false, refetch: vi.fn() })
+
+    expect(screen.getByText((_, element) => element?.textContent === `تاريخ الفاتورة: ${ALGERIA_DAY}`)).toBeTruthy()
+    expect(screen.queryByText(UTC_DAY)).toBeNull()
   })
 })

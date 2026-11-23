@@ -1,6 +1,7 @@
 /**
  * Record invoice payment dialog for recording payments against inventory invoices.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { InventoryInvoiceGroupDetail } from "@tuari/contracts"
@@ -89,7 +90,7 @@ export function RecordInvoicePaymentDialog({
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <p className="text-sm text-muted-foreground">{t("inventory.payment.remainingDebt")}</p>
             <p className={cn("mt-2 font-mono text-2xl font-semibold", remainingDebt > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400")} dir="ltr">
-              {remainingDebt.toFixed(2)} دج
+              <CurrencyRun amount={remainingDebt.toFixed(2)} currencyLabel="دج" />
             </p>
             {remainingDebt <= 0 && <p className="mt-1 text-xs text-green-600 dark:text-green-400">{t("inventory.payment.fullyPaid")}</p>}
           </div>

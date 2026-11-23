@@ -20,6 +20,8 @@ import { FinanceService } from "../modules/company/finance.service";
 import { AuditService } from "../modules/company/audit.service";
 import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
 import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
+import { createAssetChargeRepository } from "../modules/inventory/adapters/sqlite-asset-charge.repository";
+import { AssetChargeService } from "../modules/inventory/asset-charge.service";
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { InvoiceModule } from "../modules/invoice/invoice.module";
@@ -27,6 +29,11 @@ import { InvoiceRepository } from "../modules/invoice/adapters/invoice.repositor
 import { createPaymentModule } from "../modules/payment/payment.module";
 import type { PaymentModule } from "../modules/payment/payment-module.interface";
 import { PaymentRepositoryImpl } from "../modules/payment/adapters/payment.repository";
+import { createExpensesModule } from "../modules/expenses/expenses.module";
+import type { ExpensesModule } from "../modules/expenses/expenses-module.interface";
+import { SqliteExpenseRepository } from "../modules/expenses/adapters/sqlite-expenses.repository";
+import { createProjectCostRepository } from "../modules/project-cost/adapters/sqlite-project-cost.repository";
+import { ProjectCostService } from "../modules/project-cost/project-cost.service";
 import { SqlitePermissionResolver } from "../modules/rbac/adapters/sqlite-permission-resolver";
 import { RoleModule } from "../modules/rbac/role.module";
 import { SqliteRoleRepository as SqliteRbacRoleRepository } from "../modules/rbac/adapters/sqlite-role.repository";
@@ -34,12 +41,20 @@ import { SessionService } from "../modules/session/session.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
 import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
+import { SqliteEmployeeEarningRepository } from "../modules/workforce/adapters/sqlite-employee-earning.repository";
 import { createSqliteInvoiceDebtPort } from "../modules/invoice/adapters/invoice-debt.port";
 import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { SqliteRecoveryKeyPort } from "../modules/auth/adapters/sqlite-recovery-key.port";
 import { UpdateService } from "../modules/update/update.service";
 import { UpdateHistoryService } from "../modules/update/update-history.service";
 import { SqliteUpdateHistoryPort } from "../modules/update/adapters/sqlite-update-history.port";
+import { createBackupService } from "../modules/backup/backup.service";
+import { createWorkerSnapshotter } from "../modules/backup/backup.snapshot";
+import type { BackupService } from "../modules/backup/backup.types";
+import {
+  createConfigFileBackupFolderPersister,
+  type BackupFolderPersister,
+} from "../infrastructure/config/backup-folder-persister";
 
 /**
  * Optional configuration for {@link createAppDependencies}.
@@ -64,6 +79,13 @@ export type CreateAppDependenciesConfig = {
    * connection.
    */
   authInstance?: BetterAuthInstance;
+  /**
+   * Root that holds the daily backup folders (#430). Defaults to
+   * `appConfig.backupsRootPath`.
+   */
+  backupsRootPath?: string;
+  /** Injected clock for the backup service (tests pin "due" without waiting). */
+  now?: () => Date;
 };
 
 /**
@@ -88,12 +110,17 @@ export type AppDependencies = {
   recoveryKeyService: RecoveryKeyService;
   updateService: UpdateService;
   updateHistoryService: UpdateHistoryService;
+  backupService: BackupService;
+  /** Persists the chosen backup root into the user-editable config (#436). */
+  backupFolderPersister: BackupFolderPersister;
   databaseKeyManager: DatabaseKeyManager;
   /** Persists a rotated DB key so a restart can still open the database (#265). */
   databaseKeyPersister: DatabaseKeyPersister;
   employeeModule: EmployeeModule;
   invoiceModule: InvoiceModule;
   paymentModule: PaymentModule;
+  expensesModule: ExpensesModule;
+  projectCostService: ProjectCostService;
   roleModule: RoleModule;
   /** Close the shared database connection (idempotent; composition-root lifecycle). */
   close: () => void;
@@ -162,13 +189,20 @@ export async function createAppDependencies(
     // adapters are introduced in a follow-up phase.
     const companyRepository = createCompanyRepository(sharedDatabase, appConfig, connectionLock);
     const inventoryRepository = createInventoryRepository(sharedDatabase, connectionLock);
+    // #413: project charges for asset placements. Shares the same connection
+    // lock so a charge write inside the transfer transaction joins it.
+    const assetChargeService = new AssetChargeService(
+      createAssetChargeRepository(sharedDatabase, connectionLock, db),
+      inventoryRepository,
+    );
     const accountRepository = new DrizzleAccountRepository(db, connectionLock);
 
     // Construct each domain service off the same `WorkspaceMutationContext`
     // so the per-domain service owns its transaction + audit context and
     // the `CompanyService` only has to forward delegations.
     const mutation = new WorkspaceMutationContext(companyRepository, companyRepository);
-    const workforceService = new WorkforceService(companyRepository, companyRepository, mutation);
+    const employeeEarningRepository = new SqliteEmployeeEarningRepository(sharedDatabase, connectionLock);
+    const workforceService = new WorkforceService(companyRepository, companyRepository, mutation, employeeEarningRepository);
     const operationsService = new OperationsService(companyRepository, companyRepository, mutation);
     const financeService = new FinanceService(companyRepository, companyRepository, mutation);
     const auditService = new AuditService(companyRepository);
@@ -191,6 +225,14 @@ export async function createAppDependencies(
     const invoiceModule = new InvoiceModule(invoiceRepository, invoiceDebtPort);
     const paymentRepository = new PaymentRepositoryImpl(sharedDatabase, connectionLock);
     const paymentModule = createPaymentModule(paymentRepository, invoiceRepository, invoiceDebtPort);
+    const expensesModule = createExpensesModule(
+      new SqliteExpenseRepository(sharedDatabase, connectionLock),
+    );
+    // #414: the project page's cost total. Read-only aggregation over the
+    // tables the expenses, workforce and inventory modules already write.
+    const projectCostService = new ProjectCostService(
+      createProjectCostRepository(sharedDatabase),
+    );
     const authBootstrapService = new AuthBootstrapService(
       new SqliteBootstrapPort(db, sharedDatabase, connectionLock),
       auth,
@@ -224,11 +266,26 @@ export async function createAppDependencies(
         new InventoryAttachmentStorage(appConfig.attachmentsRootPath),
         companyService,
         companyRepository,
+        assetChargeService,
       ),
       sessionService: new SessionService(auth, permissionResolver),
       recoveryKeyService,
       updateService: new UpdateService(),
       updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(sharedDatabase, connectionLock)),
+      backupService: createBackupService({
+        snapshot: createWorkerSnapshotter({
+          databasePath,
+          databaseKey: resolvedDatabaseKey,
+        }),
+        backupsRootPath: config.backupsRootPath ?? appConfig.backupsRootPath,
+        now: config.now,
+      }),
+      // The desktop shell points the sidecar at `<tuari>/config.json`, so the
+      // chosen backup root persists where the next sidecar run reads it. A
+      // deployment with no config file gets a session-only choice (#436).
+      backupFolderPersister: createConfigFileBackupFolderPersister(
+        process.env.TUARI_CONFIG_FILE?.trim() || null,
+      ),
       databaseKeyManager: createDatabaseKeyManager(sharedDatabase),
       // Persist a rotated key into the user-editable config file so a restart
       // can still open the database (issue #265). The desktop host pins the
@@ -243,6 +300,8 @@ export async function createAppDependencies(
       employeeModule,
       invoiceModule,
       paymentModule,
+      expensesModule,
+      projectCostService,
       roleModule,
       close,
     } as const;

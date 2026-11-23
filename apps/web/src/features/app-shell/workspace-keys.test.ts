@@ -78,7 +78,7 @@ describe("workspaceQueryKeys", () => {
 
     expect(flatFactoryEntries).toEqual([
       "debtAccounts", "debtsDetail", "debtsSummary", "employeeStateHistory",
-      "employees", "externalCounterparties", "inventoryInvoices",
+      "employees", "expenses", "externalCounterparties", "inventoryInvoices",
       "inventoryItems", "inventoryOutboundTransfers", "managerAssignments",
       "projectAssignments", "projectManagerOwnership", "projects", "roles",
       "salaryPayments", "systemLog", "warehouseAssignments",
@@ -98,6 +98,7 @@ describe("workspaceQueryKeys", () => {
       | "debtsSummary"
       | "employeeStateHistory"
       | "employees"
+      | "expenses"
       | "externalCounterparties"
       | "inventoryInvoices"
       | "inventoryItems"
@@ -131,9 +132,6 @@ describe("workspaceQueryKeys", () => {
     ])
     expect(workspaceQueryKeys.inventoryOutboundTransfers(userId)).toEqual([
       "phase1", "workspace-domain", "inventory-outbound-transfers", userId,
-    ])
-    expect(workspaceQueryKeys.employeeDebtAccount(userId, "employee-1")).toEqual([
-      "phase1", "workspace-domain", "employee-debt-account", userId, "employee-1",
     ])
   })
 })

@@ -1,0 +1,379 @@
+import {
+  Money, sumMoneyHistory, getLockedDirectionForCategory, exactDebtProducerSchema, exactFinanceAggregateOwnerSchema, type ExactDebtProducer, type ExactFinanceAggregateOwner,
+  createExactDebtAccountSchema, postExactDebtEntrySchema, payExactDebtEntrySchema,
+  correctExactDebtEntrySchema, exactDebtAmountSchema, voidExactDebtEntrySchema, settleExactDebtAccountSchema,
+  type CreateExactDebtAccount, type PostExactDebtEntry, type PayExactDebtEntry,
+  type CorrectExactDebtEntry, type VoidExactDebtEntry, type SettleExactDebtAccount,
+} from "@tuari/contracts";
+import type { ExactDebtAccount, ExactDebtEntry, ExactFinanceRepository, ExactTransactionParticipant } from "./exact-finance.repository";
+
+import { exactFinanceJson as aggregateJson } from "./exact-finance-json";
+
+export class ExactDebtError extends Error {
+  constructor(message: string, readonly code: "BAD_REQUEST" | "NOT_FOUND" | "CONFLICT" = "BAD_REQUEST") { super(message); }
+}
+
+export type ExactDebtAudit = { actorUserId?: string | null; actorLabel?: string | null; transactionId?: string | null };
+type Command = ExactDebtAudit & { requestId: string };
+const zero = () => Money.parse("0");
+const limit = 100000;
+const normalize = (value: unknown): unknown => {
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, normalize(item)]));
+  return value;
+};
+
+/** Inert exact ledger lifecycle. Production composition continues to use FinanceService. */
+export class ExactFinanceService {
+  private readonly producer: ExactDebtProducer | null;
+  constructor(private readonly repository: ExactFinanceRepository, private readonly dependencies: { id(): string; now(): string }, producer: ExactDebtProducer | null = null) {
+    this.producer = producer ? Object.freeze(exactDebtProducerSchema.parse(producer)) : null;
+  }
+
+  get transactionIdentity() { return this.repository.transactionIdentity; }
+
+  runAggregate<T>(input: ExactDebtAudit & { requestId: string; producer: ExactFinanceAggregateOwner; intent: unknown }, participant: ExactTransactionParticipant, work: () => T, rolledBack?: (cause: unknown) => unknown): T {
+    if (work.constructor.name === "AsyncFunction") throw new ExactDebtError("Aggregate work must be synchronous JSON work");
+    const producer = exactFinanceAggregateOwnerSchema.parse(input.producer);
+    if (!/^[A-Za-z0-9:_-]{1,128}$/.test(input.requestId)) throw new ExactDebtError("Invalid aggregate request id");
+    const identity = this.transactionIdentity;
+    if (participant.transactionIdentity.connection !== identity.connection || participant.transactionIdentity.lock !== identity.lock) throw new ExactDebtError("Aggregate participants require the same connection and shared FIFO");
+    const id = JSON.stringify([producer.type, producer.id, input.requestId]);
+    const fingerprint = aggregateJson({ producer, intent: input.intent, actorUserId: input.actorUserId ?? null, actorLabel: input.actorLabel ?? null });
+    let beganWork = false;
+    try {
+      return participant.withTransaction(() => this.repository.withTransaction(() => {
+        const previous = this.repository.getAggregateCommand(id);
+        if (previous) {
+          if (previous.fingerprint !== fingerprint) throw new ExactDebtError("Aggregate command replay conflict", "CONFLICT");
+          return JSON.parse(previous.resultJson) as T;
+        }
+        beganWork = true;
+        const result = work();
+        const resultJson = aggregateJson(result);
+        this.repository.saveAggregateCommand({ id, fingerprint, resultJson });
+        return JSON.parse(resultJson) as T;
+      }));
+    } catch (cause) {
+      // Both transaction wrappers have unwound before classifying a refusal.
+      throw beganWork && rolledBack ? rolledBack(cause) : cause;
+    }
+  }
+
+  /** Trusted domain composition only. This capability is not exposed by the debt RPC. */
+  forProducer(raw: ExactDebtProducer): ExactFinanceService {
+    return new ExactFinanceService(this.repository, this.dependencies, exactDebtProducerSchema.parse(raw));
+  }
+  private owns(entry: ExactDebtEntry): boolean {
+    return (entry.producerType ?? null) === (this.producer?.type ?? null)
+      && (entry.producerId ?? null) === (this.producer?.id ?? null);
+  }
+  private assertOwner(entry: ExactDebtEntry): void {
+    if (!this.owns(entry)) throw new ExactDebtError("Debt target must be changed through its producer", "CONFLICT");
+  }
+
+  private command<T>(kind: string, input: Command, intent: unknown, work: () => T): T {
+    const fingerprint = JSON.stringify(normalize({ kind, producer: this.producer, intent, actorUserId: input.actorUserId ?? null, actorLabel: input.actorLabel ?? null }));
+    if (fingerprint.length > 16000) throw new ExactDebtError("Debt command resource limit exceeded");
+    return this.repository.withTransaction(() => {
+      const previous = this.repository.getCommand(input.requestId);
+      if (previous) {
+        if (previous.fingerprint !== fingerprint) throw new ExactDebtError("Debt command replay conflict", "CONFLICT");
+        return JSON.parse(previous.resultJson) as T;
+      }
+      const result = work();
+      this.repository.saveCommand({ id: input.requestId, fingerprint, resultJson: JSON.stringify(result) });
+      return result;
+    });
+  }
+  requireParty(partyType: ExactDebtAccount["partyType"], id: string): void {
+    if (!this.repository.partyExists(partyType, id)) throw new ExactDebtError("Debt party not found", "NOT_FOUND");
+  }
+  getAccount(id: string): ExactDebtAccount {
+    const account = this.repository.getAccount(id);
+    if (!account) throw new ExactDebtError("Debt account not found", "NOT_FOUND");
+    return account;
+  }
+  listAccounts(): ExactDebtAccount[] {
+    const rows = this.repository.listAccounts();
+    if (rows.length > limit) throw new ExactDebtError("Debt account read limit exceeded");
+    return rows;
+  }
+  listEntries(id: string): ExactDebtEntry[] {
+    this.getAccount(id);
+    const rows = this.repository.listEntries(id);
+    if (rows.length > limit) throw new ExactDebtError("Debt entry read limit exceeded");
+    return rows;
+  }
+  /** Original signed operand for history totals; no allocation graph is needed. */
+  historyOriginal(accountId: string, entryId: string): string {
+    this.getAccount(accountId);
+    const entry = this.repository.getEntry(entryId);
+    if (!entry || entry.debtAccountId !== accountId || entry.status !== "LIVE" || entry.targetEntryId || entry.correctionOfEntryId) throw new ExactDebtError("Live outbound obligation not found", "NOT_FOUND");
+    return entry.signedAmountDzd;
+  }
+  detail(id: string) {
+    return this.repository.withTransaction(() => {
+      const rows = this.listEntries(id);
+      const remaining = this.remainingIndex(rows);
+      return { account: this.getAccount(id), entries: rows.map(row => ({ ...row,
+        remainingDzd: row.status === "LIVE" && !row.targetEntryId && !row.correctionOfEntryId ? remaining.get(row.id)!.toWire() : null,
+      })) };
+    });
+  }
+  summary() {
+    return this.repository.withTransaction(() => {
+      const accounts = this.listAccounts();
+      const gross = (direction: ExactDebtAccount["direction"]) => sumMoneyHistory(accounts.map(row => {
+        const amount = Money.parse(row.currentBalance, row.currency);
+        const sameDirection = row.direction === direction;
+        return sameDirection && amount.compare(zero()) > 0 ? amount
+          : !sameDirection && amount.compare(zero()) < 0 ? amount.negate() : zero();
+      }));
+      return { accounts, grossPayableDzd: gross("PAYABLE"), grossReceivableDzd: gross("RECEIVABLE") };
+    });
+  }
+  private liveEntry(id: string): ExactDebtEntry {
+    const entry = this.repository.getEntry(id);
+    if (!entry || entry.status !== "LIVE") throw new ExactDebtError("Live debt entry not found", "NOT_FOUND");
+    return entry;
+  }
+  private obligation(id: string): ExactDebtEntry {
+    const entry = this.liveEntry(id);
+    if (entry.targetEntryId || entry.correctionOfEntryId || Money.parse(entry.signedAmountDzd).compare(zero()) === 0) throw new ExactDebtError("Target must be an original obligation");
+    return entry;
+  }
+  createAccount(raw: CreateExactDebtAccount & ExactDebtAudit): ExactDebtAccount {
+    const input = createExactDebtAccountSchema.parse(raw);
+    const audit = this.audit(raw);
+    return this.command("account", { ...input, ...audit }, input, () => {
+      const workerId = input.workerId ?? null;
+      const externalCounterpartyId = input.externalCounterpartyId ?? null;
+      if (!this.repository.partyExists(input.partyType, workerId ?? externalCounterpartyId!)) throw new ExactDebtError("Debt party not found", "NOT_FOUND");
+      const locked = input.reasonCategory ? getLockedDirectionForCategory(input.reasonCategory) : null;
+      if (locked && locked !== input.direction) throw new ExactDebtError("Reason category direction mismatch");
+      if (input.reasonCategory === "OTHER" && !input.reasonDetail) throw new ExactDebtError("Other reason requires detail");
+      const accounts = this.listAccounts();
+      let account = accounts.find(row => row.partyType === input.partyType && row.workerId === workerId && row.externalCounterpartyId === externalCounterpartyId && row.direction === input.direction && row.currency === input.currency);
+      const now = this.dependencies.now();
+      if (!account) {
+        if (accounts.length >= limit) throw new ExactDebtError("Debt account write resource limit exceeded");
+        account = { id: this.dependencies.id(), partyType: input.partyType, workerId, externalCounterpartyId, direction: input.direction, currency: input.currency, currentBalance: "0.00", status: "SETTLED", note: input.note ?? null, settledAt: now, ...audit, createdAt: now, updatedAt: now };
+        this.repository.saveAccount(account);
+      }
+      const opening = Money.parse(input.openingBalanceDzd ?? "0", input.currency);
+      if (this.producer && opening.compare(zero()) !== 0) throw new ExactDebtError("Producer opening requires an explicit original posting");
+      if (opening.compare(zero()) > 0) this.append(account, {
+        entryType: this.listEntries(account.id).length ? "ADJUSTMENT" : "OPENING", signedAmountDzd: opening.toWire(),
+        entryDate: now, note: input.note, reasonCategory: input.reasonCategory, reasonDetail: input.reasonDetail,
+      }, audit);
+      return this.getAccount(account.id);
+    });
+  }
+  postEntry(raw: PostExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
+    const input = postExactDebtEntrySchema.parse(raw);
+    const audit = this.audit(raw);
+    return this.command("post", { ...input, ...audit }, input, () => {
+      const account = this.getAccount(input.debtAccountId);
+      if (input.invoiceId && this.producer?.type !== "INVOICE") throw new ExactDebtError("Invoice linkage requires a validated invoice producer");
+      if (this.producer?.type === "INVOICE" && input.invoiceId !== this.producer.id) throw new ExactDebtError("Invoice producer linkage mismatch");
+      const amount = Money.parse(input.signedAmountDzd, input.currency);
+      this.assertCurrency(account, input.currency);
+      if (amount.compare(zero()) === 0) throw new ExactDebtError("Posting must be nonzero");
+      const locked = input.reasonCategory ? getLockedDirectionForCategory(input.reasonCategory) : null;
+      if (locked && locked !== account.direction) throw new ExactDebtError("Reason category direction mismatch");
+      if (input.reasonCategory === "OTHER" && !input.reasonDetail) throw new ExactDebtError("Other reason requires detail");
+      if (input.entryType === "ADVANCE" && (account.direction !== "RECEIVABLE" || account.partyType !== "INTERNAL_WORKER" || amount.compare(zero()) < 0)) throw new ExactDebtError("Advance requires a positive worker receivable");
+      if (input.entryType === "OPENING" && (this.listEntries(account.id).length || amount.compare(zero()) < 0)) throw new ExactDebtError("Opening must be the first positive entry");
+      return this.append(account, { ...input, entryDate: input.entryDate ?? this.dependencies.now() }, audit);
+    });
+  }
+  private assertCurrency(account: ExactDebtAccount, currency: string): void {
+    if (account.currency !== currency) throw new ExactDebtError("Currency mismatch");
+  }
+  private remainingIndex(rows: ExactDebtEntry[]): Map<string, Money> {
+    const groups = new Map<string, Money[]>();
+    for (const row of rows.filter(row => row.status === "LIVE")) {
+      const key = row.targetEntryId ?? row.correctionOfEntryId ?? row.id;
+      const values = groups.get(key) ?? [];
+      values.push(Money.parse(row.signedAmountDzd, row.currency));
+      groups.set(key, values);
+    }
+    return new Map([...groups].map(([id, values]) => [id, Money.parse(sumMoneyHistory(values))]));
+  }
+  private remainingFrom(target: ExactDebtEntry, rows: ExactDebtEntry[]): Money {
+    return this.remainingIndex(rows).get(target.id)!;
+  }
+  remaining(id: string): string {
+    return this.repository.withTransaction(() => {
+      const target = this.obligation(id);
+      return this.remainingFrom(target, this.listEntries(target.debtAccountId)).toWire();
+    });
+  }
+  recordPayment(raw: PayExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
+    const input = payExactDebtEntrySchema.parse(raw);
+    const audit = this.audit(raw);
+    return this.command("payment", { ...input, ...audit }, input, () => {
+      const target = this.obligation(input.debtEntryId);
+      this.assertOwner(target);
+      const account = this.getAccount(target.debtAccountId);
+      this.assertCurrency(account, input.currency);
+      const amount = Money.parse(input.amountDzd, input.currency);
+      const remaining = this.remainingFrom(target, this.listEntries(account.id));
+      if (remaining.compare(zero()) <= 0 || amount.compare(remaining) > 0) throw new ExactDebtError("Payment exceeds remaining obligation");
+      return this.append(account, { entryType: "PAYMENT", signedAmountDzd: amount.negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), paymentMethod: input.paymentMethod, note: input.note }, audit);
+    });
+  }
+  /** Record actual returned cash against an opening original without erasing its payment. */
+  recordOpeningCashRefund(raw: PayExactDebtEntry & ExactDebtAudit & { refundDate: string }): ExactDebtEntry {
+    if (this.producer?.type !== "PAYROLL_OPENING") throw new ExactDebtError("Opening refund requires its producer", "CONFLICT");
+    const input = { ...payExactDebtEntrySchema.parse(raw), refundDate: postExactDebtEntrySchema.shape.entryDate.unwrap().parse(raw.refundDate) };
+    const audit = this.audit(raw);
+    if (input.refundDate > this.dependencies.now()) throw new ExactDebtError("Cash refund cannot be recorded in the future");
+    return this.command("opening-cash-refund", { ...input, ...audit }, input, () => {
+      const target = this.obligation(input.debtEntryId);
+      this.assertOwner(target);
+      const account = this.getAccount(target.debtAccountId);
+      this.assertCurrency(account, input.currency);
+      if (account.partyType !== "INTERNAL_WORKER" || input.paymentMethod !== "CASH") throw new ExactDebtError("Opening refund requires worker cash provenance");
+      const cash = this.listEntries(account.id).filter(row => row.status === "LIVE" && row.targetEntryId === target.id && row.paymentMethod === "CASH" && (row.entryType === "PAYMENT" || row.entryType === "ADJUSTMENT"));
+      const netPaid = Money.parse(sumMoneyHistory(cash.map(row => Money.parse(row.signedAmountDzd)))).negate();
+      const amount = Money.parse(input.amountDzd);
+      if (amount.compare(netPaid) > 0) throw new ExactDebtError("Refund exceeds actual net cash settled", "CONFLICT");
+      return this.append(account, { entryType: "ADJUSTMENT", signedAmountDzd: amount.toWire(), targetEntryId: target.id, entryDate: input.refundDate, paymentMethod: "CASH", note: input.note }, audit, undefined, true);
+    });
+  }
+  /** Trusted producers may settle part of one original without recording cash. */
+  recordSettlement(raw: Omit<PayExactDebtEntry, "paymentMethod"> & ExactDebtAudit): ExactDebtEntry {
+    if (!this.producer) throw new ExactDebtError("Original settlement requires a producer", "CONFLICT");
+    const { actorUserId, actorLabel, transactionId, ...domain } = raw;
+    const input = payExactDebtEntrySchema.omit({ paymentMethod: true }).strict().parse(domain);
+    const audit = this.audit({ actorUserId, actorLabel, transactionId });
+    return this.command("settle-original", { ...input, ...audit }, input, () => {
+      const target = this.obligation(input.debtEntryId);
+      this.assertOwner(target);
+      const account = this.getAccount(target.debtAccountId);
+      this.assertCurrency(account, input.currency);
+      const amount = Money.parse(input.amountDzd, input.currency);
+      const remaining = this.remainingFrom(target, this.listEntries(account.id));
+      if (remaining.compare(zero()) <= 0 || amount.compare(remaining) > 0) throw new ExactDebtError("Settlement exceeds remaining obligation");
+      return this.append(account, { entryType: "SETTLEMENT", signedAmountDzd: amount.negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), note: input.note }, audit);
+    });
+  }
+  correctEntry(raw: CorrectExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
+    return this.correctObligation(raw, false);
+  }
+  /** Opening review may explicitly correct an unknown historical amount to zero. */
+  correctOpeningEntry(raw: CorrectExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
+    if (this.producer?.type !== "PAYROLL_OPENING") throw new ExactDebtError("Opening correction requires its producer", "CONFLICT");
+    return this.correctObligation(raw, true);
+  }
+  private correctObligation(raw: CorrectExactDebtEntry & ExactDebtAudit, openingZero: boolean): ExactDebtEntry {
+    const input = (openingZero ? correctExactDebtEntrySchema.extend({ amountDzd: exactDebtAmountSchema }) : correctExactDebtEntrySchema).parse(raw);
+    const audit = this.audit(raw);
+    return this.command("correction", { ...input, ...audit }, input, () => {
+      const target = this.obligation(input.entryId);
+      this.assertOwner(target);
+      const account = this.getAccount(target.debtAccountId);
+      this.assertCurrency(account, input.currency);
+      const rows = this.listEntries(account.id);
+      const existingAmount = Money.parse(sumMoneyHistory(rows.filter(row => row.status === "LIVE" && (row.id === target.id || row.correctionOfEntryId === target.id)).map(row => Money.parse(row.signedAmountDzd))));
+      const delta = Money.parse(input.amountDzd).subtract(existingAmount);
+      if (delta.compare(zero()) === 0) throw new ExactDebtError("Correction must change the obligation");
+      const originalSign = Money.parse(target.signedAmountDzd).compare(zero());
+      const proposedSign = Money.parse(input.amountDzd).compare(zero());
+      if (proposedSign !== originalSign && !(openingZero && proposedSign === 0)) throw new ExactDebtError("Correction cannot change the original obligation direction");
+      const remainderSign = this.remainingFrom(target, rows).add(delta).compare(zero());
+      if (remainderSign !== 0 && remainderSign !== originalSign) throw new ExactDebtError("Correction cannot invalidate recorded settled amounts");
+      return this.append(account, { entryType: "ADJUSTMENT", signedAmountDzd: delta.toWire(), correctionOfEntryId: target.id, entryDate: this.dependencies.now(), note: input.reason, reasonCategory: target.reasonCategory, reasonDetail: target.reasonDetail }, audit);
+    });
+  }
+  settleAccount(raw: SettleExactDebtAccount & ExactDebtAudit): ExactDebtEntry[] {
+    const input = settleExactDebtAccountSchema.parse(raw);
+    const audit = this.audit(raw);
+    return this.command("settle", { ...input, ...audit }, input, () => {
+      const account = this.getAccount(input.debtAccountId);
+      this.assertCurrency(account, input.currency);
+      const rows = this.listEntries(account.id);
+      const results: ExactDebtEntry[] = [];
+      const remainders = this.remainingIndex(rows);
+      let current = account;
+      const positive: ExactDebtEntry[] = [];
+      const negative: ExactDebtEntry[] = [];
+      for (const target of rows.filter(row => row.status === "LIVE" && !row.targetEntryId && !row.correctionOfEntryId && this.owns(row))) {
+        const sign = remainders.get(target.id)!.compare(zero());
+        if (sign > 0) positive.push(target);
+        if (sign < 0) negative.push(target);
+      }
+      // Reduce the current balance toward zero before reversing the opposite
+      // sign. Re-evaluate after each posting; one fixed sign sort can overflow.
+      while (positive.length || negative.length) {
+        const targets = (Money.parse(current.currentBalance).compare(zero()) >= 0 && positive.length) || !negative.length ? positive : negative;
+        const target = targets.pop()!;
+        const remaining = remainders.get(target.id)!;
+        const entry = this.append(current, { entryType: "SETTLEMENT", signedAmountDzd: remaining.negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), note: input.note }, audit, rows);
+        results.push(entry);
+        rows.push(entry);
+        current = { ...current, currentBalance: entry.balanceAfterDzd };
+      }
+      if (!results.length) throw new ExactDebtError("Account is already settled");
+      return results;
+    });
+  }
+  voidEntry(raw: VoidExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
+    const input = voidExactDebtEntrySchema.parse(raw);
+    const audit = this.audit(raw);
+    return this.command("void", { ...input, ...audit }, input, () => {
+      const target = this.liveEntry(input.entryId);
+      this.assertOwner(target);
+      const account = this.getAccount(target.debtAccountId);
+      this.assertCurrency(account, input.currency);
+      const rows = this.listEntries(account.id);
+      // Only the original obligation owns the recorded attribution. A correction
+      // is a sibling of its payments, not permission to cancel them.
+      const affected = rows.filter(row => row.id === target.id || row.targetEntryId === target.id || row.correctionOfEntryId === target.id);
+      const now = this.dependencies.now();
+      for (const row of affected.filter(row => row.status === "LIVE")) {
+        this.repository.saveEntry({ ...row, status: "VOIDED", voidedAt: now, voidedBy: audit.actorLabel ?? audit.actorUserId, voidReason: input.voidReason, updatedAt: now });
+      }
+      this.recompute(account, audit);
+      // Removing a correction must not invalidate its recorded settlements.
+      if (target.correctionOfEntryId) {
+        const original = this.obligation(target.correctionOfEntryId);
+        const remainderSign = this.remainingFrom(original, this.listEntries(account.id)).compare(zero());
+        if (remainderSign !== 0 && remainderSign !== Money.parse(original.signedAmountDzd).compare(zero())) throw new ExactDebtError("Void cannot invalidate recorded settled amounts");
+      }
+      return this.repository.getEntry(target.id)!;
+    });
+  }
+  private recompute(account: ExactDebtAccount, audit: ExactDebtAudit): void {
+    let balance = zero();
+    for (const entry of this.listEntries(account.id).filter(row => row.status === "LIVE")) {
+      balance = balance.add(Money.parse(entry.signedAmountDzd, account.currency));
+      this.repository.saveEntry({ ...entry, balanceAfterDzd: balance.toWire() });
+    }
+    this.updateBalance(account, balance, audit);
+  }
+  private audit(input: ExactDebtAudit) { return { actorUserId: input.actorUserId ?? null, actorLabel: input.actorLabel ?? null, transactionId: input.transactionId ?? null }; }
+  private updateBalance(account: ExactDebtAccount, balance: Money, audit: ExactDebtAudit): void {
+    const now = this.dependencies.now();
+    this.repository.saveAccount({ ...account, currentBalance: balance.toWire(), status: balance.compare(zero()) === 0 ? "SETTLED" : "OPEN", settledAt: balance.compare(zero()) === 0 ? now : null, updatedAt: now, ...this.audit(audit) });
+  }
+  private append(account: ExactDebtAccount, input: Partial<ExactDebtEntry> & { entryType: ExactDebtEntry["entryType"]; signedAmountDzd: string; entryDate: string }, audit: ExactDebtAudit, rows = this.listEntries(account.id), actualOpeningRefund = false): ExactDebtEntry {
+    if (rows.length >= limit) throw new ExactDebtError("Debt entry write resource limit exceeded");
+    const latest = rows.at(-1);
+    // A late-recorded refund has an earlier event date but a later posting sequence.
+    // Keep every other writer anchored to the latest date across all prior postings.
+    if (!actualOpeningRefund && rows.some(row => input.entryDate < row.entryDate)) throw new ExactDebtError("Debt entry cannot be backdated");
+    const amount = Money.parse(input.signedAmountDzd, account.currency);
+    const balance = Money.parse(account.currentBalance, account.currency).add(amount);
+    const now = this.dependencies.now();
+    const original = input.targetEntryId || input.correctionOfEntryId ? this.repository.getEntry((input.targetEntryId ?? input.correctionOfEntryId)!) : null;
+    const provenance = original
+      ? { producerType: original.producerType, producerId: original.producerId, invoiceId: original.invoiceId }
+      : { producerType: this.producer?.type ?? null, producerId: this.producer?.id ?? null, invoiceId: input.invoiceId ?? null };
+    const entry: ExactDebtEntry = { ...provenance, id: this.dependencies.id(), debtAccountId: account.id, currency: account.currency, postingSequence: (latest?.postingSequence ?? 0) + 1, entryType: input.entryType, signedAmountDzd: amount.toWire(), balanceAfterDzd: balance.toWire(), entryDate: input.entryDate, note: input.note ?? null, reasonCategory: input.reasonCategory ?? "INVOICE_DRIVEN", reasonDetail: input.reasonDetail ?? null, paymentMethod: input.paymentMethod ?? null, status: "LIVE", voidedAt: null, voidedBy: null, voidReason: null, targetEntryId: input.targetEntryId ?? null, correctionOfEntryId: input.correctionOfEntryId ?? null, ...this.audit(audit), createdAt: now, updatedAt: now };
+    this.repository.saveEntry(entry);
+    this.updateBalance(account, balance, audit);
+    return entry;
+  }
+}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest"
-import { extractRpcIssueMessage, buildErrorMessage } from "./rpc-error-handling"
+import { extractRpcIssueMessage, buildErrorMessage, translateRpcValidationIssues } from "./rpc-error-handling"
+import { i18n } from "@/i18n"
 
 /**
  * Replicates the ORPCError instance the web client reconstructs from the
@@ -139,6 +140,38 @@ describe("rpc-error-handling", () => {
       }
       const result = extractRpcIssueMessage(error)
       expect(result).toBe("  trimmed message  ") // Raw extraction, trimming happens in buildErrorMessage
+    })
+  })
+
+  describe("translateRpcValidationIssues", () => {
+    it("translates known identifiers in the active locale and keeps the field path", () => {
+      const result = translateRpcValidationIssues(new WireGateError("Input validation failed", [
+        { message: "workforce.validation.salaryReference.precision", path: ["salaryReference", "amount"] },
+      ]))
+      expect(i18n.language).toBe("ar")
+      expect(result).toEqual([{
+        path: ["salaryReference", "amount"],
+        field: "salaryReference.amount",
+        message: i18n.t("workforce.validation.salaryReference.precision"),
+      }])
+      expect(result[0]?.message).not.toBe("workforce.validation.salaryReference.precision")
+    })
+
+    it("translates expense precision issues and retains the amount field path", () => {
+      const result = translateRpcValidationIssues(new WireGateError("Input validation failed", [
+        { message: "expenses.validation.amountPrecision", path: ["amount"] },
+      ]));
+      expect(result).toEqual([{
+        path: ["amount"],
+        field: "amount",
+        message: i18n.t("expenses.validation.amountPrecision"),
+      }]);
+      expect(result[0]?.message).not.toBe("expenses.validation.amountPrecision");
+    });
+
+    it("keeps unknown server text literal instead of treating it as a translation key", () => {
+      expect(translateRpcValidationIssues({ data: { issues: [{ message: "private server detail", path: ["amount"] }] } }))
+        .toEqual([{ path: ["amount"], field: "amount", message: "private server detail" }])
     })
   })
 

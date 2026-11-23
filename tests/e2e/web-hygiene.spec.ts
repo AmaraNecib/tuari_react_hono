@@ -1,4 +1,7 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
+
+installManagedApiLifecycle()
 
 /**
  * Web-hygiene regression spec for issue #282.

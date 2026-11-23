@@ -260,15 +260,18 @@ jobs:
         run: |
           gh release upload "${RELEASE_TAG}" updates.json --clobber
 
-      - name: Publish release
+      - name: Leave the release as a draft until the gate passes
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         env:
-          GH_TOKEN: ${{ github.token }}
           # See note on RELEASE_TAG safety above.
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          # If we created the release above as draft, publish it now that the
-          # metadata has been uploaded. Existing non-draft releases are no-op.
-          if ! gh release edit "${RELEASE_TAG}" --draft=false 2>&1; then
-            echo "::notice::gh release edit returned non-zero (release may already be published); continuing."
-          fi
+          # Publication belongs to release.yml, because that workflow runs the
+          # installer smoke test. This step used to publish the draft here, which
+          # meant a tag push could publish a release whose installer never
+          # started: the smoke gate stopped the binary upload, but the public
+          # release (with updates.json) already existed. Keep it a draft;
+          # release.yml flips it once the packaged app has passed the gate.
+          # A release that never passes therefore stays a draft, which is the
+          # correct failure mode: nothing public, nothing to un-publish.
+          echo "::notice::${RELEASE_TAG} stays a draft until release.yml's installer smoke gate passes."

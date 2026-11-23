@@ -20,6 +20,7 @@ const RESOURCES = {
   debts: ["create", "read", "update", "settle"],
   invoices: ["create", "read", "update", "delete"],
   payments: ["create", "read", "update", "delete"],
+  expenses: ["create", "read", "update", "delete"],
 } as const;
 
 export type ResourcePermission = {

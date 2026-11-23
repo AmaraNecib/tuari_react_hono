@@ -3,8 +3,10 @@
  */
 import type { ReactNode } from "react"
 
+import { CreateableSelect } from "@/components/ui/createable-select"
 import { FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
+import type { EmployeeInlineCreateConfig } from "@/features/employees/use-employee-inline-create"
 
 import type { ProjectPageRecord } from "./project-details-page"
 
@@ -40,6 +42,8 @@ export function createProjectFormState(project?: ProjectPageRecord | null): Proj
 export function ProjectFormFields({
   errors,
   labels,
+  managerCreate,
+  managerDisplayValue,
   managerOptions,
   state,
   statusOptions,
@@ -56,6 +60,8 @@ export function ProjectFormFields({
     notes: string
     noManager: string
   }
+  managerCreate?: EmployeeInlineCreateConfig
+  managerDisplayValue?: string
   managerOptions: Array<{ id: string; label: string }>
   state: ProjectFormState
   statusOptions: Array<{ value: ProjectFormState["status"]; label: string }>
@@ -73,14 +79,17 @@ export function ProjectFormFields({
           <Input value={state.location} onChange={(event) => onChange({ ...state, location: event.target.value })} />
         </Field>
         <Field error={errors.managerId} label={labels.manager}>
-          <NativeSelect value={state.managerId} onChange={(event) => onChange({ ...state, managerId: event.target.value })}>
-            <option value="">{labels.noManager}</option>
-            {managerOptions.map((manager) => (
-              <option key={manager.id} value={manager.id}>
-                {manager.label}
-              </option>
-            ))}
-          </NativeSelect>
+          <CreateableSelect
+            value={state.managerId}
+            onChange={(value) => onChange({ ...state, managerId: value })}
+            options={managerOptions.map((manager) => ({ id: manager.id, name: manager.label }))}
+            emptyLabel={labels.noManager}
+            clearable
+            displayValue={managerDisplayValue}
+            createLabel={managerCreate?.createLabel}
+            createFields={managerCreate?.fields}
+            onCreate={managerCreate?.onCreate}
+          />
         </Field>
         <Field error={errors.status} label={labels.status}>
           <NativeSelect

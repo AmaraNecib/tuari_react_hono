@@ -5,6 +5,8 @@ export const schemaStatements = [
     "id" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT NOT NULL,
     "image" TEXT,
+    "email" TEXT NOT NULL UNIQUE DEFAULT (lower(hex(randomblob(16))) || '@users.invalid'),
+    "emailVerified" INTEGER NOT NULL DEFAULT 0,
     "phoneNumber" TEXT NOT NULL UNIQUE,
     "phoneNumberVerified" INTEGER NOT NULL DEFAULT 0,
     "created_at" DATETIME NOT NULL,
@@ -95,8 +97,8 @@ export const schemaStatements = [
     "user_id" TEXT,
     "role_id" TEXT NOT NULL,
     "status" TEXT NOT NULL CHECK ("status" IN ('ACTIVE', 'INACTIVE', 'LEFT')),
-    "salary_amount_dzd" REAL,
-    "salary_period" TEXT,
+    "salary_reference_period" TEXT,
+    "salary_reference_amount" TEXT,
     "notes" TEXT,
     "occupation" TEXT,
     "created_at" DATETIME NOT NULL,
@@ -190,8 +192,8 @@ export const schemaStatements = [
     "employee_id" TEXT NOT NULL,
     "role_id" TEXT NOT NULL,
     "status" TEXT NOT NULL,
-    "salary_amount_dzd" REAL,
-    "salary_period" TEXT,
+    "salary_reference_period" TEXT,
+    "salary_reference_amount" TEXT,
     "event_type" TEXT NOT NULL,
     "start_date" DATETIME NOT NULL,
     "end_date" DATETIME,
@@ -246,6 +248,7 @@ export const schemaStatements = [
     "id" TEXT NOT NULL PRIMARY KEY,
     "employee_id" TEXT NOT NULL,
     "period_type" TEXT NOT NULL,
+    "days" INTEGER NOT NULL DEFAULT 30,
     "expected_amount_dzd" REAL NOT NULL,
     "actual_amount_dzd" REAL NOT NULL,
     "payment_date" DATETIME NOT NULL,
@@ -258,6 +261,57 @@ export const schemaStatements = [
     CONSTRAINT "employee_salary_payment_employee_id_fkey"
       FOREIGN KEY ("employee_id") REFERENCES "employee" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
   )`,
+  // Issue #412: per-project day attribution for a salary payment. A payment
+  // may have no lines (unallocated); the sum of `days` never exceeds the
+  // payment's `days` (enforced in the service).
+  `CREATE TABLE IF NOT EXISTS "employee_salary_payment_split" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "payment_id" TEXT NOT NULL,
+    "project_id" TEXT NOT NULL,
+    "days" INTEGER NOT NULL CHECK ("days" > 0),
+    "created_at" DATETIME NOT NULL,
+    CONSTRAINT "employee_salary_payment_split_payment_id_fkey"
+      FOREIGN KEY ("payment_id") REFERENCES "employee_salary_payment" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "employee_salary_payment_split_project_id_fkey"
+      FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS "employee_earning" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "employee_id" TEXT NOT NULL,
+    "request_id" TEXT NOT NULL UNIQUE,
+    "request_hash" TEXT NOT NULL,
+    "period_start" DATETIME NOT NULL,
+    "period_end" DATETIME NOT NULL CHECK ("period_end" > "period_start"),
+    "currency_code" TEXT NOT NULL CHECK ("currency_code" = 'DZD'),
+    "total_minor" INTEGER NOT NULL CHECK (typeof("total_minor") = 'integer' AND "total_minor" > 0),
+    "unallocated_minor" INTEGER NOT NULL CHECK (typeof("unallocated_minor") = 'integer' AND "unallocated_minor" >= 0),
+    "reference_salary_period" TEXT,
+    "reference_salary_units" INTEGER,
+    "approved_at" DATETIME NOT NULL,
+    "actor_user_id" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    CHECK (("reference_salary_period" IS NULL AND "reference_salary_units" IS NULL) OR ("reference_salary_period" IS NOT NULL AND typeof("reference_salary_units") = 'integer')),
+    CHECK ("reference_salary_period" IS NULL OR "reference_salary_period" IN ('DAILY', 'WEEKLY', 'MONTHLY')),
+    CONSTRAINT "employee_earning_employee_id_fkey"
+      FOREIGN KEY ("employee_id") REFERENCES "employee" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS "employee_earning_segment" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "earning_id" TEXT NOT NULL,
+    "project_id" TEXT NOT NULL,
+    "ordinal" INTEGER NOT NULL CHECK ("ordinal" >= 0),
+    "days" INTEGER NOT NULL CHECK (typeof("days") = 'integer' AND "days" > 0),
+    "amount_minor" INTEGER NOT NULL CHECK (typeof("amount_minor") = 'integer' AND "amount_minor" >= 0),
+    "created_at" DATETIME NOT NULL,
+    UNIQUE ("earning_id", "ordinal"),
+    CONSTRAINT "employee_earning_segment_earning_id_fkey"
+      FOREIGN KEY ("earning_id") REFERENCES "employee_earning" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "employee_earning_segment_project_id_fkey"
+      FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  )`,
+  `CREATE INDEX IF NOT EXISTS "employee_earning_employee_period_idx" ON "employee_earning" ("employee_id", "period_start", "approved_at")`,
+  `CREATE INDEX IF NOT EXISTS "employee_earning_segment_project_idx" ON "employee_earning_segment" ("project_id", "earning_id")`,
   `CREATE TABLE IF NOT EXISTS "external_counterparty" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "full_name" TEXT NOT NULL,
@@ -463,6 +517,53 @@ export const schemaStatements = [
     CONSTRAINT "inventory_movement_to_destination_check"
       CHECK (NOT ("to_warehouse_id" IS NOT NULL AND "to_project_id" IS NOT NULL))
   )`,
+  // NOTE (#413, no backfill): project charges BEGIN from this feature's
+  // introduction. Assets placed on a project before it have no charge row and
+  // are therefore absent from a project's charge total. We deliberately do NOT
+  // backfill: inventing a charge for a placement that was never priced would
+  // fabricate a project cost, which is worse than an explicit gap. A project
+  // charge total therefore covers charges recorded from #413 onward.
+  `CREATE TABLE IF NOT EXISTS "inventory_asset_charge" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "asset_unit_id" TEXT NOT NULL,
+    "project_id" TEXT NOT NULL,
+    "movement_id" TEXT,
+    "amount_dzd" REAL NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'LIVE' CHECK ("status" IN ('LIVE', 'VOID')),
+    "voided_at" DATETIME,
+    "voided_by" TEXT,
+    "void_reason" TEXT,
+    "actor_user_id" TEXT,
+    "actor_label" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    "updated_at" DATETIME NOT NULL,
+    CONSTRAINT "inventory_asset_charge_asset_unit_id_fkey"
+      FOREIGN KEY ("asset_unit_id") REFERENCES "inventory_asset_unit" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "inventory_asset_charge_project_id_fkey"
+      FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "inventory_asset_charge_movement_id_fkey"
+      FOREIGN KEY ("movement_id") REFERENCES "inventory_movement" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT "inventory_asset_charge_amount_check"
+      CHECK ("amount_dzd" >= 0)
+  )`,
+  `CREATE TABLE IF NOT EXISTS "inventory_asset_charge_revision" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "charge_id" TEXT NOT NULL,
+    "previous_amount_dzd" REAL NOT NULL,
+    "new_amount_dzd" REAL,
+    "reason" TEXT,
+    "actor_user_id" TEXT,
+    "actor_label" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    CONSTRAINT "inventory_asset_charge_revision_charge_id_fkey"
+      FOREIGN KEY ("charge_id") REFERENCES "inventory_asset_charge" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT "inventory_asset_charge_revision_previous_amount_check"
+      CHECK ("previous_amount_dzd" >= 0),
+    CONSTRAINT "inventory_asset_charge_revision_new_amount_check"
+      CHECK ("new_amount_dzd" IS NULL OR "new_amount_dzd" >= 0)
+  )`,
   `CREATE TABLE IF NOT EXISTS "inventory_invoice_attachment" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "invoice_group_id" TEXT NOT NULL,
@@ -498,6 +599,8 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "warehouse_manager_ownership_history_warehouse_id_idx" ON "warehouse_manager_ownership_history" ("warehouse_id", "start_date")',
   'CREATE INDEX IF NOT EXISTS "warehouse_manager_ownership_history_manager_id_idx" ON "warehouse_manager_ownership_history" ("manager_id", "start_date")',
   'CREATE INDEX IF NOT EXISTS "employee_salary_payment_employee_id_idx" ON "employee_salary_payment" ("employee_id", "payment_date")',
+  'CREATE INDEX IF NOT EXISTS "employee_salary_payment_split_payment_id_idx" ON "employee_salary_payment_split" ("payment_id")',
+  'CREATE INDEX IF NOT EXISTS "employee_salary_payment_split_project_id_idx" ON "employee_salary_payment_split" ("project_id")',
   'CREATE INDEX IF NOT EXISTS "external_counterparty_full_name_idx" ON "external_counterparty" ("full_name")',
   'CREATE INDEX IF NOT EXISTS "debt_account_worker_id_idx" ON "debt_account" ("worker_id")',
   'CREATE INDEX IF NOT EXISTS "debt_account_external_counterparty_id_idx" ON "debt_account" ("external_counterparty_id")',
@@ -521,6 +624,10 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "inventory_consumable_balance_project_id_idx" ON "inventory_consumable_balance" ("project_id")',
   'CREATE INDEX IF NOT EXISTS "inventory_movement_inventory_entry_id_idx" ON "inventory_movement" ("inventory_entry_id", "occurred_at")',
   'CREATE INDEX IF NOT EXISTS "inventory_movement_asset_unit_id_idx" ON "inventory_movement" ("asset_unit_id", "occurred_at")',
+  'CREATE INDEX IF NOT EXISTS "inventory_asset_charge_asset_unit_id_idx" ON "inventory_asset_charge" ("asset_unit_id", "created_at")',
+  'CREATE INDEX IF NOT EXISTS "inventory_asset_charge_project_id_idx" ON "inventory_asset_charge" ("project_id", "status")',
+  'CREATE INDEX IF NOT EXISTS "inventory_asset_charge_movement_id_idx" ON "inventory_asset_charge" ("movement_id")',
+  'CREATE INDEX IF NOT EXISTS "inventory_asset_charge_revision_charge_id_idx" ON "inventory_asset_charge_revision" ("charge_id", "created_at")',
   'CREATE INDEX IF NOT EXISTS "inventory_invoice_attachment_invoice_group_id_idx" ON "inventory_invoice_attachment" ("invoice_group_id", "created_at")',
   `CREATE UNIQUE INDEX IF NOT EXISTS "employee_manager_assignment_active_worker_key" ON "employee_manager_assignment" ("worker_id") WHERE "status" = 'ACTIVE'`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "employee_project_assignment_active_employee_key" ON "employee_project_assignment" ("employee_id") WHERE "status" = 'ACTIVE'`,
@@ -652,6 +759,49 @@ export const schemaStatements = [
   'CREATE INDEX IF NOT EXISTS "payment_counterparty_type_id_idx" ON "payment" ("counterparty_type", "counterparty_id", "payment_date")',
   'CREATE INDEX IF NOT EXISTS "payment_allocation_payment_id_idx" ON "payment_allocation" ("payment_id")',
   'CREATE INDEX IF NOT EXISTS "payment_allocation_invoice_id_idx" ON "payment_allocation" ("invoice_id")',
+  // --- Expenses tables (issue #411) ---
+  // The optional references (responsible_worker_id, seller_id, project_id,
+  // stock_item_id) are plain TEXT with NO foreign key, mirroring
+  // payment.counterparty_id: an expense never writes stock and the soft
+  // cross-domain references must behave identically in the in-memory double.
+  `CREATE TABLE IF NOT EXISTS "expense" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "amount_dzd" REAL NOT NULL CHECK ("amount_dzd" > 0),
+    "expense_date" DATETIME NOT NULL,
+    "what_for" TEXT,
+    "responsible_worker_id" TEXT,
+    "seller_id" TEXT,
+    "project_id" TEXT,
+    "stock_item_id" TEXT,
+    "note" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'LIVE' CHECK ("status" IN ('LIVE', 'VOIDED')),
+    "voided_at" DATETIME,
+    "voided_by" TEXT,
+    "void_reason" TEXT,
+    "actor_user_id" TEXT,
+    "actor_label" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    "updated_at" DATETIME NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS "expense_revision" (
+    "id" TEXT NOT NULL PRIMARY KEY,
+    "expense_id" TEXT NOT NULL,
+    "previous_amount_dzd" REAL,
+    "new_amount_dzd" REAL NOT NULL,
+    "changed_fields" TEXT NOT NULL DEFAULT '[]',
+    "reason" TEXT,
+    "actor_user_id" TEXT,
+    "actor_label" TEXT,
+    "transaction_id" TEXT,
+    "created_at" DATETIME NOT NULL,
+    CONSTRAINT "expense_revision_expense_id_fkey"
+      FOREIGN KEY ("expense_id") REFERENCES "expense" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
+  )`,
+  'CREATE INDEX IF NOT EXISTS "expense_expense_date_idx" ON "expense" ("expense_date")',
+  'CREATE INDEX IF NOT EXISTS "expense_project_id_idx" ON "expense" ("project_id")',
+  'CREATE INDEX IF NOT EXISTS "expense_responsible_worker_id_idx" ON "expense" ("responsible_worker_id")',
+  'CREATE INDEX IF NOT EXISTS "expense_revision_expense_id_idx" ON "expense_revision" ("expense_id")',
   `CREATE TABLE IF NOT EXISTS "recovery_key" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "prefix" TEXT NOT NULL,
@@ -685,8 +835,10 @@ export const additiveStatements = [
   'ALTER TABLE "account" ADD COLUMN "updatedAt" DATETIME',
   'ALTER TABLE "verification" ADD COLUMN "createdAt" DATETIME',
   'ALTER TABLE "verification" ADD COLUMN "updatedAt" DATETIME',
-  'ALTER TABLE "employee" ADD COLUMN "salary_amount_dzd" REAL',
-  'ALTER TABLE "employee" ADD COLUMN "salary_period" TEXT',
+  'ALTER TABLE "employee" ADD COLUMN "salary_reference_period" TEXT',
+  'ALTER TABLE "employee" ADD COLUMN "salary_reference_amount" TEXT',
+  'ALTER TABLE "employee_state_history" ADD COLUMN "salary_reference_period" TEXT',
+  'ALTER TABLE "employee_state_history" ADD COLUMN "salary_reference_amount" TEXT',
   'ALTER TABLE "employee" ADD COLUMN "occupation" TEXT',
   'ALTER TABLE "employee_manager_assignment" ADD COLUMN "actor_user_id" TEXT',
   'ALTER TABLE "employee_manager_assignment" ADD COLUMN "actor_label" TEXT',
@@ -709,6 +861,9 @@ export const additiveStatements = [
   'ALTER TABLE "employee_salary_payment" ADD COLUMN "actor_user_id" TEXT',
   'ALTER TABLE "employee_salary_payment" ADD COLUMN "actor_label" TEXT',
   'ALTER TABLE "employee_salary_payment" ADD COLUMN "transaction_id" TEXT',
+  // Issue #412: whole days a salary payment covers. Existing rows backfill to
+  // 30, which is the full-month default; their stored amounts are untouched.
+  'ALTER TABLE "employee_salary_payment" ADD COLUMN "days" INTEGER NOT NULL DEFAULT 30',
   'ALTER TABLE "user_profile_history" ADD COLUMN "previous_name" TEXT',
   'ALTER TABLE "user_profile_history" ADD COLUMN "previous_phone" TEXT',
   'ALTER TABLE "user_profile_history" ADD COLUMN "password_changed" INTEGER NOT NULL DEFAULT 0',
@@ -741,6 +896,9 @@ export const additiveStatements = [
   'ALTER TABLE "debt_entry" ADD COLUMN "voided_by" TEXT',
   'ALTER TABLE "debt_entry" ADD COLUMN "void_reason" TEXT',
   'ALTER TABLE "debt_account" ADD COLUMN "direction" TEXT NOT NULL DEFAULT \'PAYABLE\' CHECK ("direction" IN (\'PAYABLE\', \'RECEIVABLE\'))',
+  // Issue #411: a revision names every editable field that changed, not just
+  // the amount. Existing rows predate the column and default to an empty set.
+  'ALTER TABLE "expense_revision" ADD COLUMN "changed_fields" TEXT NOT NULL DEFAULT \'[]\'',
 ]
 
 export const obsoleteMigrationKey = "drop_todos_table_v1"
@@ -754,6 +912,11 @@ export const addAdvanceDebtEntryMigrationKey = "add_advance_debt_entry_type_v1"
 export const invoiceDebtLinkageMigrationKey = "link_invoices_to_debt_accounts_v1"
 export const debtAccountBalanceRenameMigrationKey = "rename_debt_account_balance_drop_dzd_v1"
 export const debtAccountDirectionMigrationKey = "add_debt_account_direction_v1"
+// D3: a worker gets one ledger per direction (an advance is a worker
+// receivable). Swaps the legacy single-column worker unique index for the
+// composite (worker_id, direction) index, mirroring the external-counterparty
+// ledger.
+export const debtAccountWorkerDirectionMigrationKey = "add_debt_account_worker_direction_v1"
 export const debtEntryReasonCategoryMigrationKey = "add_debt_entry_reason_category_v1"
 export const invoiceDirectionMigrationKey = "add_invoice_direction_v1"
 
@@ -785,6 +948,8 @@ export const companyIndexStatements = [
   'CREATE INDEX IF NOT EXISTS "warehouse_manager_ownership_history_warehouse_id_idx" ON "warehouse_manager_ownership_history" ("warehouse_id", "start_date")',
   'CREATE INDEX IF NOT EXISTS "warehouse_manager_ownership_history_manager_id_idx" ON "warehouse_manager_ownership_history" ("manager_id", "start_date")',
   'CREATE INDEX IF NOT EXISTS "employee_salary_payment_employee_id_idx" ON "employee_salary_payment" ("employee_id", "payment_date")',
+  'CREATE INDEX IF NOT EXISTS "employee_salary_payment_split_payment_id_idx" ON "employee_salary_payment_split" ("payment_id")',
+  'CREATE INDEX IF NOT EXISTS "employee_salary_payment_split_project_id_idx" ON "employee_salary_payment_split" ("project_id")',
   `CREATE UNIQUE INDEX IF NOT EXISTS "employee_manager_assignment_active_worker_key" ON "employee_manager_assignment" ("worker_id") WHERE "status" = 'ACTIVE'`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "employee_project_assignment_active_employee_key" ON "employee_project_assignment" ("employee_id") WHERE "status" = 'ACTIVE'`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "employee_warehouse_assignment_active_employee_key" ON "employee_warehouse_assignment" ("employee_id") WHERE "status" = 'ACTIVE'`,

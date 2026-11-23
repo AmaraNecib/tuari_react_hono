@@ -1,3 +1,4 @@
+import { CurrencyProse } from "@/features/shared/currency-prose"
 import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -6,7 +7,7 @@ import { i18n } from "@/i18n"
 
 import { Input } from "@/components/ui/input"
 import { NativeSelect } from "@/components/ui/form-controls"
-import { formatDateTimeInAlgeria } from "@/lib/algeria-time"
+import { AppDate } from "@/components/app-date"
 import { cn } from "@/lib/utils"
 
 import {
@@ -18,6 +19,8 @@ import {
   AppShellTableHeaderCell,
   AppShellTableRow,
   usePaginatedRows,
+  TableQueryState,
+  type TableQuery,
 } from "@/features/shared/table-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls"
@@ -102,7 +105,7 @@ function SystemLogDetailsCell({ detail }: { detail: string | null | undefined })
                   getDetailTokenClassName(token),
                 )}
               >
-                {token}
+                <span><CurrencyProse text={token} /></span>
               </span>
             ))}
           </div>
@@ -119,8 +122,7 @@ function SystemLogDetailsCell({ detail }: { detail: string | null | undefined })
 export function SystemLogSection({
   entries,
   filters,
-  isError = false,
-  isLoading = false,
+  query,
   onFiltersChange,
   title,
 }: {
@@ -141,8 +143,7 @@ export function SystemLogSection({
     fromDate?: string
     toDate?: string
   }) => void
-  isError?: boolean
-  isLoading?: boolean
+  query: TableQuery
   title: string
 }) {
   const { t } = useTranslation()
@@ -226,6 +227,7 @@ export function SystemLogSection({
           />
         </AppShellFilterShell>
 
+        <TableQueryState query={query} resource={t("systemLog.title")}>
         <AppShellTableFrame>
             <table className="min-w-full text-sm">
               <AppShellTableHead>
@@ -240,14 +242,10 @@ export function SystemLogSection({
                 </tr>
               </AppShellTableHead>
               <tbody>
-                {isLoading ? (
-                  <AppShellEmptyStateRow colSpan={7}>{t("systemLog.loading")}</AppShellEmptyStateRow>
-                ) : isError ? (
-                  <AppShellEmptyStateRow colSpan={7}>{t("systemLog.loadError")}</AppShellEmptyStateRow>
-                ) : pagedEntries.length > 0 ? (
+                {pagedEntries.length > 0 ? (
                   pagedEntries.map((entry) => (
                     <AppShellTableRow key={entry.id} className="align-top">
-                      <td className="px-4 py-4 text-start text-muted-foreground">{formatDateTimeInAlgeria(new Date(entry.createdAt))}</td>
+                      <td className="px-4 py-4 text-start text-muted-foreground">{<AppDate value={entry.createdAt} includeTime />}</td>
                       <td
                         className="px-4 py-4 text-start text-muted-foreground"
                         title={entry.actorCurrentLabel && entry.actorCurrentLabel !== entry.actorLabel ? `${t("systemLog.currentActorName")}: ${entry.actorCurrentLabel}` : undefined}
@@ -257,7 +255,7 @@ export function SystemLogSection({
                       <td className="px-4 py-4 text-start text-foreground">{getActionTypeLabel(t, entry.actionType)}</td>
                       <td className="px-4 py-4 text-start text-muted-foreground">{entry.entityLabel ?? t("systemLog.targetUnknown")}</td>
                       <td className="px-4 py-4 text-start font-mono text-xs text-muted-foreground">{entry.entityId}</td>
-                      <td className="px-4 py-4 text-start font-medium text-foreground">{entry.summary}</td>
+                      <td className="px-4 py-4 text-start font-medium text-foreground"><CurrencyProse text={entry.summary} /></td>
                       <td className="px-4 py-4 text-start text-xs leading-6 text-muted-foreground whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
                         <SystemLogDetailsCell detail={entry.detail} />
                       </td>
@@ -279,6 +277,7 @@ export function SystemLogSection({
             setPageSize(nextPageSize)
           }}
         />
+        </TableQueryState>
     </RecordPageFrame>
   )
 }

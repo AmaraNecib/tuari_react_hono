@@ -2,38 +2,26 @@
  * Formatting utilities for home view data.
  * Provides helper functions for formatting names, dates, etc.
  */
+import { createElement, Fragment } from "react"
+import { AppDate } from "@/components/app-date"
 import type { DemoWorkspace } from "./workspace-queries"
 
-/**
- * formatName(employee component.
- */
+/** The employee's display name. */
 export function formatName(employee: DemoWorkspace["employees"][number]) {
-/**
- * formatDateLabel(value component.
- */
   return `${employee.firstName} ${employee.lastName}`
 }
 
+/** A stored business day as the Algeria calendar day, or `-` when absent. */
 export function formatDateLabel(value: string | null) {
   if (!value) {
     return "-"
   }
 
-  return new Intl.DateTimeFormat("ar-DZ", {
-/**
- * formatDateRange(startDate component.
- */
-    year: "numeric",
-/**
- * formatSalaryPeriodLabel( component.
- */
-    month: "short",
-    day: "numeric",
-  }).format(new Date(value))
+  return createElement(AppDate, { value })
 }
 
 export function formatDateRange(startDate: string | null, endDate: string | null, ongoingLabel: string) {
-  return `${formatDateLabel(startDate)} - ${endDate ? formatDateLabel(endDate) : ongoingLabel}`
+  return createElement(Fragment, null, formatDateLabel(startDate), " - ", endDate ? formatDateLabel(endDate) : ongoingLabel)
 }
 
 export function formatSalaryPeriodLabel(

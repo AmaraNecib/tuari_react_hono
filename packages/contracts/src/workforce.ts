@@ -14,6 +14,8 @@ import {
   salaryPeriodSchema,
   timestampSchema,
 } from "./core";
+import { Money, SalaryReference } from "./exact-money";
+import { SALARY_DAYS_PER_MONTH } from "./salary-days";
 
 export const roleSchema = z.object({
   id: entityIdSchema,
@@ -25,6 +27,25 @@ export const roleSchema = z.object({
   updatedAt: timestampSchema,
 });
 
+const exactMoneyStringSchema = z.string().max(96).superRefine((value, ctx) => {
+  try {
+    Money.parse(value);
+  } catch {
+    ctx.addIssue({ code: "custom", message: "workforce.validation.earning.amountPrecision" });
+  }
+});
+
+export const employeeSalaryReferenceSchema = z.object({
+  period: salaryPeriodSchema,
+  amount: z.string({ error: "workforce.validation.salaryReference.amountType" }).max(96, { message: "workforce.validation.salaryReference.amountLength" }),
+}, { error: "workforce.validation.salaryReference.invalid" }).superRefine((value, ctx) => {
+  try {
+    SalaryReference.parse(value.period, value.amount);
+  } catch {
+    ctx.addIssue({ code: "custom", path: ["amount"], message: "workforce.validation.salaryReference.precision" });
+  }
+});
+
 export const employeeSchema = z.object({
   id: entityIdSchema,
   firstName: z.string().trim().min(1).max(120),
@@ -32,8 +53,7 @@ export const employeeSchema = z.object({
   phone: algerianPhoneSchema,
   roleId: entityIdSchema,
   status: employeeStatusSchema,
-  salaryAmountDzd: z.number().nonnegative().nullable(),
-  salaryPeriod: salaryPeriodSchema.nullable(),
+  salaryReference: employeeSalaryReferenceSchema.nullable(),
   notes: nullableTextSchema,
   occupation: nullableTextSchema,
   createdAt: timestampSchema,
@@ -87,8 +107,7 @@ export const employeeStateHistorySchema = z.object({
   employeeId: entityIdSchema,
   roleId: entityIdSchema,
   status: z.string(),
-  salaryAmountDzd: z.number().nullable(),
-  salaryPeriod: salaryPeriodSchema.nullable(),
+  salaryReference: employeeSalaryReferenceSchema.nullable(),
   eventType: z.string(),
   startDate: timestampSchema,
   endDate: timestampSchema.nullable(),
@@ -99,12 +118,91 @@ export const employeeStateHistorySchema = z.object({
   updatedAt: timestampSchema,
 });
 
+export const employeeEarningSegmentSchema = z.object({
+  id: entityIdSchema,
+  projectId: entityIdSchema,
+  days: z.number({ error: "workforce.validation.earning.daysPositive" })
+    .int({ message: "workforce.validation.earning.daysPositive" })
+    .positive({ message: "workforce.validation.earning.daysPositive" }),
+  amount: exactMoneyStringSchema,
+});
+
+export const employeeEarningSchema = z.object({
+  id: entityIdSchema,
+  employeeId: entityIdSchema,
+  periodStart: timestampSchema,
+  periodEnd: timestampSchema,
+  currencyCode: z.literal("DZD"),
+  totalAmount: exactMoneyStringSchema,
+  unallocatedAmount: exactMoneyStringSchema,
+  referenceSalary: employeeSalaryReferenceSchema.nullable(),
+  segments: z.array(employeeEarningSegmentSchema),
+  approvedAt: timestampSchema,
+  actorUserId: auditActorUserIdSchema,
+  transactionId: auditTransactionIdSchema,
+  createdAt: timestampSchema,
+});
+
+export const employeeEarningApprovalInputSchema = z.object({
+  employeeId: entityIdSchema,
+  requestId: z.string().uuid(),
+  periodStart: timestampSchema,
+  periodEnd: timestampSchema,
+  currencyCode: z.literal("DZD"),
+  totalAmount: exactMoneyStringSchema,
+  unallocatedAmount: exactMoneyStringSchema,
+  referenceSalary: employeeSalaryReferenceSchema.nullable().optional(),
+  segments: z.array(employeeEarningSegmentSchema).max(10_000),
+}).superRefine((value, ctx) => {
+  if (Date.parse(value.periodStart) >= Date.parse(value.periodEnd)) {
+    ctx.addIssue({ code: "custom", path: ["periodEnd"], message: "workforce.validation.earning.periodOrder" });
+  }
+  const ids = new Set<string>();
+  for (const [index, segment] of value.segments.entries()) {
+    if (ids.has(segment.id)) {
+      ctx.addIssue({ code: "custom", path: ["segments", index, "id"], message: "workforce.validation.earning.duplicateSegment" });
+    }
+    ids.add(segment.id);
+  }
+  try {
+    const total = BigInt(Money.parse(value.totalAmount).toMinorUnits());
+    const unallocated = BigInt(Money.parse(value.unallocatedAmount).toMinorUnits());
+    const amounts = value.segments.map(segment => BigInt(Money.parse(segment.amount).toMinorUnits()));
+    const allocated = amounts.reduce((sum, amount) => sum + amount, 0n);
+    if (total <= 0n || unallocated < 0n || amounts.some(amount => amount < 0n)) {
+      ctx.addIssue({ code: "custom", path: ["totalAmount"], message: "workforce.validation.earning.positiveTotal" });
+    }
+    if (total !== allocated + unallocated) {
+      ctx.addIssue({ code: "custom", path: ["segments"], message: "workforce.validation.earning.conservation" });
+    }
+  } catch {
+    // Field-level decimal validation above reports malformed or out-of-range values.
+  }
+});
+
+export const employeeEarningListInputSchema = z.object({
+  employeeId: entityIdSchema.optional(),
+}).optional();
+
+export const employeeSalaryPaymentProjectSplitSchema = z.object({
+  projectId: entityIdSchema,
+  days: z.number().int().positive(),
+});
+
 export const employeeSalaryPaymentSchema = z.object({
   id: entityIdSchema,
   employeeId: entityIdSchema,
   periodType: salaryPeriodSchema,
+  /**
+   * Whole days the payment covers (default 30 on create). A monthly wage is
+   * prorated at `salaryAmountDzd / 30`; a daily wage is multiplied by days.
+   */
+  days: z.number().int().positive(),
   expectedAmountDzd: z.number().nonnegative(),
+  /** The amount actually paid. Authoritative: a hand edit overrides the proposal. */
   actualAmountDzd: z.number().nonnegative(),
+  /** Per-project day attribution. Empty when the payment stays unallocated. */
+  projectSplits: z.array(employeeSalaryPaymentProjectSplitSchema),
   paymentDate: timestampSchema,
   note: nullableTextSchema,
   actorUserId: auditActorUserIdSchema,
@@ -132,11 +230,10 @@ export const employeeCreateInputSchema = z.object({
   phone: algerianPhoneSchema,
   roleId: entityIdSchema,
   status: employeeStatusSchema.default("ACTIVE"),
-  salaryAmountDzd: z.number().nonnegative().nullable().optional(),
-  salaryPeriod: salaryPeriodSchema.nullable().optional(),
+  salaryReference: employeeSalaryReferenceSchema.nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
   occupation: z.string().trim().max(120).nullable().optional(),
-});
+}).strict();
 
 export const employeeBatchCreateRowInputSchema = employeeCreateInputSchema.extend({
   managerId: entityIdSchema.nullable().optional(),
@@ -150,11 +247,10 @@ export const employeeUpdateInputSchema = z.object({
   phone: algerianPhoneSchema.optional(),
   roleId: entityIdSchema.optional(),
   status: employeeStatusSchema.optional(),
-  salaryAmountDzd: z.number().nonnegative().nullable().optional(),
-  salaryPeriod: salaryPeriodSchema.nullable().optional(),
+  salaryReference: employeeSalaryReferenceSchema.nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
   occupation: z.string().trim().max(120).nullable().optional(),
-});
+}).strict();
 
 export const employeeListInputSchema = z
   .object({
@@ -319,9 +415,14 @@ export const employeeStateHistoryListInputSchema = z
 
 export const employeeSalaryPaymentCreateInputSchema = z.object({
   employeeId: entityIdSchema,
-  actualAmountDzd: z.number().nonnegative(),
+  /** Whole days paid. Defaults to a full 30-day month. */
+  days: z.number().int().positive().default(SALARY_DAYS_PER_MONTH),
+  /** Overridable paid amount. Omitted → the server stores the proposed amount. */
+  actualAmountDzd: z.number().nonnegative().optional(),
   paymentDate: timestampSchema.optional(),
   note: z.string().trim().max(1000).nullable().optional(),
+  /** Per-project day attribution. Empty/omitted → the payment stays unallocated. */
+  projectSplits: z.array(employeeSalaryPaymentProjectSplitSchema).default([]),
 });
 
 export const employeeSalaryPaymentListInputSchema = z
@@ -334,7 +435,11 @@ export type EmployeeManagerAssignment = z.infer<typeof employeeManagerAssignment
 export type EmployeeProjectAssignment = z.infer<typeof employeeProjectAssignmentSchema>;
 export type EmployeeWarehouseAssignment = z.infer<typeof employeeWarehouseAssignmentSchema>;
 export type EmployeeStateHistory = z.infer<typeof employeeStateHistorySchema>;
+export type EmployeeEarning = z.infer<typeof employeeEarningSchema>;
+export type EmployeeEarningSegment = z.infer<typeof employeeEarningSegmentSchema>;
+export type EmployeeEarningApprovalInput = z.infer<typeof employeeEarningApprovalInputSchema>;
 export type EmployeeSalaryPayment = z.infer<typeof employeeSalaryPaymentSchema>;
+export type EmployeeSalaryPaymentProjectSplit = z.infer<typeof employeeSalaryPaymentProjectSplitSchema>;
 export type RoleCreateInput = z.infer<typeof roleCreateInputSchema>;
 export type RoleUpdateInput = z.infer<typeof roleUpdateInputSchema>;
 export type EmployeeCreateInput = z.infer<typeof employeeCreateInputSchema>;

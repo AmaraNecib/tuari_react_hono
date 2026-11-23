@@ -2,6 +2,7 @@ import { implement, ORPCError } from "@orpc/server";
 
 import type {
   EmployeeAssignWorkplaceInput,
+  EmployeeEarningApprovalInput,
   EmployeeBatchCreateInput,
   EmployeeCreateInput,
   EmployeeSalaryPaymentCreateInput,
@@ -134,6 +135,13 @@ export function createWorkforceHandlers(
       ({ input, auditContext }) => workforceService.createSalaryPayment(input as EmployeeSalaryPaymentCreateInput, auditContext),
       toFailureResult,
     )),
+    employeeEarningsList: os.employeeEarningsList.handler(m.withPermission("employees:read", m.withAuth(async ({ input }) => {
+      return workforceService.listEmployeeEarnings((input as { employeeId?: string } | undefined)?.employeeId);
+    }))),
+    employeeEarningsApprove: os.employeeEarningsApprove.handler(m.withPermission("employees:update", m.withAudit(
+      ({ input, auditContext }) => workforceService.approveEmployeeEarning(input as EmployeeEarningApprovalInput, auditContext),
+      toFailureResult,
+    ))),
     employeeStateHistoryList: os.employeeStateHistoryList.handler(m.queryAuth(async ({ input }) => {
       return workforceService.listEmployeeStateHistory(input as EmployeeStateHistoryListFilters | undefined);
     })),

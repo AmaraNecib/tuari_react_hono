@@ -21,6 +21,14 @@ function makeItems() {
 }
 
 describe("SearchDialog", () => {
+  it("renders a root-relative search backdrop blur", () => {
+    render(<SearchDialog isOpen onClose={vi.fn()} onQueryChange={vi.fn()} results={[]} />)
+    expect(screen.getByRole("dialog")).toBeTruthy()
+    // Class wiring only. The real-browser probe checks computed CSS scaling.
+    const overlay = document.querySelector('[class*="backdrop-blur-"]')
+    expect(overlay?.classList.contains("backdrop-blur-[calc(2rem/15)]")).toBe(true)
+  })
+
   it("renders a modal dialog with combobox/listbox semantics when open", () => {
     const items = makeItems()
     render(<SearchDialog isOpen onClose={vi.fn()} onQueryChange={vi.fn()} results={items} />)
@@ -39,6 +47,14 @@ describe("SearchDialog", () => {
     expect(listbox.getAttribute("aria-label")).toBe("نتائج البحث")
     expect(screen.getAllByRole("option")).toHaveLength(2)
     expect(screen.getByRole("option", { name: /الموظفون/ }).getAttribute("aria-selected")).toBe("false")
+  })
+
+  it("isolates the preformatted debt description without changing the search item", () => {
+    const item = { id: "debt", title: "طرف تجريبي", description: "مستحق لنا 22,500.50 دج", action: vi.fn() }
+    render(<SearchDialog isOpen onClose={vi.fn()} onQueryChange={vi.fn()} results={[item]} />)
+    const amount = screen.getByText("22,500.50", { selector: 'bdi[dir="ltr"]' })
+    expect(amount.previousElementSibling?.textContent).toBe("دج")
+    expect(item.description).toBe("مستحق لنا 22,500.50 دج")
   })
 
   it("does not render the dialog when closed", () => {

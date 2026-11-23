@@ -21,8 +21,7 @@ function buildFixture(): {
         status: "ACTIVE",
         notes: null,
         occupation: "عامل بناء",
-        salaryAmountDzd: 30000,
-        salaryPeriod: "MONTHLY",
+        salaryReference: { amount: "30000.00", period: "MONTHLY" },
         createdAt: "2024-01-01T00:00:00.000Z",
         updatedAt: "2024-01-01T00:00:00.000Z",
       },
@@ -31,14 +30,11 @@ function buildFixture(): {
       { id: "role-worker", key: "worker", name: "عامل", description: null, isSystem: false, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z", permissions: ["employees:read"] },
     ],
     externalCounterparties: [],
-    debtAccounts: [],
-    debtEntries: [],
     projects: [],
     warehouses: [],
     managerAssignments: [],
     projectAssignments: [],
     warehouseAssignments: [],
-    salaryPayments: [],
     employeeStateHistory: [],
     projectManagerOwnershipHistory: [],
     warehouseManagerOwnershipHistory: [],
@@ -59,7 +55,6 @@ describe("buildEmployeeRow", () => {
       employeeIdsWithManagedWarehouseHistory: new Set<string>(),
       employeeIdsWithManagerHistory: new Set<string>(),
       employeeIdsWithProjectHistory: new Set<string>(),
-      employeeIdsWithSalaryPayments: new Set<string>(),
       employeeIdsWithWarehouseHistory: new Set<string>(),
       activeReportsByManagerId: new Map(),
       activeProjectsByManagerId: new Map(),
@@ -93,7 +88,6 @@ describe("buildEmployeeRow", () => {
       employeeIdsWithManagedWarehouseHistory: new Set<string>(),
       employeeIdsWithManagerHistory: new Set<string>(),
       employeeIdsWithProjectHistory: new Set<string>(),
-      employeeIdsWithSalaryPayments: new Set<string>(),
       employeeIdsWithWarehouseHistory: new Set<string>(),
       activeReportsByManagerId: new Map(),
       activeProjectsByManagerId: new Map(),
@@ -120,15 +114,14 @@ describe("buildEmployeeRow", () => {
     expect(row.isWorker).toBe(false)
   })
 
-  it("blocks delete when the employee has salary payment history", () => {
+  it("blocks delete when the employee has management ownership history", () => {
     const { copy, workspace } = buildFixture()
     const lookups = buildHomeViewDerivedLookups(workspace)
     const relationshipFacts = {
-      employeeIdsWithManagedProjectHistory: new Set<string>(),
+      employeeIdsWithManagedProjectHistory: new Set<string>(["employee-1"]),
       employeeIdsWithManagedWarehouseHistory: new Set<string>(),
       employeeIdsWithManagerHistory: new Set<string>(),
       employeeIdsWithProjectHistory: new Set<string>(),
-      employeeIdsWithSalaryPayments: new Set<string>(["employee-1"]),
       employeeIdsWithWarehouseHistory: new Set<string>(),
       activeReportsByManagerId: new Map(),
       activeProjectsByManagerId: new Map(),

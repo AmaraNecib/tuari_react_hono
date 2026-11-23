@@ -4,11 +4,12 @@ import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
-import { AppMutationError, useCreateWarehouseMutation, useCreateEmployeesBatchMutation } from "@/features/app-shell/workspace-mutations"
+import { AppMutationError, useCreateWarehouseMutation } from "@/features/app-shell/mock-dashboard"
 import { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import { createWarehouseFormState, WarehouseFormFields, type WarehouseFormErrors } from "./warehouse-form"
+import { useWarehouseManagerInlineCreateSelection } from "./warehouse-manager-inline"
 
 function mapServerErrors(error: AppMutationError): WarehouseFormErrors {
   const errors: WarehouseFormErrors = {}
@@ -42,13 +43,22 @@ function mapServerErrors(error: AppMutationError): WarehouseFormErrors {
 /**
  * @description Component
  */
-export function WarehouseCreatePage({ managerOptions }: { managerOptions: Array<{ id: string; label: string }> }) {
+export function WarehouseCreatePage({
+  managerOptions,
+  warehouseManagerRoleId,
+}: {
+  managerOptions: Array<{ id: string; label: string }>
+  warehouseManagerRoleId: string
+}) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const createWarehouseMutation = useCreateWarehouseMutation()
-  const createEmployeeMutation = useCreateEmployeesBatchMutation()
   const [state, setState] = useState(() => createWarehouseFormState())
   const [errors, setErrors] = useState<WarehouseFormErrors>({})
+  const { createConfig: managerCreate, selectedDisplayValue: managerDisplayValue } = useWarehouseManagerInlineCreateSelection({
+    warehouseManagerRoleId,
+    selectedManagerId: state.managerId,
+  })
   const statusOptions = useMemo(
     () => [
       { value: "ACTIVE" as const, label: t("status.active") },
@@ -117,6 +127,8 @@ export function WarehouseCreatePage({ managerOptions }: { managerOptions: Array<
               notes: t("detailPages.warehouse.notes"),
               noManager: t("shell.noManager"),
             }}
+            managerCreate={managerCreate}
+            managerDisplayValue={managerDisplayValue}
             managerOptions={managerOptions}
             state={state}
             statusOptions={statusOptions}
@@ -124,32 +136,6 @@ export function WarehouseCreatePage({ managerOptions }: { managerOptions: Array<
             onChange={(nextState) => {
               setState(nextState)
               setErrors({})
-            }}
-            translations={{
-              firstName: t("detailPages.debt.employeeFields.firstName"),
-              firstNamePlaceholder: t("detailPages.debt.employeeFields.firstNamePlaceholder"),
-              lastName: t("detailPages.debt.employeeFields.lastName"),
-              lastNamePlaceholder: t("detailPages.debt.employeeFields.lastNamePlaceholder"),
-              phone: t("detailPages.debt.employeeFields.phone"),
-              phonePlaceholder: t("detailPages.debt.employeeFields.phonePlaceholder"),
-              createManager: t("detailPages.warehouse.createManager"),
-            }}
-            onCreateManager={async (data) => {
-              const result = await createEmployeeMutation.mutateAsync({
-                employees: [{
-                  firstName: data.firstName ?? "",
-                  lastName: data.lastName ?? "",
-                  phone: data.phone || "",
-                  roleId: "",
-                  status: "ACTIVE",
-                  managerId: null,
-                  salaryAmountDzd: null,
-                  salaryPeriod: null,
-                  notes: null,
-                }],
-              })
-              const employee = result.createdCount > 0 ? { id: "new", name: `${data.firstName} ${data.lastName}` } : null
-              return employee ?? { id: "", name: "" }
             }}
           />
 

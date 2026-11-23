@@ -13,10 +13,14 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import Database from "better-sqlite3";
 
+import { MAX_MONEY_DZD } from "@tuari/contracts";
+
 import { createRouter } from "../router";
+import { toReportOrpcError } from "./reports";
 import type { RpcContext } from "../context";
 import { BetterSqlite3Executor } from "../../infrastructure/database/sqlite-executor";
 import { ensureDatabaseSchema } from "../../infrastructure/database/schema";
+import { createFifoLock } from "../../infrastructure/database/fifo-lock";
 import { SqliteCompanyRepository } from "../../modules/company/company.repository";
 import { CompanyService } from "../../modules/company/company.service";
 import { FinanceService } from "../../modules/company/finance.service";
@@ -24,6 +28,8 @@ import { WorkforceService } from "../../modules/company/workforce.service";
 import { OperationsService } from "../../modules/company/operations.service";
 import { WorkspaceMutationContext } from "../../modules/company/workspace-mutation-context";
 import { createInventoryRepository } from "../../modules/inventory/adapters/sqlite-inventory.repository";
+import { createAssetChargeRepository } from "../../modules/inventory/adapters/sqlite-asset-charge.repository";
+import { AssetChargeService } from "../../modules/inventory/asset-charge.service";
 import { InventoryService } from "../../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../../modules/inventory/inventory.storage";
 import { EmployeeModule } from "../../modules/workforce/employee.module";
@@ -53,13 +59,19 @@ async function createReportEnvironment() {
   const { raw } = createEnvironment();
   await ensureDatabaseSchema(new BetterSqlite3Executor(raw));
   const companyRepo = new SqliteCompanyRepository(raw);
-  const inventoryRepo = createInventoryRepository(raw);
+  // A project placement now requires the charge service (it must never book an
+  // uncharged placement), so the seeds that create assets on a project wire it
+  // over the SAME connection lock the inventory repo uses (#422 round 5).
+  const connectionLock = createFifoLock();
+  const inventoryRepo = createInventoryRepository(raw, connectionLock);
   const mutation = new WorkspaceMutationContext(companyRepo);
   const financeService = new FinanceService(companyRepo, companyRepo, mutation);
   const inventoryService = new InventoryService(
     inventoryRepo,
     new InventoryAttachmentStorage(join(tmpdir(), "reports-test-attachments")),
     financeService,
+    undefined,
+    new AssetChargeService(createAssetChargeRepository(raw, connectionLock), inventoryRepo),
   );
   const service = new CompanyService(companyRepo);
   const workforceService = new WorkforceService(companyRepo, companyRepo, mutation);
@@ -188,6 +200,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     // Party A: opened 2026-01-01 with 50k, paid 20k on 2026-02-01 → 30k OPEN.
     const accountA = financeService.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterpartyA.id,
         openingBalanceDzd: 50000,
@@ -209,6 +222,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     // Party B: opened 2025-03-15 with 200k, settled 2026-05-20 → SETTLED.
     const accountB = financeService.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: counterpartyB.id,
         openingBalanceDzd: 200000,
@@ -224,6 +238,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     // Worker W1: opened 2026-04-10 with 80k → OPEN.
     const accountW = financeService.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "INTERNAL_WORKER",
         workerId: employee.id,
         openingBalanceDzd: 80000,
@@ -305,6 +320,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     ).item;
     const account = env.financeService.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: cp.id,
         openingBalanceDzd: 1000,
@@ -376,6 +392,7 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     ).item;
     env.financeService.createDebtAccount(
       {
+        direction: "PAYABLE",
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: cp.id,
         openingBalanceDzd: 90000,
@@ -703,10 +720,10 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     const seed = seedInventory(env);
 
     // One outbound sale movement of 10kg cement @500 — entry-linked, so its
-    // value is real. Seeded at the repository (createMovement) because the
-    // service's createOutboundTransfer has a pre-existing item-id ambiguity
-    // (item.itemId used as both a definition id and an entry id) that is
-    // outside #242's report scope; the movement row is identical either way.
+    // value is real. Seeded at the repository (createMovement) because this
+    // suite is about aggregation, not the writer; the movement row is identical
+    // to the one createOutboundTransfer would write (see
+    // outbound-transfer-availability.test.ts for the writer itself).
     env.inventoryRepo.createMovement({
       movementType: "OUTBOUND_SALE",
       itemType: "CONSUMABLE",
@@ -960,5 +977,37 @@ describe("reportsGenerate — real aggregations over seeded data (issue #242)", 
     expect(entries2).toHaveLength(1);
     expect(entries2[0].warehouseId).toBe(wh.id);
     expect(entries2[0].projectId).toBeNull();
+  });
+
+  it("rethrows a non-domain report error instead of returning it as procedure output (#479 P2)", () => {
+    // An appError-carrying failure becomes the typed wire error...
+    expect(toReportOrpcError({ appError: { code: "BUSINESS_RULE", message: "over" } })).toMatchObject({
+      code: "BUSINESS_RULE",
+      message: "over",
+    });
+    // ...but any other error must be THROWN so `queryAuth` keeps the original
+    // cause instead of handing it to ORPC as output (which `reportSchema` would
+    // reject with an output-validation error, losing the cause).
+    const boom = new Error("boom");
+    expect(() => toReportOrpcError(boom)).toThrow(boom);
+  });
+
+  it("refuses an unrepresentable inventory aggregate with the business-rule code (#475)", async () => {
+    const env = await setup();
+    const seed = seedInventory(env);
+
+    // A legacy stored entry at the bound; a second money row pushes the
+    // aggregate past MAX_MONEY_DZD. The write gate never wrote these, but the
+    // DDL only enforces >= 0, so an older build can leave them.
+    const atBound = MAX_MONEY_DZD;
+    for (const entryId of [seed.cementEntryId, seed.mixerEntryId]) {
+      env.raw
+        .prepare('UPDATE "inventory_entry" SET "total_price_dzd" = ? WHERE "id" = ?')
+        .run(atBound, entryId);
+    }
+
+    await expect(env.client.reportsGenerate({ type: "INVENTORY" })).rejects.toMatchObject({
+      code: "BUSINESS_RULE",
+    });
   });
 });

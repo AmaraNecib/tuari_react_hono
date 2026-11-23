@@ -9,6 +9,7 @@ function buildConfig() {
     databasePath: ":memory:",
     databaseUrl: "file::memory:",
     attachmentsRootPath: "./private/invoices",
+    backupsRootPath: "./private/backups",
     host: "127.0.0.1",
     port: 4318,
     allowedOrigins: ["http://localhost:3000"],
@@ -169,7 +170,7 @@ describe("createAuth", () => {
       });
       await db.insert(account).values({
         id: "legacy-account-1",
-        accountId: "0555000001",
+        accountId: userId,
         providerId: "credential",
         userId,
         password: hash,
@@ -184,6 +185,8 @@ describe("createAuth", () => {
       });
       expect(signIn.token).toBeTruthy();
       expect(signIn.user.phoneNumber).toBe("0555000001");
+      expect(signIn.user.email).toMatch(/^[a-f0-9]{32}@users\.invalid$/);
+      expect(signIn.user.emailVerified).toBe(false);
 
       // Any other value still fails — the hash is the only credential.
       await expect(

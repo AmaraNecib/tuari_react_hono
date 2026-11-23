@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveDatabaseEnv } from "./database-env";
+import { resolveBackupsRootPath, resolveDatabaseEnv } from "./database-env";
 
 describe("resolveDatabaseEnv", () => {
   it("uses one sqlite file by default", () => {
@@ -58,5 +58,22 @@ describe("resolveDatabaseEnv", () => {
         DATABASE_URL: "postgres://localhost/tuari",
       }),
     ).toThrow('DATABASE_URL must use a SQLite file: URL');
+  });
+});
+
+describe("resolveBackupsRootPath", () => {
+  it("defaults to a sibling of the database directory, not inside it", () => {
+    const backupsRoot = resolveBackupsRootPath({}, "/srv/tuari/projects/default/tuari.sqlite");
+
+    expect(backupsRoot).toMatch(/[\\/]projects[\\/]backups$/);
+  });
+
+  it("prefers APP_BACKUPS_ROOT when provided", () => {
+    const backupsRoot = resolveBackupsRootPath(
+      { APP_BACKUPS_ROOT: "./private/backups" },
+      "/srv/tuari/tuari.sqlite",
+    );
+
+    expect(backupsRoot).toMatch(/[\\/]private[\\/]backups$/);
   });
 });

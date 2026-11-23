@@ -1,9 +1,12 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { resetE2eDatabase } from "./helpers/db-isolation"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
+
+installManagedApiLifecycle()
 
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
@@ -15,8 +18,8 @@ let createdItemName = ""
 let warehouseAName = ""
 let warehouseBName = ""
 
-test.beforeAll(() => {
-  resetE2eDatabase()
+test.beforeAll(async () => {
+  await resetE2eDatabase()
 })
 
 test.describe("inventory transfer — critical path", () => {
@@ -24,6 +27,7 @@ test.describe("inventory transfer — critical path", () => {
     await bootstrapOrSignIn(page)
 
     await page.getByRole("link", { name: "دليل العناصر" }).first().click()
+    await page.getByRole("button", { name: "دليل العناصر", exact: true }).click()
     await expect(page.getByRole("heading", { name: "دليل العناصر" })).toBeVisible()
 
     const itemName = `صنف-${uniqueSuffix()}`
@@ -70,36 +74,26 @@ test.describe("inventory transfer — critical path", () => {
   test("admin receives items into warehouse A via an invoice with a line item", async ({ page }) => {
     await bootstrapOrSignIn(page)
 
-    await page.getByRole("link", { name: "الفواتير" }).first().click()
-    await expect(page.getByRole("heading", { name: "الفواتير" })).toBeVisible()
-
-    await page.getByRole("button", { name: "فاتورة جديدة" }).first().click()
-    await expect(page.getByRole("heading", { name: /إضافة مخزون بالفاتورة/ })).toBeVisible()
-
-    // Line 1: the item created in the first test, received into warehouse A.
-    // Select it by its value (resolved from the option whose text contains the
-    // created name), not by index — the option list can shift.
-    const itemSelect = page.getByLabel("تعريف العنصر*")
-    const itemValue = await itemSelect
-      .locator("option")
-      .filter({ hasText: createdItemName })
-      .getAttribute("value")
-    await itemSelect.selectOption(itemValue ?? "")
-    // The line's warehouse select's accessible name concatenates its options
-    // (no space after the label), which distinguishes it from the top
-    // "المستودع الافتراضي" combobox.
-    await page.getByLabel(/^المستودعالافتراضي/).selectOption({ label: warehouseAName })
-    await page.getByLabel(/الكمية/).fill("10")
-    await page.getByLabel(/سعر الوحدة/).fill("1500")
-
-    await page.getByRole("button", { name: "حفظ الفاتورة" }).click()
-
-    // The save navigates to the invoice details route. That page currently
-    // renders empty (pre-existing bug: home-view.tsx never forwards invoiceId
-    // to HomeViewPageContent), so we assert on the invoices list instead.
-    await page.getByRole("link", { name: "الفواتير" }).first().click()
-    await expect(page.getByRole("heading", { name: "الفواتير" })).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText("IN-00001")).toBeVisible({ timeout: 10_000 })
+    await page.goto("/invoices/create")
+    const editor = page.getByRole("dialog", { name: "فاتورة مخزون جديدة", exact: true })
+    await editor.getByRole("combobox", { name: "العنصر", exact: true }).selectOption({ label: `${createdItemName} · مادة` })
+    const defaultsSection = editor.getByRole("button", { name: "الوجهة الافتراضية", exact: true })
+    await expect(defaultsSection).toHaveAttribute("aria-expanded", "false")
+    await defaultsSection.click()
+    await expect(defaultsSection).toHaveAttribute("aria-expanded", "true")
+    const defaultDestination = editor.getByRole("combobox", { name: "الوجهة الافتراضية", exact: true })
+    await expect(defaultDestination).toBeVisible()
+    await expect(defaultDestination.locator("option:checked")).toHaveText(warehouseAName)
+    await defaultDestination.selectOption({ label: warehouseAName })
+    await expect(defaultDestination.locator("option:checked")).toHaveText(warehouseAName)
+    await editor.getByLabel("كمية المخزون", { exact: true }).fill("10")
+    await editor.getByLabel("سعر الوحدة", { exact: true }).fill("1500")
+    await editor.getByLabel("رقم الفاتورة، اختياري", { exact: true }).fill("TRANSFER-PURCHASE")
+    await editor.getByRole("button", { name: "حفظ الفاتورة والمخزون", exact: true }).click()
+    await expect(editor).toBeHidden()
+    const purchase = page.getByRole("region", { name: "جدول فواتير المخزون" }).getByRole("row").filter({ hasText: "TRANSFER-PURCHASE" })
+    await expect(purchase).toContainText("15,000")
+    await expect(page.getByRole("heading", { name: createdItemName, level: 3, exact: true })).toBeVisible()
   })
 
   test("warehouse A balance reflects the received quantity", async ({ page }) => {
@@ -126,13 +120,16 @@ test.describe("inventory transfer — critical path", () => {
     await row.getByRole("button", { name: /^عرض$/ }).click()
     await page.getByRole("tab", { name: "العناصر" }).click()
 
-    await page.getByRole("button", { name: "تحويل" }).first().click()
+    await page.getByRole("button", { name: "تحويل مخزون أو بيع", exact: true }).click()
     await expect(page.getByRole("dialog")).toBeVisible()
 
-    await page.getByLabel("الكمية").fill("5")
-    // The destination select's accessible name concatenates its options; the
-    // destination-TYPE select has a distinct name, so anchor to disambiguate.
-    await page.getByLabel(/^الوجهةاختر الوجهة/).selectOption({ label: warehouseBName })
+    const dialog = page.getByRole("dialog", { name: "تحويل مخزون أو بيع", exact: true })
+    const selectedStock = dialog.getByRole("combobox", { name: "المخزون المختار", exact: true })
+    await expect(selectedStock.locator("option:checked")).toHaveText(`${createdItemName} · 10`)
+    await selectedStock.selectOption({ label: `${createdItemName} · 10` })
+    await expect(selectedStock.locator("option:checked")).toHaveText(`${createdItemName} · 10`)
+    await dialog.getByLabel("الكمية المحولة", { exact: true }).fill("5")
+    await dialog.getByRole("combobox", { name: "الوجهة", exact: true }).selectOption({ label: warehouseBName })
     await page.getByRole("button", { name: "تأكيد التحويل" }).click()
 
     // Warehouse A drops to 5.
@@ -149,15 +146,22 @@ test.describe("inventory transfer — critical path", () => {
   test("the transfer movement is visible in the transfer history", async ({ page }) => {
     await bootstrapOrSignIn(page)
 
-    await page.getByRole("link", { name: "سجل التحويلات" }).first().click()
-    await expect(page.getByRole("heading", { name: /سجل التحويلات/ })).toBeVisible()
+    await page.getByRole("link", { name: "المستودعات", exact: true }).first().click()
+    const warehouse = page.getByRole("row", { name: new RegExp(warehouseAName) })
+    await warehouse.getByRole("button", { name: "عرض", exact: true }).click()
+    await page.getByRole("tab", { name: "سجل التحويلات", exact: true }).click()
 
-    // The internal transfer row shows the type and the transferred quantity.
-    // (getByText("تحويل داخلي") alone would match the transfer-type filter's
-    // hidden <option> first, so anchor on the quantity-bearing row.)
-    const quantityBadge = page.getByText("×5").first()
-    await expect(quantityBadge).toBeVisible({ timeout: 10_000 })
-    const transferCard = quantityBadge.locator("xpath=ancestor::div[contains(@class, 'rounded-xl')][1]")
-    await expect(transferCard).toContainText("تحويل داخلي")
+    // Match the unique row for this created item and destination. The exact
+    // quantity selector prevents ×50 (or another item) from satisfying ×5.
+    const transferRow = page.getByTestId("location-transfer-history-row")
+      .filter({ hasText: createdItemName })
+      .filter({ hasText: warehouseBName })
+    await expect(transferRow).toHaveCount(1)
+    const exactQuantity = transferRow.locator('bdi[dir="ltr"]').filter({ hasText: /^×5$/ })
+    await expect(exactQuantity).toHaveCount(1)
+    await expect(exactQuantity).toBeVisible()
+    await expect(transferRow).toContainText("تحويل داخلي")
+    await expect(transferRow).toContainText("صادر")
+    await expect(transferRow).toContainText(warehouseBName)
   })
 })

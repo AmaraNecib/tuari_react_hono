@@ -3,6 +3,7 @@ import type { Role } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
+import { EmployeeOpeningPanel } from "./employee-opening-panel"
 import {
   AppMutationError,
   useCreateEmployeesBatchMutation,
@@ -40,9 +41,9 @@ function localizeRowErrors(
     phoneFormat: string
     roleId: string
     occupation: string
-    salaryAmountDzd: string
-    salaryAmountInvalid: string
-    salaryPeriod: string
+    salaryReferenceAmount: string
+    salaryReferenceAmountInvalid: string
+    salaryReferencePeriod: string
     managerId: string
     projectId: string
     notes: string
@@ -60,12 +61,12 @@ function localizeRowErrors(
       : undefined,
     roleId: rowError.roleId ? copy.roleId : undefined,
     occupation: rowError.occupation ? copy.occupation : undefined,
-    salaryAmountDzd: rowError.salaryAmountDzd
-      ? rowError.salaryAmountDzd === "invalid"
-        ? copy.salaryAmountInvalid
-        : copy.salaryAmountDzd
+    salaryReferenceAmount: rowError.salaryReferenceAmount
+      ? rowError.salaryReferenceAmount === "invalid" || rowError.salaryReferenceAmount.endsWith(".precision")
+        ? copy.salaryReferenceAmountInvalid
+        : copy.salaryReferenceAmount
       : undefined,
-    salaryPeriod: rowError.salaryPeriod ? copy.salaryPeriod : undefined,
+    salaryReferencePeriod: rowError.salaryReferencePeriod ? copy.salaryReferencePeriod : undefined,
     managerId: rowError.managerId,
     projectId: rowError.projectId,
     notes: rowError.notes ? copy.notes : undefined,
@@ -81,7 +82,7 @@ function mapServerErrors(error: AppMutationError, rowCount: number) {
 
   for (const fieldError of error.fieldErrors) {
     const match =
-      /^employees\.(\d+)\.(firstName|lastName|phone|roleId|occupation|salaryAmountDzd|salaryPeriod|managerId|projectId|notes)$/.exec(
+      /^employees\.(\d+)\.(firstName|lastName|phone|roleId|occupation|salaryReference(?:\.(?:amount|period))?|managerId|projectId|notes)$/.exec(
         fieldError.field,
       )
 
@@ -90,7 +91,9 @@ function mapServerErrors(error: AppMutationError, rowCount: number) {
     }
 
     const rowIndex = Number(match[1])
-    const field = match[2] as keyof EmployeeDraftErrors
+    const field = match[2] === "salaryReference.amount" ? "salaryReferenceAmount"
+      : match[2] === "salaryReference.period" || match[2] === "salaryReference" ? "salaryReferencePeriod"
+      : match[2] as keyof EmployeeDraftErrors
 
     if (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= rowErrors.length) {
       continue
@@ -152,8 +155,8 @@ export function EmployeeBatchCreatePage({
     phoneLabel: t("auth.phoneLabel"),
     roleLabel: t("employeeForm.roleLabel"),
     occupationLabel: t("employeeForm.occupationLabel"),
-    salaryAmountLabel: t("employeeForm.salaryAmountLabel"),
-    salaryPeriodLabel: t("employeeForm.salaryPeriodLabel"),
+    salaryReferenceAmountLabel: t("employeeForm.salaryAmountLabel"),
+    salaryReferencePeriodLabel: t("employeeForm.salaryPeriodLabel"),
     managerLabel: t("employeeForm.managerLabel"),
     managerPlaceholder: t("employeeForm.managerPlaceholder"),
     managerDisabledHint: t("employeeForm.managerDisabledHint"),
@@ -163,12 +166,11 @@ export function EmployeeBatchCreatePage({
     phonePlaceholder: t("auth.phonePlaceholder"),
     rolePlaceholder: t("employeeForm.rolePlaceholder"),
     occupationPlaceholder: t("employeeForm.occupationPlaceholder"),
-    salaryAmountPlaceholder: "10000",
-    salaryPeriodPlaceholder: t("employeeForm.selectSalaryPeriod"),
+    salaryReferenceAmountPlaceholder: "10000",
+    salaryReferencePeriodPlaceholder: t("employeeForm.selectSalaryPeriod"),
     notesPlaceholder: t("employeeForm.notesPlaceholder"),
-    salaryPeriodOptions: [
+    salaryReferencePeriodOptions: [
       { value: "DAILY" as const, label: t("detailPages.salary.daily") },
-      { value: "WEEKLY" as const, label: t("detailPages.salary.weekly") },
       { value: "MONTHLY" as const, label: t("detailPages.salary.monthly") },
     ],
     validation: {
@@ -178,9 +180,9 @@ export function EmployeeBatchCreatePage({
       phoneFormat: t("auth.validation.phoneFormat"),
       roleId: t("employeeForm.validation.roleId"),
       occupation: t("employeeForm.validation.occupation"),
-      salaryAmountDzd: t("employeeForm.validation.salaryAmountRequired"),
-      salaryAmountInvalid: t("employeeForm.validation.salaryAmountInvalid"),
-      salaryPeriod: t("employeeForm.validation.salaryPeriodRequired"),
+      salaryReferenceAmount: t("workforce.validation.salaryReference.invalid"),
+      salaryReferenceAmountInvalid: t("workforce.validation.salaryReference.precision"),
+      salaryReferencePeriod: t("workforce.validation.salaryReference.invalid"),
       managerId: t("employeeForm.validation.managerId"),
       projectId: t("employeeForm.validation.projectId"),
       notes: t("employeeForm.validation.notes"),
@@ -252,6 +254,8 @@ export function EmployeeBatchCreatePage({
     setRowErrors((current) => current.filter((_, rowIndex) => rowIndex !== index))
   }
 
+  const [createdEmployees, setCreatedEmployees] = useState<Array<{ id: string; name: string }> | null>(null)
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -275,7 +279,7 @@ export function EmployeeBatchCreatePage({
 
       setRows([createEmptyEmployeeDraft(defaultRoleId)])
       setRowErrors([{}])
-      onDone()
+      setCreatedEmployees(result.employees.map(employee => ({ id: employee.id, name: `${employee.firstName} ${employee.lastName}` })))
     } catch (error) {
       if (error instanceof AppMutationError) {
         const serverErrors = mapServerErrors(error, rows.length)
@@ -294,6 +298,13 @@ export function EmployeeBatchCreatePage({
       showErrorToast(error instanceof Error ? error.message : t("toasts.addWorkerError"))
     }
   }
+
+  if (createdEmployees) return <section className="space-y-5" dir="rtl">
+    <h2 className="text-xl font-semibold">{t("employeeOpening.creationTitle")}</h2>
+    <p className="text-sm text-muted-foreground">{t("employeeOpening.creationHint")}</p>
+    {createdEmployees.map(employee => <div key={employee.id} className="space-y-2"><h3 className="font-medium">{employee.name}</h3><EmployeeOpeningPanel employeeId={employee.id} /></div>)}
+    <Button type="button" onClick={onDone}>{t("employeeOpening.finishCreation")}</Button>
+  </section>
 
   return (
     <div className="space-y-6">
@@ -329,11 +340,11 @@ export function EmployeeBatchCreatePage({
               phoneLabel: copy.phoneLabel,
               roleLabel: copy.roleLabel,
               occupationLabel: copy.occupationLabel,
-              salaryAmountLabel: copy.salaryAmountLabel,
-              salaryPeriodLabel: copy.salaryPeriodLabel,
-              salaryAmountPlaceholder: copy.salaryAmountPlaceholder,
-              salaryPeriodPlaceholder: copy.salaryPeriodPlaceholder,
-              salaryPeriodOptions: copy.salaryPeriodOptions,
+              salaryReferenceAmountLabel: copy.salaryReferenceAmountLabel,
+              salaryReferencePeriodLabel: copy.salaryReferencePeriodLabel,
+              salaryReferenceAmountPlaceholder: copy.salaryReferenceAmountPlaceholder,
+              salaryReferencePeriodPlaceholder: copy.salaryReferencePeriodPlaceholder,
+              salaryReferencePeriodOptions: copy.salaryReferencePeriodOptions,
               managerLabel: copy.managerLabel,
               managerPlaceholder: copy.managerPlaceholder,
               managerDisabledHint: copy.managerDisabledHint,

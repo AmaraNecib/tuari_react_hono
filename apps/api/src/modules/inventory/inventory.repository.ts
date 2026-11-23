@@ -15,12 +15,16 @@ import type {
   InventoryInvoiceGroupRecord,
   InventoryItemDefinitionCreateData,
   InventoryItemDefinitionListFilters,
+  InventoryItemDefinitionPage,
+  InventoryItemDefinitionPageQuery,
   InventoryItemDefinitionRecord,
   InventoryItemDefinitionUpdateData,
   InventoryOutboundTransferCreateData,
   InventoryOutboundTransferRecord,
   InventoryMovementValuationRow,
   InventoryValuationRow,
+  InventoryItemStockHolding,
+  InventoryItemStockAtSourceQuery,
 } from "./inventory.types"
 
 // ---------------------------------------------------------------------------
@@ -38,6 +42,14 @@ export interface InventoryRepository {
   withTransaction<T>(callback: () => T): T
   /** listItemDefinitions. */
   listItemDefinitions(filters?: InventoryItemDefinitionListFilters): InventoryItemDefinitionRecord[]
+  /**
+   * Usage-scoped, keyset-paged item definitions, ordered by
+   * `(name COLLATE NOCASE, id)`. The offer filter is compiled to SQL so the
+   * picker pages the filtered set, never the whole catalog.
+   */
+  listItemDefinitionsPaged(query: InventoryItemDefinitionPageQuery): InventoryItemDefinitionPage
+  /** countEntriesByItemDefinitionId — how many inventory entries reference a definition. */
+  countEntriesByItemDefinitionId(itemDefinitionId: string): number
   /** getItemDefinitionById. */
   getItemDefinitionById(id: string): InventoryItemDefinitionRecord | null
   /** createItemDefinition. */
@@ -54,6 +66,8 @@ export interface InventoryRepository {
   listInvoiceGroups(filters?: InventoryInvoiceGroupListFilters): InventoryInvoiceGroupRecord[]
   /** getLatestInvoiceNumber. */
   getLatestInvoiceNumber(): string | null
+  /** Attachment ownership lookup, independent of monetary columns. */
+  invoiceGroupExists(id: string): boolean
   /** getInvoiceGroupById. */
   getInvoiceGroupById(id: string): InventoryInvoiceGroupRecord | null
   /** createInvoiceGroup. */
@@ -78,6 +92,12 @@ export interface InventoryRepository {
   listConsumableBalancesByInvoiceGroupId(invoiceGroupId: string): InventoryConsumableBalanceRecord[]
   /** listConsumableBalancesByLocation. */
   listConsumableBalancesByLocation(filters: { warehouseId?: string; projectId?: string }): InventoryConsumableBalanceRecord[]
+  /**
+   * The stock a definition currently holds at one source. The write gate reads
+   * this and evaluates the item-offer rule against it, so it accepts exactly
+   * what the picker's `inStockAt` predicate offered.
+   */
+  listItemStockAtSource(query: InventoryItemStockAtSourceQuery): InventoryItemStockHolding
   /** getConsumableBalanceByEntryAndLocation. */
   getConsumableBalanceByEntryAndLocation(filters: { inventoryEntryId: string; warehouseId?: string | null; projectId?: string | null }): InventoryConsumableBalanceRecord | null
   /** updateConsumableBalanceQuantity. */

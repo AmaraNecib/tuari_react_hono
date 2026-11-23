@@ -4,7 +4,7 @@
 import type { Role } from "@tuari/contracts"
 
 import { Button } from "@/components/ui/button"
-import { CurrencyInput, NativeSelect } from "@/components/ui/form-controls"
+import { CurrencyInput, NativeSelect, placeholderContrastClassName } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
 
 import type { EmployeeDraft, EmployeeDraftErrors } from "./employee-batch-schema"
@@ -23,11 +23,11 @@ type EmployeeBatchRowCardCopy = {
   phoneLabel: string
   roleLabel: string
   occupationLabel: string
-  salaryAmountLabel: string
-  salaryPeriodLabel: string
-  salaryAmountPlaceholder: string
-  salaryPeriodPlaceholder: string
-  salaryPeriodOptions: Array<{ value: "DAILY" | "WEEKLY" | "MONTHLY"; label: string }>
+  salaryReferenceAmountLabel: string
+  salaryReferencePeriodLabel: string
+  salaryReferenceAmountPlaceholder: string
+  salaryReferencePeriodPlaceholder: string
+  salaryReferencePeriodOptions: Array<{ value: "DAILY" | "MONTHLY"; label: string }>
   managerLabel: string
   managerPlaceholder: string
   managerDisabledHint: string
@@ -151,32 +151,32 @@ export function EmployeeBatchRowCard({
         </label>
 
         <label className="flex flex-col gap-2.5">
-          <span className="text-sm font-medium text-foreground">{copy.salaryAmountLabel}</span>
+          <span className="text-sm font-medium text-foreground">{copy.salaryReferenceAmountLabel}</span>
           <CurrencyInput
             currencyLabel="دج"
-            name={`employee-salary-amount-${index}`}
-            placeholder={copy.salaryAmountPlaceholder}
-            value={draft.salaryAmountDzd}
-            onChange={(event) => onChange(index, "salaryAmountDzd", event.target.value)}
+            name={`employee-salary-reference-amount-${index}`}
+            placeholder={copy.salaryReferenceAmountPlaceholder}
+            value={draft.salaryReferenceAmount}
+            onChange={(event) => onChange(index, "salaryReferenceAmount", event.target.value)}
           />
-          {errors.salaryAmountDzd ? <p className="text-sm text-destructive">{errors.salaryAmountDzd}</p> : null}
+          {errors.salaryReferenceAmount ? <p className="text-sm text-destructive">{errors.salaryReferenceAmount}</p> : null}
         </label>
 
         <label className="flex flex-col gap-2.5">
-          <span className="text-sm font-medium text-foreground">{copy.salaryPeriodLabel}</span>
+          <span className="text-sm font-medium text-foreground">{copy.salaryReferencePeriodLabel}</span>
           <NativeSelect
-            name={`employee-salary-period-${index}`}
-            value={draft.salaryPeriod}
-            onChange={(event) => onChange(index, "salaryPeriod", event.target.value)}
+            name={`employee-salary-reference-period-${index}`}
+            value={draft.salaryReferencePeriod}
+            onChange={(event) => onChange(index, "salaryReferencePeriod", event.target.value)}
           >
-            <option value="">{copy.salaryPeriodPlaceholder}</option>
-            {copy.salaryPeriodOptions.map((option) => (
+            <option value="">{copy.salaryReferencePeriodPlaceholder}</option>
+            {copy.salaryReferencePeriodOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </NativeSelect>
-          {errors.salaryPeriod ? <p className="text-sm text-destructive">{errors.salaryPeriod}</p> : null}
+          {errors.salaryReferencePeriod ? <p className="text-sm text-destructive">{errors.salaryReferencePeriod}</p> : null}
         </label>
 
         <div className="flex flex-col gap-2.5">
@@ -234,7 +234,7 @@ export function EmployeeBatchRowCard({
         <label className="flex flex-col gap-2.5 xl:col-span-3">
           <span className="text-sm font-medium text-foreground">{copy.notesLabel}</span>
           <textarea
-            className="min-h-[120px] w-full rounded-xl border border-border/80 bg-sidebar px-4 py-3 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition placeholder:text-muted-foreground/80 focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 dark:bg-background dark:shadow-none"
+            className={`min-h-[120px] w-full rounded-xl border border-border/80 bg-sidebar px-4 py-3 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition ${placeholderContrastClassName} focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 dark:bg-background dark:shadow-none`}
             name={`employee-notes-${index}`}
             placeholder={copy.notesPlaceholder}
             value={draft.notes}

@@ -122,7 +122,7 @@ describe("rolePermissionSeeds", () => {
     const seeds = rolePermissionSeeds();
     const roleKeys = [...new Set(seeds.map((s) => s.roleId))];
     // Only admin has permissions, so only admin emits a seed row. The
-    // workforce labels carry no permissions → no rows; manager/viewer removed.
+    // workforce labels carry no permissions â†’ no rows; manager/viewer removed.
     expect(roleKeys).toEqual(["admin"]);
     for (const key of ["manager", "viewer", "project_manager", "warehouse_manager", "worker"]) {
       expect(seeds.some((s) => s.roleId === key)).toBe(false);
@@ -294,5 +294,195 @@ describe("payment_allocation schema (#335 restrict FK)", () => {
     expect(paymentAllocationRestrictMigrationKey).toBe(
       "payment_allocation_restrict_fk_v1",
     );
+  });
+});
+
+describe("expense schema (#411)", () => {
+  const definitions = createSchemaDefinitions();
+
+  it("creates the expense table with the money, date and audit columns", () => {
+    const expenseDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "expense"'),
+    );
+    expect(expenseDef).toBeDefined();
+    expect(expenseDef).toContain('"amount_dzd" REAL NOT NULL CHECK ("amount_dzd" > 0)');
+    expect(expenseDef).toContain('"expense_date" DATETIME NOT NULL');
+    expect(expenseDef).toContain('"actor_user_id" TEXT');
+    expect(expenseDef).toContain('"transaction_id" TEXT');
+    expect(expenseDef).toContain(
+      'CHECK ("status" IN (\'LIVE\', \'VOIDED\'))',
+    );
+  });
+
+  it("keeps every optional reference nullable and free of foreign keys", () => {
+    const expenseDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "expense"'),
+    )!;
+    for (const column of [
+      '"responsible_worker_id" TEXT',
+      '"seller_id" TEXT',
+      '"project_id" TEXT',
+      '"stock_item_id" TEXT',
+    ]) {
+      const line = expenseDef.split("\n").find((entry) => entry.includes(column));
+      expect(line).toBeDefined();
+      expect(line).not.toContain("NOT NULL");
+      expect(line).not.toContain("REFERENCES");
+    }
+  });
+
+  it("creates the expense_revision table linked to expense with a restrict FK", () => {
+    const revisionDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "expense_revision"'),
+    );
+    expect(revisionDef).toBeDefined();
+    expect(revisionDef).toContain('"previous_amount_dzd" REAL');
+    expect(revisionDef).toContain('"new_amount_dzd" REAL NOT NULL');
+    expect(revisionDef).toContain('"reason" TEXT');
+    expect(revisionDef).toContain(
+      'FOREIGN KEY ("expense_id") REFERENCES "expense" ("id") ON DELETE RESTRICT',
+    );
+  });
+
+  it("indexes the list filters the expenses screen uses", () => {
+    expect(definitions).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('CREATE INDEX IF NOT EXISTS "expense_expense_date_idx"'),
+        expect.stringContaining('CREATE INDEX IF NOT EXISTS "expense_project_id_idx"'),
+        expect.stringContaining('CREATE INDEX IF NOT EXISTS "expense_responsible_worker_id_idx"'),
+        expect.stringContaining('CREATE INDEX IF NOT EXISTS "expense_revision_expense_id_idx"'),
+      ]),
+    );
+  });
+});
+
+describe("inventory_asset_charge schema (#413 stock charge)", () => {
+  const definitions = createSchemaDefinitions();
+
+  function getChargeDefinition() {
+    const def = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "inventory_asset_charge"'),
+    );
+    expect(def).toBeDefined();
+    return def!;
+  }
+
+  it("creates the charge table with unit, project, movement and amount columns", () => {
+    const def = getChargeDefinition();
+    expect(def).toContain('"asset_unit_id" TEXT NOT NULL');
+    expect(def).toContain('"project_id" TEXT NOT NULL');
+    expect(def).toContain('"movement_id" TEXT');
+    expect(def).toContain('"amount_dzd" REAL NOT NULL');
+  });
+
+  it("allows a zero amount (a free placement) with a LIVE/VOID status", () => {
+    const def = getChargeDefinition();
+    expect(def).toMatch(/CHECK\s*\("amount_dzd"\s*>=\s*0\)/);
+    expect(def).toMatch(/"status"\s+TEXT\s+NOT\s+NULL\s+DEFAULT\s+'LIVE'/);
+    expect(def).toMatch(/CHECK\s*\("status"\s*IN\s*\(\s*'LIVE'\s*,\s*'VOID'\s*\)\)/);
+  });
+
+  it("annotates a void with actor + reason and keeps the movement reference nullable", () => {
+    const def = getChargeDefinition();
+    expect(def).toContain('"voided_at"');
+    expect(def).toContain('"voided_by"');
+    expect(def).toContain('"void_reason"');
+    expect(def).toContain('FOREIGN KEY ("movement_id") REFERENCES "inventory_movement"');
+    expect(def).toContain("ON DELETE SET NULL");
+  });
+
+  it("refuses to delete a unit that still has a charge, keeping the record", () => {
+    // A charge is a money record: deleting its unit (directly, or through the
+    // invoice â†’ entry cascade) must not take the charge and its revisions with
+    // it. RESTRICT keeps the unit reference NOT NULL and the record intact;
+    // the delete fails instead (#422 round 5).
+    const def = getChargeDefinition();
+    expect(def).toContain(
+      'FOREIGN KEY ("asset_unit_id") REFERENCES "inventory_asset_unit" ("id") ON DELETE RESTRICT',
+    );
+    expect(def).not.toContain(
+      'FOREIGN KEY ("asset_unit_id") REFERENCES "inventory_asset_unit" ("id") ON DELETE CASCADE',
+    );
+  });
+
+  it("refuses to delete a project that still has charges", () => {
+    // A charge is a money record: deleting a project must not take its charges
+    // (and their revisions) with it. RESTRICT keeps the project reference NOT
+    // NULL and the record intact; the delete fails instead.
+    const def = getChargeDefinition();
+    expect(def).toContain(
+      'FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT',
+    );
+    expect(def).not.toContain(
+      'FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE CASCADE',
+    );
+  });
+
+  it("creates the revision table that records from â†’ to + reason", () => {
+    const def = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "inventory_asset_charge_revision"'),
+    );
+    expect(def).toBeDefined();
+    expect(def).toContain('"charge_id" TEXT NOT NULL');
+    expect(def).toContain('"previous_amount_dzd" REAL NOT NULL');
+    expect(def).toContain('"new_amount_dzd" REAL');
+    expect(def).toContain('"reason" TEXT');
+    expect(def).toContain(
+      'FOREIGN KEY ("charge_id") REFERENCES "inventory_asset_charge" ("id") ON DELETE CASCADE',
+    );
+  });
+
+  it("indexes charges by unit and by project", () => {
+    expect(definitions).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining(
+          'ON "inventory_asset_charge" ("asset_unit_id", "created_at")',
+        ),
+        expect.stringContaining('ON "inventory_asset_charge" ("project_id", "status")'),
+      ]),
+    );
+  });
+});
+
+describe("employee_salary_payment schema (#412 days + split)", () => {
+  const definitions = createSchemaDefinitions();
+
+  it("adds an idempotent `days` column defaulting to 30 on the payment table", () => {
+    const paymentDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "employee_salary_payment"'),
+    );
+    expect(paymentDef).toContain('"days" INTEGER NOT NULL DEFAULT 30');
+
+    const additive = additiveStatements.find((statement) =>
+      statement.includes('ALTER TABLE "employee_salary_payment" ADD COLUMN "days"'),
+    );
+    expect(additive).toContain("INTEGER NOT NULL DEFAULT 30");
+  });
+
+  it("creates a per-project split table keyed to the payment and project", () => {
+    const splitDef = definitions.find((d) =>
+      d.includes('CREATE TABLE IF NOT EXISTS "employee_salary_payment_split"'),
+    );
+    expect(splitDef).toBeDefined();
+    expect(splitDef).toContain('"days" INTEGER NOT NULL CHECK ("days" > 0)');
+    expect(splitDef).toContain(
+      'FOREIGN KEY ("payment_id") REFERENCES "employee_salary_payment" ("id") ON DELETE CASCADE',
+    );
+    expect(splitDef).toContain(
+      'FOREIGN KEY ("project_id") REFERENCES "project" ("id") ON DELETE RESTRICT',
+    );
+  });
+
+  it("indexes the split table by payment and project", () => {
+    expect(
+      definitions.some((d) =>
+        d.includes('employee_salary_payment_split_payment_id_idx'),
+      ),
+    ).toBe(true);
+    expect(
+      definitions.some((d) =>
+        d.includes('employee_salary_payment_split_project_id_idx'),
+      ),
+    ).toBe(true);
   });
 });

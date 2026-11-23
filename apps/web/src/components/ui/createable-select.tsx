@@ -18,6 +18,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+/** Sentinel item values handled by the select before they reach `onChange`. */
+const CREATE_VALUE = "__create_new__"
+const CLEAR_VALUE = "__clear__"
+
 type CreateableSelectProps = {
   /** Current value */
   value: string
@@ -41,6 +45,13 @@ type CreateableSelectProps = {
   }>
   /** Function to call when creating a new item */
   onCreate?: (data: Record<string, string>) => Promise<{ id: string; name: string }>
+  /**
+   * When true, the listbox offers an explicit row (labelled with
+   * `emptyLabel`) that clears the value back to `""`. Without it a select
+   * whose value was once set cannot return to empty — the placeholder only
+   * shows the empty state, it is not selectable.
+   */
+  clearable?: boolean
   /** Whether the select is disabled */
   disabled?: boolean
   /** Additional className for the select */
@@ -66,6 +77,7 @@ export function CreateableSelect({
   createLabel,
   createFields,
   onCreate,
+  clearable = false,
   disabled = false,
   className,
   displayValue,
@@ -96,7 +108,9 @@ export function CreateableSelect({
 
   function handleValueChange(selectedValue: string | null) {
     if (!selectedValue) return
-    if (selectedValue === "__create_new__") {
+    if (selectedValue === CLEAR_VALUE) {
+      onChange("")
+    } else if (selectedValue === CREATE_VALUE) {
       setShowCreateDialog(true)
       setCreateData({})
       setCreateError(null)
@@ -106,7 +120,9 @@ export function CreateableSelect({
   }
 
   async function handleCreate() {
-    if (!onCreate) return
+    // Re-entrancy guard: the button is disabled while creating, but a second
+    // click dispatched before React re-renders must not create twice.
+    if (!onCreate || isCreating) return
 
     // Validate required fields
     for (const field of resolvedCreateFields) {
@@ -132,6 +148,11 @@ export function CreateableSelect({
   }
 
   function handleCloseDialog() {
+    // An in-flight create cannot be cancelled: the employee may already be
+    // committed server-side, and the late result would otherwise select a
+    // person the user thought they had dismissed. Keep the dialog open until
+    // the mutation settles; the Cancel button is disabled to signal this.
+    if (isCreating) return
     setShowCreateDialog(false)
     setCreateData({})
     setCreateError(null)
@@ -147,6 +168,7 @@ export function CreateableSelect({
           />
         </SelectTrigger>
         <SelectContent>
+          {clearable && <SelectItem value={CLEAR_VALUE}>{resolvedEmptyLabel}</SelectItem>}
           {options.length === 0 && (
             <SelectItem value="" disabled>
               {resolvedPlaceholder}
@@ -158,7 +180,7 @@ export function CreateableSelect({
             </SelectItem>
           ))}
           {onCreate && (
-            <SelectItem value="__create_new__">
+            <SelectItem value={CREATE_VALUE}>
               + {resolvedCreateLabel}
             </SelectItem>
           )}
@@ -196,7 +218,7 @@ export function CreateableSelect({
             {createError && <p className="text-sm text-destructive">{createError}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCloseDialog}>
+            <Button variant="outline" disabled={isCreating} onClick={handleCloseDialog}>
               {t("common.cancel")}
             </Button>
             <Button onClick={handleCreate} disabled={isCreating}>

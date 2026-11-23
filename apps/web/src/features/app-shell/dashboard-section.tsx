@@ -1,13 +1,18 @@
 import { useTranslation } from "react-i18next"
 
-import { useDebtsSummaryQuery } from "@/features/debts/debts-queries"
-import {
-  useInventoryInvoiceGroupsQuery,
-  useInventoryItemDefinitionsQuery,
-} from "@/features/inventory/inventory-hooks"
+import { Money, sumMoneyHistory } from "@tuari/contracts"
+import { useExactDebtSummary } from "@/features/debts/debts-exact-queries"
+import { useExactInventoryDefinitions, useExactInventoryInvoices } from "@/features/inventory/inventory-exact-queries"
+import { CurrencyRun } from "@/features/shared/money-value"
+import { financialClient } from "@/lib/orpc-client"
 import { PageHeader, StatBand } from "@/features/shared/page-primitives"
 
-import { buildDashboardBusinessCounters } from "./dashboard-metrics"
+function formatDashboardMoney(value: string): string {
+  const [whole = "0", cents = ""] = value.split(".")
+  const fraction = cents.replace(/0+$/, "")
+  const groupedWhole = new Intl.NumberFormat("ar-DZ").format(BigInt(whole))
+  return fraction ? `${groupedWhole}.${fraction}` : groupedWhole
+}
 
 type DashboardSectionProps = {
   metrics: {
@@ -38,20 +43,18 @@ type DashboardSectionProps = {
 export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
   const { t } = useTranslation()
 
-  // Feature-scoped aggregates (issue #23): debts + inventory totals come from
-  // the existing narrow queries so they stay fresh after their own mutations
-  // (the debts feature documents reading debtsSummary instead of the snapshot
-  // for exactly this reason). The section is lazy-loaded, so these RPCs fire
-  // only when the dashboard page is shown.
-  const debtsSummaryQuery = useDebtsSummaryQuery()
-  const invoiceGroupsQuery = useInventoryInvoiceGroupsQuery()
-  const itemDefinitionsQuery = useInventoryItemDefinitionsQuery()
+  // Load exact debt and inventory aggregates only when the lazy dashboard appears.
+  // Their user-scoped queries invalidate after their own commands.
+  const debtsSummaryQuery = useExactDebtSummary(financialClient.debts)
+  const invoiceGroupsQuery = useExactInventoryInvoices(financialClient.inventory)
+  const itemDefinitionsQuery = useExactInventoryDefinitions(financialClient.inventory)
 
-  const { openInvoices, outstandingDebtsDzd, items } = buildDashboardBusinessCounters({
-    debtsSummary: debtsSummaryQuery.data,
-    invoiceGroups: invoiceGroupsQuery.data?.items,
-    itemDefinitions: itemDefinitionsQuery.data?.items,
-  })
+  const openInvoices = invoiceGroupsQuery.data?.filter(invoice => invoice.remainingDebtDzd !== "0.00").length ?? 0
+  const outstandingDebtsDzd = sumMoneyHistory(debtsSummaryQuery.data?.accounts
+    .filter(account => account.status === "OPEN")
+    .map(account => Money.parse(account.currentBalance)) ?? [])
+  const outstandingDebtsPositive = !outstandingDebtsDzd.startsWith("-") && outstandingDebtsDzd !== "0.00"
+  const items = itemDefinitionsQuery.data?.length ?? 0
 
   // Density-first stat cards must never claim zero for data that is still
   // loading or failed to load (a busy account showing "0 د.ج" is a lie).
@@ -77,7 +80,7 @@ export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
       ? "—"
       : debtsSummaryQuery.isPending
         ? "…"
-        : `${outstandingDebtsDzd.toLocaleString("ar-DZ")} د.ج`
+        : <CurrencyRun amount={formatDashboardMoney(outstandingDebtsDzd)} currencyLabel="د.ج" />
 
   return (
     <div className="space-y-6">
@@ -93,7 +96,7 @@ export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
           { label: labels.warehouses,      value: metrics.warehouses,      tone: metrics.warehouses > 0 ? "good" : "neutral" },
           { label: labels.roles,           value: metrics.roles,           tone: "neutral" },
           { label: labels.invoices,         value: invoicesValue, tone: openInvoices > 0 ? "good" : "neutral" },
-          { label: labels.outstandingDebts, value: debtsValue,    tone: outstandingDebtsDzd > 0 ? "good" : "neutral" },
+          { label: labels.outstandingDebts, value: debtsValue,    tone: outstandingDebtsPositive ? "good" : "neutral" },
           { label: labels.items,            value: itemsValue,    tone: items > 0 ? "good" : "neutral" },
           { label: labels.counterparties,  value: metrics.counterparties,  tone: metrics.counterparties > 0 ? "good" : "neutral" },
         ]}

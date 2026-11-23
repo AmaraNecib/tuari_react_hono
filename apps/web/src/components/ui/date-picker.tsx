@@ -1,10 +1,12 @@
-import { useState } from "react"
+import { useState, type AriaAttributes } from "react"
 import { DayPicker } from "react-day-picker"
 import { ar } from "date-fns/locale/ar"
 import { format, parse, isValid } from "date-fns"
 import { CalendarIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { AppDate } from "@/components/app-date"
+import { useDateFormat } from "@/features/preferences/date-format-preference"
 import { formInputClassName } from "@/components/ui/form-controls"
 import {
   Popover,
@@ -12,51 +14,81 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 
-/**
- * Format a Date as DD/MM/YYYY for Arabic RTL display.
- */
-function formatDateAr(date: Date): string {
-  return format(date, "dd/MM/yyyy")
-}
+const DISPLAY_DATE_FORMAT = "dd/MM/yyyy"
+const CANONICAL_DAY_FORMAT = "yyyy-MM-dd"
+
+const CANONICAL_DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
+const DISPLAY_DAY_PATTERN = /^\d{2}\/\d{2}\/\d{4}$/
 
 /**
- * Parse a DD/MM/YYYY string back to a Date.
+ * Parse a picker value into a Date.
+ *
+ * The app's canonical day is `yyyy-MM-dd` (what `getAlgeriaDateInputValue`
+ * produces and `toAlgeriaDayBoundaryIso` consumes), so that is the contract.
+ * The `dd/MM/yyyy` display format is still accepted defensively and normalized
+ * to the same day, so a stray caller cannot silently blank the field.
  */
-function parseDateAr(value: string): Date | undefined {
+function parsePickerValue(value: string): Date | undefined {
   if (!value) return undefined
-  const date = parse(value, "dd/MM/yyyy", new Date())
+  const pattern = CANONICAL_DAY_PATTERN.test(value)
+    ? CANONICAL_DAY_FORMAT
+    : DISPLAY_DAY_PATTERN.test(value)
+      ? DISPLAY_DATE_FORMAT
+      : null
+  if (!pattern) return undefined
+  const date = parse(value, pattern, new Date())
   return isValid(date) ? date : undefined
 }
 
+/**
+ * The canonical `yyyy-MM-dd` day the app stores, sends to the API and feeds to
+ * `toAlgeriaDayBoundaryIso`. The picker always reports this format.
+ */
+function toCanonicalDay(date: Date): string {
+  return format(date, CANONICAL_DAY_FORMAT)
+}
+
 type DatePickerProps = {
+  /** The app's canonical `yyyy-MM-dd` day (a `dd/MM/yyyy` string is normalized). */
   value: string
+  /** Receives the picked day as canonical `yyyy-MM-dd`. */
   onChange: (value: string) => void
   placeholder?: string
   disabled?: boolean
   className?: string
   name?: string
   id?: string
+  "aria-invalid"?: AriaAttributes["aria-invalid"]
+  "aria-required"?: AriaAttributes["aria-required"]
+  "aria-describedby"?: string
 }
 
-/** Date picker with Arabic locale support. Uses DD/MM/YYYY format. */
+/**
+ * Date picker with Arabic locale support. Displays the chosen numeric order; its value
+ * contract is the app's canonical `yyyy-MM-dd` day in and out.
+ */
 /**
  * @description Component
  */
 export function DatePicker({
   value,
   onChange,
-  placeholder = "dd/mm/yyyy",
+  placeholder,
   disabled = false,
   className,
   name,
   id,
+  "aria-invalid": ariaInvalid,
+  "aria-required": ariaRequired,
+  "aria-describedby": ariaDescribedby,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
-  const selectedDate = value ? parseDateAr(value) : undefined
+  const order = useDateFormat()
+  const selectedDate = value ? parsePickerValue(value) : undefined
 
   function handleSelect(date: Date | undefined) {
     if (date) {
-      onChange(formatDateAr(date))
+      onChange(toCanonicalDay(date))
     }
     setOpen(false)
   }
@@ -64,11 +96,20 @@ export function DatePicker({
   return (
     <div className={cn("relative", className)}>
       {/* Hidden input for form submission */}
-      {name && <input type="hidden" name={name} value={value} />}
+      {name && (
+        <input
+          type="hidden"
+          name={name}
+          value={selectedDate ? toCanonicalDay(selectedDate) : ""}
+        />
+      )}
 
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           id={id}
+          aria-invalid={ariaInvalid}
+          aria-required={ariaRequired}
+          aria-describedby={ariaDescribedby}
           disabled={disabled}
           className={cn(
             formInputClassName,
@@ -78,7 +119,7 @@ export function DatePicker({
           )}
         >
           <span className={cn(!selectedDate && "text-muted-foreground/80")}>
-            {selectedDate ? formatDateAr(selectedDate) : placeholder}
+            {selectedDate ? <AppDate value={toCanonicalDay(selectedDate)} /> : placeholder ?? <bdi dir="ltr">{order.toLowerCase()}</bdi>}
           </span>
           <CalendarIcon className="size-4 shrink-0 text-muted-foreground" />
         </PopoverTrigger>
@@ -99,8 +140,8 @@ export function DatePicker({
                 month_caption: "flex justify-center items-center h-9 font-medium text-sm text-foreground",
                 caption_label: "font-medium text-sm",
                 nav: "flex items-center gap-1 absolute top-3",
-                button_previous: "h-7 w-7 bg-transparent hover:bg-surface-2 rounded-lg flex items-center justify-center cursor-pointer transition-colors text-ink-3 hover:text-ink",
-                button_next: "h-7 w-7 bg-transparent hover:bg-surface-2 rounded-lg flex items-center justify-center cursor-pointer transition-colors text-ink-3 hover:text-ink",
+                button_previous: "h-7 w-7 bg-transparent hover:bg-surface-2 rounded-lg flex items-center justify-center cursor-pointer transition-colors text-ink-3 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1 aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent aria-disabled:hover:text-ink-3",
+                button_next: "h-7 w-7 bg-transparent hover:bg-surface-2 rounded-lg flex items-center justify-center cursor-pointer transition-colors text-ink-3 hover:text-ink focus-visible:outline-2 focus-visible:outline-primary focus-visible:outline-offset-1 aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent aria-disabled:hover:text-ink-3",
                 dropdowns: "flex gap-2",
                 dropdown: "rounded-lg border border-border bg-background px-2 py-1 text-sm",
                 dropdown_root: "relative",
@@ -128,7 +169,7 @@ export function DatePicker({
                 caption_after_exit: "",
                 caption_before_enter: "",
                 caption_before_exit: "",
-                chevron: "",
+                chevron: "size-4 fill-current",
                 footer: "",
                 week_number: "",
                 week_number_header: "",

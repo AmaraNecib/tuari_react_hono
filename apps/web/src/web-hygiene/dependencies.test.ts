@@ -59,7 +59,7 @@ describe("web dependency hygiene (#282)", () => {
     expect(packageJson.dependencies["shadcn"]).toBeUndefined();
     // Property under test is *where* the CLI lives, not its exact version —
     // a legitimate future shadcn upgrade must not trip a hygiene test.
-    expect(packageJson.devDependencies["shadcn"]).toMatch(/^\^4\.\d+\.\d+$/);
+    expect(packageJson.devDependencies["shadcn"]).toMatch(/^\^?4\.\d+\.\d+$/);
   });
 
   it("drops the removed packages from pnpm-lock.yaml", () => {

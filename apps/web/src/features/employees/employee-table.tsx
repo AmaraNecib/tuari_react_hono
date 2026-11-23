@@ -1,4 +1,3 @@
-import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { cn } from "@/lib/utils"
@@ -14,7 +13,6 @@ import {
   AppShellTableRow,
 } from "@/features/shared/table-primitives"
 import { getArabicStatusLabel, getStatusTone } from "@/features/shared/status-meta"
-import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
 
 export type EmployeeTableRow = {
   id: string
@@ -26,8 +24,7 @@ export type EmployeeTableRow = {
   role: string
   phone: string
   status: "ACTIVE" | "INACTIVE" | "LEFT"
-  salaryAmountDzd: number | null
-  salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | null
+  salaryReference?: { period: "DAILY" | "WEEKLY" | "MONTHLY"; amount: string } | null
   managerName: string
   managerAssignmentId: string | null
   currentManagerId: string | null
@@ -67,6 +64,7 @@ type EmployeeTableProps = {
   copy: EmployeeTableCopy
   rows: EmployeeTableRow[]
   onAdd?: () => void
+  onApproveEarning: (row: EmployeeTableRow) => void
   onDelete: (row: EmployeeTableRow) => void
   onEdit: (row: EmployeeTableRow) => void
   onLeave: (row: EmployeeTableRow) => void
@@ -77,19 +75,19 @@ type EmployeeTableProps = {
 /**
  * @description Component
  */
-export function EmployeeTable({ copy, rows, onAdd, onDelete, onEdit, onLeave, onView }: EmployeeTableProps) {
+export function EmployeeTable({
+  copy,
+  rows,
+  onAdd,
+  onApproveEarning,
+  onDelete,
+  onEdit,
+  onLeave,
+  onView,
+}: EmployeeTableProps) {
   const { t } = useTranslation()
-  // rows are already paginated by the parent (cursor-based pagination)
-  const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
 
   return (
-    <>
-      <AddSalaryPaymentDialog
-        employeeId={paymentTarget?.id ?? null}
-        employeeName={paymentTarget?.name}
-        open={paymentTarget !== null}
-        onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
-      />
       <AppShellTableFrame>
         <table className="min-w-full text-sm">
           <AppShellTableHead>
@@ -138,12 +136,12 @@ export function EmployeeTable({ copy, rows, onAdd, onDelete, onEdit, onLeave, on
                   </td>
                   <td className="px-4 py-4 text-start">
                     <AppShellActionGroup>
-                      {row.isWorker && row.status === "ACTIVE" ? (
+                      {row.status === "ACTIVE" ? (
                         <Button
                           size="xs"
-                          onClick={() => setPaymentTarget({ id: row.id, name: row.name })}
+                          onClick={() => onApproveEarning(row)}
                         >
-                          {t("salaries.addPayment")}
+                          {t("earnings.approve")}
                         </Button>
                       ) : null}
                       <Button size="xs" variant="outline" onClick={() => onView(row)}>
@@ -187,6 +185,5 @@ export function EmployeeTable({ copy, rows, onAdd, onDelete, onEdit, onLeave, on
           </tbody>
         </table>
       </AppShellTableFrame>
-    </>
   )
 }

@@ -1,7 +1,10 @@
-import { expect, test, type APIRequestContext } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test, type APIRequestContext } from "./helpers/test"
 
 import { BOOTSTRAP_SETUP_KEY } from "./helpers/session"
 import { apiBaseUrl, webBaseUrl } from "./helpers/urls"
+
+installManagedApiLifecycle()
 
 const API_URL = apiBaseUrl()
 const WEB_ORIGIN = webBaseUrl()

@@ -13,7 +13,13 @@
  * domain.
  */
 
+import { createHash } from "node:crypto";
+
 import {
+  Money,
+  SalaryReference,
+  employeeEarningApprovalInputSchema,
+  type EmployeeEarningApprovalInput,
   type EmployeeAssignWorkplaceInput,
   type EmployeeBatchCreateInput,
   type EmployeeCreateInput,
@@ -33,13 +39,13 @@ import { assertActiveEmployeeSeatAvailable } from "./employee-seat-limit";
 import {
   buildBatchField,
   deleteResult,
-  normalizeSalaryAmount,
   normalizeText,
   successResult,
 } from "./company.helpers";
 import { WorkspaceMutationContext } from "./workspace-mutation-context";
 import type { WorkforceRepository } from "./workforce.repository";
 import type { OperationsRepository } from "./operations.repository";
+import type { EmployeeEarningRepository } from "../workforce/employee-earnings.repository";
 import {
   isAcceptedEmployeeRoleKey,
   ASSIGNABLE_ROLE_KEYS,
@@ -52,7 +58,7 @@ import {
   type WarehouseManagerOwnershipHistoryListFilters,
   LEGACY_WORKFORCE_ROLE_KEYS,
 } from "./company.types";
-import { normalizeAlgeriaTimestamp } from "./company-time";
+import { createAlgeriaTimestamp, normalizeAlgeriaTimestamp } from "./company-time";
 import {
   ADMIN_ASSIGNMENT_UNAUTHORIZED_MESSAGE,
   ensureEmployeeTransitionAllowed,
@@ -67,11 +73,26 @@ import {
   requireWarehouse,
 } from "./company.entity-resolvers";
 
+function normalizeSalaryReference(
+  value: EmployeeCreateInput["salaryReference"],
+): NonNullable<EmployeeCreateInput["salaryReference"]> | null {
+  if (value == null) return null;
+  try {
+    return SalaryReference.parse(value.period, value.amount).toWire();
+  } catch {
+    throw new CompanyError("VALIDATION", "workforce.validation.salaryReference.precision", [
+      { field: "salaryReference.amount", message: "workforce.validation.salaryReference.precision" },
+    ]);
+  }
+}
+
 export class WorkforceService {
   constructor(
     private readonly repository: WorkforceRepository,
     private readonly operationsRepo: OperationsRepository,
     private readonly mutation: WorkspaceMutationContext,
+    private readonly earningRepository?: EmployeeEarningRepository,
+    private readonly financialHistory?: { hasForEmployee(employeeId: string): boolean },
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -150,18 +171,6 @@ export class WorkforceService {
         actorUserId: audit.actorUserId,
       });
 
-      if ((input.salaryAmountDzd ?? null) !== null && !input.salaryPeriod) {
-        throw new CompanyError("VALIDATION", "يجب اختيار دورية الأجر مع قيمة الأجر.", [
-          { field: "salaryPeriod", message: "يجب اختيار دورية الأجر مع قيمة الأجر." },
-        ]);
-      }
-
-      if ((input.salaryAmountDzd ?? null) === null && input.salaryPeriod) {
-        throw new CompanyError("VALIDATION", "يجب إدخال قيمة الأجر مع دورية الأجر.", [
-          { field: "salaryAmountDzd", message: "يجب إدخال قيمة الأجر مع دورية الأجر." },
-        ]);
-      }
-
       if (this.repository.getEmployeeByPhone(input.phone.trim())) {
         throw new CompanyError("CONFLICT", "رقم هاتف العامل مستخدم بالفعل.", [
           { field: "phone", message: "رقم هاتف العامل مستخدم بالفعل." },
@@ -179,8 +188,7 @@ export class WorkforceService {
           phone: input.phone.trim(),
           roleId: input.roleId,
           status: input.status,
-          salaryAmountDzd: normalizeSalaryAmount(input.salaryAmountDzd),
-          salaryPeriod: input.salaryPeriod ?? null,
+          salaryReference: normalizeSalaryReference(input.salaryReference),
           notes: normalizeText(input.notes),
           occupation: normalizeText(input.occupation),
         },
@@ -211,8 +219,7 @@ export class WorkforceService {
         phone: string;
         roleId: string;
         status: EmployeeBatchCreateInput["employees"][number]["status"];
-        salaryAmountDzd: number | null;
-        salaryPeriod: EmployeeBatchCreateInput["employees"][number]["salaryPeriod"];
+        salaryReference: EmployeeBatchCreateInput["employees"][number]["salaryReference"];
         notes: string | null;
         occupation: string | null;
         managerId: string | null;
@@ -223,8 +230,7 @@ export class WorkforceService {
         phone: employee.phone.trim(),
         roleId: employee.roleId,
         status: employee.status,
-        salaryAmountDzd: normalizeSalaryAmount(employee.salaryAmountDzd),
-        salaryPeriod: employee.salaryPeriod ?? null,
+        salaryReference: normalizeSalaryReference(employee.salaryReference),
         notes: normalizeText(employee.notes),
         occupation: normalizeText(employee.occupation),
         managerId: employee.managerId ?? null,
@@ -264,20 +270,6 @@ export class WorkforceService {
           fieldErrors.push({
             field: buildBatchField(index, "phone"),
             message: "رقم هاتف العامل مستخدم بالفعل.",
-          });
-        }
-
-        if ((employee.salaryAmountDzd ?? null) !== null && !employee.salaryPeriod) {
-          fieldErrors.push({
-            field: buildBatchField(index, "salaryPeriod"),
-            message: "يجب اختيار دورية الأجر مع قيمة الأجر.",
-          });
-        }
-
-        if ((employee.salaryAmountDzd ?? null) === null && employee.salaryPeriod) {
-          fieldErrors.push({
-            field: buildBatchField(index, "salaryAmountDzd"),
-            message: "يجب إدخال قيمة الأجر مع دورية الأجر.",
           });
         }
 
@@ -455,24 +447,6 @@ export class WorkforceService {
         }
       }
 
-      const nextSalaryAmount =
-        input.salaryAmountDzd !== undefined
-          ? normalizeSalaryAmount(input.salaryAmountDzd)
-          : current.salaryAmountDzd;
-      const nextSalaryPeriod = input.salaryPeriod !== undefined ? input.salaryPeriod : current.salaryPeriod;
-
-      if ((nextSalaryAmount ?? null) !== null && !nextSalaryPeriod) {
-        throw new CompanyError("VALIDATION", "يجب اختيار دورية الأجر مع قيمة الأجر.", [
-          { field: "salaryPeriod", message: "يجب اختيار دورية الأجر مع قيمة الأجر." },
-        ]);
-      }
-
-      if ((nextSalaryAmount ?? null) === null && nextSalaryPeriod) {
-        throw new CompanyError("VALIDATION", "يجب إدخال قيمة الأجر مع دورية الأجر.", [
-          { field: "salaryAmountDzd", message: "يجب إدخال قيمة الأجر مع دورية الأجر." },
-        ]);
-      }
-
       if (current.status !== "ACTIVE" && nextStatus === "ACTIVE") {
         assertActiveEmployeeSeatAvailable(this.repository);
       }
@@ -485,11 +459,7 @@ export class WorkforceService {
           phone: input.phone?.trim(),
           roleId: input.roleId,
           status: input.status,
-          salaryAmountDzd:
-            input.salaryAmountDzd !== undefined
-              ? normalizeSalaryAmount(input.salaryAmountDzd)
-              : undefined,
-          salaryPeriod: input.salaryPeriod !== undefined ? input.salaryPeriod : undefined,
+          salaryReference: input.salaryReference !== undefined ? normalizeSalaryReference(input.salaryReference) : undefined,
           notes: input.notes !== undefined ? normalizeText(input.notes) : undefined,
           occupation: input.occupation !== undefined ? normalizeText(input.occupation) : undefined,
         },
@@ -581,8 +551,11 @@ export class WorkforceService {
         this.operationsRepo.listProjectManagerOwnershipHistory({ managerId: id }).length > 0;
       const hasManagedWarehouseHistory =
         this.operationsRepo.listWarehouseManagerOwnershipHistory({ managerId: id }).length > 0;
-      const hasSalaryPayments =
-        this.repository.listSalaryPayments({ employeeId: id }).length > 0;
+      const hasFinancialHistory =
+        this.financialHistory
+          ? this.financialHistory.hasForEmployee(id)
+          : this.repository.listSalaryPayments({ employeeId: id }).length > 0;
+      const hasApprovedEarnings = this.earningRepository?.hasForEmployee(id) ?? false;
       const managesProjects = this.operationsRepo.listProjects({ managerId: id }).length > 0;
       const managesWarehouses = this.operationsRepo.listWarehouses({ managerId: id }).length > 0;
 
@@ -592,7 +565,8 @@ export class WorkforceService {
         hasWarehouseHistory ||
         hasManagedProjectHistory ||
         hasManagedWarehouseHistory ||
-        hasSalaryPayments ||
+        hasFinancialHistory ||
+        hasApprovedEarnings ||
         managesProjects ||
         managesWarehouses
       ) {
@@ -607,6 +581,62 @@ export class WorkforceService {
     });
   }
 
+  listEmployeeEarnings(employeeId?: string) {
+    if (!this.earningRepository) throw new Error("Employee earning persistence is not configured");
+    return { items: this.earningRepository.list(employeeId) };
+  }
+
+  approveEmployeeEarning(input: EmployeeEarningApprovalInput, auditContext?: MutationAuditContext) {
+    if (!this.earningRepository) throw new Error("Employee earning persistence is not configured");
+    const validated = employeeEarningApprovalInputSchema.parse(input);
+    const parsed = {
+      ...validated,
+      periodStart: new Date(validated.periodStart).toISOString(),
+      periodEnd: new Date(validated.periodEnd).toISOString(),
+    };
+    const requestHash = createHash("sha256").update(JSON.stringify({
+      employeeId: parsed.employeeId,
+      periodStart: parsed.periodStart,
+      periodEnd: parsed.periodEnd,
+      currencyCode: parsed.currencyCode,
+      totalAmount: Money.parse(parsed.totalAmount).toWire(),
+      unallocatedAmount: Money.parse(parsed.unallocatedAmount).toWire(),
+      referenceSalary: parsed.referenceSalary
+        ? SalaryReference.parse(parsed.referenceSalary.period, parsed.referenceSalary.amount).toWire()
+        : null,
+      segments: parsed.segments.map(segment => ({
+        id: segment.id,
+        projectId: segment.projectId,
+        days: segment.days,
+        amount: Money.parse(segment.amount).toWire(),
+      })),
+    })).digest("hex");
+
+    return this.mutation.withTransaction(() => {
+      const audit = this.mutation.createMutationAuditContext(auditContext);
+      requireEmployee(this.repository, parsed.employeeId);
+      for (const segment of parsed.segments) {
+        if (!this.operationsRepo.getProjectById(segment.projectId)) {
+          throw new CompanyError("NOT_FOUND", "تعذر العثور على أحد المشاريع في توزيع الأجر.", [
+            { field: "segments", message: "تعذر العثور على المشروع المطلوب." },
+          ]);
+        }
+      }
+
+      const existing = this.earningRepository!.findByRequestId(parsed.requestId);
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new CompanyError("CONFLICT", "استُخدم معرّف الطلب لاعتماد أجر مختلف.");
+        }
+        return successResult("تم تحميل اعتماد الأجر السابق.", existing.earning);
+      }
+
+      const approvedAt = createAlgeriaTimestamp();
+      const earning = this.earningRepository!.create(parsed, requestHash, approvedAt, audit);
+      return successResult("تم اعتماد الأجر بنجاح.", earning);
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Salary payments
   // ---------------------------------------------------------------------------
@@ -615,46 +645,12 @@ export class WorkforceService {
     input: EmployeeSalaryPaymentCreateInput,
     auditContext?: MutationAuditContext,
   ) {
-    return this.mutation.withTransaction(() => {
-      const audit = this.mutation.createMutationAuditContext(auditContext);
-
-      const employee = requireEmployee(this.repository, input.employeeId);
-      const expectedAmount = employee.salaryAmountDzd ?? null;
-      const periodType = employee.salaryPeriod ?? null;
-
-      if (expectedAmount === null || periodType === null) {
-        throw new CompanyError(
-          "BUSINESS_RULE",
-          "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب.",
-          [
-            {
-              field: "employeeId",
-              message: "يجب تحديد أجر العامل الحالي قبل تسجيل دفعة راتب.",
-            },
-          ],
-        );
-      }
-
-      if (!Number.isFinite(input.actualAmountDzd) || input.actualAmountDzd <= 0) {
-        throw new CompanyError("VALIDATION", "يجب إدخال مبلغ راتب أكبر من صفر.", [
-          { field: "actualAmountDzd", message: "يجب إدخال مبلغ راتب أكبر من صفر." },
-        ]);
-      }
-
-      const payment = this.repository.createSalaryPayment(
-        {
-          employeeId: input.employeeId,
-          periodType,
-          expectedAmountDzd: expectedAmount,
-          actualAmountDzd: input.actualAmountDzd,
-          paymentDate: normalizeAlgeriaTimestamp(input.paymentDate),
-          note: normalizeText(input.note),
-        },
-        audit,
-      );
-
-      return successResult("تم تسجيل دفعة الراتب بنجاح.", payment);
-    });
+    void input;
+    void auditContext;
+    throw new CompanyError(
+      "BUSINESS_RULE",
+      "اعتماد الأجر يتم عبر employeeEarningsApprove. دفعات الراتب القديمة لا تقبل إدخالات جديدة.",
+    );
   }
 
   // ---------------------------------------------------------------------------

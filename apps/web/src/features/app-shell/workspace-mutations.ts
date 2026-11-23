@@ -5,6 +5,7 @@ import {
   algerianPhoneSchema,
   type AppError,
   type AuthBootstrapInput,
+  type DebtEntryCreateInput,
   type Employee,
   type EmployeeBatchCreateInput,
   type EmployeeSaveInput,
@@ -23,6 +24,7 @@ import { getAuthClient } from "@/lib/auth-client"
 import { rpcClient } from "@/lib/orpc-client"
 import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
+import { translateRpcValidationIssues } from "@/lib/rpc-error-handling"
 import { workspaceQueryPrefix } from "./workspace-queries"
 import {
   getCachedSessionUserId,
@@ -52,12 +54,29 @@ export class AppMutationError extends Error {
     super(error.message)
     this.name = "AppMutationError"
     this.code = error.code ?? "BUSINESS_RULE"
-    this.fieldErrors = error.fieldErrors ?? []
+    const fieldErrors = error.fieldErrors ?? []
+    const translatedIssues = translateRpcValidationIssues({
+      data: {
+        issues: fieldErrors.map(({ field, message }) => ({
+          path: field ? field.split(".") : [],
+          message,
+        })),
+      },
+    })
+    this.fieldErrors = translatedIssues.length > 0
+      ? translatedIssues.map(({ field, message }) => ({ field, message }))
+      : fieldErrors
   }
 }
 
 export type EmployeeBatchCreateResult = {
   createdCount: number
+  /**
+   * The created rows, with their real ids. Inline-create callers (project
+   * manager, warehouse manager, debt party) need the id to select the person
+   * they just created; a fabricated id would not exist on the server.
+   */
+  employees: Employee[]
 }
 
 /**
@@ -279,6 +298,7 @@ export function useCreateEmployeesBatchMutation() {
 
       return {
         createdCount: success.item.employees.length,
+        employees: success.item.employees,
       }
     },
     onSuccess: async ({ createdCount }) => {
@@ -304,8 +324,7 @@ export function useUpdateEmployeeMutation() {
       phone?: string
       roleId?: string
       status?: Employee["status"]
-      salaryAmountDzd?: number | null
-      salaryPeriod?: Employee["salaryPeriod"]
+      salaryReference?: Employee["salaryReference"]
       notes?: string | null
       occupation?: string | null
     }) => {
@@ -597,6 +616,10 @@ export function useSyncManagedWarehousesMutation() {
   })
 }
 
+/**
+ * @deprecated Legacy numeric payment export. The backend deliberately returns
+ * BUSINESS_RULE for this RPC; it is not an authoritative payment workflow.
+ */
 export function useCreateSalaryPaymentMutation() {
   const queryClient = useQueryClient()
 
@@ -604,7 +627,9 @@ export function useCreateSalaryPaymentMutation() {
     mutationKey: ["phase1", "workspace", "salary-payments", "create"],
     mutationFn: async (input: {
       employeeId: string
-      actualAmountDzd: number
+      days?: number
+      actualAmountDzd?: number
+      projectSplits?: Array<{ projectId: string; days: number }>
       paymentDate?: string
       note?: string | null
     }) => {
@@ -653,7 +678,7 @@ export function useCreateDebtAccountMutation() {
       partyType: "INTERNAL_WORKER" | "EXTERNAL_COUNTERPARTY"
       workerId?: string | null
       externalCounterpartyId?: string | null
-      direction?: "PAYABLE" | "RECEIVABLE"
+      direction: "PAYABLE" | "RECEIVABLE"
       note?: string | null
       openingBalanceDzd?: number
       openingEntryDate?: string
@@ -663,12 +688,13 @@ export function useCreateDebtAccountMutation() {
     }) => {
       const result = await rpcClient.debtAccountsCreate({
         externalCounterpartyId: input.externalCounterpartyId ?? null,
-        // Issue #22: backward-compatible default — purchase-ledger
-        // (PAYABLE) accounts keep their pre-#22 behavior. Sale-ledger
-        // (RECEIVABLE) accounts will be wired by Issue #26.
-        direction: input.direction ?? "PAYABLE",
+        // The direction is required on the wire (no implicit PAYABLE default),
+        // so the mutation passes what the caller chose rather than defaulting.
+        direction: input.direction,
         note: input.note ?? null,
-        openingBalanceDzd: input.openingBalanceDzd ?? 0,
+        // Omitted means "no opening balance"; the wire rejects a supplied 0 or
+        // negative, so absence must stay absent.
+        openingBalanceDzd: input.openingBalanceDzd,
         openingEntryDate: input.openingEntryDate,
         openingEntryNote: input.openingEntryNote ?? null,
         reasonCategory: input.reasonCategory as "INVOICE_DRIVEN" | "SALARY_ADVANCE" | "REIMBURSEMENT" | "CASH_TAKE" | "EQUIPMENT_DAMAGE" | "PERSONAL_LOAN" | "DIRECT_LOAN_GIVEN" | "DIRECT_LOAN_TAKEN" | "OTHER" | undefined,
@@ -697,13 +723,15 @@ export function useCreateDebtEntryMutation() {
     mutationFn: async (input: {
       debtAccountId: string
       signedAmountDzd: number
+      /** Defaults to ADJUSTMENT; the cases form posts a PAYMENT. */
+      entryType?: DebtEntryCreateInput["entryType"]
       entryDate?: string
       note?: string | null
     }) => {
       const result = await rpcClient.debtEntriesCreate({
         debtAccountId: input.debtAccountId,
         entryDate: input.entryDate,
-        entryType: "ADJUSTMENT",
+        entryType: input.entryType ?? "ADJUSTMENT",
         note: input.note,
         signedAmountDzd: input.signedAmountDzd,
       })

@@ -1,10 +1,54 @@
 import type { ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { extractRpcIssueMessage } from "@/lib/rpc-error-handling"
 
 import { Button } from "@/components/ui/button"
 import { DatePicker } from "@/components/ui/date-picker"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+
+export type TableQuery = {
+  data: unknown
+  isPending: boolean
+  isError: boolean
+  isFetching: boolean
+  error: unknown
+  refetch: () => Promise<unknown>
+}
+
+/** Keep query state selection shared without changing successful table markup. */
+export function TableQueryState({ query, resource, children }: {
+  query: TableQuery
+  resource: string
+  children: ReactNode
+}) {
+  const { t } = useTranslation()
+  const hasData = query.data !== undefined
+
+  if (query.isPending && !hasData) {
+    return <div role="status" className="py-8 text-center text-sm text-ink-3" dir="rtl">{t("tableQuery.loading", { resource })}</div>
+  }
+
+  return (
+    <>
+      {query.isError && (
+        <div role="alert" className="flex flex-col items-center gap-3 px-4 py-6 text-center text-sm" dir="rtl">
+          <p className="font-medium text-destructive">{t("tableQuery.failed", { resource })}</p>
+          <p className="max-w-prose whitespace-normal break-words text-ink-2">
+            <bdi>{extractRpcIssueMessage(query.error) ?? t("tableQuery.reason")}</bdi>
+          </p>
+          {hasData && <p className="text-ink-3">{t("tableQuery.retained")}</p>}
+          <Button size="sm" variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}>
+            {query.isFetching ? t("tableQuery.retrying") : t("common.retry")}
+          </Button>
+          {query.isFetching && <span role="status" className="sr-only">{t("tableQuery.retrying")}</span>}
+        </div>
+      )}
+      {(!query.isError || hasData) && children}
+    </>
+  )
+}
 
 /**
  * @description Component
@@ -159,6 +203,11 @@ export function AppShellFilterShell({ children, className }: { children: ReactNo
  * Pairs two date inputs (from / to) on a single row so they always stay
  * together and never split across lines.  Labels use i18n keys for Arabic
  * RTL display: "من تاريخ" and "إلى تاريخ".
+ *
+ * Emits canonical `yyyy-MM-dd` days only. Every consumer must expand them to
+ * inclusive day bounds with `resolveDayRangeBounds` before querying, so the
+ * picked end day includes everything written on it (a bare day parses as UTC
+ * midnight and would drop the rest of that day).
  */
 /**
  * @description Component
@@ -219,22 +268,31 @@ export function usePaginatedRows<T>({
 }) {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(initialPageSize)
-  const pagedRows = useMemo(() => rows.slice((page - 1) * pageSize, page * pageSize), [page, pageSize, rows])
+  const maxPage = Math.max(1, Math.ceil(rows.length / pageSize))
+  // Clamp synchronously for slicing and display. The effect below syncs the
+  // stored state, but it runs after paint, so deriving the effective page here
+  // is what keeps a shrink from painting an empty, control-less frame.
+  const effectivePage = Math.min(page, maxPage)
+  const pagedRows = useMemo(
+    () => rows.slice((effectivePage - 1) * pageSize, effectivePage * pageSize),
+    [effectivePage, pageSize, rows],
+  )
   const resetKey = JSON.stringify(resetPageDeps)
 
   useEffect(() => {
     setPage(1)
   }, [resetKey])
 
+  // Keep the stored page in range too: without this, a list that grows back
+  // after a shrink would silently show the stale page again.
   useEffect(() => {
-    const maxPage = Math.max(1, Math.ceil(rows.length / pageSize))
     if (page > maxPage) {
       setPage(maxPage)
     }
-  }, [page, pageSize, rows.length])
+  }, [page, maxPage])
 
   return {
-    page,
+    page: effectivePage,
     pageSize,
     pagedRows,
     setPage,

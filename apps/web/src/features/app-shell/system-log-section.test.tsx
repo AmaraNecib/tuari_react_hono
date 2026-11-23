@@ -36,6 +36,11 @@ function makeEntry(overrides: Partial<SystemLogEntry>): SystemLogEntry {
   };
 }
 
+const query = {
+  data: { items: [] }, isPending: false, isError: false, isFetching: false,
+  error: null, refetch: vi.fn().mockResolvedValue(undefined),
+};
+
 describe("SystemLogSection detail tokenizer", () => {
   it("splits a server-shaped debt detail line into structured chips (no raw keys)", () => {
     const entries = [
@@ -50,6 +55,7 @@ describe("SystemLogSection detail tokenizer", () => {
     render(
       <SystemLogSection
         entries={entries}
+        query={query}
         filters={{}}
         title="السجل"
         onFiltersChange={vi.fn()}
@@ -57,8 +63,13 @@ describe("SystemLogSection detail tokenizer", () => {
     );
 
     // The two monetary chips split out of the bullet-joined line.
-    expect(screen.getByText("القيمة +1000 دج")).toBeTruthy();
-    expect(screen.getByText("الرصيد بعد العملية 1000 دج")).toBeTruthy();
+    const signed = screen.getByText("+1000", { selector: 'bdi[dir="ltr"]' });
+    const prose = signed.parentElement!.parentElement!;
+    expect(prose.textContent).toBe("القيمة دج +1000");
+    expect(prose.firstChild?.textContent).toBe("القيمة ");
+    expect(prose.classList.contains("inline-flex")).toBe(false);
+    expect(prose.parentElement?.classList.contains("inline-flex")).toBe(true);
+    expect(screen.getByText("1000", { selector: 'bdi[dir="ltr"]' }).parentElement?.parentElement?.textContent).toBe("الرصيد بعد العملية دج 1000");
 
     // No raw i18n key text may leak into the rendered detail cell.
     const table = screen.getByRole("table");
@@ -81,13 +92,15 @@ describe("SystemLogSection detail tokenizer", () => {
     render(
       <SystemLogSection
         entries={entries}
+        query={query}
         filters={{}}
         title="السجل"
         onFiltersChange={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("المبلغ المدفوع 25000 دج")).toBeTruthy();
+    const amount = screen.getByText("25000", { selector: 'bdi[dir="ltr"]' });
+    expect(amount.parentElement?.parentElement?.textContent).toBe("المبلغ المدفوع دج 25000");
     expect(screen.getByRole("table").textContent).not.toContain("systemLog.");
   });
 
@@ -97,6 +110,7 @@ describe("SystemLogSection detail tokenizer", () => {
     render(
       <SystemLogSection
         entries={entries}
+        query={query}
         filters={{}}
         title="السجل"
         onFiltersChange={vi.fn()}
@@ -113,6 +127,7 @@ describe("SystemLogSection detail tokenizer", () => {
     render(
       <SystemLogSection
         entries={[]}
+        query={query}
         filters={{}}
         title="السجل"
         onFiltersChange={vi.fn()}

@@ -3,6 +3,7 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { bearer, phoneNumber } from "better-auth/plugins";
 
 import type { AppConfig } from "../../config";
+import * as schema from "../../schema";
 import type { AppDrizzle } from "../database/drizzle";
 
 const algerianPhonePattern = /^(05|06|07)\d{8}$/;
@@ -19,6 +20,7 @@ export function createAuth(drizzleDb: AppDrizzle, config: AppConfig) {
   return betterAuth({
     database: drizzleAdapter(drizzleDb, {
       provider: "sqlite",
+      schema,
       usePlural: false,
     }),
     baseURL: config.betterAuthUrl,

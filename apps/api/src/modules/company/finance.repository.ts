@@ -33,7 +33,10 @@ export interface FinanceRepository {
   // Debt accounts
   listDebtAccounts(filters?: DebtAccountListFilters): DebtAccountRecord[];
   getDebtAccountById(id: string): DebtAccountRecord | null;
-  getDebtAccountByWorkerId(workerId: string): DebtAccountRecord | null;
+  getDebtAccountByWorkerIdAndDirection(
+    workerId: string,
+    direction: DebtAccountRecord["direction"],
+  ): DebtAccountRecord | null;
   getDebtAccountByExternalCounterpartyId(
     externalCounterpartyId: string,
   ): DebtAccountRecord | null;

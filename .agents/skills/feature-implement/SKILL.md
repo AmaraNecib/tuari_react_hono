@@ -1,349 +1,84 @@
 ---
 name: feature-implement
-description: "Mandatory lifecycle orchestrator for implementing a local or remote issue. Uses local verification, code review, Greptile CLI review, and the local Greploop loop without requiring a pull request."
+description: "Mandatory lifecycle for code changes. Coordinates committed source, affected local proof, bounded reviews and CI-final acceptance; workers stop at a local handoff."
 ---
 
-# Feature Implementation Orchestration
-
-Read `docs/engineering-workflow.md`, `docs/local-issue-status.md` (when the
-work is ticket-driven), and `.agents/wisdom/*.md` first.
-
-This repository works against the remote (`AmaraNecib/tuari_react_hono`), so the
-source of truth is the current checkout **plus** the GitHub issue/PR state.
-Default to the remote workflow: `gh issue`, `gh pr`, `git fetch`, `git push`,
-GitHub Actions, and the hosted review gates on the pushed PR.
-
-Use local-only mode **only** when the remote is genuinely unreachable or the
-user explicitly asks for it. In that mode the source of truth is the checkout,
-local branches/worktrees, `docs/local-issue-snapshot.json`, and cached refs; do
-not use `gh issue`, `gh pr`, PR comments, `git fetch`, `git push`, or GitHub
-Actions, and stop at a local handoff instead of a PR.
-
-Crew policy: use at most six concurrent mutation worktrees. The parent may push
-and open/update a PR after the gates pass, and merges only under the Merge rules
-below (never on a lane's own initiative; a lane never merges at all). Close a Herdr workspace only when its lane is terminal
-and no follow-up is expected; keep reusable lanes alive and preserve
-workspace/pane/session identifiers before closing.
-
-## Mode selection and base SHA
-
-At the start of a run:
-
-```bash
-git rev-parse --show-toplevel
-git status --short --branch
-git rev-parse develop
-BASE_SHA=$(git merge-base develop HEAD)
-```
-
-Use the local `develop` ref as the base when it exists. If it does not, use a
-cached `origin/develop` ref without fetching it and record that it is cached.
-Never silently use a stale remote ref as if it were live.
-
-Record in the design/review evidence:
-
-- `mode: remote` (default) or `mode: local-only` when the remote is genuinely
-  unreachable or the user asked for it
-- ticket number/path and ticket source
-- target ref and resolved base SHA
-- review tier: Lightweight, Standard, or High-assurance
-
-## Enforced lifecycle
-
-### 1. Resolve the ticket (remote first)
-
-In remote mode, read the issue from GitHub (`gh issue view <n> --json
-number,title,body,labels,state`) and treat its acceptance criteria as the spec.
-In local-only mode, read `docs/local-issue-status.md` and
-`docs/local-issue-snapshot.json` instead. Then inspect the named branch, design,
-and review evidence. A row marked "Base shipped; local follow-up remains" must be
-diffed against the base before replaying anything; do not duplicate a change that
-is already present.
-
-If the ticket is only a GitHub URL and has no local description, stop and ask
-for the missing requirements. Do not invent acceptance criteria from a title.
-
-### 2. Design before production code
-
-Create or update:
-
-```
-.scratch/implementation/<issue-id>-design.md
-```
-
-The design must state:
-
-- public APIs, component interfaces, or changed contracts
-- dependencies and ownership boundaries
-- planned unit/integration tests and Playwright E2E tests where applicable
-- implementation risks, migration concerns, and local-only constraints
-- the fixed base SHA and review tier
-
-Reference `docs/local-issue-status.md` when an issue is a local snapshot rather
-than a live issue file.
-
-### 3. Implement with tests
-
-Load the `implement` skill and use `TDD` at the agreed seams. Every user-facing
-feature includes a Playwright test in `tests/e2e/`; business logic includes
-unit/integration tests. During implementation run the relevant checks, normally:
-
-```bash
-pnpm typecheck
-pnpm test:web
-pnpm test:api
-```
-
-For Rust Core changes also run:
-
-```bash
-cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
-cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- -D warnings
-```
-
-### Source-only staging rule
-
-Builds and test commands may generate `dist/`, `target/`, sidecar binaries,
-Tauri schemas, coverage, Playwright reports, or other ignored artifacts. Those
-are never part of a source change. Before committing or pushing a local PR,
-inspect the exact file set:
-
-```bash
-git diff --name-only <base-sha>...HEAD
-git status --short --ignored
-```
-
-Stage named source/config/test/evidence files only. Never use `git add -A` and
-never add generated output merely because a build produced it. If a legacy
-tracked generated file appears in the base, document it; do not copy or add a
-new generated version to the feature branch.
-
-### 4. Guard Phase 1: pre-review
-
-Run `guard` Phase 1 before any review. In local-only mode it means local
-commands only:
-
-```bash
-pnpm --filter @tuari/contracts build
-pnpm typecheck
-pnpm lint
-pnpm test:api
-pnpm test:web
-```
-
-Do not proceed while a required local check fails. If a failure is unrelated,
-prove it on the base and document the waiver rather than hiding it.
-
-### 5. Quality check
-
-Load only the skills relevant to the change:
-
-| Change | Skill |
-| --- | --- |
-| New module, interface, or architecture | `codebase-design` |
-| Complex logic or edge cases | `diagnosing-bugs` |
-| Domain entities or terminology | `domain-modeling` |
-| Writing tests | `TDD` |
-| Production code | `code-review` |
-| UI or visual design | `frontend-design`, `web-design-guidelines` |
-| Existing UI polish | `redesign-existing-projects` |
-| shadcn/ui | `shadcn` |
-| Component API/prop design | `vercel-composition-patterns` |
-| React rendering performance | `vercel-react-best-practices` |
-| Tauri IPC/window/runtime | `tauri-v2` |
-| Hono routes/middleware/validation | `hono` |
-| Playwright tests | `playwright-best-practices` |
-| Accessibility/keyboard/RTL | `accessibility` |
-
-### 6. Debate: High-assurance only
-
-For High-assurance work, run `debate` against the fixed base SHA. Save the
-result as `.scratch/reviews/<issue-id>/<HEAD>-debate.md`.
-
-### 7. Test audit: Standard and High-assurance
-
-Run `test-audit` for Standard and High-assurance work. It must check edge
-cases, meaningful assertions, failure/empty states, and E2E coverage. Save
-`.scratch/reviews/<issue-id>/<HEAD>-test-audit.md`.
-
-### 8. Local code review
-
-Run `code-review` against the pinned local base:
-
-```bash
-git diff <base-sha>...HEAD
-git log <base-sha>..HEAD --oneline
-```
-
-The Standards and Spec axes must use local designs/specs and
-`docs/local-issue-status.md`; they must not attempt to fetch GitHub issue or PR
-content. Save `.scratch/reviews/<issue-id>/<HEAD>-code-review.md`.
-
-Fix actionable findings, rerun the local checks, and regenerate evidence after
-any reviewable-file change. Greptile findings are claims: verify each against
-current code before fixing. If a finding appears outside scope, ask
-the parent before deferring it; include the proposed follow-up, dependency
-impact, and whether it should change the current lane/worktree order.
-
-### 9. Guard Phase 2: local pre-report gate
-
-Run `guard` Phase 2. Verify local checks, review evidence freshness, and that
-the branch is in a reportable state. A clean working tree is preferred; if the
-user wants an uncommitted local handoff, report every uncommitted file and do
-not claim the work is ready to integrate.
-
-Evidence filenames must contain the final reviewed `HEAD` SHA; evidence-only
-follow-up commits require a freshness check and a post-evidence note.
-
-### 10. Greptile review: CLI locally, hosted on the PR
-
-Use both, in this order:
-
-1. Before pushing, run the CLI against the pinned base so findings are cheap to
-   fix in the checkout:
-
-```bash
-greptile whoami
-greptile review --json --branch <base-branch>
-```
-
-Pass the pinned base branch/ref; omitting it can compare against the repository
-default branch and review an unrelated, enormous diff. If the issue needs an
-iterative fix loop, run `greploop --local` after the first review. Re-run the
-local checks after every code fix.
-
-2. After pushing, the hosted review runs on the PR. Read its score and **every**
-   finding from the PR — the summary comment and the inline review comments are
-   different endpoints:
-
-```bash
-gh pr view <n> --json comments                     # summary + confidence score
-gh api repos/{owner}/{repo}/pulls/<n>/comments \  # inline, file-level findings
-  --paginate --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'
-```
-
-   Fix real findings with a new commit, request a fresh review, and never claim
-   a clean verdict from a stale one: match the reviewed commit to the current
-   head.
-
-Save the raw CLI result and a concise summary under:
-
-```
-.scratch/reviews/<issue-id>/<HEAD>-greptile-local.json
-.scratch/reviews/<issue-id>/<HEAD>-greptile-local.md
-```
-
-The local Greptile gate passes only when the latest result is clean: confidence
-5/5 with zero unresolved/actionable findings, or an equivalent CLI result that
-explicitly reports no actionable findings. A successful command by itself is
-not a clean verdict.
-
-### 11. Guard Phase 3, then the remote loop
-
-**Phase 3a — local gate, before any push.** All of these must hold:
-
-- contracts/typecheck/lint/API/web/Rust checks are green as applicable
-- code-review, test-audit, and debate evidence is present and current
-- the CLI Greptile result is clean **on the final local HEAD**
-- deferred work has an explicit parent decision; lanes never defer silently
-
-**Phase 3b — the remote loop, in this order.** Hosted CI and the hosted review
-cannot exist before the PR does, so they are verified here, not in the pre-push
-gate:
-
-1. Push the branch (`git push origin <branch>`) with explicit staging.
-2. Open or update the PR with the issue link (`Closes #N` only when the whole
-   issue ships; `Part of #N` otherwise) and the evidence summary. After opening
-   it, publish a concise review-evidence summary as a PR comment: the commands
-   that were run and their **results inline**, because a reviewer cannot open the
-   gitignored `.scratch/` files from the PR. Cite `.scratch/` paths only as a
-   secondary pointer for the local operator. **Update that comment whenever a
-   later push changes what was verified** — a stale evidence comment is worse
-   than none.
-3. Wait for the hosted CI checks on the pushed head; re-run flaky
-   infrastructure jobs rather than changing unrelated code.
-4. Read the hosted review on that head — summary **and** inline findings:
-
-```bash
-gh pr view <n> --json comments                     # review summary + score
-gh api repos/{owner}/{repo}/pulls/<n>/comments \  # inline, file-level findings
-  --paginate --jq '.[] | "[\(.path):\(.line // .original_line)] \(.body)"'
-```
-
-5. Match the review's "Last reviewed commit" to the current head. After every
-   fix push, request a fresh review (`@greptile-apps review`) and wait for the
-   new verdict — an automatic review runs on PR creation, later commits need
-   the request.
-6. Repeat 3-5 until CI is green and the review on the current head is clean.
-7. Report the PR URL, the check states, and the Greptile score, then stop.
-   A **lane** never merges. The **parent** merges only under the Merge
-   rules below — never on a lane's own initiative.
-
-In **local-only mode**, report the local state and stop; do not wait for CI or
-PR state.
-
-### 12. Capture wisdom and report
-
-Run `capture-wisdom` for any durable lesson. Report:
-
-- ticket and local branch/worktree
-- base SHA and final HEAD SHA
-- checks run and their results
-- local Greptile confidence/findings and loop iterations
-- evidence paths
-- deferred items and whether they are shipped, local-only, or unverified
-
-## Merge rules
-
-The **parent** may merge a PR only when every one of these holds:
-
-1. The user has authorized merging — an explicit "merge it", or a standing
-   instruction such as "merge when CI is green and Greptile is 5/5". Absent
-   that, report and stop.
-2. Every required CI check is green **on the pushed head**.
-3. Greptile is clean **on that same head** (5/5, or an explicit no-actionable
-   findings verdict). A verdict on an older commit does not count — check the
-   reviewed SHA against `headRefOid`, and re-request a review after each push.
-4. No blocker remains (unresolved finding, failing gate, unknown deferral).
-
-```bash
-gh pr merge <num> --squash
-```
-
-A **lane never merges**, under any score. If a condition fails, report the exact
-state instead of merging.
-
-## Where to start (resume table)
-
-| State | Start at |
-| --- | --- |
-| Nothing exists | Read `docs/engineering-workflow.md` + `.agents/wisdom/*.md` |
-| No design doc | Step 2 — design |
-| Code not written | Step 3 — implement |
-| Guard Phase 1 not run | Step 4 |
-| No quality check / debate / test audit | Steps 5–7 |
-| No code review | Step 8 |
-| Guard Phase 2 not run | Step 9 |
-| Not pushed, or PR not opened/updated | Step 10 |
-| Local Greptile not clean | Step 10 (CLI gate) |
-| CI red, or Greptile stale/not clean on the head | Step 11 |
-| All green and 5/5 | Step 12 (capture wisdom + report) → Merge rules (parent only) |
-
-## Local-only completion rules
-
-A local implementation is ready for later integration, not merged, only when the gates above pass, the review evidence is current, the latest Greptile result is clean, and the working tree state is reported accurately.
-
-Never claim an issue is closed or merged while GitHub is unavailable. When the
-remote is restored, rebase/compare against the fresh `develop`, rerun all local
-checks and Greptile review, then push/open or update the remote PR only with the
-user's approval. In local-only mode nothing is merged; once the remote is
-restored, the remote loop and the Merge rules below apply.
-
-## Review tiers
-
-| Tier | Applies to | Required review |
-| --- | --- | --- |
-| Lightweight | Truly non-reviewable files only | Guard Phase 1 → quality check → report |
-| Standard | Code, tests, CI, workflow, config, UI, API, skills | Guard Phase 1 → quality check → test-audit → code-review → Guard Phase 2 → CLI Greptile → Guard Phase 3 |
-| High-assurance | Authz/RBAC, licensing/crypto, financial calculations, security | Standard plus debate |
-
+# Feature implementation
+
+Read `docs/engineering-workflow.md` first. It is the policy authority.
+Read `.agents/wisdom/README.md`, then matching lessons. Use the supplied
+verification mode; ask the parent if it was omitted.
+
+## 1. Pin the work
+
+Confirm the absolute worktree, clean/dirty state, spec, target and base SHA.
+Normally fetch `origin/develop`; in owner-requested local-only mode use the
+declared cached base and do not fetch or publish. Record the review tier and
+named reachable risk in `.scratch/implementation/<scope>-design.md`.
+
+## 2. Implement and prove affected behavior
+
+Use `tdd` or `implement` at real interfaces. Select focused regression and
+integration cases for the change and direct callers. Preserve negative proof
+for money, stock, auth, crypto and recovery. Load relevant Hono, Tauri,
+Playwright or UI skills only when those areas change.
+
+Use `domain-modeling` and `codebase-design` while designing. For UI, load
+`impeccable` and inspect the existing rendering before changing it. Keep
+keyboard, RTL, relevant states and required visual evidence in scope.
+
+Run `guard` Phase 1. Commit the complete reviewable scope before asking for
+review or final rendering. Keep source frozen for independent readers.
+
+## 3. Review once, then bound corrections
+
+Follow routine-review routing and activation in `docs/engineering-workflow.md`.
+Before adoption gates are complete, and for excluded or uncertain work, run
+`debate`, `test-audit`, `code-review` in that order, each in a distinct read-only
+session at committed HEAD. After activation, eligible narrow routine work may
+use one fresh combined independent reviewer for standards, spec and proof
+adequacy. A policy patch uses the deeper route, not its proposed exception.
+Give reviewers the actual worktree, base/head, spec, direct callers and prior
+evidence, not an empty fresh checkout.
+
+Record exact-tree executions and finding dispositions in ignored local reports.
+No local scored review or separate confidence-assessment step is required.
+Verify claims against source. A bounded fix is committed, checked with affected
+proof, and inspected by one fresh combined-delta reviewer. Carry unchanged
+conclusions forward explicitly; rerun another lens only for new risk.
+After three fix rounds, reassess the design.
+
+## 4. Verify the committed head
+
+Run `guard` Phase 2. Local verification is affected-only with relevant lint,
+typecheck and generated-file checks. No routine full suites, full browsers,
+production builds or audits; those are CI-final. A concrete uncertainty or CI
+gap must precede a local expansion. No local red-on-parent replay is required.
+
+When background verification is authorized, use the brief in
+`writing-for-agents/delegation-template.md`. Pin commands, scope, mode, SHA
+and log directory. It may write ignored evidence, not source. Inspect native
+exit codes, counts, duration and the source fingerprint on completion.
+Do not poll a live child. Heavy work takes a justified queue slot.
+
+Record checks in `.scratch/reviews/<scope>/<HEAD>-verification.md`, ignored.
+Never commit or post review reports, or add an evidence-only commit.
+
+## 5. Hand off
+
+The worker stops with verified HEAD, base, exact local results, review
+verdicts, applied wisdom and unresolved blockers. Candidates for repeated
+lessons go under `Lesson:` in the commit body. Workers never write wisdom,
+push, open a PR or merge.
+
+## Parent-only completion
+
+When authorized, publish and link/watch the PR. Request hosted review once per
+head; preserve its missing-verdict gate. Check `CI acceptance` on the current
+head separately from local readiness and effective protection. Activation
+remains pending until the owner completes `docs/ci-final-activation.md`.
+
+Apply scoped architecture review when a module/interface/seam changed, then
+Guard Phase 3. Never restart an unchanged initial review solely because it
+was published. Owner-only merge decisions and explicit no-publication
+instructions remain binding.

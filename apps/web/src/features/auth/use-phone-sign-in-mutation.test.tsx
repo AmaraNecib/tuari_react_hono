@@ -2,11 +2,10 @@
 
 import { act, renderHook } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { getAuthClient } from "@/lib/auth-client"
 import { signInDesktopWithPhoneNumber } from "@/lib/auth-api"
-import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { createAppQueryClient } from "@/lib/query-client"
 import { showErrorToast } from "@/lib/toast"
 import { usePhoneSignInMutation } from "./use-phone-sign-in-mutation"
@@ -33,17 +32,17 @@ vi.mock("@/lib/toast", () => ({
   showErrorToast: vi.fn(),
 }))
 
-vi.mock("@/lib/desktop-auth-session", () => ({
-  isDesktopRuntime: vi.fn(() => false),
-}))
-
 describe("usePhoneSignInMutation", () => {
   beforeEach(() => {
     phoneNumberSignInMock.mockReset()
     vi.mocked(getAuthClient).mockClear()
     vi.mocked(signInDesktopWithPhoneNumber).mockReset()
-    vi.mocked(isDesktopRuntime).mockReturnValue(false)
+    vi.stubGlobal("isTauri", false)
     vi.mocked(showErrorToast).mockReset()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
   it("uses the phone-first auth client flow and invalidates the session query", async () => {
@@ -138,7 +137,7 @@ describe("usePhoneSignInMutation", () => {
       .spyOn(queryClient, "invalidateQueries")
       .mockResolvedValue(undefined as never)
 
-    vi.mocked(isDesktopRuntime).mockReturnValue(true)
+    vi.stubGlobal("isTauri", true)
     vi.mocked(signInDesktopWithPhoneNumber).mockResolvedValue({ token: "desktop-token" } as never)
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
@@ -162,6 +161,33 @@ describe("usePhoneSignInMutation", () => {
     })
     expect(phoneNumberSignInMock).not.toHaveBeenCalled()
     expect(invalidateQueries).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps native invalid-credentials failures rejected and translated", async () => {
+    const queryClient = createAppQueryClient()
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    vi.stubGlobal("isTauri", true)
+    vi.mocked(signInDesktopWithPhoneNumber).mockRejectedValue(
+      new Error("Invalid phone number or password"),
+    )
+
+    const { result } = renderHook(() => usePhoneSignInMutation(), { wrapper })
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          phone: "0612345678",
+          password: "wrong-password",
+          rememberMe: true,
+        }),
+      ).rejects.toThrow("Invalid phone number or password")
+    })
+
+    expect(signInDesktopWithPhoneNumber).toHaveBeenCalledTimes(1)
+    expect(phoneNumberSignInMock).not.toHaveBeenCalled()
+    expect(showErrorToast).toHaveBeenCalledWith("رقم الهاتف أو كلمة المرور غير صحيحة.")
   })
 
   it("surfaces the translated Arabic message when the better-auth client fails", async () => {

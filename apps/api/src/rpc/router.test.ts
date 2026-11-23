@@ -3,30 +3,47 @@
    type is not derived from the router), hence @ts-nocheck below. */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
-import { createRouterClient } from "@orpc/server";
+import { createRouterClient, implement, ORPCError } from "@orpc/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 
 import { createInMemoryCompanyHarness } from "../modules/company/company.test-helpers";
+import { CompanyError } from "../modules/company/company.errors";
 import { schemaStatements } from "../infrastructure/database/schema-definitions";
 import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
 import { InventoryService } from "../modules/inventory/inventory.service";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
+import { AssetChargeService } from "../modules/inventory/asset-charge.service";
+import { createInMemoryAssetChargeRepository } from "../modules/inventory/adapters/in-memory-asset-charge.repository";
 import { WorkforceService } from "../modules/company/workforce.service";
 import { OperationsService } from "../modules/company/operations.service";
 import { FinanceService } from "../modules/company/finance.service";
 import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
 import { RecoveryKeyService } from "../modules/auth/recovery-key.service";
 import { createRouter } from "./router";
+import { createRpcMiddleware } from "./rpc-middleware";
 import type { RpcContext } from "./context";
+import {
+  ExpenseAlreadyVoidedError,
+  ExpenseInvalidAmountError,
+  ExpenseNotFoundError,
+} from "../modules/expenses/expenses.types";
+import { ProjectCostService } from "../modules/project-cost/project-cost.service";
 import { EmployeeModule } from "../modules/workforce/employee.module";
 import { SqliteEmployeeRepository } from "../modules/workforce/adapters/employee.repository";
 import { SqliteRoleRepository } from "../modules/workforce/adapters/role.repository";
 import { RoleModule } from "../modules/rbac/role.module";
 import { InMemoryRoleRepository } from "../modules/rbac/adapters/in-memory-role.repository";
 import { DEFAULT_ROLE_PERMISSIONS } from "../modules/rbac/role-seeds";
+import { createPaymentModule } from "../modules/payment/payment.module";
+import { createInMemoryPaymentRepository } from "../modules/payment/adapters/in-memory-payment.repository";
+import { PaymentNotFoundError } from "../modules/payment/payment.types";
+import { InvoiceModule } from "../modules/invoice/invoice.module";
+import { createInMemoryInvoiceRepository } from "../modules/invoice/adapters/in-memory-invoice.repository";
+import { paymentContract, projectCostSchema } from "@tuari/contracts";
 
 function expectSuccess<T extends { success: boolean }>(result: T): Extract<T, { success: true }> {
   expect(result.success).toBe(true);
@@ -88,6 +105,8 @@ describe("RPC router", () => {
     databaseKeyPersister: unknown = {
       persistKey: () => ({ success: true } as const),
     },
+    expensesOverrides: Record<string, unknown> = {},
+    modules: { paymentModule?: unknown; invoiceModule?: unknown; financeService?: unknown; backupService?: unknown; backupFolderPersister?: unknown; inventoryService?: unknown; projectCostService?: unknown } = {},
   ) => {
     const { service, repository } = harness;
     const employeeRepository = new SqliteEmployeeRepository(repository);
@@ -95,11 +114,23 @@ describe("RPC router", () => {
     const employeeModule = new EmployeeModule({ employeeRepository, roleRepository });
     const invoiceRepository = {} as never;
     const invoiceDebtPort = {} as never;
-    const paymentModule = {
+    const paymentModule = (modules.paymentModule ?? {
       create: async () => ({ id: "", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: "", paymentDate: "", paymentMethod: "CASH", totalAmount: 0, notes: null, actorUserId: null, actorLabel: null, transactionId: null, createdAt: "", updatedAt: "", allocations: [] }),
       findById: async () => null,
       listPaged: async () => ({ items: [], nextCursor: null, totalCount: 0 }),
       delete: async () => undefined,
+    }) as never;
+    const expensesModule = {
+      create: async () => null,
+      get: async () => null,
+      list: async () => ({
+        items: [],
+        totals: { total: 0, count: 0, taggedToProject: 0, notTaggedToProject: 0, heldByWorkers: 0, workerCount: 0 },
+        groupsByProject: [],
+      }),
+      update: async () => null,
+      void: async () => null,
+      ...expensesOverrides,
     } as never;
     const mutation = new WorkspaceMutationContext(repository);
     const rbacRoleRepository = new InMemoryRoleRepository();
@@ -121,17 +152,48 @@ describe("RPC router", () => {
       companyService: service,
       workforceService: new WorkforceService(repository, repository, mutation),
       operationsService: new OperationsService(repository, repository, mutation),
-      financeService: new FinanceService(repository, repository, mutation),
-      inventoryService: createEmptyInventoryService(),
+      financeService: (modules.financeService ?? new FinanceService(repository, repository, mutation)) as never,
+      inventoryService: (modules.inventoryService ?? createEmptyInventoryService()) as never,
       employeeModule,
-      invoiceModule: {} as never,
+      invoiceModule: (modules.invoiceModule ?? {}) as never,
       paymentModule,
+      expensesModule,
+      projectCostService: (modules.projectCostService ?? {
+        getProjectCost: () => ({
+          success: true,
+          message: "ok",
+          item: {
+            projectId: "p-1",
+            totalDzd: 0,
+            parts: { expensesDzd: 0, salariesDzd: 0, stockDzd: 0, chargedMaterialsDzd: 0 },
+            expenses: [],
+            salaries: [],
+            stock: [],
+            materialMovements: [],
+            parkedInventory: { totalDzd: 0, assets: [] },
+          },
+        }),
+      }) as never,
       roleModule,
       recoveryKeyService: recoveryKeyService as never,
       updateService: {} as never,
       updateHistoryService: {} as never,
       databaseKeyManager: databaseKeyManager as never,
       databaseKeyPersister: databaseKeyPersister as never,
+      backupService: (modules.backupService ?? {
+        getStatus: () => ({
+          lastSuccessAt: "2026-01-14T08:00:00.000Z",
+          lastBackupPath: "/backups/2026-01-14",
+          lastFailure: null,
+          backupsRootPath: join(tmpdir(), "tuari-backups"),
+          retention: { daily: 14, weekly: 8, monthly: 6 },
+        }),
+        runDueBackup: async () => ({ status: "not-due" }),
+        setBackupsRoot: () => {},
+      }) as never,
+      backupFolderPersister: (modules.backupFolderPersister ?? {
+        persistBackupsRoot: () => ({ success: true, persisted: true }),
+      }) as never,
     } as never);
   }
 
@@ -169,6 +231,10 @@ describe("RPC router", () => {
       "payments:read",
       "payments:update",
       "payments:delete",
+      "expenses:create",
+      "expenses:read",
+      "expenses:update",
+      "expenses:delete",
     ],
     version: "0.0.0",
   };
@@ -231,6 +297,59 @@ describe("RPC router", () => {
     await expect(client.rolesList()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
+  it("returns the backup status to an authenticated admin", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(client.backupStatus()).resolves.toEqual({
+      lastSuccessAt: "2026-01-14T08:00:00.000Z",
+      lastBackupPath: "/backups/2026-01-14",
+      lastFailure: null,
+      backupsRootPath: join(tmpdir(), "tuari-backups"),
+      retention: { daily: 14, weekly: 8, monthly: 6 },
+    });
+  });
+
+  it("rejects the backup status without a session", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext(null) as never });
+
+    await expect(client.backupStatus()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  });
+
+  it("saves a valid backup folder and reports it", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    const result = await client.setBackupsRoot({ path: tmpdir() });
+
+    expect(result).toEqual({ success: true, path: tmpdir(), persisted: true });
+  });
+
+  it("rejects a backup folder that is a file, naming the problem", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    const result = await client.setBackupsRoot({ path: join(process.cwd(), "package.json") });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not a folder");
+  });
+
+  it("rejects the backup folder without a session", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createRouterClient(router, { context: createContext(null) as never });
+
+    await expect(client.setBackupsRoot({ path: tmpdir() })).rejects.toMatchObject({
+      code: "UNAUTHORIZED",
+    });
+  });
+
   it("allows non-admin users with RBAC permission to create employees", async () => {
     const harness = createHarness();
     const { service, roleIds } = harness;
@@ -245,6 +364,27 @@ describe("RPC router", () => {
       status: "ACTIVE",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("requires employee permissions for approved earning reads and writes", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, { isBootstrapOwner: async () => false });
+    const noPermissionClient = createRouterClient(router, {
+      context: createContext({ ...currentUser, permissions: [] }) as never,
+    });
+    const anonymousClient = createRouterClient(router, { context: createContext(null) as never });
+
+    await expect(anonymousClient.employeeEarningsList()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(noPermissionClient.employeeEarningsApprove({
+      employeeId: "employee-1",
+      requestId: "d0f2fd98-5ca5-49ae-9074-b139df26614d",
+      periodStart: "2026-04-01T00:00:00.000Z",
+      periodEnd: "2026-04-02T00:00:00.000Z",
+      currencyCode: "DZD",
+      totalAmount: "1.00",
+      unallocatedAmount: "1.00",
+      segments: [],
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("rejects employee creation when user lacks employees:create permission", async () => {
@@ -706,6 +846,7 @@ describe("RPC router", () => {
       await client.debtAccountsCreate({
         partyType: "INTERNAL_WORKER",
         workerId: worker.item.id,
+        direction: "PAYABLE",
         openingBalanceDzd: 1000,
       }),
     )
@@ -724,6 +865,7 @@ describe("RPC router", () => {
       await client.debtAccountsCreate({
         partyType: "EXTERNAL_COUNTERPARTY",
         externalCounterpartyId: externalCounterparty.item.id,
+        direction: "PAYABLE",
       }),
     )
 
@@ -731,7 +873,8 @@ describe("RPC router", () => {
       await client.debtAccountsCreate({
         partyType: "INTERNAL_WORKER",
         workerId: worker.item.id,
-        openingBalanceDzd: -300,
+        direction: "PAYABLE",
+        openingBalanceDzd: 300,
       }),
     )
 
@@ -739,6 +882,7 @@ describe("RPC router", () => {
       await client.debtAccountsCreate({
         partyType: "INTERNAL_WORKER",
         workerId: worker.item.id,
+        direction: "PAYABLE",
         openingBalanceDzd: 500,
       }),
     )
@@ -756,7 +900,7 @@ describe("RPC router", () => {
         note: "دفعة جزئية",
       }),
     )
-    expect(payment.item.balanceAfterDzd).toBe(950)
+    expect(payment.item.balanceAfterDzd).toBe(1550)
 
     const settlement = expectSuccess(await client.debtAccountsSettle({ id: internalAccount.item.id }))
     expect(settlement.item.entryType).toBe("SETTLEMENT")
@@ -767,7 +911,7 @@ describe("RPC router", () => {
         expect.objectContaining({ entryType: "SETTLEMENT" }),
         expect.objectContaining({ entryType: "PAYMENT" }),
         expect.objectContaining({ entryType: "OPENING" }),
-        expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: -300 }),
+        expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: 300 }),
         expect.objectContaining({ entryType: "ADJUSTMENT", signedAmountDzd: 500 }),
       ]),
     })
@@ -785,7 +929,7 @@ describe("RPC router", () => {
         expect.objectContaining({ workerId: worker.item.id, openDebtCasesCount: 0, settledDebtCasesCount: 1 }),
       ]),
       debtAccounts: expect.arrayContaining([
-        expect.objectContaining({ accountId: internalAccount.item.id, balanceLabel: "مغلق" }),
+        expect.objectContaining({ accountId: internalAccount.item.id, balanceLabel: "مسوّى" }),
         expect.objectContaining({ accountId: externalAccount.item.id, displayName: "مقاول خارجي" }),
       ]),
     })
@@ -1133,6 +1277,152 @@ describe("RPC router", () => {
     await expect(client.paymentsList({ limit: 2.5 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   });
 
+  it("rejects financially invalid expense input at the wire contract (issue #411)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness);
+    const client = createClient(router, createContext());
+
+    const base = {
+      amount: 5000,
+      expenseDate: "2026-10-03T10:00:00.000Z",
+    };
+
+    // Non-positive and unbounded amounts reuse the payment money rule.
+    await expect(
+      client.expensesCreate({ ...base, amount: 0 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      client.expensesCreate({ ...base, amount: -1 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await expect(
+      client.expensesCreate({ ...base, amount: Number.MAX_SAFE_INTEGER + 1 }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // Blank free text is rejected, not stored as an empty string.
+    await expect(
+      client.expensesCreate({ ...base, whatFor: "   " }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    // A missing id / non-uuid id on read is a wire rejection.
+    await expect(
+      client.expensesGet({ id: "not-a-uuid" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+
+    // The read path is reachable through auth + permission and returns the
+    // list envelope; an unknown id maps to NOT_FOUND, not a crash.
+    await expect(client.expensesList({})).resolves.toMatchObject({
+      items: [],
+      totals: { total: 0, count: 0 },
+      groupsByProject: [],
+    });
+    await expect(
+      client.expensesGet({ id: "11111111-1111-4111-8111-111111111111" }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("maps a domain error thrown by an async expense handler to its ORPC code", async () => {
+    const harness = createHarness();
+    // withAudit must await the async rejection and throw the mapped wire error.
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {
+      update: async () => {
+        throw new ExpenseNotFoundError("11111111-1111-4111-8111-111111111111");
+      },
+    });
+    const client = createClient(router, createContext());
+
+    await expect(
+      client.expensesUpdate({ id: "11111111-1111-4111-8111-111111111111", amount: 10 }),
+    ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it.each([
+    ["create", "expensesCreate", { amount: 10, expenseDate: "2026-10-03T10:00:00.000Z" }, new ExpenseInvalidAmountError(0), "BAD_REQUEST"],
+    ["void", "expensesVoid", { id: "11111111-1111-4111-8111-111111111111" }, new ExpenseAlreadyVoidedError("11111111-1111-4111-8111-111111111111"), "CONFLICT"],
+  ])("maps an async expense %s rejection through the audit resolver", async (method, procedure, input, error, code) => {
+    const harness = createHarness();
+    const operation = vi.fn(async () => { throw error; });
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {
+      [method]: operation,
+    });
+    const client = createClient(router, createContext());
+
+    await expect(client[procedure](input)).rejects.toMatchObject({ code, message: error.message });
+    expect(operation).toHaveBeenCalledOnce();
+  });
+
+  it("serves the project cost through the wire contract and maps a missing project (issue #414)", async () => {
+    const harness = createHarness();
+    const projectCostService = new ProjectCostService({
+      getProject: (id: string) => ({ id }),
+      listProjectExpenses: () => [
+        {
+          id: "e-1",
+          expenseDate: "2026-05-10T00:00:00.000Z",
+          whatFor: "وقود",
+          amount: "12500.00",
+          responsibleWorkerId: null,
+          responsibleWorkerName: null,
+          sellerId: null,
+          sellerName: null,
+        },
+      ],
+      listProjectSalarySplits: () => [
+        {
+          earningId: "earning-1",
+          segmentId: "segment-1",
+          employeeId: "emp-1",
+          employeeName: "كريم ب.",
+          ordinal: 0,
+          days: 25,
+          amount: "36000.00",
+          periodStart: "2026-05-01T00:00:00.000Z",
+          periodEnd: "2026-05-31T00:00:00.000Z",
+          approvedAt: "2026-05-31T00:00:00.000Z",
+        },
+      ],
+      listProjectStockCharges: () => [
+        { id: "c-1", assetUnitId: "a-1", assetName: "خلاطة", amount: "180000.00", placedAt: "2026-05-20T00:00:00.000Z" },
+      ],
+      listProjectMaterialMovements: () => [
+        { id: "m-in", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: "40", unitPrice: "850.0000", direction: "IN", occurredAt: "2026-05-20T00:00:00.000Z" },
+        { id: "m-out", itemDefinitionId: "def-1", itemName: "إسمنت", unit: "كيس", quantity: "5", unitPrice: "850.0000", direction: "OUT", occurredAt: "2026-05-21T00:00:00.000Z" },
+      ],
+      getProjectParkedAssets: () => [
+        { assetUnitId: "a-9", assetName: "رافعة", purchaseAmount: "500000.00" },
+      ],
+    });
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, { projectCostService });
+    const client = createClient(router, createContext());
+
+    // The whole populated response must satisfy the declared output schema —
+    // not just the fields a toMatchObject spot-check happens to name.
+    const response = expectSuccess(
+      await client.projectCostGet({ projectId: "11111111-1111-4111-8111-111111111111" }),
+    );
+    // 12,500 + 36,000 + 180,000 + (40 − 5) × 850 = 258,250.
+    expect(response.item.totalAmount).toBe("258250.00");
+    expect(projectCostSchema.safeParse(response.item).success).toBe(true);
+    expect(response.item.expenses).toHaveLength(1);
+    expect(response.item.salaries).toHaveLength(1);
+    expect(response.item.stock).toHaveLength(1);
+    expect(response.item.materialMovements).toHaveLength(2);
+    expect(response.item.parkedInventory.assets[0].assetUnitId).toBe("a-9");
+    expect("consumables" in response.item.parkedInventory).toBe(false);
+
+    const missingRouter = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      projectCostService: new ProjectCostService({
+        getProject: () => null,
+        listProjectExpenses: () => [],
+        listProjectSalarySplits: () => [],
+        listProjectStockCharges: () => [],
+        listProjectMaterialMovements: () => [],
+        getProjectParkedAssets: () => [],
+      }),
+    });
+    const missingClient = createClient(missingRouter, createContext());
+    await expect(
+      missingClient.projectCostGet({ projectId: "11111111-1111-4111-8111-111111111111" }),
+    ).resolves.toMatchObject({ success: false, error: { code: "NOT_FOUND" } });
+  });
+
   it("rejects out-of-bounds invoice paid values at the wire contract (issue #42)", async () => {
     const harness = createHarness();
     const router = createTestRouter(harness);
@@ -1371,6 +1661,193 @@ describe("RPC router", () => {
     await expect(client.reportsGenerate({ type: "MOVEMENT" })).resolves.toMatchObject({
       type: "MOVEMENT",
       summary: { totalMovements: 0 },
+    });
+  });
+
+  // ── #421: audit wrappers must map ASYNC rejections ────────────────────
+  //
+  // `mutationAudit`, `mutationAuditRateLimited` and `withAudit` all ran the
+  // handler inside a try/catch and `return`ed its promise without awaiting, so
+  // an async handler's rejection escaped the catch and the `errorResolver`
+  // never ran. These tests drive the wrappers through a real ORPC router
+  // (input gate → wrapper → output validation) so they pin the mapped code
+  // reaching the wire, not the helper in isolation.
+  it("maps a missing payment delete to NOT_FOUND through withAudit (#421)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      paymentModule: createPaymentModule(
+        createInMemoryPaymentRepository(),
+        {} as never,
+        {} as never,
+      ),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    const missingId = randomUUID();
+    await expect(client.paymentsDelete({ id: missingId })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: `Payment ${missingId} not found`,
+    });
+  });
+
+  it("maps a missing invoice delete to NOT_FOUND through withAudit (#421)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      invoiceModule: new InvoiceModule(createInMemoryInvoiceRepository(), {} as never),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    const missingId = randomUUID();
+    await expect(client.invoicesDelete({ id: missingId })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+      message: `Invoice ${missingId} not found`,
+    });
+  });
+
+  it("returns the failure output for an async rejection through mutationAudit (#421)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      financeService: {
+        createDebtAccount: async () => {
+          throw new CompanyError("BUSINESS_RULE", "async probe");
+        },
+      },
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    // `toFailureResult` RETURNS a `{ success: false, error }` output that the
+    // procedure's discriminated-union schema accepts, so the wrapper must
+    // return it (not throw) and the production failure path keeps its envelope.
+    await expect(
+      client.debtAccountsCreate({
+        partyType: "INTERNAL_WORKER",
+        workerId: randomUUID(),
+        direction: "PAYABLE",
+        openingBalanceDzd: 1000,
+      }),
+    ).resolves.toEqual({
+      success: false,
+      error: { code: "BUSINESS_RULE", message: "async probe", fieldErrors: [] },
+    });
+  });
+
+  // `mutationAudit` / `mutationAuditRateLimited` have no production procedure
+  // paired with an ORPCError resolver (their app procedures use
+  // `toFailureResult`, which returns a failure output — covered above). A
+  // minimal real ORPC router over `paymentContract` still proves each wrapper
+  // settles an async rejection inside its catch and throws the resolver's
+  // ORPCError.
+  describe("audit wrappers settle async rejections inside the catch (#421)", () => {
+    const makeMiddleware = () =>
+      createRpcMiddleware({ authBootstrapService: { isBootstrapOwner: async () => true } });
+
+    const probeClient = (wrap) => {
+      const os = implement({ paymentsDelete: paymentContract.paymentsDelete });
+      const router = os.router({
+        paymentsDelete: os.paymentsDelete.handler(
+          wrap(
+            async () => {
+              throw new PaymentNotFoundError("probe");
+            },
+            (error) => {
+              if (error instanceof PaymentNotFoundError) {
+                return new ORPCError("NOT_FOUND", { message: error.message });
+              }
+              throw error;
+            },
+          ),
+        ),
+      });
+      return createRouterClient(router, {
+        context: {
+          headers: new Headers({ cookie: "session=token" }),
+          resolveCurrentUser: vi.fn().mockResolvedValue(currentUser),
+        } as never,
+      });
+    };
+
+    it("mutationAudit maps an async rejection to the resolver's code", async () => {
+      const m = makeMiddleware();
+      const client = probeClient((handler, resolver) => m.mutationAudit(handler, resolver));
+      await expect(client.paymentsDelete({ id: randomUUID() })).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
+    });
+
+    it("mutationAuditRateLimited maps an async rejection to the resolver's code", async () => {
+      const m = makeMiddleware();
+      const client = probeClient((handler, resolver) =>
+        m.mutationAuditRateLimited(handler, resolver),
+      );
+      await expect(client.paymentsDelete({ id: randomUUID() })).rejects.toMatchObject({
+        code: "NOT_FOUND",
+      });
+    });
+  });
+
+  // ── #422 round 5: charge QUERY errors must reach the documented envelope ──
+  //
+  // The charge query handlers can throw `InventoryError` (missing asset,
+  // missing project, unusable stored price). `queryAuth` had no resolver, so
+  // the raw error escaped instead of the entity-result failure envelope the
+  // web client's `requireEntitySuccess` reads. These drive the full router so
+  // the mapped envelope is pinned at the wire, not in the helper.
+  const createChargeInventoryService = (lookup: {
+    getAssetUnitById: (id: string) => { id: string; purchasePriceDzd: number } | null;
+    projectExists: (id: string) => boolean;
+  }) =>
+    new InventoryService(
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      new AssetChargeService(createInMemoryAssetChargeRepository(), lookup),
+    );
+
+  it("maps a missing asset in the charge default query to the failure envelope (#422)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      inventoryService: createChargeInventoryService({ getAssetUnitById: () => null, projectExists: () => false }),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(client.inventoryAssetChargeDefault({ assetUnitId: randomUUID() })).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOT_FOUND" },
+    });
+  });
+
+  it("maps an unusable stored price in the charge default query to the failure envelope (#422)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      inventoryService: createChargeInventoryService({
+        getAssetUnitById: (id) => ({ id, purchasePriceDzd: Number.MAX_SAFE_INTEGER + 1 }),
+        projectExists: () => false,
+      }),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(client.inventoryAssetChargeDefault({ assetUnitId: randomUUID() })).resolves.toMatchObject({
+      success: false,
+      error: { code: "VALIDATION" },
+    });
+  });
+
+  it("maps a missing project in the project charges query to the failure envelope (#422)", async () => {
+    const harness = createHarness();
+    const router = createTestRouter(harness, undefined, {}, undefined, undefined, {}, {
+      inventoryService: createChargeInventoryService({
+        getAssetUnitById: (id) => ({ id, purchasePriceDzd: 100_000 }),
+        projectExists: () => false,
+      }),
+    });
+    const client = createRouterClient(router, { context: createContext() as never });
+
+    await expect(
+      client.inventoryAssetChargesListByProject({ projectId: randomUUID() }),
+    ).resolves.toMatchObject({
+      success: false,
+      error: { code: "NOT_FOUND" },
     });
   });
 });

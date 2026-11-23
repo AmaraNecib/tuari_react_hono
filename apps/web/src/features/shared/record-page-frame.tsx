@@ -1,3 +1,4 @@
+import { CurrencyProse } from "@/features/shared/currency-prose"
 import type { ReactNode } from "react"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -194,7 +195,7 @@ export function RecordHistoryTable({
     typeLabel: string
     title: string
     detail?: string | null
-    periodLabel: string
+    periodLabel: ReactNode
     statusLabel: string
   }>
 }) {
@@ -219,7 +220,7 @@ export function RecordHistoryTable({
                   <td className="px-4 py-3 text-start">
                     <div className="space-y-0.5">
                       <p className="text-[13px] font-medium text-ink">{row.title}</p>
-                      {row.detail ? <p className="text-[12px] leading-5 text-ink-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{row.detail}</p> : null}
+                      {row.detail ? <p className="text-[12px] leading-5 text-ink-3 whitespace-pre-wrap break-words [overflow-wrap:anywhere]"><CurrencyProse text={row.detail} /></p> : null}
                     </div>
                   </td>
                   <td className="px-4 py-3 text-start text-ink-3 text-[13px]">{row.periodLabel}</td>
@@ -258,7 +259,7 @@ export function RecordHistoryCard({
 }: {
   title: string
   emptyLabel: string
-  items: Array<{ id: string; label: string; secondary: string; badge: string }>
+  items: Array<{ id: string; label: string; secondary: ReactNode; badge: string }>
 }) {
   return (
     <Surface as="article" className="p-4" variant="table">

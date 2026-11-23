@@ -3,6 +3,8 @@ import type { ComponentProps } from "react"
 import { Link } from "@tanstack/react-router"
 
 type WorkspaceTabSearch = { tab: string }
+export type EmployeeEarningReturnTo = "employee-finance" | "salaries"
+type EmployeeEarningSearch = { returnTo: EmployeeEarningReturnTo }
 
 export type WorkspaceRouteTarget =
   | { to: "/" }
@@ -10,8 +12,10 @@ export type WorkspaceRouteTarget =
   | { to: "/employees/create" }
   | { to: "/employees/$employeeId"; params: { employeeId: string }; search?: WorkspaceTabSearch }
   | { to: "/employees/$employeeId/edit"; params: { employeeId: string } }
+  | { to: "/employees/$employeeId/earnings/new"; params: { employeeId: string }; search?: EmployeeEarningSearch }
   | { to: "/debts" }
   | { to: "/debts/create" }
+  | { to: "/expenses" }
   | { to: "/externals" }
   | { to: "/externals/create" }
   | { to: "/externals/$externalId"; params: { externalId: string } }
@@ -19,7 +23,7 @@ export type WorkspaceRouteTarget =
   | { to: "/projects/create" }
   | { to: "/projects/$projectId"; params: { projectId: string }; search?: WorkspaceTabSearch }
   | { to: "/projects/$projectId/edit"; params: { projectId: string } }
-  | { to: "/salaries" }
+  | { to: "/salaries"; search?: { tab: "recent" | "workers" | "earnings"; page?: number; pageSize?: number } }
   | { to: "/warehouses" }
   | { to: "/warehouses/create" }
   | { to: "/warehouses/$warehouseId"; params: { warehouseId: string }; search?: WorkspaceTabSearch }
@@ -59,6 +63,11 @@ export const workspaceRoutes = {
     to: "/employees/$employeeId/edit",
     params: { employeeId },
   }),
+  employeeEarningCreate: (employeeId: string, returnTo: EmployeeEarningReturnTo): WorkspaceRouteTarget => ({
+    to: "/employees/$employeeId/earnings/new",
+    params: { employeeId },
+    search: { returnTo },
+  }),
   employeeTab: (employeeId: string, tab: string): WorkspaceRouteTarget => ({
     to: "/employees/$employeeId",
     params: { employeeId },
@@ -66,6 +75,7 @@ export const workspaceRoutes = {
   }),
   debts: (): WorkspaceRouteTarget => ({ to: "/debts" }),
   debtCreate: (): WorkspaceRouteTarget => ({ to: "/debts/create" }),
+  expenses: (): WorkspaceRouteTarget => ({ to: "/expenses" }),
   externals: (): WorkspaceRouteTarget => ({ to: "/externals" }),
   externalCreate: (): WorkspaceRouteTarget => ({ to: "/externals/create" }),
   externalDetails: (externalId: string): WorkspaceRouteTarget => ({
@@ -88,6 +98,8 @@ export const workspaceRoutes = {
     search: { tab },
   }),
   salaries: (): WorkspaceRouteTarget => ({ to: "/salaries" }),
+  salaryEarnings: (): WorkspaceRouteTarget => ({ to: "/salaries", search: { tab: "earnings", page: 1, pageSize: 10 } }),
+  salaryWorkers: (): WorkspaceRouteTarget => ({ to: "/salaries", search: { tab: "workers", page: 1, pageSize: 10 } }),
   warehouses: (): WorkspaceRouteTarget => ({ to: "/warehouses" }),
   warehouseCreate: (): WorkspaceRouteTarget => ({ to: "/warehouses/create" }),
   inventory: (): WorkspaceRouteTarget => ({ to: "/inventory" }),

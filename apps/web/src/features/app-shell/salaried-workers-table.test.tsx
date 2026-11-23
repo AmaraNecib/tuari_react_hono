@@ -1,0 +1,198 @@
+// @vitest-environment jsdom
+
+import "@/i18n"
+
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
+
+import { SalariedWorkersTable, type SalariedWorkerRow } from "./salaried-workers-table"
+
+const PROJECT = { id: "project-1", name: "مشروع ألف" }
+
+function makeWorkers(count: number, period: "MONTHLY" | "DAILY", idOffset = 0): SalariedWorkerRow[] {
+  return Array.from({ length: count }, (_, index) => {
+    const number = index + 1 + idOffset
+    return {
+      employeeId: `worker-${String(number).padStart(2, "0")}`,
+      employeeName: `عامل ${String(number).padStart(2, "0")}`,
+      employeePhone: `055500${String(number).padStart(4, "0")}`,
+      employeeRole: "عامل",
+      salaryReference: { period, amount: period === "DAILY" ? "30000.0000" : "30000.00" },
+      projectAssignments: [] as Array<{ projectId: string; startDate: string; endDate: string | null }>,
+    }
+  })
+}
+
+function renderTable(
+  workers: ReturnType<typeof makeWorkers>,
+  projects: Array<{ id: string; name: string }> = [PROJECT],
+) {
+  return render(
+    <SalariedWorkersTable
+      workers={workers}
+      projects={projects}
+      onAddPayment={vi.fn()}
+      onEditSalary={vi.fn()}
+    />,
+  )
+}
+
+describe("SalariedWorkersTable (#453)", () => {
+  afterEach(() => {
+    cleanup()
+  })
+
+  it("lists each worker's wage with its own period label", () => {
+    renderTable([
+      {
+        ...makeWorkers(1, "MONTHLY")[0]!,
+        employeeId: "w-monthly",
+        employeeName: "عامل شهري",
+      },
+      {
+        ...makeWorkers(1, "DAILY")[0]!,
+        employeeId: "w-daily",
+        employeeName: "عامل يومي",
+      },
+      {
+        ...makeWorkers(1, "MONTHLY")[0]!,
+        employeeId: "w-none",
+        employeeName: "عامل بلا أجر",
+        salaryReference: null,
+      },
+    ])
+
+    expect(screen.getByText("عامل شهري")).toBeTruthy()
+    expect(screen.getByText("عامل يومي")).toBeTruthy()
+    // Each wage carries the worker's own period label, not a global default.
+    expect(screen.getByText("/ شهري")).toBeTruthy()
+    expect(screen.getByText("/ يومي")).toBeTruthy()
+    expect(within(screen.getByText("عامل يومي").closest("tr")!).getByText("30,000")).toBeTruthy()
+    expect(within(screen.getByText("عامل شهري").closest("tr")!).getByText("30,000")).toBeTruthy()
+    // Missing reference remains distinct from zero.
+    const noWageRow = screen.getByText("عامل بلا أجر").closest("tr")!
+    expect(within(noWageRow).getAllByText("—").length).toBeGreaterThan(0)
+    expect(within(noWageRow).queryByText(/[0-9]/)).toBeNull()
+  })
+
+  it("filters by search and resets to page 1", () => {
+    renderTable(makeWorkers(23, "MONTHLY"))
+
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    // "عامل" matches every worker, so the page count is unchanged and the reset
+    // is observable: without it the table would stay on page 2.
+    fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "عامل" } })
+    expect(screen.getByText("1 / 3")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "عامل 05" } })
+    expect(screen.getByText("1-1 من 1")).toBeTruthy()
+    expect(within(screen.getByRole("table")).getByText("عامل 05")).toBeTruthy()
+    expect(within(screen.getByRole("table")).queryByText("عامل 01")).toBeNull()
+
+    // A search that matches nothing shows the no-results empty state.
+    fireEvent.change(screen.getByLabelText("بحث باسم العامل..."), { target: { value: "لا يوجد" } })
+    expect(screen.getByText("لا توجد نتائج")).toBeTruthy()
+  })
+
+  it("shows exact daily precision, keeps zero distinct from no reference, and filters by reference period", () => {
+    const workers = [
+      { ...makeWorkers(1, "DAILY")[0]!, employeeId: "daily", employeeName: "عامل يومي دقيق", salaryReference: { period: "DAILY" as const, amount: "4500.1234" } },
+      { ...makeWorkers(1, "MONTHLY")[0]!, employeeId: "zero", employeeName: "عامل بصفر", salaryReference: { period: "MONTHLY" as const, amount: "0" } },
+      { ...makeWorkers(1, "MONTHLY")[0]!, employeeId: "none", employeeName: "عامل بلا مرجع", salaryReference: null },
+    ]
+    renderTable(workers)
+
+    const dailyRow = screen.getByText("عامل يومي دقيق").closest("tr")!
+    expect(within(dailyRow).getByText("4,500.1234")).toBeTruthy()
+    const zeroRow = screen.getByText("عامل بصفر").closest("tr")!
+    expect(within(zeroRow).getByText("0")).toBeTruthy()
+    const noReferenceRow = screen.getByText("عامل بلا مرجع").closest("tr")!
+    expect(within(noReferenceRow).getAllByText("—")).toHaveLength(1)
+    expect(within(noReferenceRow).queryByText("0")).toBeNull()
+
+    fireEvent.change(screen.getByLabelText(/الدورية/), { target: { value: "DAILY" } })
+    expect(screen.getByText("1-1 من 1")).toBeTruthy()
+    expect(screen.getByText("عامل يومي دقيق")).toBeTruthy()
+    expect(screen.queryByText("عامل بصفر")).toBeNull()
+  })
+
+  it("filters by period and resets to page 1", () => {
+    renderTable([...makeWorkers(15, "MONTHLY"), ...makeWorkers(12, "DAILY", 15)])
+
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/الدورية/), { target: { value: "DAILY" } })
+
+    expect(screen.getByText("1 / 2")).toBeTruthy()
+    expect(screen.getByText("1-10 من 12")).toBeTruthy()
+    expect(within(screen.getByRole("table")).getByText("عامل 16")).toBeTruthy()
+    expect(within(screen.getByRole("table")).queryByText("عامل 01")).toBeNull()
+  })
+
+  it("filters by project assignment and resets to page 1", () => {
+    // 15 workers assigned to project-2 so the filtered result has two pages and
+    // the reset is observable rather than masked by the page clamp.
+    const workers: SalariedWorkerRow[] = makeWorkers(23, "MONTHLY").map((worker, index) => ({
+      ...worker,
+      projectAssignments:
+        index < 15
+          ? [{ projectId: "project-2", startDate: "2000-01-01T00:00:00+01:00", endDate: null }]
+          : [],
+    }))
+    renderTable(workers, [PROJECT, { id: "project-2", name: "مشروع باء" }])
+
+    fireEvent.click(screen.getByRole("button", { name: "التالي" }))
+    expect(screen.getByText("2 / 3")).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText(/المشروع/), { target: { value: "project-2" } })
+
+    expect(screen.getByText("1 / 2")).toBeTruthy()
+    expect(screen.getByText("1-10 من 15")).toBeTruthy()
+
+    // The unassigned project still yields the no-results empty state.
+    fireEvent.change(screen.getByLabelText(/المشروع/), { target: { value: "project-1" } })
+    expect(screen.getByText("لا توجد نتائج")).toBeTruthy()
+    expect(screen.queryByText("0-0 من 0")).toBeNull()
+  })
+
+  it("opens the earnings approval target through onAddPayment", () => {
+    const onAddPayment = vi.fn()
+    render(
+      <SalariedWorkersTable
+        workers={makeWorkers(1, "MONTHLY")}
+        projects={[PROJECT]}
+        onAddPayment={onAddPayment}
+        onEditSalary={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "اعتماد الأجر" }))
+    expect(onAddPayment).toHaveBeenCalledWith("worker-01", "عامل 01")
+  })
+
+  it("routes the edit action through onEditSalary", () => {
+    const onEditSalary = vi.fn()
+    render(
+      <SalariedWorkersTable
+        workers={makeWorkers(1, "MONTHLY")}
+        projects={[PROJECT]}
+        onAddPayment={vi.fn()}
+        onEditSalary={onEditSalary}
+      />,
+    )
+
+    fireEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "تعديل الأجر" }))
+    expect(onEditSalary).toHaveBeenCalledWith("worker-01")
+  })
+
+  it("shows the workers empty state when there is no worker", () => {
+    renderTable([])
+
+    expect(screen.getByText("لا يوجد عاملون بإعدادات راتب جاهزة حاليًا.")).toBeTruthy()
+    expect(screen.queryByLabelText("بحث باسم العامل...")).toBeNull()
+    expect(screen.queryByText("0-0 من 0")).toBeNull()
+  })
+})

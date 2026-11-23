@@ -1,5 +1,10 @@
 # Branch Workflow
 
+For current agent execution and verification, follow
+[the engineering workflow](engineering-workflow.md). The phase names below are
+historical delivery-plan conventions, not a requirement to restart existing
+work or run full local suites.
+
 ## Naming Convention
 
 - `agent/phaseN-short-description`: isolated implementation branch for one phase milestone

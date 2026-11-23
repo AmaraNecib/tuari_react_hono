@@ -7,12 +7,16 @@
  * Architecture: Drizzle queries + raw better-sqlite3 handle for transactions
  * (same pattern as CompanyRepository).
  */
-import { eq, and, asc, desc, sql, inArray } from "drizzle-orm"
+import { eq, and, asc, desc, sql, inArray, count, exists, getTableColumns } from "drizzle-orm"
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3"
 import type { BetterSqliteDatabase } from "../../../types/sqlite"
 import * as schema from "../../../schema"
 import { createDrizzleFromSqlite } from "../../../infrastructure/database/drizzle"
 import { createFifoLock, runSyncTransaction, type FifoLock } from "../../../infrastructure/database/fifo-lock"
+import { decodeCursor as decodeCursorToken, encodeCursor as encodeCursorToken } from "../../shared/cursor"
+import { escapeLikePattern } from "../../shared/sql-search"
+import type { InventoryItemOfferSource } from "@tuari/contracts"
+import { QUANTITY_MIN } from "../inventory.helpers"
 import { normalizeAuditContext } from "../../company/company.repository-mappers"
 import { createAlgeriaTimestamp } from "../../company/company-time"
 import type { MutationAuditContext } from "../../company/company.types"
@@ -33,10 +37,14 @@ import type {
   InventoryInvoiceGroupRecord,
   InventoryItemDefinitionCreateData,
   InventoryItemDefinitionListFilters,
+  InventoryItemDefinitionPage,
+  InventoryItemDefinitionPageQuery,
   InventoryItemDefinitionRecord,
   InventoryItemDefinitionUpdateData,
   InventoryOutboundTransferCreateData,
   InventoryOutboundTransferRecord,
+  InventoryItemStockHolding,
+  InventoryItemStockAtSourceQuery,
 } from "../inventory.types"
 
 // ---------------------------------------------------------------------------
@@ -82,6 +90,7 @@ function mapAssetUnit(row: Record<string, unknown>): InventoryAssetUnitRecord {
   return {
     id: String(row.id),
     inventoryEntryId: String(row.inventoryEntryId),
+    itemDefinitionId: row.itemDefinitionId != null ? String(row.itemDefinitionId) : undefined,
     assetName: String(row.assetName),
     assetTag: row.assetTag != null ? String(row.assetTag) : null,
     serialNumber: row.serialNumber != null ? String(row.serialNumber) : null,
@@ -251,6 +260,132 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return rows.map(mapItemDefinition)
   }
 
+  /**
+   * The consumption / asset-unit predicates that place a definition's stock at
+   * one source. The paged picker's `inStockAt` EXISTS and
+   * {@link listItemStockAtSource} both build on this, so the two cannot match a
+   * source with different columns.
+   */
+  private stockAtSourceWhere(source: InventoryItemOfferSource) {
+    return {
+      balance: source.locationType === "WAREHOUSE"
+        ? eq(schema.inventoryConsumableBalance.warehouseId, source.warehouseId)
+        : eq(schema.inventoryConsumableBalance.projectId, source.projectId),
+      assetUnit: source.locationType === "WAREHOUSE"
+        ? eq(schema.inventoryAssetUnit.currentWarehouseId, source.warehouseId)
+        : eq(schema.inventoryAssetUnit.currentProjectId, source.projectId),
+    }
+  }
+
+  /**
+   * compiles the offer filter to SQL. Its verdict must equal
+   * `matchesItemOfferFilter` for the same definition; the SQL/JS equivalence
+   * test pins that.
+   */
+  listItemDefinitionsPaged(query: InventoryItemDefinitionPageQuery): InventoryItemDefinitionPage {
+    const conditions = [inArray(schema.inventoryItemDefinition.itemType, [...query.filter.itemTypes])]
+    if (query.filter.activeOnly) {
+      conditions.push(eq(schema.inventoryItemDefinition.isActive, 1))
+    }
+
+    // Availability is a fact about (definition, source): a definition is offered
+    // when at least one consumable balance still holds quantity there, or an
+    // asset unit physically sits there and its entry references the definition.
+    const inStockAt = query.filter.inStockAt
+    if (inStockAt) {
+      const atSource = this.stockAtSourceWhere(inStockAt)
+      const consumableStock = this.db
+        .select({ one: sql`1` })
+        .from(schema.inventoryConsumableBalance)
+        .where(and(
+          eq(schema.inventoryConsumableBalance.itemDefinitionId, schema.inventoryItemDefinition.id),
+          atSource.balance,
+          sql`${schema.inventoryConsumableBalance.quantity} >= ${QUANTITY_MIN}`,
+        ))
+      const assetStock = this.db
+        .select({ one: sql`1` })
+        .from(schema.inventoryAssetUnit)
+        .innerJoin(schema.inventoryEntry, eq(schema.inventoryAssetUnit.inventoryEntryId, schema.inventoryEntry.id))
+        .where(and(
+          eq(schema.inventoryEntry.itemDefinitionId, schema.inventoryItemDefinition.id),
+          atSource.assetUnit,
+        ))
+
+      conditions.push(sql`(${exists(consumableStock)} OR ${exists(assetStock)})`)
+    }
+
+    const search = query.search?.trim()
+    if (search) {
+      conditions.push(sql`${schema.inventoryItemDefinition.name} LIKE ${`%${escapeLikePattern(search)}%`} ESCAPE '\\'`)
+    }
+
+    // The cursor is only meaningful for the query that produced it.
+    const scope = JSON.stringify({
+      itemTypes: [...query.filter.itemTypes],
+      activeOnly: query.filter.activeOnly,
+      inStockAt: inStockAt
+        ? inStockAt.locationType === "WAREHOUSE"
+          ? `WAREHOUSE:${inStockAt.warehouseId}`
+          : `PROJECT:${inStockAt.projectId}`
+        : null,
+      search: search ?? "",
+    })
+
+    let cursorReset = false
+    let cursor: { sortKey: string; id: string } | null = null
+    if (query.cursor) {
+      try {
+        const decoded = decodeCursorToken(query.cursor)
+        // A cursor is only usable for the exact query that produced it. A
+        // missing scope means the token came from elsewhere (another endpoint,
+        // or a pre-scope client), so it is not trusted here either.
+        if (decoded.scope !== scope) {
+          cursorReset = true
+        } else {
+          cursor = { sortKey: decoded.sortKey, id: decoded.id }
+        }
+      } catch {
+        cursorReset = true
+      }
+    }
+
+    const total = Number(
+      this.db.select({ value: count() }).from(schema.inventoryItemDefinition)
+        .where(and(...conditions)).all()[0]?.value ?? 0,
+    )
+
+    const pageConditions = [...conditions]
+    if (cursor) {
+      pageConditions.push(sql`(${schema.inventoryItemDefinition.name} COLLATE NOCASE > ${cursor.sortKey} OR (${schema.inventoryItemDefinition.name} COLLATE NOCASE = ${cursor.sortKey} AND ${schema.inventoryItemDefinition.id} > ${cursor.id}))`)
+    }
+
+    const rows = this.db.select().from(schema.inventoryItemDefinition)
+      .where(and(...pageConditions))
+      .orderBy(sql`${schema.inventoryItemDefinition.name} COLLATE NOCASE ASC`, asc(schema.inventoryItemDefinition.id))
+      .limit(query.limit + 1)
+      .all()
+      .map(mapItemDefinition)
+
+    const hasMore = rows.length > query.limit
+    const items = rows.slice(0, query.limit)
+    const last = items[items.length - 1]
+
+    return {
+      items,
+      total,
+      nextCursor: hasMore && last ? encodeCursorToken({ sortKey: last.name, id: last.id, scope }) : null,
+      cursorReset,
+    }
+  }
+
+  /** countEntriesByItemDefinitionId. */
+  countEntriesByItemDefinitionId(itemDefinitionId: string) {
+    return Number(
+      this.db.select({ value: count() }).from(schema.inventoryEntry)
+        .where(eq(schema.inventoryEntry.itemDefinitionId, itemDefinitionId)).all()[0]?.value ?? 0,
+    )
+  }
+
   /** getItemDefinitionById. */
   getItemDefinitionById(id: string) {
     const row = this.db.select().from(schema.inventoryItemDefinition)
@@ -348,6 +483,11 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       .orderBy(desc(schema.inventoryInvoiceGroup.createdAt))
       .limit(1).all()[0]
     return row?.invoiceNumber ?? null
+  }
+
+  invoiceGroupExists(id: string) {
+    return this.db.select({ id: schema.inventoryInvoiceGroup.id }).from(schema.inventoryInvoiceGroup)
+      .where(eq(schema.inventoryInvoiceGroup.id, id)).limit(1).all().length > 0
   }
 
   /** getInvoiceGroupById. */
@@ -483,7 +623,13 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     const condition = filters.warehouseId
       ? eq(schema.inventoryAssetUnit.currentWarehouseId, filters.warehouseId)
       : eq(schema.inventoryAssetUnit.currentProjectId, filters.projectId ?? "")
-    return this.db.select().from(schema.inventoryAssetUnit)
+    return this.db.select({
+      ...getTableColumns(schema.inventoryAssetUnit),
+      // The location listing is the outbound picker's source; it must offer a
+      // DEFINITION id, so resolve the unit's entry to its definition here.
+      itemDefinitionId: sql<string>`(SELECT e.item_definition_id FROM inventory_entry e WHERE e.id = ${schema.inventoryAssetUnit.inventoryEntryId})`.as("itemDefinitionId"),
+    })
+      .from(schema.inventoryAssetUnit)
       .where(condition)
       .orderBy(desc(schema.inventoryAssetUnit.updatedAt))
       .all().map(mapAssetUnit)
@@ -517,9 +663,9 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       LEFT JOIN warehouse w ON w.id = b.warehouse_id
       LEFT JOIN project p ON p.id = b.project_id
       WHERE b.inventory_entry_id IN (SELECT id FROM inventory_entry WHERE invoice_group_id = ?)
-        AND b.quantity > 0
+        AND b.quantity >= ?
       ORDER BY b.updated_at DESC
-    `).all(invoiceGroupId) as Record<string, unknown>[]
+    `).all(invoiceGroupId, QUANTITY_MIN) as Record<string, unknown>[]
     return rows.map(mapConsumableBalance)
   }
 
@@ -533,10 +679,42 @@ export class DrizzleInventoryRepository implements InventoryRepository {
       INNER JOIN inventory_entry e ON e.id = b.inventory_entry_id
       LEFT JOIN warehouse w ON w.id = b.warehouse_id
       LEFT JOIN project p ON p.id = b.project_id
-      WHERE ${locationCol} = ? AND b.quantity > 0
+      WHERE ${locationCol} = ? AND b.quantity >= ?
       ORDER BY b.updated_at DESC
-    `).all(filters.warehouseId ?? filters.projectId ?? "") as Record<string, unknown>[]
+    `).all(filters.warehouseId ?? filters.projectId ?? "", QUANTITY_MIN) as Record<string, unknown>[]
     return rows.map(mapConsumableBalance)
+  }
+
+  /** listItemStockAtSource. */
+  listItemStockAtSource(query: InventoryItemStockAtSourceQuery): InventoryItemStockHolding {
+    const atSource = this.stockAtSourceWhere(query.source)
+
+    const consumableBalances = this.db
+      .select()
+      .from(schema.inventoryConsumableBalance)
+      .where(and(
+        eq(schema.inventoryConsumableBalance.itemDefinitionId, query.itemDefinitionId),
+        atSource.balance,
+        sql`${schema.inventoryConsumableBalance.quantity} >= ${QUANTITY_MIN}`,
+      ))
+      // Deterministic depletion order: oldest stock leaves first.
+      .orderBy(asc(schema.inventoryConsumableBalance.createdAt), asc(schema.inventoryConsumableBalance.id))
+      .all()
+      .map(mapConsumableBalance)
+
+    const assetUnits = this.db
+      .select({ unit: schema.inventoryAssetUnit })
+      .from(schema.inventoryAssetUnit)
+      .innerJoin(schema.inventoryEntry, eq(schema.inventoryAssetUnit.inventoryEntryId, schema.inventoryEntry.id))
+      .where(and(
+        eq(schema.inventoryEntry.itemDefinitionId, query.itemDefinitionId),
+        atSource.assetUnit,
+      ))
+      .orderBy(desc(schema.inventoryAssetUnit.updatedAt), asc(schema.inventoryAssetUnit.id))
+      .all()
+      .map((row) => mapAssetUnit(row.unit))
+
+    return { consumableBalances, assetUnits }
   }
 
   /** getConsumableBalanceByEntryAndLocation. */

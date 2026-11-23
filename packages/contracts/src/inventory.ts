@@ -9,6 +9,7 @@ import {
   nullableTextSchema,
   timestampSchema,
 } from "./core";
+import { nonNegativePaymentAmountAtScaleSchema, nonNegativePaymentAmountSchema, nonNegativeUnitPriceSchema, paymentAmountSchema, storedMoneyDzdSchema } from "./payment";
 
 /** inventoryItemDefinitionSchema - Item definition schema. */
 export const inventoryItemDefinitionSchema = z.object({
@@ -21,6 +22,14 @@ export const inventoryItemDefinitionSchema = z.object({
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
+
+/**
+ * inventoryItemDefinitionOptionSchema - what the paged item picker returns.
+ *
+ * The picker needs the definition's `name` and `unit` (to label the option and
+ * default an asset's name), so it is the full definition read shape.
+ */
+export const inventoryItemDefinitionOptionSchema = inventoryItemDefinitionSchema;
 
 /** inventoryInvoiceAttachmentSchema - Invoice attachment schema. */
 export const inventoryInvoiceAttachmentSchema = z.object({
@@ -36,16 +45,31 @@ export const inventoryInvoiceAttachmentSchema = z.object({
   createdAt: timestampSchema,
 });
 
-/** inventoryAssetUnitSchema - Asset unit schema. */
+/**
+ * inventoryAssetUnitSchema - Asset unit schema.
+ *
+ * Also a RESPONSE shape (asset detail, invoice detail, location contents,
+ * entry lists). `purchasePriceDzd` therefore uses the permissive stored-money
+ * schema: the invoice INPUT gate caps a new price at `MAX_MONEY_DZD`, but a
+ * row stored before that gate existed can be larger, and reading it back must
+ * not fail (#413 round 3).
+ */
 export const inventoryAssetUnitSchema = z.object({
   id: entityIdSchema,
   inventoryEntryId: entityIdSchema,
+  /**
+   * The definition this unit is an instance of. Present on reads that resolve
+   * the entry's definition (the location-contents listing the outbound picker
+   * consumes), because the outbound write gate takes a definition id, never a
+   * unit id. Optional on reads that return the raw unit row.
+   */
+  itemDefinitionId: entityIdSchema.optional(),
   assetName: z.string().trim().min(1).max(160),
   assetTag: nullableTextSchema,
   serialNumber: nullableTextSchema,
   condition: inventoryAssetConditionSchema.nullable(),
   purchaseDate: timestampSchema.nullable(),
-  purchasePriceDzd: z.number().nonnegative(),
+  purchasePriceDzd: storedMoneyDzdSchema,
   currentWarehouseId: entityIdSchema.nullable(),
   currentProjectId: entityIdSchema.nullable(),
   currentLocationLabel: nullableTextSchema,
@@ -85,11 +109,75 @@ export const inventoryMovementSchema = z.object({
   createdAt: timestampSchema,
 });
 
+/** inventoryAssetChargeRevisionSchema - A recorded correction or void of a charge. */
+export const inventoryAssetChargeRevisionSchema = z.object({
+  id: entityIdSchema,
+  chargeId: entityIdSchema,
+  previousAmountDzd: storedMoneyDzdSchema,
+  /** `null` records a void; a number records a corrected amount. */
+  newAmountDzd: storedMoneyDzdSchema.nullable(),
+  reason: nullableTextSchema,
+  actorUserId: entityIdSchema.nullable(),
+  actorLabel: nullableTextSchema,
+  createdAt: timestampSchema,
+});
+
+/** inventoryAssetChargeSchema - A charge for a unit's placement on a project. */
+export const inventoryAssetChargeSchema = z.object({
+  id: entityIdSchema,
+  assetUnitId: entityIdSchema,
+  projectId: entityIdSchema,
+  /** Project display name when the adapter can resolve it. */
+  projectName: nullableTextSchema,
+  /** The transfer movement that created this placement (null for legacy rows). */
+  movementId: entityIdSchema.nullable(),
+  amountDzd: storedMoneyDzdSchema,
+  status: z.enum(["LIVE", "VOID"]),
+  voidedAt: timestampSchema.nullable(),
+  voidReason: nullableTextSchema,
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+/** inventoryAssetChargeDetailSchema - charge plus its correction history. */
+export const inventoryAssetChargeDetailSchema = inventoryAssetChargeSchema.extend({
+  revisions: z.array(inventoryAssetChargeRevisionSchema),
+});
+
+/**
+ * inventoryProjectChargesSchema - a project's live charges plus their total.
+ *
+ * `totalDzd` is COMPUTED at read time, so it keeps the write bound: unlike a
+ * single stored double, a sum above `MAX_MONEY_DZD` is no longer exactly
+ * representable, and the service refuses to emit it with a typed error rather
+ * than return a silently wrong financial number (#422 round 2). The individual
+ * charges use the permissive stored shape, so a stored row still reads back.
+ */
+export const inventoryProjectChargesSchema = z.object({
+  projectId: entityIdSchema,
+  totalDzd: nonNegativePaymentAmountSchema,
+  charges: z.array(inventoryAssetChargeSchema),
+});
+
+/**
+ * inventoryAssetChargeDefaultSchema - the amount a new placement should
+ * prefill: the unit's last charge, else its purchase price.
+ */
+export const inventoryAssetChargeDefaultSchema = z.object({
+  assetUnitId: entityIdSchema,
+  /** The amount a placement would USE, so it keeps the write bound. */
+  amountDzd: nonNegativePaymentAmountSchema,
+  /** The echoed stored price, which may predate the bound. */
+  purchasePriceDzd: storedMoneyDzdSchema,
+  source: z.enum(["LAST_CHARGE", "PURCHASE_PRICE"]),
+});
+
 /** inventoryAssetDetailSchema - Asset detail schema. */
 export const inventoryAssetDetailSchema = z.object({
   asset: inventoryAssetUnitSchema,
   invoiceGroup: z.lazy(() => inventoryInvoiceGroupSchema),
   movements: z.array(inventoryMovementSchema),
+  charges: z.array(inventoryAssetChargeDetailSchema),
 });
 
 /** inventoryLocationContentsSchema - Location contents schema. */
@@ -109,8 +197,13 @@ export const inventoryEntrySchema = z.object({
   itemName: z.string().trim().min(1).max(160),
   unit: nullableTextSchema,
   quantity: z.number().positive(),
-  unitPriceDzd: z.number().nonnegative().nullable(),
-  totalPriceDzd: z.number().nonnegative(),
+  /**
+   * Line money is a STORED read shape: the write gate caps a new line at
+   * `MAX_MONEY_DZD`, but a row written before that gate existed must still
+   * read back (#413 round 3).
+   */
+  unitPriceDzd: storedMoneyDzdSchema.nullable(),
+  totalPriceDzd: storedMoneyDzdSchema,
   note: nullableTextSchema,
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
@@ -126,9 +219,18 @@ export const inventoryInvoiceGroupSchema = z.object({
   warehouseId: entityIdSchema.nullable(),
   projectId: entityIdSchema.nullable(),
   externalCounterpartyId: entityIdSchema.nullable(),
-  grossTotalDzd: z.number().nonnegative(),
-  paidAmountDzd: z.number().nonnegative(),
-  remainingDebtDzd: z.number().nonnegative(),
+  /**
+   * The invoice header totals are a PERSISTED read shape: the write gate and
+   * `InventoryService.accumulateGrossTotal` refuse to store a total above
+   * `MAX_MONEY_DZD` (#429), but an invoice created before that gate existed
+   * must still read back — unlike a sum computed fresh at read time
+   * (`inventoryProjectChargesSchema.totalDzd`, #422), refusing here would
+   * break the screen that merely displays the row. Same stored-read rule as
+   * the entry line money (#413 round 3).
+   */
+  grossTotalDzd: storedMoneyDzdSchema,
+  paidAmountDzd: storedMoneyDzdSchema,
+  remainingDebtDzd: storedMoneyDzdSchema,
   debtAccountId: entityIdSchema.nullable(),
   note: nullableTextSchema,
   createdAt: timestampSchema,
@@ -207,9 +309,17 @@ export const inventoryAssetUnitCreateInputSchema = z.object({
   serialNumber: z.string().trim().max(160).nullable().optional(),
   condition: inventoryAssetConditionSchema.nullable().optional(),
   purchaseDate: timestampSchema.nullable().optional(),
-  purchasePriceDzd: z.number().nonnegative(),
+  purchasePriceDzd: nonNegativePaymentAmountAtScaleSchema(2),
   note: z.string().trim().max(1000).nullable().optional(),
 });
+
+/** Positive inventory purchase quantity, exact to the existing six-place stock quantum. */
+export const inventoryQuantitySchema = z.number().positive().refine((quantity) => {
+  const [coefficient, exponentText] = String(quantity).toLowerCase().split("e");
+  const fractionDigits = coefficient?.split(".")[1]?.length ?? 0;
+  const exponent = exponentText === undefined ? 0 : Number(exponentText);
+  return Number.isFinite(exponent) && Math.max(0, fractionDigits - exponent) <= 6;
+}, { message: "Quantity permits at most 6 decimal places." });
 
 /** inventoryConsumableEntryCreateInputSchema - Consumable entry create input schema. */
 export const inventoryConsumableEntryCreateInputSchema = z.object({
@@ -217,9 +327,9 @@ export const inventoryConsumableEntryCreateInputSchema = z.object({
   itemDefinitionId: entityIdSchema,
   warehouseId: entityIdSchema.nullable().optional(),
   projectId: entityIdSchema.nullable().optional(),
-  quantity: z.number().positive(),
-  unitPriceDzd: z.number().nonnegative(),
-  totalPriceDzd: z.number().nonnegative(),
+  quantity: inventoryQuantitySchema,
+  unitPriceDzd: nonNegativeUnitPriceSchema,
+  totalPriceDzd: nonNegativePaymentAmountSchema,
   note: z.string().trim().max(1000).nullable().optional(),
 }).superRefine((input, ctx) => {
   if (input.warehouseId && input.projectId) {
@@ -257,7 +367,7 @@ export const inventoryInvoiceGroupCreateInputSchema = z.object({
   externalCounterpartyId: entityIdSchema.nullable().optional(),
   createDebt: z.boolean().optional(),
   paymentInputType: inventoryPaymentInputTypeSchema.optional(),
-  paidAmountDzd: z.number().nonnegative().nullable().optional(),
+  paidAmountDzd: nonNegativePaymentAmountAtScaleSchema(2).nullable().optional(),
   paidPercent: z.number().min(0).max(100).nullable().optional(),
   note: z.string().trim().max(1000).nullable().optional(),
   entries: z.array(inventoryInvoiceEntryCreateInputSchema).min(1),
@@ -292,6 +402,12 @@ export const inventoryAssetTransferInputSchema = z.object({
   assetUnitId: entityIdSchema,
   toWarehouseId: entityIdSchema.nullable().optional(),
   toProjectId: entityIdSchema.nullable().optional(),
+  /**
+   * Charge for a project placement. Omitted/null → the server resolves the
+   * default (last charge for the unit, else purchase price). An explicit `0`
+   * is a free placement. Ignored for warehouse destinations, which never charge.
+   */
+  chargeAmountDzd: nonNegativePaymentAmountSchema.nullable().optional(),
   note: z.string().trim().max(1000).nullable().optional(),
   occurredAt: timestampSchema.optional(),
 }).superRefine((input, ctx) => {
@@ -301,6 +417,34 @@ export const inventoryAssetTransferInputSchema = z.object({
   if (hasWarehouse === hasProject) {
     ctx.addIssue({ code: "custom", message: "اختر وجهة واحدة فقط للتحويل.", path: ["toWarehouseId"] })
   }
+});
+
+/** inventoryAssetChargeDefaultInputSchema - Resolve the prefill for a placement. */
+export const inventoryAssetChargeDefaultInputSchema = z.object({
+  assetUnitId: entityIdSchema,
+});
+
+/** inventoryAssetChargesListByUnitInputSchema - List a unit's charge chain. */
+export const inventoryAssetChargesListByUnitInputSchema = z.object({
+  assetUnitId: entityIdSchema,
+});
+
+/** inventoryAssetChargesListByProjectInputSchema - List a project's charges + total. */
+export const inventoryAssetChargesListByProjectInputSchema = z.object({
+  projectId: entityIdSchema,
+});
+
+/** inventoryAssetChargeUpdateInputSchema - Correct a past charge amount. */
+export const inventoryAssetChargeUpdateInputSchema = z.object({
+  chargeId: entityIdSchema,
+  amountDzd: nonNegativePaymentAmountSchema,
+  reason: z.string().trim().max(1000).nullable().optional(),
+});
+
+/** inventoryAssetChargeVoidInputSchema - Void a past charge (keeps history). */
+export const inventoryAssetChargeVoidInputSchema = z.object({
+  chargeId: entityIdSchema,
+  reason: z.string().trim().max(1000).nullable().optional(),
 });
 
 /** inventoryConsumableTransferInputSchema - Consumable transfer input schema. */
@@ -344,15 +488,27 @@ export const inventoryLocationContentsInputSchema = z.object({
 /** inventoryInvoiceGroupRecordPaymentInputSchema - Invoice group record payment input schema. */
 export const inventoryInvoiceGroupRecordPaymentInputSchema = z.object({
   invoiceGroupId: entityIdSchema,
-  amountDzd: z.number().positive(),
+  /**
+   * The last unbounded invoice money input (#475): a positive amount capped at
+   * the shared `MAX_MONEY_DZD`. A legacy invoice row above the bound (written
+   * before the #429 gate) would otherwise accept an over-bound payment.
+   */
+  amountDzd: paymentAmountSchema,
   note: z.string().trim().max(1000).nullable().optional(),
 });
 
 /** outboundTransferItemInputSchema - Outbound transfer item input schema. */
 export const outboundTransferItemInputSchema = z.object({
+  /**
+   * The picked item DEFINITION id (the catalog row), not an inventory entry id.
+   * The write path resolves it to the entry/balance rows that hold its stock at
+   * the transfer's source (#450).
+   */
   itemId: entityIdSchema,
+  /** Concrete balance/unit chosen in the source picker; separate from the definition id. */
+  optionId: entityIdSchema.optional(),
   quantity: z.number().positive(),
-  unitPriceDzd: z.number().nonnegative().optional(),
+  unitPriceDzd: nonNegativePaymentAmountSchema.optional(),
 });
 
 /** inventoryOutboundTransferCreateInputSchema - Outbound transfer create input schema. */
@@ -362,7 +518,19 @@ export const inventoryOutboundTransferCreateInputSchema = z.object({
   counterpartyId: entityIdSchema,
   transferType: z.enum(["SALE", "GIFT", "RETURN"]),
   items: z.array(outboundTransferItemInputSchema).min(1),
-  debtAmountDzd: z.number().nonnegative().optional(),
+  /**
+   * The FULL transfer value carried as the debt's OPENING balance. Any amount
+   * already collected at transfer time is passed separately as
+   * `firstPaymentAmountDzd` and posted as a real PAYMENT, so the running
+   * balance is the amount still on credit. Optional; omitted when nothing is
+   * on credit.
+   */
+  debtAmountDzd: nonNegativePaymentAmountSchema.optional(),
+  /**
+   * The portion paid at transfer time. Posted as a real `PAYMENT` entry so the
+   * ledger shows the first payment instead of dropping it (D8). Defaults to 0.
+   */
+  firstPaymentAmountDzd: nonNegativePaymentAmountSchema.optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
 });
 
@@ -393,6 +561,26 @@ export type InventoryConsumableBalance = z.infer<typeof inventoryConsumableBalan
 export type InventoryMovement = z.infer<typeof inventoryMovementSchema>;
 /** InventoryAssetDetail - Inventory asset detail. */
 export type InventoryAssetDetail = z.infer<typeof inventoryAssetDetailSchema>;
+/** InventoryAssetCharge - A charge for a unit's placement on a project. */
+export type InventoryAssetCharge = z.infer<typeof inventoryAssetChargeSchema>;
+/** InventoryAssetChargeRevision - A recorded correction/void of a charge. */
+export type InventoryAssetChargeRevision = z.infer<typeof inventoryAssetChargeRevisionSchema>;
+/** InventoryAssetChargeDetail - A charge plus its correction history. */
+export type InventoryAssetChargeDetail = z.infer<typeof inventoryAssetChargeDetailSchema>;
+/** InventoryProjectCharges - A project's live charges plus their total. */
+export type InventoryProjectCharges = z.infer<typeof inventoryProjectChargesSchema>;
+/** InventoryAssetChargeDefault - Resolved prefill for a new placement charge. */
+export type InventoryAssetChargeDefault = z.infer<typeof inventoryAssetChargeDefaultSchema>;
+/** InventoryAssetChargeDefaultInput - Input for the default resolution. */
+export type InventoryAssetChargeDefaultInput = z.infer<typeof inventoryAssetChargeDefaultInputSchema>;
+/** InventoryAssetChargesListByUnitInput - Input for listing a unit's charges. */
+export type InventoryAssetChargesListByUnitInput = z.infer<typeof inventoryAssetChargesListByUnitInputSchema>;
+/** InventoryAssetChargesListByProjectInput - Input for listing a project's charges. */
+export type InventoryAssetChargesListByProjectInput = z.infer<typeof inventoryAssetChargesListByProjectInputSchema>;
+/** InventoryAssetChargeUpdateInput - Input for correcting a charge amount. */
+export type InventoryAssetChargeUpdateInput = z.infer<typeof inventoryAssetChargeUpdateInputSchema>;
+/** InventoryAssetChargeVoidInput - Input for voiding a charge. */
+export type InventoryAssetChargeVoidInput = z.infer<typeof inventoryAssetChargeVoidInputSchema>;
 /** InventoryLocationContents - Inventory location contents. */
 export type InventoryLocationContents = z.infer<typeof inventoryLocationContentsSchema>;
 /** InventoryEntry - Inventory entry. */

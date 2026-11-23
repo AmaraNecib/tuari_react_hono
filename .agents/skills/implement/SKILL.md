@@ -1,15 +1,20 @@
 ---
 name: implement
-description: "Implement a piece of work based on a spec or set of tickets."
-disable-model-invocation: true
+description: "Implement a supplied spec at agreed interfaces with focused failing-first proof."
 ---
 
-Implement the work described by the user in the spec or tickets.
+# Implement
 
-Use /tdd where possible, at pre-agreed seams.
+Use `feature-implement` as the lifecycle and `tdd` at agreed interfaces.
+Implement one observable behavior at a time. Run affected tests and direct
+integration cases, with relevant lint/typecheck. Record selected scope and
+results locally through `guard`.
 
-Run typechecking regularly, single test files regularly, and the full test suite once at the end.
+Full suites, full browsers, production builds and audits are CI-final.
+Name a concrete uncertainty or CI gap before running one locally. A heavy slot
+schedules justified work; it does not broaden scope.
 
-Once done, use /code-review to review the work.
-
-Commit your work to the current branch.
+Commit complete reviewable scope before review. Keep source frozen while
+reviewers read. Commit corrections before refreshing affected proof.
+Workers return the verified SHA and local evidence path; they never publish
+or merge. Do not commit or post review reports.

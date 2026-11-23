@@ -19,7 +19,7 @@ function makeDebtsSummary(
       status: account.status,
       direction: "PAYABLE" as const,
       currentBalance: account.currentBalance,
-      balanceLabel: "علينا له" as const,
+      balanceLabel: "مستحق علينا" as const,
       createdAt: "2026-03-13T10:00:00.000Z",
       updatedAt: "2026-03-13T10:00:00.000Z",
     })),

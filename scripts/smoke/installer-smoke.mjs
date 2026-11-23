@@ -53,6 +53,8 @@ import os from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { assertSqlcipherPrebuildInSubprocess } from "./sqlcipher-prebuild-subprocess.mjs";
+import { resetOwnedExtraction } from "./reset-owned-extraction.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..", "..");
@@ -60,6 +62,7 @@ const TAURI_CONF_PATH = path.join(REPO_ROOT, "apps", "desktop", "src-tauri", "ta
 const RUST_LIB_PATH = path.join(REPO_ROOT, "apps", "desktop", "src-tauri", "src", "lib.rs");
 const BUNDLE_ROOT = path.join(REPO_ROOT, "apps", "desktop", "src-tauri", "target", "release", "bundle");
 const SIDECAR_PROBE_PS1 = path.join(SCRIPT_DIR, "windows-sidecar-probe.ps1");
+const ZIP_EXTRACTOR_PS1 = path.join(REPO_ROOT, "scripts", "extract-zip.ps1");
 
 const REQUIRED_TABLES = ["user", "session", "account", "app_bootstrap_state", "employee"];
 const EXTRACT_MARKER = ".tuari-smoke-extract";
@@ -353,13 +356,12 @@ function readApiPortFromRust() {
 function extractZip(zipPath, destination) {
   mkdirSync(destination, { recursive: true });
   if (process.platform === "win32") {
-    const script = `Expand-Archive -LiteralPath '${zipPath.replace(/'/g, "''")}' -DestinationPath '${destination.replace(/'/g, "''")}' -Force`;
     const result = spawnSync(
-      "powershell",
-      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
-      { encoding: "utf8" },
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ZIP_EXTRACTOR_PS1, zipPath, destination],
+      { encoding: "utf8", windowsHide: true },
     );
-    assert(result.status === 0, `Expand-Archive failed: ${result.stderr || result.status}`);
+    assert(result.status === 0, `ZIP extraction failed: ${result.stderr || result.error?.message || result.status}`);
     return;
   }
 
@@ -548,9 +550,7 @@ async function main() {
   if (resetReusedExtractDir) {
     // Every path below is joined onto extractDir, so nothing outside the
     // directory the operator named is ever touched.
-    for (const name of ["Tuari.exe", "bin", "data"]) {
-      rmSync(path.join(extractDir, name), { recursive: true, force: true });
-    }
+    resetOwnedExtraction(extractDir);
     console.log(`  [note] --force: reset the previous extraction in ${extractDir}`);
   }
 
@@ -602,23 +602,12 @@ async function main() {
   });
 
   check("bundled SQLite native binding is present", () => {
-    const candidates = [
-      path.join(sidecarDir, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node"),
-      path.join(
-        sidecarDir,
-        "node_modules",
-        "better-sqlite3-sqlcipher",
-        "build",
-        "Release",
-        "better_sqlite3.node",
-      ),
-    ];
-    const found = candidates.find((candidate) => existsSync(candidate));
-    assert(
-      found,
-      `no SQLite native binding in ${path.join(sidecarDir, "node_modules")}; the sidecar cannot open its database`,
+    const plain = path.join(sidecarDir, "node_modules", "better-sqlite3", "build", "Release", "better_sqlite3.node");
+    assert(existsSync(plain), `missing plain SQLite binding at ${plain}`);
+    const encrypted = assertSqlcipherPrebuildInSubprocess(
+      path.join(sidecarDir, "node_modules", "better-sqlite3-multiple-ciphers"),
     );
-    return describeFile(found);
+    return `${describeFile(plain)}; encrypted prebuild loaded: ${describeFile(encrypted)}`;
   });
 
   check("every tauri.conf.json bundle.resources entry is in the bundle", () => {
@@ -726,9 +715,11 @@ async function main() {
     sidecarPids.length > 0,
     sidecarPids.length > 0
       ? `pid(s) ${sidecarPids.join(", ")}`
-      : appExitCode !== null
-        ? `Tuari.exe exited with code ${appExitCode} before the sidecar appeared`
-        : `no node.exe running ${path.join(extractDir, "bin", "api-runtime", "dist", "index.cjs")} within ${options.timeoutMs} ms`,
+      : sidecarEnvError
+        ? `process probe failed: ${sidecarEnvError}`
+        : appExitCode !== null
+          ? `Tuari.exe exited with code ${appExitCode} before the sidecar appeared`
+          : `no matching node.exe running ${path.join(extractDir, "bin", "api-runtime", "dist", "index.cjs")} within ${options.timeoutMs} ms`,
   );
 
   if (sidecarPids.length > 0) {
@@ -783,7 +774,9 @@ async function main() {
       "sidecar env is observable",
       false,
       sidecarPids.length === 0
-        ? "the sidecar never started, so there is no environment block to read"
+        ? sidecarEnvError
+          ? `the process probe failed, so sidecar state is unknown: ${sidecarEnvError}`
+          : "no matching sidecar process was found, so there is no environment block to read"
         : `could not read the child environment block: ${sidecarEnvError}. This check needs a same-user, non-elevated process read (Windows) or /proc (POSIX).`,
     );
   }
@@ -848,7 +841,11 @@ async function main() {
       return `TUARI_LICENSE_STATUS=${status}, TUARI_LICENSE_EDITION=${edition}`;
     }
     if (sidecarPids.length === 0) {
-      throw new Error("the sidecar never started, so the license handoff never happened");
+      throw new Error(
+        sidecarEnvError
+          ? `the process probe failed, so license handoff state is unknown: ${sidecarEnvError}`
+          : "no matching sidecar process was found, so the license handoff could not be observed",
+      );
     }
     return "inferred trial (env not readable; fresh data dir, no license.lic, Rust maps Grace to \"trial\")";
   });

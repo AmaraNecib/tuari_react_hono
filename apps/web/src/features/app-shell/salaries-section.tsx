@@ -1,201 +1,111 @@
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 
-import { Button } from "@/components/ui/button"
 import { PageHeader } from "@/features/shared/page-primitives"
+import { NativeSelect } from "@/components/ui/form-controls"
+import { EmployeePayrollPanel } from "@/features/employees/employee-payroll-panel"
 import { RecordTabs } from "@/features/shared/record-page-frame"
-import { AddSalaryPaymentDialog } from "@/features/employees/add-salary-payment-dialog"
+import { EmployeeEarningsHistory } from "@/features/employees/employee-earnings-history"
 
-import {
-  AppShellActionGroup,
-  AppShellEmptyStateRow,
-  AppShellTableFrame,
-  AppShellTableHead,
-  AppShellTableHeaderCell,
-  AppShellTableRow,
-} from "@/features/shared/table-primitives"
+import { SalariedWorkersTable, type SalariedWorkerRow } from "./salaried-workers-table"
+import { patchSalariesSearch, type SalariesRouteSearch } from "./salaries-route-search"
+import type { SalaryRoutePagination } from "./salary-route-pagination"
 
-function getSalaryPeriodLabelKey(value: "DAILY" | "WEEKLY" | "MONTHLY" | null) {
-  if (value === "DAILY") return "detailPages.salary.daily"
-  if (value === "WEEKLY") return "detailPages.salary.weekly"
-  if (value === "MONTHLY") return "detailPages.salary.monthly"
-  return "detailPages.salary.notSpecified"
-}
+const DEFAULT_SEARCH: SalariesRouteSearch = { tab: "recent", page: 1, pageSize: 10 }
 
-function MoneyCell({ value, currencyLabel }: { value: number; currencyLabel: string }) {
-  return (
-    <span className="font-mono tabular-nums text-ink" dir="ltr">
-      {currencyLabel}{" "}
-      {new Intl.NumberFormat("en-US", { maximumFractionDigits: 0, useGrouping: true }).format(value)}
-    </span>
-  )
-}
-
-/** Salaries section with payment history and quick actions. */
-/**
- * @description Component
- */
+/** Salary tabs share route-backed pagination; each table keeps its own filters. */
 export function SalariesSection({
-  recentPayments,
   workers,
+  employees,
+  projects,
   onEditSalary,
+  onAddPayment = () => {},
+  routeSearch,
+  onRouteSearchChange,
 }: {
-  recentPayments: Array<{
-    id: string
-    employeeId: string
-    employeeName: string
-    employeePhone: string
-    employeeRole: string
-    paymentDate: string
-    expectedAmountDzd: number
-    actualAmountDzd: number
-    note: string | null
-  }>
-  workers: Array<{
-    employeeId: string
-    employeeName: string
-    employeePhone: string
-    employeeRole: string
-    salaryAmountDzd: number | null
-    salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | null
-    lastPaymentDate: string | null
-  }>
+  workers: SalariedWorkerRow[]
+  employees: Array<{ id: string; name: string }>
+  projects: Array<{ id: string; name: string }>
   onEditSalary: (employeeId: string) => void
+  onAddPayment?: (employeeId: string, employeeName: string) => void
+  routeSearch?: SalariesRouteSearch
+  onRouteSearchChange?: (patch: Partial<Pick<SalariesRouteSearch, "tab" | "page" | "pageSize">>) => void
 }) {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState("recent")
-  const [paymentTarget, setPaymentTarget] = useState<{ id: string; name: string } | null>(null)
-  const currencyLabel = t("detailPages.salary.currency")
-  const sortedWorkers = useMemo(
-    () => [...workers].sort((a, b) => a.employeeName.localeCompare(b.employeeName, "ar")),
-    [workers],
+  const [localSearch, setLocalSearch] = useState(DEFAULT_SEARCH)
+  const [payrollEmployeeId, setPayrollEmployeeId] = useState(() => workers[0]?.employeeId ?? "")
+  const rawSearch = routeSearch ?? localSearch
+  // Old recent-payment URLs now open the actual approved-earnings lifecycle.
+  const search = { ...rawSearch, tab: rawSearch.tab === "recent" ? "earnings" : rawSearch.tab }
+  const updateSearch = (patch: Partial<Pick<SalariesRouteSearch, "tab" | "page" | "pageSize">>) => {
+    if (onRouteSearchChange) {
+      onRouteSearchChange(patch)
+    } else {
+      setLocalSearch((previous) => patchSalariesSearch(previous, patch))
+    }
+  }
+  const resetPageForFilter = () => {
+    if (search.page !== 1) updateSearch({ page: 1 })
+  }
+  const routePagination: SalaryRoutePagination = {
+    page: search.page,
+    pageSize: search.pageSize,
+    onPageChange: (page) => updateSearch({ page }),
+    onPageSizeChange: (pageSize) => updateSearch({ page: 1, pageSize }),
+  }
+  const employeeNames = useMemo(
+    () => Object.fromEntries(employees.map((employee) => [employee.id, employee.name])),
+    [employees],
+  )
+  const projectNames = useMemo(
+    () => Object.fromEntries(projects.map((project) => [project.id, project.name])),
+    [projects],
   )
 
   return (
     <div className="space-y-6">
-      <AddSalaryPaymentDialog
-        employeeId={paymentTarget?.id ?? null}
-        employeeName={paymentTarget?.name}
-        open={paymentTarget !== null}
-        onOpenChange={(open) => { if (!open) setPaymentTarget(null) }}
-      />
-
       <PageHeader title={t("sections.salaries.label")} />
 
       <RecordTabs
-        activeTab={activeTab}
+        activeTab={search.tab}
         tabs={[
-          { id: "recent", label: t("salaries.recentTitle") },
           { id: "workers", label: t("salaries.workersTitle") },
+          { id: "earnings", label: t("earnings.historyTitle") },
         ]}
-        onChange={setActiveTab}
+        onChange={(tab) => updateSearch({ tab: tab as SalariesRouteSearch["tab"], page: 1 })}
       />
 
-      {activeTab === "recent" ? (
-        <AppShellTableFrame>
-          <table className="min-w-full">
-            <AppShellTableHead>
-              <tr>
-                <AppShellTableHeaderCell>{t("columns.name")}</AppShellTableHeaderCell>
-                <AppShellTableHeaderCell>{t("salaries.paymentDate")}</AppShellTableHeaderCell>
-                <AppShellTableHeaderCell>{t("salaries.expectedAmount")}</AppShellTableHeaderCell>
-                <AppShellTableHeaderCell>{t("salaries.actualAmount")}</AppShellTableHeaderCell>
-                <AppShellTableHeaderCell>{t("salaries.notes")}</AppShellTableHeaderCell>
-                <AppShellTableHeaderCell className="text-end">{t("common.actions")}</AppShellTableHeaderCell>
-              </tr>
-            </AppShellTableHead>
-            <tbody>
-              {recentPayments.length > 0 ? (
-                recentPayments.map((payment) => (
-                  <AppShellTableRow key={payment.id}>
-                    <td className="px-4 py-3 text-start">
-                      <p className="text-[13px] font-medium text-ink" dir="auto">{payment.employeeName}</p>
-                      <p className="text-[11px] text-ink-3" dir="auto">{payment.employeeRole}</p>
-                    </td>
-                    <td className="px-4 py-3 text-start text-[13px] text-ink-2">
-                      {new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}
-                    </td>
-                    <td className="px-4 py-3 text-start">
-                      <MoneyCell value={payment.expectedAmountDzd} currencyLabel={currencyLabel} />
-                    </td>
-                    <td className="px-4 py-3 text-start">
-                      <MoneyCell value={payment.actualAmountDzd} currencyLabel={currencyLabel} />
-                    </td>
-                    <td className="px-4 py-3 text-start text-[12.5px] text-ink-3">
-                      {payment.note ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-end">
-                      <AppShellActionGroup className="justify-end">
-                        <Button size="xs" onClick={() => setPaymentTarget({ id: payment.employeeId, name: payment.employeeName })}>
-                          {t("salaries.addPayment")}
-                        </Button>
-                        <Button size="xs" variant="outline" onClick={() => onEditSalary(payment.employeeId)}>
-                          {t("salaries.editSalary")}
-                        </Button>
-                      </AppShellActionGroup>
-                    </td>
-                  </AppShellTableRow>
-                ))
-              ) : (
-                <AppShellEmptyStateRow colSpan={6}>{t("salaries.recentEmpty")}</AppShellEmptyStateRow>
-              )}
-            </tbody>
-          </table>
-        </AppShellTableFrame>
-      ) : null}
+      <div hidden={search.tab !== "workers"}>
+        <SalariedWorkersTable
+          workers={workers}
+          projects={projects}
+          onAddPayment={onAddPayment}
+          onEditSalary={onEditSalary}
+          routePagination={search.tab === "workers" ? routePagination : undefined}
+          onFilterChange={resetPageForFilter}
+        />
+      </div>
 
-      {activeTab === "workers" ? (
-        <AppShellTableFrame>
-          <table className="min-w-full">
-            <AppShellTableHead>
-              <tr>
-                <AppShellTableHeaderCell>{t("columns.name")}</AppShellTableHeaderCell>
-                <AppShellTableHeaderCell>{t("salaries.currentSalary")}</AppShellTableHeaderCell>
-                <AppShellTableHeaderCell>{t("salaries.lastPaymentDate")}</AppShellTableHeaderCell>
-                <AppShellTableHeaderCell className="text-end">{t("common.actions")}</AppShellTableHeaderCell>
-              </tr>
-            </AppShellTableHead>
-            <tbody>
-              {sortedWorkers.length > 0 ? (
-                sortedWorkers.map((worker) => (
-                  <AppShellTableRow key={worker.employeeId}>
-                    <td className="px-4 py-3 text-start">
-                      <p className="text-[13px] font-medium text-ink" dir="auto">{worker.employeeName}</p>
-                      <p className="text-[11px] text-ink-3" dir="auto">{worker.employeeRole}</p>
-                    </td>
-                    <td className="px-4 py-3 text-start">
-                      {worker.salaryAmountDzd !== null ? (
-                        <span className="inline-flex items-baseline gap-1.5">
-                          <MoneyCell value={worker.salaryAmountDzd} currencyLabel={currencyLabel} />
-                          <span className="text-[11px] text-ink-3">/ {t(getSalaryPeriodLabelKey(worker.salaryPeriod))}</span>
-                        </span>
-                      ) : (
-                        <span className="text-[12.5px] text-ink-4">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-start text-[13px] text-ink-3">
-                      {worker.lastPaymentDate
-                        ? new Intl.DateTimeFormat("ar-DZ").format(new Date(worker.lastPaymentDate))
-                        : <span className="text-ink-4">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-end">
-                      <AppShellActionGroup className="justify-end">
-                        <Button size="xs" onClick={() => setPaymentTarget({ id: worker.employeeId, name: worker.employeeName })}>
-                          {t("salaries.addPayment")}
-                        </Button>
-                        <Button size="xs" variant="outline" onClick={() => onEditSalary(worker.employeeId)}>
-                          {t("salaries.editSalary")}
-                        </Button>
-                      </AppShellActionGroup>
-                    </td>
-                  </AppShellTableRow>
-                ))
-              ) : (
-                <AppShellEmptyStateRow colSpan={4}>{t("salaries.workersEmpty")}</AppShellEmptyStateRow>
-              )}
-            </tbody>
-          </table>
-        </AppShellTableFrame>
+      {search.tab === "earnings" ? (
+        <div className="space-y-6">
+          <EmployeeEarningsHistory
+            employeeNames={employeeNames}
+            projectNames={projectNames}
+            routePagination={routePagination}
+          />
+          {workers.length ? (
+            <section className="space-y-4 border-t border-border/60 pt-5" aria-labelledby="salary-payroll-heading">
+              <h2 id="salary-payroll-heading" className="text-lg font-semibold">{t("payroll.salarySurfaceTitle")}</h2>
+              <label className="block max-w-md space-y-1 text-sm">
+                <span>{t("payroll.employee")}</span>
+                <NativeSelect aria-label={t("payroll.employee")} value={workers.some(worker => worker.employeeId === payrollEmployeeId) ? payrollEmployeeId : workers[0]!.employeeId} onChange={event => setPayrollEmployeeId(event.target.value)}>
+                  {workers.map(worker => <option key={worker.employeeId} value={worker.employeeId}>{worker.employeeName}</option>)}
+                </NativeSelect>
+              </label>
+              <EmployeePayrollPanel employeeId={workers.some(worker => worker.employeeId === payrollEmployeeId) ? payrollEmployeeId : workers[0]!.employeeId} />
+            </section>
+          ) : null}
+        </div>
       ) : null}
     </div>
   )

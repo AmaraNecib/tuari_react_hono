@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { getAlgeriaTimeZone } from "@/lib/algeria-time"
+import { AppDate } from "@/components/app-date";
 import { useTranslation } from "react-i18next";
 import { systemLogActionTypeSchema, systemLogEntityTypeSchema } from "@tuari/contracts";
 import { useSystemLogQuery } from "@/features/app-shell/workspace-queries";
@@ -8,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
-import { AppShellFilterShell, DateRangeFilter, usePaginatedRows } from "@/features/shared/table-primitives";
+import { AppShellFilterShell, DateRangeFilter, TableQueryState, usePaginatedRows } from "@/features/shared/table-primitives";
 import { TablePaginationControls } from "@/features/shared/table-pagination-controls";
 
 
@@ -37,11 +39,12 @@ export function AuditLogPage() {
   const filters = {
     ...(domain !== "ALL" ? { entityType: domain } : {}),
     ...(action !== "ALL" ? { actionType: action } : {}),
-    ...(startDate ? { fromDate: startDate.split("/").reverse().join("-") } : {}),
-    ...(endDate ? { toDate: endDate.split("/").reverse().join("-") } : {}),
+    ...(startDate ? { fromDate: startDate } : {}),
+    ...(endDate ? { toDate: endDate } : {}),
   };
-  const { data: apiResponse, isLoading, error } = useSystemLogQuery({ filters });
+  const logsQuery = useSystemLogQuery({ filters });
 
+  const apiResponse = logsQuery.data;
   const logs = useMemo(() => {
     if (!apiResponse) return [];
 
@@ -82,7 +85,7 @@ export function AuditLogPage() {
   const handleExportCSV = () => {
     const headers = ["التاريخ", "المستخدم", "النطاق", "الإجراء", "معرف المورد", "التغييرات"];
     const rows = filteredLogs.map((log: AuditLog) => [
-      new Date(log.timestamp).toLocaleString("ar-DZ"),
+      new Date(log.timestamp).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() }),
       log.actor,
       getEntityTypeLabel(t, log.domain),
       getActionTypeLabel(t, log.action),
@@ -127,9 +130,7 @@ export function AuditLogPage() {
             <span className="text-sm font-medium text-foreground">{t("auditLog.domain")}</span>
             <NativeSelect value={domain} onChange={(e) => setDomain(e.target.value === "ALL" ? "ALL" : systemLogEntityTypeSchema.parse(e.target.value))}>
               <option value="ALL">{t("common.all")}</option>
-              {systemLogEntityTypeSchema.options.map((value) => (
-                <option key={value} value={value}>{getEntityTypeLabel(t, value)}</option>
-              ))}
+              {systemLogEntityTypeSchema.options.map((value) => <option key={value} value={value}>{getEntityTypeLabel(t, value)}</option>)}
             </NativeSelect>
           </label>
 
@@ -137,9 +138,7 @@ export function AuditLogPage() {
             <span className="text-sm font-medium text-foreground">{t("auditLog.action")}</span>
             <NativeSelect value={action} onChange={(e) => setAction(e.target.value === "ALL" ? "ALL" : systemLogActionTypeSchema.parse(e.target.value))}>
               <option value="ALL">{t("common.all")}</option>
-              {systemLogActionTypeSchema.options.map((value) => (
-                <option key={value} value={value}>{getActionTypeLabel(t, value)}</option>
-              ))}
+              {systemLogActionTypeSchema.options.map((value) => <option key={value} value={value}>{getActionTypeLabel(t, value)}</option>)}
             </NativeSelect>
           </label>
 
@@ -153,64 +152,55 @@ export function AuditLogPage() {
           />
         </AppShellFilterShell>
 
-        {isLoading && (
-          <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
-            <p className="text-muted-foreground">{t("systemLog.loading", "جاري تحميل السجل...")}</p>
-          </div>
-        )}
 
-        {error && (
-          <div className="rounded-lg border border-destructive/60 bg-destructive/10 p-4 text-sm text-destructive">
-            {t("auditLog.loadError")} {error instanceof Error ? error.message : t("common.error")}
-          </div>
-        )}
-
-        {!isLoading && !error && filteredLogs.length === 0 ? (
-          <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
-            <p className="text-muted-foreground">{t("auditLog.noResults")}</p>
-          </div>
-        ) : (!isLoading && !error) && (
-          <div className="space-y-3">
-            {pagedLogs.map((log: unknown) => {
-              const auditLog = log as AuditLog;
-              return (
-                <div key={auditLog.id} className="rounded-lg border border-border/60 bg-surface p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 space-y-2">
-                      <div className="flex flex-wrap gap-2">
-                        <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
-                          {getEntityTypeLabel(t, auditLog.domain)}
-                        </span>
-                        <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
-                          {getActionTypeLabel(t, auditLog.action)}
-                        </span>
-                      </div>
-                      <div className="text-sm font-medium">{auditLog.changes}</div>
-                      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                        <span>{auditLog.actor}</span>
-                        <span>{auditLog.resourceId}</span>
-                        <span>{new Date(auditLog.timestamp).toLocaleString("ar-DZ")}</span>
+        <TableQueryState query={logsQuery} resource={t("systemLog.title")}>
+          {filteredLogs.length === 0 ? (
+            <div className="rounded-lg border border-border/60 bg-surface p-8 text-center">
+              <p className="text-muted-foreground">{t("auditLog.noResults")}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pagedLogs.map((log: unknown) => {
+                const auditLog = log as AuditLog;
+                return (
+                  <div key={auditLog.id} className="rounded-lg border border-border/60 bg-surface p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 space-y-2">
+                        <div className="flex flex-wrap gap-2">
+                          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
+                            {getEntityTypeLabel(t, auditLog.domain)}
+                          </span>
+                          <span className="inline-block rounded bg-muted px-2 py-1 text-xs font-medium">
+                            {getActionTypeLabel(t, auditLog.action)}
+                          </span>
+                        </div>
+                        <div className="text-sm font-medium">{auditLog.changes}</div>
+                        <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                          <span>{auditLog.actor}</span>
+                          <span>{auditLog.resourceId}</span>
+                          <span>{<AppDate value={auditLog.timestamp} includeTime timeStyle="medium" />}</span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          )}
 
-        {filteredLogs.length > pageSize && (
-          <TablePaginationControls
-            page={page}
-            pageSize={pageSize}
-            totalCount={filteredLogs.length}
-            onPageChange={setPage}
-            onPageSizeChange={(nextPageSize: number) => {
-              setPage(1);
-              setPageSize(nextPageSize);
-            }}
-          />
-        )}
+          {filteredLogs.length > pageSize && (
+            <TablePaginationControls
+              page={page}
+              pageSize={pageSize}
+              totalCount={filteredLogs.length}
+              onPageChange={setPage}
+              onPageSizeChange={(nextPageSize: number) => {
+                setPage(1);
+                setPageSize(nextPageSize);
+              }}
+            />
+          )}
+        </TableQueryState>
       </PageSurfaceContent>
     </Surface>
   );

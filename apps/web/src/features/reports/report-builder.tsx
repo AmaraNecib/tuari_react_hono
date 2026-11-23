@@ -1,8 +1,12 @@
 /**
  * Report builder component for creating custom reports.
  */
+import { CurrencyRun } from "@/features/shared/money-value"
+import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { useState } from "react";
+import { AppDate } from "@/components/app-date";
 import { useTranslation } from "react-i18next";
+import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/form-controls";
 import { PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives";
@@ -58,7 +62,7 @@ export function ReportBuilder() {
       <PageSurfaceContent>
         <PageHeader
           title="تقارير مالية"
-          description="إنشاء تقارير شاملة عن المخزون والديون والحركات"
+          description="تقارير إدخالات الشراء والديون والحركات، وليست رصيد المخزون الحالي"
         />
 
         {/* Report Generator Controls */}
@@ -89,7 +93,7 @@ export function ReportBuilder() {
         </div>
 
         {error && (
-          <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+          <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
             خطأ في إنشاء التقرير: {error.message}
           </div>
         )}
@@ -103,7 +107,7 @@ export function ReportBuilder() {
                   {reportType === "INVENTORY" ? "تقرير المخزون" : reportType === "DEBT" ? "تقرير الديون" : "تقرير الحركات"}
                 </h3>
                 <p className="text-sm text-muted-foreground">
-                  {t("reports.generatedAt")} {new Date(data.generatedAt).toLocaleString("ar-DZ")}
+                  {t("reports.generatedAt")} {<AppDate value={data.generatedAt} includeTime timeStyle="medium" />}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={handleDownloadCSV}>
@@ -115,16 +119,16 @@ export function ReportBuilder() {
             {reportType === "INVENTORY" && data.type === "INVENTORY" && (
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">إجمالي الأصول</p>
-                  <p className="text-2xl font-bold">{data.summary.totalAssetsDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-sm text-muted-foreground">الأصول المسجلة حسب إدخالات الشراء</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalAssetsDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">إجمالي المستهلكات</p>
-                  <p className="text-2xl font-bold">{data.summary.totalConsumablesDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-sm text-muted-foreground">المستهلكات حسب إدخالات الشراء</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalConsumablesDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">القيمة الإجمالية</p>
-                  <p className="text-2xl font-bold">{data.summary.totalValueDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalValueDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
                 </div>
               </div>
             )}
@@ -133,15 +137,16 @@ export function ReportBuilder() {
               <div className="grid gap-4 md:grid-cols-4">
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المتبقية</p>
-                  <p className="text-2xl font-bold">{data.summary.totalOutstandingDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalOutstandingDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المسددة</p>
-                  <p className="text-2xl font-bold">{data.summary.totalSettledDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalSettledDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
+                  <p className="text-xs font-medium text-muted-foreground">{DEBT_BALANCE_STATE_PHRASE.settled}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">الديون المتأخرة</p>
-                  <p className="text-2xl font-bold">{data.summary.overdueDzd.toLocaleString("ar-DZ")} د.ج</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.overdueDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
                   <p className="text-sm text-muted-foreground">عدد الأطراف</p>
@@ -165,10 +170,23 @@ export function ReportBuilder() {
                   <p className="text-2xl font-bold">{data.summary.consumableTransfers}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">المبيعات الخارجية</p>
+                  <p className="text-sm text-muted-foreground">عدد الحركات ذات النوع OUTBOUND_SALE (يشمل البيع والإرجاع والهدايا)</p>
                   <p className="text-2xl font-bold">{data.summary.outboundSales}</p>
                 </div>
               </div>
+            )}
+            {data.type === "MOVEMENT" && (
+              <section aria-label="مستندات الصادر حسب النوع" className="space-y-2">
+                <h4 className="font-semibold">مستندات الصادر حسب النوع</h4>
+                <dl className="flex flex-wrap gap-4">
+                  {data.outboundDocuments.map((row) => (
+                    <div key={row.transferType}>
+                      <dt><bdi dir="ltr">{row.transferType}</bdi></dt>
+                      <dd>{row.count}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
             )}
           </div>
         )}

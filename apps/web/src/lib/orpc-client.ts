@@ -1,7 +1,7 @@
 import { createORPCClient, onError } from "@orpc/client"
 import { RPCLink } from "@orpc/client/fetch"
 import { createTanstackQueryUtils } from "@orpc/tanstack-query"
-import type { AppClient } from "@tuari/contracts"
+import type { AppClient, FinancialClient } from "@tuari/contracts"
 
 import { desktopApiFetch } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
@@ -37,5 +37,18 @@ export const rpcLink = new RPCLink({
 })
 
 export const rpcClient: AppClient = createORPCClient(rpcLink)
+// Financial routes are mounted by the parent integration lane; bind their exact
+// contract to the existing authenticated transport without widening AppClient.
+const financialProxy = createORPCClient<{ financial: FinancialClient }>(rpcLink).financial
+// ORPC creates a new proxy on every property read. Bind namespaces once because
+// exact-commerce cache scopes and pending requests use client object identity.
+export const financialClient: FinancialClient = {
+  metadata: financialProxy.metadata,
+  debts: financialProxy.debts,
+  invoices: financialProxy.invoices,
+  inventory: financialProxy.inventory,
+  expenses: financialProxy.expenses,
+  reports: financialProxy.reports,
+}
 /** Configured oRPC client for API calls. */
 export const orpc = createTanstackQueryUtils(rpcClient)

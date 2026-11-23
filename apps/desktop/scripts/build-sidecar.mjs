@@ -1,8 +1,9 @@
-import { copyFileSync, existsSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { copyValidatedTree, runPnpmCommand } from "./script-security-utils.mjs";
+import { assertSqlcipherPrebuild, copyValidatedTree, runPnpmCommand } from "./script-security-utils.mjs";
+import { buildProbeAndPublishRuntime } from "./runtime-staging.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,8 +11,9 @@ const workspaceRoot = path.resolve(__dirname, "..", "..", "..");
 const apiRoot = path.resolve(workspaceRoot, "apps", "api");
 const desktopRoot = path.resolve(__dirname, "..");
 const binDir = path.resolve(desktopRoot, "src-tauri", "bin");
-const runtimeDir = path.resolve(binDir, "api-runtime");
-const nodeBinaryOutput = path.resolve(binDir, "node.exe");
+const stagingDir = path.resolve(desktopRoot, "src-tauri", `.bin-staging-${process.pid}-${Date.now()}`);
+const runtimeDir = path.resolve(stagingDir, "api-runtime");
+const nodeBinaryOutput = path.resolve(stagingDir, "node.exe");
 const apiDistDir = path.resolve(apiRoot, "dist");
 
 const findPackageRoot = (resolvedPath) => {
@@ -55,73 +57,50 @@ const ensureBetterSqliteBinary = () => {
 };
 
 const ensureSqlcipherBinary = () => {
-  try {
-    const sqlcipherDir = resolvePackageDir("better-sqlite3-sqlcipher");
-    const binaryPath = path.join(sqlcipherDir, "build", "Release", "better_sqlite3.node");
-
-    if (existsSync(binaryPath)) {
-      console.log("better-sqlite3-sqlcipher native binary found.");
-      return true;
-    }
-
-    // Binary not found — try to build it
-    console.log("Building better-sqlite3-sqlcipher native binary...");
-    runPnpmCommand(["rebuild", "better-sqlite3-sqlcipher"], { cwd: apiRoot });
-
-    if (existsSync(binaryPath)) {
-      console.log("better-sqlite3-sqlcipher built successfully.");
-      return true;
-    }
-
-    console.warn("Warning: Could not build better-sqlite3-sqlcipher. Falling back to better-sqlite3.");
-    return false;
-  } catch (error) {
-    console.warn(`Warning: better-sqlite3-sqlcipher not available: ${error.message}`);
-    console.warn("Falling back to better-sqlite3 (no encryption support).");
-    return false;
-  }
+  const sqlcipherDir = resolvePackageDir("better-sqlite3-multiple-ciphers");
+  const binaryPath = assertSqlcipherPrebuild(sqlcipherDir);
+  console.log(`Encrypted SQLite prebuild loaded: ${binaryPath}`);
 };
 
-rmSync(runtimeDir, { recursive: true, force: true });
-rmSync(nodeBinaryOutput, { force: true });
+buildProbeAndPublishRuntime({
+  stagingDir,
+  destinationDir: binDir,
+  build: () => {
+    mkdirSync(runtimeDir, { recursive: true });
+    console.log("Building bundled API runtime in an isolated staging tree...");
+    runPnpmCommand(["--filter", "@tuari/api", "build"], {
+      cwd: workspaceRoot,
+    });
 
-console.log("Building bundled API runtime...");
-runPnpmCommand(["--filter", "@tuari/api", "build"], {
-  cwd: workspaceRoot,
+    ensureBetterSqliteBinary();
+    ensureSqlcipherBinary();
+    copyValidatedTree(apiDistDir, path.resolve(runtimeDir, "dist"));
+
+    // The factory uses the plain driver without a key and the encrypted driver with one.
+    copyPackage("better-sqlite3-multiple-ciphers");
+    const betterSqlite3PackageJson = copyPackage("better-sqlite3");
+    const bindingsPackageJson = copyPackage("bindings", betterSqlite3PackageJson);
+    copyPackage("file-uri-to-path", bindingsPackageJson);
+
+    writeFileSync(
+      path.resolve(runtimeDir, "package.json"),
+      JSON.stringify(
+        {
+          name: "tuari-api-runtime",
+          private: true,
+        },
+        null,
+        2,
+      ),
+    );
+    copyFileSync(process.execPath, nodeBinaryOutput);
+  },
+  probe: () => {
+    // Verify the staged package before acquiring the publication lock. The
+    // helper holds the lock across recovery, swap, rollback and cleanup.
+    assertSqlcipherPrebuild(path.join(runtimeDir, "node_modules", "better-sqlite3-multiple-ciphers"));
+  },
 });
 
-ensureBetterSqliteBinary();
-const hasSqlcipher = ensureSqlcipherBinary();
-
-copyValidatedTree(apiDistDir, path.resolve(runtimeDir, "dist"));
-
-// Copy the SQLite library: prefer sqlcipher if available, otherwise plain better-sqlite3
-if (hasSqlcipher) {
-  const sqlcipherDir = resolvePackageDir("better-sqlite3-sqlcipher");
-  const targetDir = path.resolve(runtimeDir, "node_modules", "better-sqlite3-sqlcipher");
-  mkdirSync(path.dirname(targetDir), { recursive: true });
-  copyValidatedTree(sqlcipherDir, targetDir);
-  console.log("Copied better-sqlite3-sqlcipher to runtime.");
-} else {
-  const betterSqlite3PackageJson = copyPackage("better-sqlite3");
-  const bindingsPackageJson = copyPackage("bindings", betterSqlite3PackageJson);
-  copyPackage("file-uri-to-path", bindingsPackageJson);
-  console.log("Copied better-sqlite3 to runtime (no encryption).");
-}
-
-writeFileSync(
-  path.resolve(runtimeDir, "package.json"),
-  JSON.stringify(
-    {
-      name: "tuari-api-runtime",
-      private: true,
-    },
-    null,
-    2,
-  ),
-);
-
-copyFileSync(process.execPath, nodeBinaryOutput);
-
-console.log(`Local API runtime ready at ${runtimeDir}`);
-console.log(`Bundled Node runtime ready at ${nodeBinaryOutput}`);
+console.log(`Local API runtime ready at ${path.resolve(binDir, "api-runtime")}`);
+console.log(`Bundled Node runtime ready at ${path.resolve(binDir, "node.exe")}`);

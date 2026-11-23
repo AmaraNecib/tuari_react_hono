@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 /**
@@ -11,6 +12,9 @@ export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   image: text("image"),
+  // Compatibility identifiers only: .invalid cannot receive mail.
+  email: text("email").notNull().unique().default(sql`(lower(hex(randomblob(16))) || '@users.invalid')`),
+  emailVerified: integer("emailVerified", { mode: "boolean" }).notNull().default(false),
   phoneNumber: text("phoneNumber").notNull().unique(),
   phoneNumberVerified: integer("phoneNumberVerified", { mode: "number" })
     .notNull()

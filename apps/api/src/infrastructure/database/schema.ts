@@ -1,3 +1,4 @@
+import { assertLegacyMoneySchema, assertWorkforcePhysicalSchema } from "./money-schema-gate";
 import {
   actorLabelBackfillMigrationKey,
   additiveStatements,
@@ -7,6 +8,7 @@ import {
   companyStatusConstraintChecks,
   debtAccountBalanceRenameMigrationKey,
   debtAccountDirectionMigrationKey,
+  debtAccountWorkerDirectionMigrationKey,
   debtEntryReasonCategoryMigrationKey,
   debtSingleAccountMigrationKey,
   invoiceDebtLinkageMigrationKey,
@@ -62,6 +64,29 @@ async function hasStatusCheckConstraints(db: DbExecutor) {
   );
 
   return tableSql.every((entry) => entry.hasFragment);
+}
+
+/** Add Better Auth compatibility fields without collecting an email address. */
+async function ensurePhoneOnlyAuthFields(db: DbExecutor) {
+  if (!(await hasColumn(db, "user", "email"))) {
+    await db.$executeRawUnsafe('ALTER TABLE "user" ADD COLUMN "email" TEXT');
+  }
+  if (!(await hasColumn(db, "user", "emailVerified"))) {
+    await db.$executeRawUnsafe('ALTER TABLE "user" ADD COLUMN "emailVerified" INTEGER NOT NULL DEFAULT 0');
+  }
+  await db.$executeRawUnsafe(
+    `UPDATE "user" SET "email" = lower(hex(randomblob(16))) || '@users.invalid', "emailVerified" = 0 WHERE "email" IS NULL OR "email" = ''`,
+  );
+  await db.$executeRawUnsafe('CREATE UNIQUE INDEX IF NOT EXISTS "user_email_key" ON "user" ("email")');
+  // SQLite cannot add a nonconstant DEFAULT with ALTER TABLE. Existing tables
+  // get the same generated value after inserts; fresh tables use their default.
+  await db.$executeRawUnsafe(
+    `CREATE TRIGGER IF NOT EXISTS "user_internal_email_insert" AFTER INSERT ON "user"
+      WHEN NEW."email" IS NULL OR NEW."email" = ''
+      BEGIN
+        UPDATE "user" SET "email" = lower(hex(randomblob(16))) || '@users.invalid', "emailVerified" = 0 WHERE "id" = NEW."id";
+      END`,
+  );
 }
 
 /** Migrate legacy camelCase timestamp columns to snake_case. */
@@ -344,8 +369,8 @@ async function runStatusConstraintMigrations(db: DbExecutor) {
           "user_id" TEXT,
           "role_id" TEXT NOT NULL,
           "status" TEXT NOT NULL CHECK ("status" IN ('ACTIVE', 'INACTIVE', 'LEFT')),
-          "salary_amount_dzd" REAL,
-          "salary_period" TEXT,
+          "salary_reference_period" TEXT,
+          "salary_reference_amount" TEXT,
           "notes" TEXT,
           "occupation" TEXT,
           "created_at" DATETIME NOT NULL,
@@ -447,7 +472,7 @@ async function runStatusConstraintMigrations(db: DbExecutor) {
       );
 
       await tx.$executeRawUnsafe(
-        `INSERT INTO "employee_checked" ("id", "first_name", "last_name", "phone", "user_id", "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "occupation", "created_at", "updated_at") SELECT "id", "first_name", "last_name", "phone", ${hasEmployeeUserIdColumn ? '"user_id"' : "NULL"}, "role_id", "status", "salary_amount_dzd", "salary_period", "notes", "occupation", "created_at", "updated_at" FROM "employee"`,
+        `INSERT INTO "employee_checked" ("id", "first_name", "last_name", "phone", "user_id", "role_id", "status", "salary_reference_period", "salary_reference_amount", "notes", "occupation", "created_at", "updated_at") SELECT "id", "first_name", "last_name", "phone", ${hasEmployeeUserIdColumn ? '"user_id"' : "NULL"}, "role_id", "status", "salary_reference_period", "salary_reference_amount", "notes", "occupation", "created_at", "updated_at" FROM "employee"`,
       );
       await tx.$executeRawUnsafe(
         'INSERT INTO "project_checked" ("id", "name", "location", "manager_id", "status", "notes", "created_at", "updated_at") SELECT "id", "name", "location", "manager_id", "status", "notes", "created_at", "updated_at" FROM "project"',
@@ -1365,6 +1390,48 @@ async function runDebtAccountDirectionMigration(db: DbExecutor) {
   await applyDebtAccountDirectionMigration(db);
 }
 
+// D3: a worker gets one ledger per direction. An advance is a worker
+// receivable (D1a), so the legacy single-column `debt_account_worker_unique`
+// index must become the composite `(worker_id, direction)` index, mirroring
+// `debt_account_external_counterparty_direction_unique`.
+//
+// Idempotent:
+//   - skips if `app_schema_state` already has the migration key
+//   - drops the legacy single-column index `IF EXISTS`
+//   - creates the composite index `IF NOT EXISTS`
+//   - wraps all DDL + the state insert in a transaction
+export async function applyDebtAccountWorkerDirectionMigration(db: DbExecutor): Promise<void> {
+  const [migrationRow] = await db.$queryRawUnsafe<Array<{ key: string }>>(
+    'SELECT "key" FROM "app_schema_state" WHERE "key" = ? LIMIT 1',
+    debtAccountWorkerDirectionMigrationKey,
+  );
+
+  if (migrationRow) {
+    return;
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(
+      'DROP INDEX IF EXISTS "debt_account_worker_unique"',
+    );
+
+    await tx.$executeRawUnsafe(
+      'CREATE UNIQUE INDEX IF NOT EXISTS "debt_account_worker_direction_unique" ON "debt_account" ("worker_id", "direction") WHERE "worker_id" IS NOT NULL',
+    );
+
+    await tx.$executeRawUnsafe(
+      'INSERT INTO "app_schema_state" ("key", "executed_at") VALUES (?, ?)',
+      debtAccountWorkerDirectionMigrationKey,
+      new Date().toISOString(),
+    );
+  });
+}
+
+ /** Swap the worker unique index for the (worker_id, direction) composite. */
+async function runDebtAccountWorkerDirectionMigration(db: DbExecutor) {
+  await applyDebtAccountWorkerDirectionMigration(db);
+}
+
 // Issue #335: payment_allocation.payment_id FK must be ON DELETE RESTRICT so a
 // raw DELETE FROM "payment" on an allocated payment fails loudly instead of
 // silently cascade-deleting allocations (invoice stays PAID, debt entry stays
@@ -1645,7 +1712,18 @@ export async function applyEmployeeUserLinkMigration(db: DbExecutor): Promise<vo
   });
 }
 
+/** Finalize fresh identity tables without running legacy financial migrations. */
+export async function ensureFreshApplicationIdentity(db: DbExecutor): Promise<void> {
+  await db.$transaction(async tx => {
+    await ensurePhoneOnlyAuthFields(tx);
+    await applyEmployeeUserLinkMigration(tx);
+    await ensureSeedRoles(tx);
+    await ensureSeedRolePermissions(tx);
+  });
+}
+
 export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
+  await assertLegacyMoneySchema(db);
   await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");
 
   for (const statement of schemaStatements) {
@@ -1681,8 +1759,10 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   await runDebtEntryConstraintsMigration(db);
   await runDebtAccountBalanceRenameMigration(db);
   await runDebtAccountDirectionMigration(db);
+  await runDebtAccountWorkerDirectionMigration(db);
   await runPaymentAllocationRestrictMigration(db);
 
+  await ensurePhoneOnlyAuthFields(db);
   await syncLegacyTimestampColumns(db);
   await repairLegacyAuthTables(db);
 
@@ -1692,4 +1772,14 @@ export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   // Run AFTER seeding so the new `manager` role is guaranteed to exist
   // before legacy roles are removed.
   await runRbacThreeRoleMigration(db);
+
+  // The workforce marker is the compatibility tripwire understood by the
+  // original startup guard. Check physical columns before writing it, then
+  // validate the complete marked state inside the marker transaction.
+  await assertWorkforcePhysicalSchema(db);
+  await db.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe("CREATE TABLE IF NOT EXISTS exact_money_schema(slice TEXT PRIMARY KEY, version INTEGER NOT NULL)");
+    await tx.$executeRawUnsafe("INSERT OR IGNORE INTO exact_money_schema(slice, version) VALUES ('workforce', 1)");
+    await assertLegacyMoneySchema(tx);
+  });
 }

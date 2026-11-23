@@ -20,7 +20,7 @@ import {
 describe("cursor module", () => {
   describe("encodeCursor / decodeCursor", () => {
     it("round-trips a simple cursor", () => {
-      const original: Cursor = { createdAt: "2024-01-15T10:00:00.000Z", id: "abc-123" }
+      const original: Cursor = { sortKey: "2024-01-15T10:00:00.000Z", id: "abc-123" }
 
       const encoded = encodeCursor(original)
       const decoded = decodeCursor(encoded)
@@ -29,7 +29,7 @@ describe("cursor module", () => {
     })
 
     it("produces an opaque string (no raw field values visible)", () => {
-      const cursor: Cursor = { createdAt: "2024-01-15T10:00:00.000Z", id: "secret-id-123" }
+      const cursor: Cursor = { sortKey: "2024-01-15T10:00:00.000Z", id: "secret-id-123" }
 
       const encoded = encodeCursor(cursor)
 
@@ -44,12 +44,24 @@ describe("cursor module", () => {
     })
 
     it("encodes unicode characters correctly", () => {
-      const cursor: Cursor = { createdAt: "2024-01-15T10:00:00.000Z", id: "id-with-émojis-🎉" }
+      const cursor: Cursor = { sortKey: "2024-01-15T10:00:00.000Z", id: "id-with-émojis-🎉" }
 
       const encoded = encodeCursor(cursor)
       const decoded = decodeCursor(encoded)
 
       expect(decoded).toEqual(cursor)
+    })
+
+    it("round-trips an optional scope fingerprint", () => {
+      const cursor: Cursor = { sortKey: "إسمنت", id: "abc", scope: "STOCK_REFERENCE::" }
+      expect(decodeCursor(encodeCursor(cursor))).toEqual(cursor)
+    })
+
+    it("rejects a non-string scope", () => {
+      const token = Buffer.from(
+        JSON.stringify({ sortKey: "a", id: "b", scope: 1 }),
+      ).toString("base64url")
+      expect(() => decodeCursor(token)).toThrow()
     })
 
     it("throws on malformed cursor", () => {
@@ -59,18 +71,18 @@ describe("cursor module", () => {
     })
 
     it("throws on cursor with missing required fields", () => {
-      // base64 of {"createdAt":"2024-01-15T10:00:00.000Z"} — missing id
+      // base64 of {"sortKey":"2024-01-15T10:00:00.000Z"} — missing id
       const incomplete = Buffer.from(
-        JSON.stringify({ createdAt: "2024-01-15T10:00:00.000Z" }),
+        JSON.stringify({ sortKey: "2024-01-15T10:00:00.000Z" }),
       ).toString("base64url")
 
       expect(() => decodeCursor(incomplete)).toThrow()
     })
 
     it("produces different encoded values for different cursors", () => {
-      const a = encodeCursor({ createdAt: "2024-01-15T10:00:00.000Z", id: "a" })
-      const b = encodeCursor({ createdAt: "2024-01-15T10:00:00.000Z", id: "b" })
-      const c = encodeCursor({ createdAt: "2024-01-16T10:00:00.000Z", id: "a" })
+      const a = encodeCursor({ sortKey: "2024-01-15T10:00:00.000Z", id: "a" })
+      const b = encodeCursor({ sortKey: "2024-01-15T10:00:00.000Z", id: "b" })
+      const c = encodeCursor({ sortKey: "2024-01-16T10:00:00.000Z", id: "a" })
 
       expect(a).not.toBe(b)
       expect(a).not.toBe(c)
@@ -78,7 +90,7 @@ describe("cursor module", () => {
     })
 
     it("is stable: same cursor encodes to same string", () => {
-      const cursor: Cursor = { createdAt: "2024-01-15T10:00:00.000Z", id: "abc" }
+      const cursor: Cursor = { sortKey: "2024-01-15T10:00:00.000Z", id: "abc" }
 
       const a = encodeCursor(cursor)
       const b = encodeCursor(cursor)
@@ -131,10 +143,10 @@ describe("cursor module", () => {
     it("Cursor type is structurally usable", () => {
       // Compile-time check: the Cursor type has the two fields we expect.
       // If this compiles, the test passes.
-      const cursor: Cursor = { createdAt: "2024-01-15T10:00:00.000Z", id: "x" }
+      const cursor: Cursor = { sortKey: "2024-01-15T10:00:00.000Z", id: "x" }
       const paginationInput: CursorPaginationInput = { cursor: "x", limit: 10 }
 
-      expect(cursor.createdAt).toBe("2024-01-15T10:00:00.000Z")
+      expect(cursor.sortKey).toBe("2024-01-15T10:00:00.000Z")
       expect(paginationInput.limit).toBe(10)
     })
   })

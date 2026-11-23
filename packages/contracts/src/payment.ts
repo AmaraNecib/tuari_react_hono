@@ -1,7 +1,15 @@
 import { z } from "zod";
 import { paymentMethodSchema } from "./core";
+import { UnitPrice } from "./exact-money";
 
 export const counterpartyTypeSchema = z.enum(["EXTERNAL_COUNTERPARTY", "WORKER"]);
+
+/**
+ * Single money magnitude bound shared by every DZD amount schema. `.max(...)`
+ * keeps amounts inside the integer precision range the strict sum checks and
+ * sqlite REAL columns can represent exactly.
+ */
+export const MAX_MONEY_DZD = Number.MAX_SAFE_INTEGER;
 
 /**
  * Shared monetary validity for payment amounts — the wire gate and the API
@@ -10,7 +18,87 @@ export const counterpartyTypeSchema = z.enum(["EXTERNAL_COUNTERPARTY", "WORKER"]
  * keeps amounts inside the integer precision range the strict sum check and
  * sqlite REAL columns can represent exactly.
  */
-export const paymentAmountSchema = z.number().positive().max(Number.MAX_SAFE_INTEGER);
+export const paymentAmountSchema = z.number().positive().max(MAX_MONEY_DZD);
+
+/**
+ * Money that explicitly permits zero. Used where "no money moved" is a legal
+ * state — e.g. a stock charge of 0 (a free placement, #413). It is also the
+ * bound for a computed, non-negative read-time aggregate, such as a report
+ * total (#475); a persisted column reads back through
+ * {@link storedMoneyDzdSchema} instead.
+ * Same magnitude bound as {@link paymentAmountSchema} so there is still ONE
+ * money rule; only the sign bound differs.
+ */
+export const nonNegativePaymentAmountSchema = z.number().nonnegative().max(MAX_MONEY_DZD);
+
+/** Numeric legacy inventory inputs may keep their transport, but must honor the exact #522 scale. */
+export function nonNegativePaymentAmountAtScaleSchema(scale: number) {
+  return nonNegativePaymentAmountSchema.refine((amount) => {
+    const [coefficient, exponentText] = String(amount).toLowerCase().split("e");
+    const fractionDigits = coefficient?.split(".")[1]?.length ?? 0;
+    const exponent = exponentText === undefined ? 0 : Number(exponentText);
+    return Number.isFinite(exponent) && Math.max(0, fractionDigits - exponent) <= scale;
+  }, { message: `Amount permits at most ${scale} decimal places.` });
+}
+
+/** Entered inventory unit prices use the exact four-place, reversal-safe int64 codec range. */
+export const nonNegativeUnitPriceSchema = nonNegativePaymentAmountAtScaleSchema(4).refine((amount) => {
+  try {
+    UnitPrice.parse(String(amount));
+    return true;
+  } catch {
+    return false;
+  }
+}, { message: "Unit price exceeds the exact supported range." });
+
+/**
+ * A COMPUTED aggregate that may legitimately be negative, bounded on both sides
+ * by `MAX_MONEY_DZD` so it always stays representable. The one consumer today
+ * is a project's charged-material net (#414): more material can leave a project
+ * than entered it, which is a real correction or a data anomaly, not a reason
+ * to refuse the whole screen. Read shapes that merely display a persisted
+ * non-negative column keep {@link nonNegativePaymentAmountSchema}.
+ */
+export const signedPaymentAmountSchema = z.number().min(-MAX_MONEY_DZD).max(MAX_MONEY_DZD);
+
+/**
+ * A stored DZD amount as it is READ back, deliberately NOT magnitude-bounded.
+ *
+ * The write gate ({@link nonNegativePaymentAmountSchema}) is the ceiling for
+ * anything the app persists, but the database columns only enforce `>= 0`, and
+ * earlier versions of the app accepted any non-negative REAL. A row written
+ * before the bound existed can therefore sit above `MAX_MONEY_DZD`, and a
+ * response schema that reused the WRITE bound would fail validation on data
+ * the system itself stored — breaking the screen that merely displays it.
+ *
+ * So this is the read shape for a persisted money column: permissive enough to
+ * always read an existing row back. Values the app is about to PERSIST or USE
+ * (a new charge amount, a computed aggregate) keep the write bound, and a read
+ * path may only refuse to USE an unrepresentable value, never to represent it
+ * (#413 round 3).
+ *
+ * Scoped to the inventory money shapes corrected here; bounded reads in other,
+ * pre-existing modules are a separate cleanup, not an endorsement of them.
+ */
+export const storedMoneyDzdSchema = z.number().nonnegative();
+
+/**
+ * Round a monetary value to 2 decimals so float noise never reaches the UI or a
+ * stored row. Shared by the API charge/report boundaries and the web percentage
+ * linkage so the two cannot drift.
+ *
+ * `value * 100` is exact only while `|value| <= MAX_MONEY_DZD / 100`
+ * (~9.007e13). Past that the multiply overflows IEEE-754 integer precision and
+ * the round-trip corrupts the value, so a value that large is returned
+ * unchanged: at that magnitude it has no representable cents.
+ */
+export function roundMoney(value: number): number {
+  if (Math.abs(value) * 100 > MAX_MONEY_DZD) {
+    return value;
+  }
+
+  return Math.round(value * 100) / 100;
+}
 
 /**
  * Shared page-limit validity for payment listing (wire gate + module seam).

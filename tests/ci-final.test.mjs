@@ -1,0 +1,185 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, globSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { selectCiScope } from '../scripts/ci/ci-scope.mjs';
+import { acceptanceErrors } from '../scripts/ci/ci-acceptance.mjs';
+
+test('connected failure upload maps only the dedicated artifact directory including hidden scratch paths', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const step = ci.split('      - name: Upload connected payroll failure artifacts\n')[1]?.split('\n      - name:')[0];
+  assert.ok(step, 'connected artifacts need a dedicated upload');
+  assert.match(step, /if: needs\.detect\.outputs\.e2e_mode != 'skip' && !cancelled\(\)/);
+  assert.match(step, /uses: actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  assert.match(step, /include-hidden-files: true/);
+  assert.match(step, /retention-days: 7/);
+  assert.match(step, /if-no-files-found: ignore/);
+  const pattern = step.match(/^          path: (.+)$/m)?.[1];
+  assert.equal(pattern, '.scratch/reviews/558-connected/run-*/artifacts/**');
+  const config = readFileSync(new URL('../playwright.connected-exact.config.ts', import.meta.url), 'utf8');
+  assert.match(config, /mkdtempSync\(resolve\("\.scratch\/reviews\/558-connected\/run-"\)\)/);
+  assert.match(config, /outputDir: resolve\(run, "artifacts"\)/);
+  assert.match(config, /trace: "retain-on-failure"/);
+  const fixture = mkdtempSync(join(tmpdir(), '579-upload-'));
+  for (const file of ['artifacts/case/trace.zip', 'artifacts/case/screenshot.png', 'exact.sqlite',
+    'config.json', 'attachments/invoice.png', 'backups/backup.sqlite', 'session/auth.json']) {
+    const target = join(fixture, '.scratch/reviews/558-connected/run-fixture', file);
+    mkdirSync(join(target, '..'), { recursive: true });
+    writeFileSync(target, 'synthetic');
+  }
+  const selected = [...globSync(pattern, { cwd: fixture })].filter(file => /\.(zip|png|sqlite|json)$/.test(file)).map(file => file.replaceAll('\\', '/')).sort();
+  assert.deepEqual(selected, ['.scratch/reviews/558-connected/run-fixture/artifacts/case/screenshot.png',
+    '.scratch/reviews/558-connected/run-fixture/artifacts/case/trace.zip']);
+});
+
+const success = (outputs = { api: 'false', web: 'false', rust: 'false', encryption: 'false', e2e_mode: 'skip', e2e_specs: '' }) => ({
+  detect: { result: 'success', outputs },
+  lint: { result: 'success' }, typecheck: { result: 'success' },
+  build: { result: 'success' }, audit: { result: 'success' },
+  'test-api': { result: 'skipped' }, 'test-web': { result: 'skipped' },
+  'test-rust': { result: 'skipped' }, 'test-e2e': { result: 'skipped' },
+  'prove-encryption': { result: 'skipped' },
+});
+
+test('unknown, empty, critical and forced CI scopes run every area', () => {
+  for (const files of [[], ['unknown.txt'], ['.github/workflows/ci.yml'], ['pnpm-lock.yaml'],
+    ['scripts/ci/ci-scope.mjs'], ['scripts/ci/ci-acceptance.mjs'], ['tests/ci-final.test.mjs']]) {
+    assert.deepEqual(selectCiScope(files), {
+      api: 'true', web: 'true', rust: 'true', encryption: 'true', e2e_mode: 'full', e2e_specs: '',
+    });
+  }
+  for (const options of [{ event: 'push' }, { event: 'workflow_dispatch' }, { full: true }]) {
+    assert.equal(selectCiScope(['README.md'], options).e2e_mode, 'full');
+    assert.equal(selectCiScope(['README.md'], options).rust, 'true');
+  }
+});
+
+test('known docs skip expensive areas; API and Rust changes remain covered', () => {
+  assert.deepEqual(selectCiScope(['README.md']), {
+    api: 'false', web: 'false', rust: 'false', encryption: 'false', e2e_mode: 'skip', e2e_specs: '',
+  });
+  const api = selectCiScope(['apps/api/src/modules/inventory/inventory.service.ts']);
+  assert.equal(api.api, 'true');
+  const rust = selectCiScope(['apps/desktop/src-tauri/src/license.rs']);
+  assert.equal(rust.rust, 'true');
+  assert.equal(rust.encryption, 'true');
+  assert.equal(selectCiScope(['README.md']).encryption, 'false');
+});
+
+test('Windows CI executes Shell identity regressions when its files change', () => {
+  for (const file of ['scripts/smoke/portable-shell-entry-names.ps1', 'scripts/smoke/portable-shell-entry-names.test.ps1', 'scripts/smoke/check-portable-zip-shell.ps1']) {
+    assert.equal(selectCiScope([file]).encryption, 'true', file);
+  }
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const job = ci.split('\n  prove-encryption:')[1].split('\n  audit:')[0];
+  assert.match(job, /windows-2022/);
+  assert.match(job, /name: Test Windows Shell ZIP file identity\s*\n\s*if: needs\.detect\.outputs\.encryption == 'true'\s*\n\s*shell: powershell\s*\n\s*run: \.\/scripts\/smoke\/portable-shell-entry-names\.test\.ps1/);
+  assert.doesNotMatch(job, /continue-on-error/);
+});
+
+test('Nightly-only edits activate the Windows ZIP workflow replay', () => {
+  assert.equal(selectCiScope(['.github/workflows/nightly.yml']).encryption, 'true');
+});
+
+test('Windows CI runs the actual portable proof publication lifecycle', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const job = ci.split('\n  prove-encryption:')[1].split('\n  audit:')[0];
+  assert.match(job, /name: Test Windows portable proof lifecycle\s*\n\s*if: needs\.detect\.outputs\.encryption == 'true'\s*\n\s*run: node --test --test-name-pattern="closes a separate proof process before publishing" apps\/desktop\/scripts\/build-portable\.test\.mjs/);
+});
+
+test('aggregate permits only successful checks and selector-proven skips', () => {
+  assert.deepEqual(acceptanceErrors(success()), []);
+  const scope = selectCiScope([], { full: true });
+  const needs = success(scope);
+  for (const name of ['test-api', 'test-web', 'test-rust', 'test-e2e', 'prove-encryption']) needs[name].result = 'success';
+  assert.deepEqual(acceptanceErrors(needs), []);
+  for (const name of Object.keys(needs)) {
+    for (const result of ['failure', 'cancelled', 'skipped', '']) {
+      const broken = structuredClone(needs);
+      broken[name].result = result;
+      assert.ok(acceptanceErrors(broken).length, `${name} ${result} must fail`);
+    }
+    const missing = structuredClone(needs);
+    delete missing[name];
+    assert.ok(acceptanceErrors(missing).length, `${name} missing must fail`);
+  }
+});
+
+test('aggregate accepts GitHub-omitted empty specs only for full or skipped E2E', () => {
+  for (const e2e_mode of ['full', 'skip']) {
+    const needs = success({ api: 'false', web: 'false', rust: 'false', encryption: 'false', e2e_mode });
+    if (e2e_mode === 'full') needs['test-e2e'].result = 'success';
+    assert.deepEqual(acceptanceErrors(needs), []);
+  }
+  const affected = success({ ...success().detect.outputs, e2e_mode: 'affected' });
+  assert.ok(acceptanceErrors(affected).includes('invalid e2e specs'));
+  for (const e2e_specs of [null, 0, false]) {
+    assert.ok(acceptanceErrors(success({ ...success().detect.outputs, e2e_specs })).includes('invalid e2e specs'));
+  }
+});
+
+test('aggregate rejects missing, malformed or contradictory selector proof', () => {
+  for (const outputs of [{}, { api: 'false' }, { ...success().detect.outputs, rust: '0' },
+    { ...success().detect.outputs, encryption: 'yes' },
+    { ...success().detect.outputs, e2e_mode: 'affected', e2e_specs: '' },
+    { ...success().detect.outputs, e2e_mode: 'skip', e2e_specs: 'tests/e2e/auth.spec.ts' },
+    { ...success().detect.outputs, e2e_mode: 'affected', e2e_specs: '--config=evil' }]) {
+    assert.ok(acceptanceErrors(success(outputs)).length, JSON.stringify(outputs));
+  }
+  assert.ok(acceptanceErrors({}).length);
+});
+
+test('the CI-invoked SQLCipher proof command includes the availability regressions', () => {
+  const rootPackage = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const proofCommand = rootPackage.scripts['check:sqlcipher-proof'];
+  assert.ok(proofCommand.includes('./tests/sqlcipher-encryption-proof.test.mjs'));
+  assert.ok(proofCommand.includes('./apps/desktop/scripts/sqlcipher-availability.test.mjs'));
+  assert.ok(ci.includes('- run: pnpm check:sqlcipher-proof'));
+  assert.ok(ci.includes('- run: node --test tests/ci-final.test.mjs tests/workflow-policy.test.mjs tests/dependency-audit.test.mjs'));
+});
+
+test('Rust CI requires both Linux and Windows crate tests under the same acceptance result', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const rust = ci.slice(ci.indexOf('\n  test-rust:'), ci.indexOf('\n  test-api:'));
+  assert.match(rust, /if: \$\{\{ needs\.detect\.outputs\.rust == 'true' \}\}/);
+  assert.match(rust, /needs: detect/);
+  assert.match(rust, /runs-on: \$\{\{ matrix\.os \}\}/);
+  assert.match(rust, /fail-fast: false/);
+  assert.match(rust, /os: \[ubuntu-24\.04, windows-2022\]/);
+  assert.doesNotMatch(rust, /continue-on-error|--no-run|--lib(?=\s*\n)/);
+  assert.match(rust, /name: Install Tauri system deps\n\s+if: runner\.os == 'Linux'/);
+  assert.match(rust, /name: "Verify Rust Core boundaries \(no bare tauri imports\)"\n\s+if: runner\.os == 'Linux'/);
+  assert.match(rust, /uses: actions\/setup-node@v4/);
+  assert.match(rust, /uses: dtolnay\/rust-toolchain@stable/);
+  assert.match(rust, /name: Test Rust Core\n(?:\s*#[^\n]*\n)*\s+run: cargo test --manifest-path apps\/desktop\/src-tauri\/Cargo\.toml\n/);
+  assert.match(rust, /name: Lint Rust Core\n\s+if: runner\.os == 'Linux'\n\s+run: cargo clippy --manifest-path apps\/desktop\/src-tauri\/Cargo\.toml --lib -- -D warnings/);
+});
+
+test('CI wiring exposes one always-running acceptance check and force-full events', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(ci, /types: \[opened, synchronize, reopened, labeled\]/);
+  assert.match(ci, /push:\n\s+branches: \[develop\]/);
+  assert.match(ci, /name: CI acceptance/);
+  assert.match(ci, /needs: \[detect, lint, typecheck, test-rust, test-api, test-web, test-e2e, build, audit, prove-encryption\]/);
+  assert.match(ci, /if: \$\{\{ always\(\) \}\}/);
+  assert.match(ci, /NEEDS_JSON: \$\{\{ toJSON\(needs\) \}\}/);
+  assert.match(ci, /node scripts\/ci\/ci-acceptance.mjs/);
+  assert.match(ci, /--no-renames/);
+  assert.match(ci, /e2e:full/);
+  assert.match(ci, /encryption: \$\{\{ steps.scope.outputs.encryption \}\}/);
+  assert.match(ci, /prove-encryption:\n[\s\S]*needs: detect/);
+  const encryption = ci.slice(ci.indexOf('\n  prove-encryption:'), ci.indexOf('\n  audit:'));
+  assert.doesNotMatch(encryption, /^    if:/m, 'Required encryption proof must run for fork PRs too');
+  assert.doesNotMatch(encryption, /secrets\.|permissions:/);
+  assert.match(ci, /permissions:\n  contents: read\n  pull-requests: read/);
+  assert.match(ci, /node scripts\/ci\/dependency-audit\.mjs/);
+  assert.doesNotMatch(ci, /audit-level high|audit --ignore|continue-on-error: true/);
+  assert.doesNotMatch(ci, /continue-on-error: true/);
+  const e2e = ci.slice(ci.indexOf('\n  test-e2e:'), ci.indexOf('\n  build:'));
+  assert.match(e2e, /runs-on: ubuntu-24\.04/);
+  assert.equal([...e2e.matchAll(/^    if:/gm)].length, 1, 'E2E must have exactly one job condition');
+  assert.match(e2e, /if: \$\{\{ needs\.detect\.outputs\.e2e_mode != 'skip' \}\}/);
+  assert.doesNotMatch(e2e, /head\.repo\.full_name/);
+});

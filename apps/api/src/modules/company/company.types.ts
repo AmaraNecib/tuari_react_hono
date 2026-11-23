@@ -8,6 +8,7 @@ import type {
   EmployeeManagerAssignment,
   EmployeeProjectAssignment,
   EmployeeSalaryPayment,
+  EmployeeSalaryPaymentProjectSplit,
   EmployeeStateHistory,
   EmployeeWarehouseAssignment,
   ExternalCounterparty,
@@ -125,8 +126,7 @@ export type EmployeeCreateData = {
   phone: string;
   roleId: string;
   status: EmployeeStatus;
-  salaryAmountDzd?: number | null;
-  salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null;
+  salaryReference?: Employee["salaryReference"];
   notes?: string | null;
   occupation?: string | null;
 };
@@ -149,8 +149,7 @@ export type EmployeeUpdateData = {
   phone?: string;
   roleId?: string;
   status?: EmployeeStatus;
-  salaryAmountDzd?: number | null;
-  salaryPeriod?: "DAILY" | "WEEKLY" | "MONTHLY" | null;
+  salaryReference?: Employee["salaryReference"];
   notes?: string | null;
   occupation?: string | null;
 };
@@ -257,8 +256,10 @@ export type WarehouseAssignmentEndData = {
 export type EmployeeSalaryPaymentCreateData = {
   employeeId: string;
   periodType: "DAILY" | "WEEKLY" | "MONTHLY";
+  days: number;
   expectedAmountDzd: number;
   actualAmountDzd: number;
+  projectSplits: EmployeeSalaryPaymentProjectSplit[];
   paymentDate: string;
   note?: string | null;
 };

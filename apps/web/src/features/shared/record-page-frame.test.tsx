@@ -126,6 +126,13 @@ describe("RecordHistoryTable", () => {
     expect(screen.getByText("مكتمل")).toBeTruthy()
   })
 
+  it("preserves salary-history precision inside Arabic prose", () => {
+    render(<RecordHistoryTable emptyLabel="لا يوجد سجل" rows={[{ ...rows[0]!, detail: "الراتب الحالي 1234.5678 دج / يوم" }]} />)
+    const amount = screen.getByText("1234.5678", { selector: 'bdi[dir="ltr"]' })
+    expect(amount.previousElementSibling?.textContent).toBe("دج")
+    expect(amount.parentElement?.parentElement?.textContent).toBe("الراتب الحالي دج 1234.5678 / يوم")
+  })
+
   it("renders row without a detail element when detail is null", () => {
     render(
       <RecordHistoryTable

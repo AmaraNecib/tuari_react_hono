@@ -27,7 +27,10 @@ import {
   useUpdateAccountSettingsMutation,
 } from "./workspace-mutations"
 import { useCompositeWorkspaceQuery, useSystemLogQuery } from "./workspace-queries"
+import type { EmployeeEarningReturnTo } from "@/router/navigation"
+import type { SalariesRouteSearch } from "./salaries-route-search"
 import type { HomeViewPage } from "./home-view-types"
+import { TableQueryState } from "@/features/shared/table-primitives"
 import { ErrorBoundary } from "@/components/error-boundary"
 
 export type { HomeViewPage } from "./home-view-types"
@@ -76,6 +79,10 @@ export function HomeView({
   paginationCursor,
   paginationLimit,
   paginationPrevCursors,
+  earningApproval = false,
+  returnTo,
+  salariesSearch,
+  onSalariesSearchChange,
 }: {
   detailTab?: string
   page?: HomeViewPage
@@ -87,6 +94,10 @@ export function HomeView({
   paginationCursor?: string
   paginationLimit?: number
   paginationPrevCursors?: string
+  earningApproval?: boolean
+  returnTo?: EmployeeEarningReturnTo
+  salariesSearch?: SalariesRouteSearch
+  onSalariesSearchChange?: (patch: Partial<Pick<SalariesRouteSearch, "tab" | "page" | "pageSize">>) => void
 }) {
   const { t } = useTranslation()
   const navigation = useHomeViewNavigation()
@@ -186,7 +197,7 @@ export function HomeView({
   // workspace is guaranteed to exist when derived is non-null.
   const ws = workspace!
 
-  const contentBoundaryKey = [page, detailTab, counterpartyId, employeeId, invoiceId, projectId, warehouseId]
+  const contentBoundaryKey = [page, detailTab, counterpartyId, employeeId, invoiceId, projectId, warehouseId, earningApproval, returnTo]
     .filter(Boolean)
     .join(":")
 
@@ -213,41 +224,46 @@ export function HomeView({
       onThemeToggle={shell.handleThemeToggle}
     >
       <ErrorBoundary key={contentBoundaryKey}>
-        <HomeViewPageContent
-          copy={copy}
-          derived={derived}
-          detailTab={detailTab}
-          invoiceId={invoiceId}
-          page={page}
-          paginationCursor={paginationCursor}
-          paginationLimit={paginationLimit}
-          paginationPrevCursors={paginationPrevCursors}
-          selectedCounterparty={selectedCounterparty}
-          selectedEmployee={selectedEmployee}
-          selectedProject={selectedProject}
-          selectedWarehouse={selectedWarehouse}
-          session={auth.session}
-          systemLogFilters={shell.systemLogFilters}
-          systemLogState={{
-            entries: systemLogQuery.data?.items ?? [],
-            isError: Boolean(systemLogQuery.error),
-            isLoading: systemLogQuery.isPending,
-          }}
-          t={t}
-          theme={theme}
-          resetWorkspacePending={resetWorkspaceMutation.isPending}
-          updateAccountPending={updateAccountSettingsMutation.isPending}
-          workspace={ws}
-          navigation={navigation}
-          onAddProject={() => void navigation.goToProjectCreate()}
-          onAddWarehouse={() => void navigation.goToWarehouseCreate()}
-          onResetWorkspace={() => shell.handleResetWorkspace()}
-          onSaveAccount={(payload) => updateAccountSettingsMutation.mutateAsync(payload)}
-          onUpdateApplied={() => shell.setShowRestartModal(true)}
-          onSetPendingDelete={shell.setPendingDelete}
-          onSystemLogFiltersChange={shell.setSystemLogFilters}
-          onThemeToggle={toggleTheme}
-        />
+        <TableQueryState query={workspaceQuery} resource={t("shell.workspace")}>
+          <HomeViewPageContent
+            copy={copy}
+            derived={derived}
+            detailTab={detailTab}
+            earningApproval={earningApproval}
+            returnTo={returnTo}
+            salariesSearch={salariesSearch}
+            onSalariesSearchChange={onSalariesSearchChange}
+            invoiceId={invoiceId}
+            page={page}
+            paginationCursor={paginationCursor}
+            paginationLimit={paginationLimit}
+            paginationPrevCursors={paginationPrevCursors}
+            selectedCounterparty={selectedCounterparty}
+            selectedEmployee={selectedEmployee}
+            selectedProject={selectedProject}
+            selectedWarehouse={selectedWarehouse}
+            session={auth.session}
+            systemLogFilters={shell.systemLogFilters}
+            systemLogState={{
+              ...systemLogQuery,
+              entries: systemLogQuery.data?.items ?? [],
+            }}
+            t={t}
+            theme={theme}
+            resetWorkspacePending={resetWorkspaceMutation.isPending}
+            updateAccountPending={updateAccountSettingsMutation.isPending}
+            workspace={ws}
+            navigation={navigation}
+            onAddProject={() => void navigation.goToProjectCreate()}
+            onAddWarehouse={() => void navigation.goToWarehouseCreate()}
+            onResetWorkspace={() => shell.handleResetWorkspace()}
+            onSaveAccount={(payload) => updateAccountSettingsMutation.mutateAsync(payload)}
+            onUpdateApplied={() => shell.setShowRestartModal(true)}
+            onSetPendingDelete={shell.setPendingDelete}
+            onSystemLogFiltersChange={shell.setSystemLogFilters}
+            onThemeToggle={toggleTheme}
+          />
+        </TableQueryState>
       </ErrorBoundary>
     </HomeViewSignedInShell>
   )

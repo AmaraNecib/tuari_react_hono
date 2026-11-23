@@ -1,6 +1,6 @@
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { type Role } from "@tuari/contracts"
+import { SalaryReference as ExactSalaryReference, type Role } from "@tuari/contracts"
 import { useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { TriangleAlert } from "lucide-react"
@@ -8,8 +8,10 @@ import { TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CurrencyInput, FieldSection, NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Input } from "@/components/ui/input"
-import { useSaveEmployeeMutation } from "@/features/app-shell/mock-dashboard"
+import { AppMutationError, useSaveEmployeeMutation } from "@/features/app-shell/mock-dashboard"
+import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
 import { PageActionGroup, PageFooterActions, PageHeader, PageSurfaceContent, Surface } from "@/features/shared/page-primitives"
+import { translateRpcValidationIssues } from "@/lib/rpc-error-handling"
 import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import type { EmployeeManagerOption } from "./employee-batch-row-card"
@@ -23,8 +25,8 @@ type FormState = {
   phone: string
   roleId: string
   status: EmployeeTableRow["status"]
-  salaryAmountDzd: string
-  salaryPeriod: "DAILY" | "WEEKLY" | "MONTHLY" | ""
+  salaryReferenceAmount: string
+  salaryReferencePeriod: "DAILY" | "WEEKLY" | "MONTHLY" | ""
   occupation: string
   notes: string
 }
@@ -44,16 +46,14 @@ type EmployeeProfile = Pick<
   | "phone"
   | "roleId"
   | "status"
-  | "salaryAmountDzd"
-  | "salaryPeriod"
   | "occupation"
   | "notes"
->
+> & { salaryReference?: SalaryReference | null }
 
 type ManagedOption = {
   id: string
   label: string
-  secondary: string
+  secondary: ReactNode
 }
 
 function createFormState(employee: EmployeeProfile): FormState {
@@ -63,22 +63,32 @@ function createFormState(employee: EmployeeProfile): FormState {
     phone: employee.phone,
     roleId: employee.roleId,
     status: employee.status,
-    salaryAmountDzd: employee.salaryAmountDzd == null ? "" : String(employee.salaryAmountDzd),
-    salaryPeriod: employee.salaryPeriod ?? "",
+    salaryReferenceAmount: employeeSalaryReference(employee)?.amount ?? "",
+    salaryReferencePeriod: employeeSalaryReference(employee)?.period ?? "",
     occupation: employee.occupation ?? "",
     notes: employee.notes ?? "",
   }
 }
 
-function parseSalaryAmount(value: string) {
-  const trimmed = value.trim()
+type SalaryReference = { period: "DAILY" | "WEEKLY" | "MONTHLY"; amount: string }
+function employeeSalaryReference(employee: EmployeeProfile): SalaryReference | null {
+  return employee.salaryReference ?? null
+}
 
-  if (trimmed.length === 0) {
-    return null
+function parseSalaryReferenceAmount(value: string, period: SalaryReference["period"]) {
+  const normalized = period === "DAILY"
+    ? parseLocalizedUnitPriceInput(value).toWire()
+    : parseLocalizedMoneyInput(value).toWire()
+  return ExactSalaryReference.parse(period, normalized).toWire().amount
+}
+
+function mapSalaryReferenceFieldErrors(errors: Array<{ field: string; message: string }>): Pick<FormErrors, "salaryReferenceAmount" | "salaryReferencePeriod"> {
+  const mapped: Pick<FormErrors, "salaryReferenceAmount" | "salaryReferencePeriod"> = {}
+  for (const error of errors) {
+    if (error.field === "salaryReference.amount") mapped.salaryReferenceAmount = error.message
+    if (error.field === "salaryReference.period") mapped.salaryReferencePeriod = error.message
   }
-
-  const numeric = Number(trimmed)
-  return Number.isFinite(numeric) && numeric >= 0 ? numeric : Number.NaN
+  return mapped
 }
 
 /** Employee edit page with form fields. */
@@ -108,6 +118,7 @@ export function EmployeeEditPage({
   const navigate = useNavigate()
   const saveEmployeeMutation = useSaveEmployeeMutation()
   const [state, setState] = useState<FormState>(() => createFormState(employee))
+  const [salaryReferenceDirty, setSalaryReferenceDirty] = useState(false)
   const [errors, setErrors] = useState<FormErrors>({})
   const [saveError, setSaveError] = useState<SaveErrorKind | null>(null)
   const [workerManagerId, setWorkerManagerId] = useState(employee.currentManagerId ?? "")
@@ -136,6 +147,7 @@ export function EmployeeEditPage({
 
     previousEmployeeIdRef.current = employee.id
     setState(createFormState(employee))
+    setSalaryReferenceDirty(false)
     setErrors({})
     setWorkerManagerId(employee.currentManagerId ?? "")
     setWorkerProjectId(employee.currentProjectId ?? "")
@@ -161,11 +173,15 @@ export function EmployeeEditPage({
     { value: "INACTIVE", label: t("status.inactive") },
     { value: "LEFT", label: t("status.left") },
   ] satisfies Array<{ value: EmployeeTableRow["status"]; label: string }>
-  const salaryPeriodOptions = [
+  // Periods offered: daily and monthly only. WEEKLY stays in the enum and
+  // still renders for legacy employees, but it is not a new selection here.
+  const salaryPeriodOptions: Array<{ value: "DAILY" | "WEEKLY" | "MONTHLY"; label: string }> = [
     { value: "DAILY", label: t("detailPages.salary.daily") },
-    { value: "WEEKLY", label: t("detailPages.salary.weekly") },
     { value: "MONTHLY", label: t("detailPages.salary.monthly") },
-  ] satisfies Array<{ value: "DAILY" | "WEEKLY" | "MONTHLY"; label: string }>
+  ]
+  if (employeeSalaryReference(employee)?.period === "WEEKLY") {
+    salaryPeriodOptions.push({ value: "WEEKLY", label: t("detailPages.salary.weekly") })
+  }
   const isSaving = saveEmployeeMutation.isPending
 
   function updateRole(roleId: string) {
@@ -190,7 +206,9 @@ export function EmployeeEditPage({
     const workerNeedsPlacement = !employee.currentManagerId && !employee.currentProjectId && !employee.currentWarehouseId
 
     const nextErrors: FormErrors = {}
-    const salaryAmount = parseSalaryAmount(state.salaryAmountDzd)
+    const salaryReferenceAmount = state.salaryReferenceAmount.trim()
+    const hasSalaryReference = salaryReferenceAmount.length > 0 || state.salaryReferencePeriod.length > 0
+    let canonicalSalaryReferenceAmount = ""
 
     if (state.firstName.trim().length === 0) {
       nextErrors.firstName = t("detailPages.employee.editPage.validation.firstNameRequired")
@@ -212,16 +230,21 @@ export function EmployeeEditPage({
       nextErrors.occupation = t("detailPages.employee.editPage.validation.occupationTooLong")
     }
 
-    if (Number.isNaN(salaryAmount)) {
-      nextErrors.salaryAmountDzd = t("detailPages.employee.editPage.validation.salaryAmountInvalid")
+    if (hasSalaryReference && !state.salaryReferencePeriod) {
+      nextErrors.salaryReferencePeriod = t("detailPages.employee.editPage.validation.salaryPeriodRequired")
     }
-
-    if (salaryAmount !== null && !state.salaryPeriod) {
-      nextErrors.salaryPeriod = t("detailPages.employee.editPage.validation.salaryPeriodRequired")
+    if (hasSalaryReference && salaryReferenceAmount.length === 0) {
+      nextErrors.salaryReferenceAmount = t("detailPages.employee.editPage.validation.salaryAmountRequired")
     }
-
-    if (salaryAmount === null && state.salaryPeriod) {
-      nextErrors.salaryAmountDzd = t("detailPages.employee.editPage.validation.salaryAmountRequired")
+    if (hasSalaryReference && state.salaryReferencePeriod && salaryReferenceAmount.length > 0) {
+      try {
+        canonicalSalaryReferenceAmount = parseSalaryReferenceAmount(
+          salaryReferenceAmount,
+          state.salaryReferencePeriod,
+        )
+      } catch {
+        nextErrors.salaryReferenceAmount = t("workforce.validation.salaryReference.precision")
+      }
     }
 
     if (isWorker && state.status === "ACTIVE" && (placementDirty || workerNeedsPlacement)) {
@@ -294,18 +317,30 @@ export function EmployeeEditPage({
         phone: state.phone.trim(),
         roleId: state.roleId,
         status: state.status,
-        salaryAmountDzd: salaryAmount,
-        salaryPeriod: state.salaryPeriod || null,
+        ...(salaryReferenceDirty ? {
+          salaryReference: hasSalaryReference
+            ? { period: state.salaryReferencePeriod as SalaryReference["period"], amount: canonicalSalaryReferenceAmount }
+            : null,
+        } : {}),
         occupation: state.occupation.trim() || null,
         notes: state.notes.trim() || null,
         ...(savePlan.workplace ? { placement: savePlan.workplace } : {}),
         ...(savePlan.managedProjects ? { managedProjectIds: savePlan.managedProjects.nextIds } : {}),
         ...(savePlan.managedWarehouses ? { managedWarehouseIds: savePlan.managedWarehouses.nextIds } : {}),
       })
-    } catch {
+    } catch (error) {
       // A rejected batch means nothing persisted (the server transaction is
       // all-or-nothing), so keep every typed value and let the user retry.
-      setSaveError("nothingSaved")
+      const serverErrors = error instanceof AppMutationError
+        ? error.fieldErrors
+        : translateRpcValidationIssues(error)
+      const salaryReferenceErrors = mapSalaryReferenceFieldErrors(serverErrors)
+      if (salaryReferenceErrors.salaryReferenceAmount || salaryReferenceErrors.salaryReferencePeriod) {
+        setErrors((current) => ({ ...current, ...salaryReferenceErrors }))
+        setSaveError(null)
+      } else {
+        setSaveError("nothingSaved")
+      }
       return
     }
 
@@ -534,23 +569,27 @@ export function EmployeeEditPage({
           title={t("detailPages.employee.editPage.salaryTitle")}
         >
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <Field label={t("detailPages.employee.editPage.salaryAmount")} error={errors.salaryAmountDzd}>
+            <Field label={t("detailPages.employee.editPage.salaryAmount")} error={errors.salaryReferenceAmount}>
               <CurrencyInput
                 currencyLabel="دج"
                 placeholder="10000"
-                value={state.salaryAmountDzd}
-                onChange={(event) => setState({ ...state, salaryAmountDzd: event.target.value })}
+                value={state.salaryReferenceAmount}
+                onChange={(event) => {
+                  setSalaryReferenceDirty(true)
+                  setState({ ...state, salaryReferenceAmount: event.target.value })
+                }}
               />
             </Field>
-            <Field label={t("detailPages.employee.editPage.salaryPeriod")} error={errors.salaryPeriod}>
+            <Field label={t("detailPages.employee.editPage.salaryPeriod")} error={errors.salaryReferencePeriod}>
               <NativeSelect
-                value={state.salaryPeriod}
-                onChange={(event) =>
+                value={state.salaryReferencePeriod}
+                onChange={(event) => {
+                  setSalaryReferenceDirty(true)
                   setState({
                     ...state,
-                    salaryPeriod: event.target.value as FormState["salaryPeriod"],
+                    salaryReferencePeriod: event.target.value as FormState["salaryReferencePeriod"],
                   })
-                }
+                }}
               >
                 <option value="">{t("detailPages.employee.editPage.selectSalaryPeriod")}</option>
                 {salaryPeriodOptions.map((option) => (

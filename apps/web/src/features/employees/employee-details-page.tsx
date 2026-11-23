@@ -1,14 +1,18 @@
-import { useEffect, useMemo, useState } from "react"
-import { useTranslation } from "react-i18next"
-import type { DebtAccount, DebtEntry } from "@tuari/contracts"
-
+import "./employee-finance.css"
+import type { ReactNode } from "react"
 import { Button } from "@/components/ui/button"
-import { CurrencyInput, NativeSelect, Textarea } from "@/components/ui/form-controls"
-import { Field } from "@/components/ui/field"
-import { DatePicker } from "@/components/ui/date-picker"
-import { useCreateSalaryPaymentMutation } from "@/features/app-shell/mock-dashboard"
-import { AddSalaryPaymentDialog } from "./add-salary-payment-dialog"
-import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
+import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
+import { CurrencyRun } from "@/features/shared/money-value"
+import { formatSalaryReferenceAmount } from "@/features/shared/exact-salary-reference-display"
+import { useMemo } from "react"
+import { useTranslation } from "react-i18next"
+import type { ExactDebtsClient, SalaryProjectAssignmentWindow } from "@tuari/contracts"
+
+import { getSalaryPeriodLabelKey } from "@/features/app-shell/salary-table-primitives"
+import type { SalaryProjectOption } from "./employee-earning-approval-form"
+import { EmployeeEarningsHistory } from "./employee-earnings-history"
+import { EmployeePayrollPanel } from "./employee-payroll-panel"
+import { ExactDebtsPage } from "@/features/debts/debts-exact-page"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { classifyWorkforceRole } from "./role-classification"
 import { workspaceRoutes } from "@/router/navigation"
@@ -20,8 +24,6 @@ import {
   RecordTabPanel,
   RecordTabs,
 } from "@/features/shared/record-page-frame"
-import { getAlgeriaDateInputValue, toAlgeriaDayBoundaryIso } from "@/lib/algeria-time"
-import { cn } from "@/lib/utils"
 
 import type { EmployeeTableRow } from "./employee-table"
 
@@ -30,74 +32,8 @@ type EmployeeWorkHistoryRow = {
   title: string
   detail?: string | null
   typeLabel: string
-  periodLabel: string
+  periodLabel: ReactNode
   statusLabel: string
-}
-
-function getSalaryDifferenceMeta(expectedAmountDzd: number, actualAmountDzd: number) {
-  const difference = actualAmountDzd - expectedAmountDzd
-
-  if (difference > 0) {
-    return {
-      className: "text-emerald-700 dark:text-emerald-300",
-      value: difference,
-    }
-  }
-
-  if (difference < 0) {
-    return {
-      className: "text-rose-700 dark:text-rose-300",
-      value: difference,
-    }
-  }
-
-  return {
-    className: "text-muted-foreground",
-    value: difference,
-  }
-}
-
-function getSalaryPeriodLabelKey(value: EmployeeTableRow["salaryPeriod"]) {
-  if (value === "DAILY") {
-    return "detailPages.salary.daily"
-  }
-
-  if (value === "WEEKLY") {
-    return "detailPages.salary.weekly"
-  }
-
-  if (value === "MONTHLY") {
-    return "detailPages.salary.monthly"
-  }
-
-  return "detailPages.salary.notSpecified"
-}
-
-function renderMoneyValue(
-  value: number,
-  currencyLabel: string,
-  options?: {
-    signed?: boolean
-    toneClassName?: string
-    zeroAsDash?: boolean
-  },
-) {
-  if (options?.zeroAsDash && value === 0) {
-    return <span className={cn("text-muted-foreground", options?.toneClassName)}>—</span>
-  }
-
-  const formattedNumber = new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-    signDisplay: options?.signed ? "always" : "auto",
-    useGrouping: false,
-  }).format(value)
-
-  return (
-    <span className={cn("inline-flex items-baseline gap-1.5 font-mono", options?.toneClassName)} dir="ltr">
-      <span>{currencyLabel}</span>
-      <span>{formattedNumber}</span>
-    </span>
-  )
 }
 
 /** Employee detail page with tabs for personal, work, and finance. */
@@ -106,54 +42,45 @@ function renderMoneyValue(
  */
 export function EmployeeDetailsPage({
   activeTab,
-  debtAccounts,
-  debtEntriesByAccountId,
+  debtClient,
   employee,
   managedProjects,
   managedWarehouses,
+  projects = [],
   onTabChange,
-  salaryPayments,
+  onApproveEarning,
   workHistory,
 }: {
   activeTab: string
-  debtAccounts: DebtAccount[]
-  debtEntriesByAccountId: Record<string, DebtEntry[]>
+  debtClient: ExactDebtsClient
   employee: EmployeeTableRow
   managedProjects: string[]
   managedWarehouses: string[]
+  /** Kept for existing detail-route callers; earnings are no longer calculated from assignment windows. */
+  projectAssignments?: SalaryProjectAssignmentWindow[]
+  /** Projects the payment dialog can attribute a split to. */
+  projects?: SalaryProjectOption[]
   onTabChange: (tabId: string) => void
-  salaryPayments: Array<{
-    id: string
-    paymentDate: string
-    expectedAmountDzd: number
-    actualAmountDzd: number
-    periodType: "DAILY" | "WEEKLY" | "MONTHLY"
-    note: string | null
-  }>
+  onApproveEarning?: (employeeId: string) => void
   workHistory: EmployeeWorkHistoryRow[]
 }) {
   const { t } = useTranslation()
   const { isProjectManager, isWarehouseManager, isWorker } = classifyWorkforceRole(employee.roleKey)
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
-  const createSalaryPaymentMutation = useCreateSalaryPaymentMutation()
-  const [paymentDate, setPaymentDate] = useState(() => getAlgeriaDateInputValue())
-  const [actualAmount, setActualAmount] = useState(() => (employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : ""))
-  const [note, setNote] = useState("")
-  const [showPaymentForm, setShowPaymentForm] = useState(false)
   const availableTabs = isWorker ? ["personal", "history", "finance", "debts"] : ["personal", "history", "finance"]
   const resolvedTab = availableTabs.includes(activeTab) ? activeTab : "personal"
-  const sortedSalaryPayments = useMemo(
-    () => [...salaryPayments].sort((left, right) => right.paymentDate.localeCompare(left.paymentDate)),
-    [salaryPayments],
-  )
-  const normalizedActualAmount = actualAmount.trim()
-  const actualAmountValue = normalizedActualAmount.length > 0 ? Number(normalizedActualAmount) : null
-  const hasValidActualAmount = actualAmountValue !== null && Number.isFinite(actualAmountValue) && actualAmountValue >= 0
-  const totalExpectedAmount = sortedSalaryPayments.reduce((sum, payment) => sum + payment.expectedAmountDzd, 0)
-  const totalActualAmount = sortedSalaryPayments.reduce((sum, payment) => sum + payment.actualAmountDzd, 0)
-  const totalDifferenceMeta = getSalaryDifferenceMeta(totalExpectedAmount, totalActualAmount)
   const currencyLabel = t("detailPages.salary.currency")
-  const salaryPeriodLabel = (value: EmployeeTableRow["salaryPeriod"]) => t(getSalaryPeriodLabelKey(value))
+  const useGrouping = useMoneyGrouping()
+  const salaryReference = employee.salaryReference ?? null
+  const employeeNames = useMemo(() => ({ [employee.id]: employee.name }), [employee.id, employee.name])
+  const projectNames = useMemo(
+    () => Object.fromEntries(projects.map((project) => [project.id, project.name])),
+    [projects],
+  )
+  const salaryPeriodLabel = (value: NonNullable<EmployeeTableRow["salaryReference"]>["period"] | null) =>
+    value ? t(getSalaryPeriodLabelKey(value)) : t("detailPages.salary.notSpecified")
+  const formattedSalaryReference = salaryReference
+    ? formatSalaryReferenceAmount(salaryReference, useGrouping)
+    : null
   const noNotesLabel = t("common.noNotes")
   // The #20 workplace placement flow persists only for ACTIVE workers, so
   // non-active workers must not get an edit-workplace CTA that would be
@@ -166,25 +93,8 @@ export function EmployeeDetailsPage({
   const hasExpandedNotes = (employee.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `employee-record-${employee.id}`
 
-  useEffect(() => {
-    setPaymentDate(getAlgeriaDateInputValue())
-    setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
-    setNote("")
-    setShowPaymentForm(false)
-  }, [employee.id, employee.salaryAmountDzd])
-
-  useEffect(() => {
-    if (!createSalaryPaymentMutation.isSuccess) {
-      return
-    }
-
-    setPaymentDate(getAlgeriaDateInputValue())
-    setActualAmount(employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : "")
-    setNote("")
-    setShowPaymentForm(false)
-  }, [createSalaryPaymentMutation.isSuccess, employee.salaryAmountDzd])
-
   return (
+    <div className="employee-record">
     <RecordPageFrame
       backHref="/employees"
       backLabel={t("detailPages.employee.back")}
@@ -193,18 +103,10 @@ export function EmployeeDetailsPage({
       editLabel={t("detailPages.employee.edit")}
       title={employee.name}
       action={
-        isWorker && employee.status === "ACTIVE" ? (
-          <>
-            <AddSalaryPaymentDialog
-              employeeId={employee.id}
-              employeeName={employee.name}
-              open={paymentDialogOpen}
-              onOpenChange={setPaymentDialogOpen}
-            />
-            <Button size="lg" onClick={() => setPaymentDialogOpen(true)}>
-              {t("salaries.addPayment")}
-            </Button>
-          </>
+        employee.status === "ACTIVE" ? (
+          <Button size="lg" onClick={() => onApproveEarning?.(employee.id)}>
+            {t("earnings.approve")}
+          </Button>
         ) : undefined
       }
     >
@@ -261,159 +163,46 @@ export function EmployeeDetailsPage({
           <RecordInfoGrid>
             <RecordInfoCard
               label={t("detailPages.employee.financeCurrentSalary")}
-              value={employee.salaryAmountDzd !== null ? renderMoneyValue(employee.salaryAmountDzd, currencyLabel) : t("detailPages.salary.notSpecified")}
+              value={salaryReference && formattedSalaryReference !== null ? (
+                <span className="inline-flex items-baseline gap-1.5">
+                  <CurrencyRun amount={formattedSalaryReference} currencyLabel={currencyLabel} className="font-mono tabular-nums" />
+                  <span className="text-sm text-muted-foreground">/ {salaryPeriodLabel(salaryReference.period)}</span>
+                </span>
+              ) : t("detailPages.salary.notSpecified")}
             />
             <RecordInfoCard
               label={t("detailPages.employee.financeSalaryPeriod")}
-              value={salaryPeriodLabel(employee.salaryPeriod)}
-            />
-            <RecordInfoCard label={t("detailPages.employee.financePaymentCount")} value={String(salaryPayments.length)} />
-            <RecordInfoCard label={t("detailPages.employee.financeTotalExpected")} value={renderMoneyValue(totalExpectedAmount, currencyLabel)} />
-            <RecordInfoCard label={t("detailPages.employee.financeTotalPaid")} value={renderMoneyValue(totalActualAmount, currencyLabel)} />
-            <RecordInfoCard
-              label={t("detailPages.employee.financeCumulativeDifference")}
-              value={renderMoneyValue(totalDifferenceMeta.value, currencyLabel, {
-                signed: true,
-                toneClassName: totalDifferenceMeta.className,
-                zeroAsDash: true,
-              })}
+              value={salaryPeriodLabel(salaryReference?.period ?? null)}
             />
           </RecordInfoGrid>
 
-          <div className="rounded-xl border border-border/70 bg-sidebar p-5 dark:bg-surface" dir="rtl">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between" dir="rtl">
-              <div className="space-y-1 text-start">
-                <h3 className="text-lg font-semibold text-foreground">{t("detailPages.employee.financeSectionTitle")}</h3>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {t("detailPages.employee.financeSectionDescription")}
-                </p>
-              </div>
-              <Button
-                disabled={employee.salaryAmountDzd === null || !employee.salaryPeriod}
-                size="lg"
-                variant={showPaymentForm ? "outline" : "default"}
-                onClick={() => setShowPaymentForm((currentValue) => !currentValue)}
-              >
-                {showPaymentForm ? t("detailPages.employee.financeToggleHide") : t("detailPages.employee.financeToggleShow")}
-              </Button>
+          <section className="min-w-0 space-y-4 border-t border-border pt-4" aria-labelledby="employee-earnings-history-title" dir="rtl">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 id="employee-earnings-history-title" className="text-lg font-semibold text-foreground">
+                {t("earnings.historyTitle")}
+              </h3>
+              {employee.status === "ACTIVE" ? (
+                <Button size="lg" onClick={() => onApproveEarning?.(employee.id)}>
+                  {t("earnings.approve")}
+                </Button>
+              ) : null}
             </div>
+            <EmployeePayrollPanel employeeId={employee.id} />
+            <details>
+              <summary className="cursor-pointer py-3 text-sm font-medium">{t("earnings.historyTitle")}</summary>
+              <EmployeeEarningsHistory employeeId={employee.id} employeeNames={employeeNames} projectNames={projectNames} />
+            </details>
+          </section>
 
-            {employee.salaryAmountDzd === null || !employee.salaryPeriod ? (
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">
-                {t("detailPages.employee.financeMissingSalary")}
-              </p>
-            ) : null}
-
-            {showPaymentForm ? (
-              <div className="mt-5 space-y-4 rounded-xl border border-border/60 bg-surface-2 p-4">
-                <div className="space-y-1">
-                  <h4 className="text-base font-semibold text-foreground">{t("detailPages.employee.financeFormTitle")}</h4>
-                  <p className="text-sm leading-6 text-muted-foreground">
-                    {t("detailPages.employee.financeFormDescription")}
-                  </p>
-                </div>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <Field label={t("detailPages.employee.financePaymentDate")}>
-                    <DatePicker value={paymentDate} onChange={setPaymentDate} />
-                  </Field>
-                  <Field label={t("detailPages.employee.financeExpectedAmount")}>
-                    <CurrencyInput currencyLabel={currencyLabel} readOnly value={employee.salaryAmountDzd !== null ? String(employee.salaryAmountDzd) : t("detailPages.salary.notSpecified")} />
-                  </Field>
-                  <Field label={t("detailPages.employee.financeActualAmount")}>
-                    <CurrencyInput currencyLabel={currencyLabel} placeholder="0" value={actualAmount} onChange={(event) => setActualAmount(event.target.value)} />
-                  </Field>
-                  <Field label={t("detailPages.employee.financePeriod")}>
-                    <NativeSelect disabled value={employee.salaryPeriod ?? ""}>
-                      <option value="">{t("detailPages.salary.notSpecified")}</option>
-                      <option value="DAILY">{t("detailPages.salary.daily")}</option>
-                      <option value="WEEKLY">{t("detailPages.salary.weekly")}</option>
-                      <option value="MONTHLY">{t("detailPages.salary.monthly")}</option>
-                    </NativeSelect>
-                  </Field>
-                  <Field label={t("detailPages.employee.notes")} className="md:col-span-2 xl:col-span-4">
-                    <Textarea value={note} onChange={(event) => setNote(event.target.value)} />
-                  </Field>
-                </div>
-                <div className="flex justify-start gap-3" dir="rtl">
-                  <Button size="lg" variant="outline" onClick={() => setShowPaymentForm(false)}>
-                    {t("common.cancel")}
-                  </Button>
-                  <Button
-                    size="lg"
-                    disabled={employee.salaryAmountDzd === null || !employee.salaryPeriod || !hasValidActualAmount || createSalaryPaymentMutation.isPending}
-                    onClick={() =>
-                      createSalaryPaymentMutation.mutate({
-                        employeeId: employee.id,
-                        actualAmountDzd: actualAmountValue!,
-                        paymentDate: paymentDate ? toAlgeriaDayBoundaryIso(paymentDate, "start") : undefined,
-                        note: note.trim() || null,
-                      })
-                    }
-                  >
-                    {t("detailPages.employee.financeSave")}
-                  </Button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="overflow-hidden rounded-xl border border-border/70 bg-sidebar dark:bg-surface" dir="rtl">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm" aria-label={t("detailPages.employee.financeSectionTitle")}>
-                <thead className="bg-muted/40 text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDate")}</th>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableExpected")}</th>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableActual")}</th>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDifference")}</th>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableNotes")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedSalaryPayments.length > 0 ? (
-                    sortedSalaryPayments.map((payment) => {
-                      const difference = getSalaryDifferenceMeta(payment.expectedAmountDzd, payment.actualAmountDzd)
-
-                      return (
-                        <tr key={payment.id} className="border-t border-border/60 bg-sidebar dark:bg-background">
-                          <td className="px-4 py-4 text-start text-foreground">{new Intl.DateTimeFormat("ar-DZ").format(new Date(payment.paymentDate))}</td>
-                          <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.expectedAmountDzd, currencyLabel)}</td>
-                          <td className="px-4 py-4 text-start text-foreground">{renderMoneyValue(payment.actualAmountDzd, currencyLabel)}</td>
-                          <td className="px-4 py-4 text-start font-medium">
-                            {renderMoneyValue(difference.value, currencyLabel, {
-                              signed: true,
-                              toneClassName: difference.className,
-                              zeroAsDash: true,
-                            })}
-                          </td>
-                          <td className="px-4 py-4 text-start text-muted-foreground">{payment.note?.trim() ? payment.note : noNotesLabel}</td>
-                        </tr>
-                      )
-                    })
-                  ) : (
-                    <tr>
-                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={5}>
-                        {t("detailPages.employee.financeEmpty")}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </RecordTabPanel>
 
       {isWorker ? (
         <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="debts">
-          <DebtCasesPanel
-            accounts={debtAccounts}
-            debtEntriesByAccountId={debtEntriesByAccountId}
-            title="ديون العامل"
-            workerId={employee.id}
-          />
+          <ExactDebtsPage client={debtClient} scopedParty={{ id: employee.id, label: employee.name, partyType: "INTERNAL_WORKER" }} parties={[{ id: employee.id, label: employee.name, partyType: "INTERNAL_WORKER" }]} />
         </RecordTabPanel>
       ) : null}
     </RecordPageFrame>
+    </div>
   )
 }

@@ -762,3 +762,111 @@ describe("SqliteCompanyRepository sync-writer lock guard (issue #322)", () => {
     expect(repo.getEmployeeById(employeeId)?.firstName).toBe("Nested-Updated");
   });
 });
+
+describe("SqliteCompanyRepository salary payment splits (issue #412)", () => {
+  let db: Database.Database;
+  let repo: SqliteCompanyRepository;
+
+  beforeEach(() => {
+    db = createTestDb();
+    repo = new SqliteCompanyRepository(db);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  function seedPaidWorkerAndProject(): { workerId: string; projectId: string } {
+    const manager = repo.createEmployee({
+      firstName: "Manager",
+      lastName: "Salary",
+      phone: "0555000001",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    const worker = repo.createEmployee({
+      firstName: "Worker",
+      lastName: "Salary",
+      phone: "0555000002",
+      roleId: "role-worker",
+      status: "ACTIVE",
+    });
+    const project = repo.createProject({
+      name: "Project Salary",
+      status: "ACTIVE",
+      managerId: manager.id,
+    });
+    return { workerId: worker.id, projectId: project.id };
+  }
+
+  it("round-trips a saved project split through the sqlite insert and read paths", () => {
+    const { workerId, projectId } = seedPaidWorkerAndProject();
+
+    const created = repo.createSalaryPayment({
+      employeeId: workerId,
+      periodType: "MONTHLY",
+      days: 30,
+      expectedAmountDzd: 30000,
+      actualAmountDzd: 30000,
+      paymentDate: "2026-03-31T00:00:00.000Z",
+      note: null,
+      projectSplits: [{ projectId, days: 12 }],
+    });
+
+    expect(created.projectSplits).toEqual([{ projectId, days: 12 }]);
+    const [listed] = repo.listSalaryPayments({ employeeId: workerId });
+    expect(listed?.projectSplits).toEqual([{ projectId, days: 12 }]);
+    // The persisted row, not just the mapper's in-memory view.
+    expect(
+      db.prepare(`SELECT project_id AS projectId, days FROM "employee_salary_payment_split"`).all(),
+    ).toEqual([{ projectId, days: 12 }]);
+  });
+
+  it("still reads every payment and split when the window exceeds SQLite's bound-variable limit", () => {
+    const { workerId, projectId } = seedPaidWorkerAndProject();
+    // Bind one parameter per payment and this read dies at the limit; the join
+    // reads the same rows with a fixed parameter count.
+    const limitRow = db
+      .prepare(
+        "SELECT compile_options AS option FROM pragma_compile_options WHERE compile_options LIKE 'MAX_VARIABLE_NUMBER=%'",
+      )
+      .get() as { option: string } | undefined;
+    const variableLimit = limitRow ? Number(limitRow.option.split("=")[1]) : 999;
+    const paymentCount = variableLimit + 2;
+
+    const insertPayment = db.prepare(
+      `INSERT INTO "employee_salary_payment"
+         (id, employee_id, period_type, days, expected_amount_dzd, actual_amount_dzd,
+          payment_date, note, actor_user_id, actor_label, transaction_id, created_at, updated_at)
+       VALUES (?, ?, 'MONTHLY', 30, 30000, 30000, ?, NULL, NULL, NULL, NULL, ?, ?)`,
+    );
+    const insertSplit = db.prepare(
+      `INSERT INTO "employee_salary_payment_split" (id, payment_id, project_id, days, created_at)
+       VALUES (?, ?, ?, 1, ?)`,
+    );
+    const ts = "2026-03-31T00:00:00.000Z";
+    db.exec("BEGIN");
+    try {
+      for (let index = 0; index < paymentCount; index += 1) {
+        const paymentId = `salary-payment-${index}`;
+        insertPayment.run(paymentId, workerId, ts, ts, ts);
+        if (index === 0) {
+          insertSplit.run(`salary-split-${index}`, paymentId, projectId, ts);
+        }
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+
+    const payments = repo.listSalaryPayments({ employeeId: workerId });
+    expect(payments).toHaveLength(paymentCount);
+    expect(payments.find((payment) => payment.id === "salary-payment-0")?.projectSplits).toEqual([
+      { projectId, days: 1 },
+    ]);
+    expect(
+      payments.find((payment) => payment.id === `salary-payment-${paymentCount - 1}`)?.projectSplits,
+    ).toEqual([]);
+  });
+});

@@ -32,6 +32,9 @@ vi.mock("@/router/navigation", () => ({
 }))
 
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
+  AppMutationError: class AppMutationError extends Error {
+    fieldErrors: Array<{ field: string; message: string }> = []
+  },
   useSaveEmployeeMutation: () => ({ isPending: false, mutateAsync: mockSaveEmployee }),
 }))
 
@@ -49,8 +52,6 @@ const workerEmployee = {
   roleKey: "worker",
   role: "عامل",
   status: "ACTIVE",
-  salaryAmountDzd: 12000,
-  salaryPeriod: "MONTHLY",
   notes: null,
   occupation: null,
   currentManagerId: "mgr-1",
@@ -70,8 +71,6 @@ const projectManagerEmployee = {
   roleKey: "project_manager",
   role: "مدير مشروع",
   status: "ACTIVE",
-  salaryAmountDzd: 20000,
-  salaryPeriod: "MONTHLY",
   notes: null,
   occupation: null,
   currentManagerId: null,
@@ -91,8 +90,6 @@ const warehouseManagerEmployee = {
   roleKey: "warehouse_manager",
   role: "مدير مستودع",
   status: "ACTIVE",
-  salaryAmountDzd: 18000,
-  salaryPeriod: "MONTHLY",
   notes: null,
   occupation: null,
   currentManagerId: null,
@@ -214,6 +211,7 @@ describe("employee edit atomic save (issue #49)", () => {
     const payload = mockSaveEmployee.mock.calls[0]![0] as Record<string, unknown>
     expect(payload.id).toBe("emp-worker")
     expect(payload.firstName).toBe("اسم معدل")
+    expect(payload).not.toHaveProperty("salaryReference")
     expect(payload).not.toHaveProperty("placement")
     expect(payload).not.toHaveProperty("managedProjectIds")
     expect(payload).not.toHaveProperty("managedWarehouseIds")
@@ -329,5 +327,128 @@ describe("employee edit atomic save (issue #49)", () => {
 
     await waitFor(() => expect(mockNavigateToWorkspaceRoute).toHaveBeenCalled())
     expect(mockSaveEmployee).toHaveBeenCalledTimes(1)
+  })
+
+  it("saves salary references as exact decimal strings without changing them when period changes", async () => {
+    mockSaveEmployee.mockResolvedValue({ success: true, message: "تم الحفظ" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "DAILY", amount: "900719925474.0993" },
+    })
+
+    fireEvent.change(screen.getByLabelText("دورية الأجر"), { target: { value: "DAILY" } })
+    fireEvent.change(screen.getByLabelText(/قيمة الأجر/), { target: { value: "900719925474.0993" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(mockNavigateToWorkspaceRoute).toHaveBeenCalled())
+    const payload = mockSaveEmployee.mock.calls[0]![0] as Record<string, unknown>
+    expect(payload.salaryReference).toEqual({ period: "DAILY", amount: "900719925474.0993" })
+    expect(payload).not.toHaveProperty("salaryAmountDzd")
+    expect(payload).not.toHaveProperty("salaryPeriod")
+  })
+
+  it("normalizes localized DAILY input to its exact canonical wire string", async () => {
+    mockSaveEmployee.mockResolvedValue({ success: true, message: "تم الحفظ" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "DAILY", amount: "10.0000" },
+    })
+
+    fireEvent.change(screen.getByLabelText(/قيمة الأجر/), { target: { value: "١٬٢٣٤٫٥٦٧٨" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(mockNavigateToWorkspaceRoute).toHaveBeenCalled())
+    expect(mockSaveEmployee.mock.calls[0]![0]).toEqual(expect.objectContaining({
+      salaryReference: { period: "DAILY", amount: "1234.5678" },
+    }))
+  })
+
+  it("accepts a large two-place MONTHLY reference without applying DAILY bounds", async () => {
+    mockSaveEmployee.mockResolvedValue({ success: true, message: "تم الحفظ" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "MONTHLY", amount: "1000000000000000.00" },
+    })
+
+    fireEvent.change(screen.getByLabelText(/قيمة الأجر/), { target: { value: "1000000000000000.01" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(mockNavigateToWorkspaceRoute).toHaveBeenCalled())
+    expect(mockSaveEmployee.mock.calls[0]![0]).toEqual(expect.objectContaining({
+      salaryReference: { period: "MONTHLY", amount: "1000000000000000.01" },
+    }))
+  })
+
+  it("shows translated salary field validation and keeps the draft after a server rejection", async () => {
+    const rejection = new Error("Input validation failed") as Error & { data: { issues: Array<{ message: string; path: string[] }> } }
+    rejection.data = {
+      issues: [{ message: "workforce.validation.salaryReference.precision", path: ["salaryReference", "amount"] }],
+    }
+    mockSaveEmployee.mockRejectedValue(rejection)
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "DAILY", amount: "10.0000" },
+    })
+
+    fireEvent.change(screen.getByLabelText(/قيمة الأجر/), { target: { value: "12.3456" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(screen.getByText("مرجع الأجر يجب أن يكون قيمة دقيقة مناسبة للدورية.")).toBeTruthy())
+    expect((screen.getByLabelText(/قيمة الأجر/) as HTMLInputElement).value).toBe("12.3456")
+    expect(screen.queryByRole("alert")).toBeNull()
+    expect(mockNavigateToWorkspaceRoute).not.toHaveBeenCalled()
+  })
+
+  it("rejects four fractional places for a monthly salary reference", async () => {
+    mockSaveEmployee.mockResolvedValue({ success: true, message: "تم الحفظ" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "DAILY", amount: "12.3456" },
+    })
+
+    fireEvent.change(screen.getByLabelText("دورية الأجر"), { target: { value: "MONTHLY" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(screen.getByText("مرجع الأجر يجب أن يكون قيمة دقيقة مناسبة للدورية.")).toBeTruthy())
+    expect((screen.getByLabelText(/قيمة الأجر/) as HTMLInputElement).value).toBe("12.3456")
+    expect(mockSaveEmployee).not.toHaveBeenCalled()
+  })
+
+  it("distinguishes an explicitly cleared salary reference from an untouched reference", async () => {
+    mockSaveEmployee.mockResolvedValue({ success: true, message: "تم الحفظ" })
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "MONTHLY", amount: "0" },
+    })
+
+    fireEvent.change(screen.getByLabelText(/قيمة الأجر/), { target: { value: "" } })
+    fireEvent.change(screen.getByLabelText("دورية الأجر"), { target: { value: "" } })
+    clickSaveAll()
+
+    await waitFor(() => expect(mockNavigateToWorkspaceRoute).toHaveBeenCalled())
+    const payload = mockSaveEmployee.mock.calls[0]![0] as Record<string, unknown>
+    expect(payload.salaryReference).toBeNull()
+  })
+
+  it("keeps WEEKLY selectable for a legacy weekly employee after switching the draft period", () => {
+    // A legacy WEEKLY row must be able to go back to WEEKLY. Basing the option
+    // list on the DRAFT period removed the option the moment the user switched
+    // the draft to DAILY, locking them out of their own stored value.
+    renderWorker({
+      ...workerEmployee,
+      salaryReference: { period: "WEEKLY", amount: "1234.56" },
+    })
+
+    const periodSelect = screen.getByLabelText("دورية الأجر") as HTMLSelectElement
+    const weeklyOptionCount = () =>
+      Array.from(periodSelect.options).filter((option) => option.value === "WEEKLY").length
+    expect(weeklyOptionCount()).toBe(1)
+
+    fireEvent.change(periodSelect, { target: { value: "DAILY" } })
+    expect(periodSelect.value).toBe("DAILY")
+    expect(weeklyOptionCount()).toBe(1)
+
+    fireEvent.change(periodSelect, { target: { value: "WEEKLY" } })
+    expect(periodSelect.value).toBe("WEEKLY")
   })
 })

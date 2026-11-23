@@ -1,20 +1,20 @@
+import { isTauri } from "@tauri-apps/api/core"
+
 /**
- * Desktop auth session management for Electron/Tauri.
+ * Desktop auth session management for Tauri.
  */
 let desktopAuthInitialized = false
 let desktopAuthInitializationPromise: Promise<void> | null = null
 
 const DESKTOP_AUTH_STORAGE_KEY = "tuari.desktop.auth.token"
 
-/**
- * isDesktopRuntime() component.
- */
+/** Returns whether this window runs inside Tauri. */
 export function isDesktopRuntime() {
   if (typeof window === "undefined") {
     return false
   }
 
-  return window.location.hostname === "tauri.localhost" || window.location.protocol === "tauri:"
+  return isTauri()
 }
 
 function clearLegacyDesktopBrowserToken() {

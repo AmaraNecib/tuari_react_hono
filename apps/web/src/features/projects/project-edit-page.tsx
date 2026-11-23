@@ -13,6 +13,7 @@ import { navigateToWorkspaceRoute, workspaceRoutes } from "@/router/navigation"
 
 import type { ProjectPageRecord } from "./project-details-page"
 import { createProjectFormState, ProjectFormFields, type ProjectFormErrors, type ProjectFormState } from "./project-form"
+import { useProjectManagerInlineCreateSelection } from "./project-manager-inline"
 
 /**
  * @description Component
@@ -20,15 +21,21 @@ import { createProjectFormState, ProjectFormFields, type ProjectFormErrors, type
 export function ProjectEditPage({
   managerOptions,
   project,
+  projectManagerRoleId,
 }: {
   managerOptions: Array<{ id: string; label: string }>
   project: ProjectPageRecord
+  projectManagerRoleId: string
 }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const updateProjectMutation = useUpdateProjectMutation()
   const [state, setState] = useState<ProjectFormState>(() => createProjectFormState(project))
   const [errors, setErrors] = useState<ProjectFormErrors>({})
+  const { createConfig: managerCreate, selectedDisplayValue: managerDisplayValue } = useProjectManagerInlineCreateSelection({
+    projectManagerRoleId,
+    selectedManagerId: state.managerId,
+  })
   const previousProjectIdRef = useRef(project.id)
   const statusOptions = useMemo(
     () => [
@@ -108,6 +115,8 @@ export function ProjectEditPage({
             notes: t("detailPages.project.notes"),
             noManager: t("shell.noManager"),
           }}
+          managerCreate={managerCreate}
+          managerDisplayValue={managerDisplayValue}
           managerOptions={managerOptions}
           state={state}
           statusOptions={statusOptions}

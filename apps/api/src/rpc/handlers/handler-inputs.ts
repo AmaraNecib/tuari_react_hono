@@ -21,6 +21,9 @@ import {
   consumeRecoveryKeyInputSchema,
   employeePagedListInputSchema,
   idInputSchema,
+  inventoryAssetChargeDefaultInputSchema,
+  inventoryAssetChargesListByProjectInputSchema,
+  inventoryAssetChargesListByUnitInputSchema,
   inventoryAssetTransferInputSchema,
   inventoryConsumableTransferInputSchema,
   inventoryInvoiceGroupListInputSchema,
@@ -29,6 +32,7 @@ import {
   reportFilterInputSchema,
   revokeRecoveryKeyInputSchema,
 } from "@tuari/contracts";
+import type { InventoryItemUsage } from "@tuari/contracts";
 
 /** Input for procedures that take a single `{ id }` payload (get/delete/end). */
 export type IdInput = z.infer<typeof idInputSchema>;
@@ -42,11 +46,28 @@ export type EmployeePagedListInput = NonNullable<z.infer<typeof employeePagedLis
 /** Input for `inventoryItemDefinitionsList` — optional item-type/active filters. */
 export type InventoryItemDefinitionListInput = z.infer<typeof inventoryItemDefinitionListInputSchema>;
 
+/** Input for `inventoryItemDefinitionOptions` — usage-scoped, paged picker read. */
+export type InventoryItemDefinitionOptionsInput = {
+  cursor?: string;
+  limit?: number;
+  usage: InventoryItemUsage;
+  search?: string;
+};
+
 /** Input for `inventoryInvoiceGroupsList` — optional warehouse/project filters. */
 export type InventoryInvoiceGroupListInput = z.infer<typeof inventoryInvoiceGroupListInputSchema>;
 
 /** Input for `inventoryAssetsTransfer`. */
 export type InventoryAssetTransferInput = z.infer<typeof inventoryAssetTransferInputSchema>;
+
+/** Input for `inventoryAssetChargeDefault`. */
+export type InventoryAssetChargeDefaultInput = z.infer<typeof inventoryAssetChargeDefaultInputSchema>;
+
+/** Input for `inventoryAssetChargesListByUnit`. */
+export type InventoryAssetChargesListByUnitInput = z.infer<typeof inventoryAssetChargesListByUnitInputSchema>;
+
+/** Input for `inventoryAssetChargesListByProject`. */
+export type InventoryAssetChargesListByProjectInput = z.infer<typeof inventoryAssetChargesListByProjectInputSchema>;
 
 /** Input for `inventoryConsumablesTransfer`. */
 export type InventoryConsumableTransferInput = z.infer<typeof inventoryConsumableTransferInputSchema>;

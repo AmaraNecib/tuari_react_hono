@@ -1,16 +1,19 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 
 import { resetE2eDatabase } from "./helpers/db-isolation"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
 
+installManagedApiLifecycle()
+
 
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
 test.describe.configure({ mode: "serial" })
 
-test.beforeAll(() => {
-  resetE2eDatabase()
+test.beforeAll(async () => {
+  await resetE2eDatabase()
 })
 
 test.describe("employees — critical path", () => {
@@ -52,7 +55,8 @@ test.describe("employees — critical path", () => {
 
     await page.getByRole("button", { name: "حفظ العامل" }).click()
 
-    // The save returns to the list where the new employee's full name renders.
+    await expect(page.getByRole("heading", { name: "مراجعة الرصيد السابق، خطوة اختيارية", exact: true })).toBeVisible()
+    await page.getByRole("button", { name: "إنهاء ومتابعة المراجعة لاحقاً", exact: true }).click()
     await expect(page.getByText(`${firstName} ${lastName}`)).toBeVisible({ timeout: 10_000 })
   })
 

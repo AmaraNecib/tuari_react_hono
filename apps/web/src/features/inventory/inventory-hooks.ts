@@ -1,6 +1,11 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useInfiniteQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
+import { useEffect, useMemo, useState } from "react"
 import type {
   AppError,
+  InventoryAssetChargeDefault,
+  InventoryAssetChargeDetail,
+  InventoryAssetChargeUpdateInput,
+  InventoryAssetChargeVoidInput,
   InventoryAssetDetail,
   ExternalCounterparty,
   InventoryLocationContents,
@@ -9,15 +14,18 @@ import type {
   InventoryInvoiceGroup,
   InventoryItemDefinition,
   InventoryItemDefinitionCreateInput,
+  InventoryItemUsage,
   InventoryOutboundTransfer,
   InventoryOutboundTransferCreateInput,
   InventoryInvoiceGroupRecordPaymentInput,
+  InventoryProjectCharges,
   Project,
   Warehouse,
 } from "@tuari/contracts"
 
 import { AppMutationError } from "@/features/app-shell/mock-dashboard"
 import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
+import { useSessionQuery } from "@/features/session/use-session-query"
 import {
   getCachedSessionUserId,
   invalidateUserScopedQuery,
@@ -25,8 +33,9 @@ import {
 } from "@/features/app-shell/workspace-keys"
 import { desktopApiFetch } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
-import { createRpcHeaders, resolveRpcCredentials, rpcClient } from "@/lib/orpc-client"
+import { createRpcHeaders, financialClient, resolveRpcCredentials, rpcClient } from "@/lib/orpc-client"
 import { buildErrorMessage } from "@/lib/rpc-error-handling"
+import { exactCommercePrefix } from "@/features/shared/exact-commerce-queries"
 import { resolveApiUrl } from "@/lib/runtime-config"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 
@@ -42,12 +51,146 @@ function requireEntitySuccess<T>(result: { success: boolean; message?: string; i
   return { item: result.item, message: result.message ?? "تم الحفظ بنجاح." }
 }
 
-/** Fetches item definitions for the inventory. */
+/**
+ * Fetches item definitions for the inventory.
+ *
+ * This is the UNPAGED catalog read. Pickers that must page a usage-scoped set
+ * use {@link useItemDefinitionOptionsQuery} instead.
+ */
 export function useInventoryItemDefinitionsQuery({ enabled = true }: { enabled?: boolean } = {}) {
   return useWorkspaceScopedQuery({
     key: workspaceQueryKeys.inventoryItems,
     enabled,
     queryFn: async (): Promise<{ items: InventoryItemDefinition[] }> => rpcClient.inventoryItemDefinitionsList(undefined),
+  })
+}
+
+/** Page size for the paged item-option picker. */
+export const ITEM_DEFINITION_OPTIONS_PAGE_SIZE = 20
+
+/** A stable query-key fingerprint for a usage. */
+function itemUsageKey(usage: InventoryItemUsage): string {
+  switch (usage.surface) {
+    case "INVOICE_LINE":
+      return `INVOICE_LINE:${usage.kind}`
+    case "STOCK_REFERENCE":
+      return "STOCK_REFERENCE"
+    case "OUTBOUND_PICK":
+      // The source is part of the rule, so it must be part of the cache key;
+      // without it two different sources would share one page chain.
+      return usage.source.locationType === "WAREHOUSE"
+        ? `OUTBOUND_PICK:WAREHOUSE:${usage.source.warehouseId}`
+        : `OUTBOUND_PICK:PROJECT:${usage.source.projectId}`
+    default: {
+      const exhaustive: never = usage
+      return exhaustive
+    }
+  }
+}
+
+/** Debounces a rapidly changing value (the picker's search box). */
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs)
+    return () => clearTimeout(timer)
+  }, [value, delayMs])
+  return debounced
+}
+
+/**
+ * The single web module that owns the usage-scoped item picker's read:
+ * debounce, the cursor chain, page accumulation, and resolving a selection that
+ * is not on the current page. Keyed under the existing `inventoryItems` prefix
+ * so the create/update invalidations already in place reach every search and
+ * page variant.
+ */
+export function useItemDefinitionOptionsQuery({
+  usage,
+  search,
+  enabled = true,
+}: {
+  usage: InventoryItemUsage
+  search?: string
+  enabled?: boolean
+}) {
+  const sessionQuery = useSessionQuery()
+  const userId = sessionQuery.data?.user?.id ?? null
+  const debouncedSearch = useDebouncedValue(search?.trim() ?? "", 250)
+
+  const query = useInfiniteQuery({
+    queryKey: [
+      ...workspaceQueryKeys.inventoryItems(userId),
+      "options",
+      itemUsageKey(usage),
+      debouncedSearch,
+    ] as const,
+    enabled: Boolean(sessionQuery.data?.user) && enabled,
+    initialPageParam: undefined as string | undefined,
+    queryFn: async ({ pageParam }) =>
+      rpcClient.inventoryItemDefinitionOptions({
+        usage,
+        search: debouncedSearch || undefined,
+        cursor: pageParam,
+        limit: ITEM_DEFINITION_OPTIONS_PAGE_SIZE,
+      }),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+  })
+
+  const options = useMemo(
+    () => query.data?.pages.flatMap((page) => page.items) ?? [],
+    [query.data],
+  )
+
+  // Note: there is deliberately no `resolve(id)` here yet for the invoice row.
+  // The invoice row holds the picked OPTION in its state, so a selection that
+  // is not on the current page is rendered from that object, not re-fetched.
+  return { ...query, options, debouncedSearch }
+}
+
+/**
+ * Refresh every item read whose answer depends on current stock.
+ *
+ * `OUTBOUND_PICK`'s `inStockAt` rule makes the usage-scoped options read a
+ * function of where stock sits, so any mutation that moves or consumes stock
+ * (a receipt, a location transfer, an outbound) invalidates that answer
+ * immediately rather than at the end of the 30s stale window. Exact inventory
+ * definitions also feed mounted movement and purchase forms, so catalog creates
+ * and stock-dependent refreshes reach that client's definition family here.
+ * The options read
+ * is keyed under the `inventoryItems` prefix for exactly this reason: one
+ * invalidation reaches every source, search and page variant, so the mutation
+ * does not need to know which source moved.
+ */
+function invalidateStockDependentItemReads(
+  queryClient: Pick<QueryClient, "invalidateQueries">,
+  userId: string | null,
+): Promise<void> {
+  return Promise.all([
+    invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryItems),
+    queryClient.invalidateQueries({
+      queryKey: exactCommercePrefix(financialClient.inventory),
+      predicate: query => query.queryKey[5] === "definitions" && (userId === null || query.queryKey[4] === userId),
+    }),
+  ]).then(() => {})
+}
+
+/**
+ * Fetch one item definition by id.
+ *
+ * The id-only hydration path for a consumer that stores a reference, not an
+ * option: the expense dialog holds `stockItemId` on the server record, so it
+ * must resolve that id back to a definition (including an archived one) to show
+ * the current selection rather than a blank select.
+ */
+export function useInventoryItemDefinitionQuery(id: string | undefined) {
+  return useWorkspaceScopedQuery({
+    key: (userId) => [...workspaceQueryKeys.inventoryItems(userId), "detail", id ?? "missing"] as const,
+    enabled: Boolean(id),
+    queryFn: async (): Promise<InventoryItemDefinition> => {
+      const result = await rpcClient.inventoryItemDefinitionsGet({ id: id! })
+      return requireEntitySuccess(result).item
+    },
   })
 }
 
@@ -155,7 +298,7 @@ export function useCreateInventoryItemDefinitionMutation() {
     mutationKey: ["inventory", "item-definitions", "create"],
     mutationFn: async (input: InventoryItemDefinitionCreateInput) => requireEntitySuccess(await rpcClient.inventoryItemDefinitionsCreate(input)),
     onSuccess: async ({ message }) => {
-      await invalidateUserScopedQuery(queryClient, getCachedSessionUserId(queryClient), workspaceQueryKeys.inventoryItems)
+      await invalidateStockDependentItemReads(queryClient, getCachedSessionUserId(queryClient))
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -174,10 +317,24 @@ export function useCreateInventoryInvoiceGroupMutation() {
   return useMutation({
     mutationKey: ["inventory", "invoice-groups", "create"],
     mutationFn: async (input: InventoryInvoiceGroupCreateInput) => requireEntitySuccess(await rpcClient.inventoryInvoiceGroupsCreate(input)),
-    onSuccess: async ({ item, message }) => {
+    onSuccess: async ({ item, message }, variables) => {
       const userId = getCachedSessionUserId(queryClient)
       await invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryInvoices)
       await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryInvoiceGroup(uid, item.group.id))
+      // A purchase of ASSETs placed directly on a project books a placement
+      // charge in the same transaction, so every affected project's charges
+      // query must refetch or the cached total stays stale (#422 round 4).
+      const affectedProjectIds = new Set<string>()
+      if (variables.projectId) affectedProjectIds.add(variables.projectId)
+      for (const entry of variables.entries) {
+        if (entry.projectId) affectedProjectIds.add(entry.projectId)
+      }
+      for (const projectId of affectedProjectIds) {
+        await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryProjectCharges(uid, projectId))
+      }
+      // A purchase adds stock at its destinations, so the outbound picker's
+      // availability answer changed.
+      await invalidateStockDependentItemReads(queryClient, userId)
       showSuccessToast(message)
     },
     onError: (error) => {
@@ -195,20 +352,109 @@ export function useTransferInventoryAssetMutation() {
 
   return useMutation({
     mutationKey: ["inventory", "assets", "transfer"],
-    mutationFn: async (input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; note?: string | null; occurredAt?: string }) => requireEntitySuccess(await rpcClient.inventoryAssetsTransfer(input)),
-    onSuccess: async ({ item, message }) => {
+    mutationFn: async (input: { assetUnitId: string; toWarehouseId?: string | null; toProjectId?: string | null; chargeAmountDzd?: number | null; note?: string | null; occurredAt?: string }) => requireEntitySuccess(await rpcClient.inventoryAssetsTransfer(input)),
+    onSuccess: async ({ item, message }, variables) => {
       const userId = getCachedSessionUserId(queryClient)
       await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAsset(uid, item.asset.id))
       await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryInvoiceGroup(uid, item.invoiceGroup.id))
+      // The placement charge changed the unit's chain and the project's total.
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetCharges(uid, item.asset.id))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetChargeDefault(uid, item.asset.id))
+      if (variables.toProjectId) {
+        await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryProjectCharges(uid, variables.toProjectId!))
+      }
       // Invalidate the current location where asset was transferred
       if (item.asset.currentWarehouseId || item.asset.currentProjectId) {
         await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryLocationContents(uid, { warehouseId: item.asset.currentWarehouseId ?? undefined, projectId: item.asset.currentProjectId ?? undefined }))
       }
+      // The unit left one location and arrived at another, so both sources'
+      // availability answers changed.
+      await invalidateStockDependentItemReads(queryClient, userId)
       showSuccessToast(message)
       return item
     },
     onError: (error) => {
       showErrorToast(buildErrorMessage(error, "تعذر تحويل الأصل."))
+    },
+  })
+}
+
+/** Resolves the prefill amount for a project placement (#413). */
+export function useAssetChargeDefaultQuery(assetUnitId: string | undefined) {
+  return useWorkspaceScopedQuery({
+    key: (userId) => workspaceQueryKeys.inventoryAssetChargeDefault(userId, assetUnitId ?? "missing"),
+    enabled: Boolean(assetUnitId),
+    // Revalidate whenever the dialog opens (the query re-enables): another tab
+    // can correct the unit's last charge while this tab's cached default is
+    // still inside the global 30s window, and a stale prefill would book the
+    // wrong amount. `staleTime: 0` makes the disabled→enabled transition
+    // refetch; `refetchOnMount` covers a remount of the observer (#422 round 5).
+    staleTime: 0,
+    refetchOnMount: "always",
+    queryFn: async (): Promise<InventoryAssetChargeDefault> => {
+      const result = await rpcClient.inventoryAssetChargeDefault({ assetUnitId: assetUnitId! })
+      return requireEntitySuccess(result).item
+    },
+  })
+}
+
+/** A unit's charge chain, newest first (#413). */
+export function useAssetChargesByUnitQuery(assetUnitId: string | undefined) {
+  return useWorkspaceScopedQuery({
+    key: (userId) => workspaceQueryKeys.inventoryAssetCharges(userId, assetUnitId ?? "missing"),
+    enabled: Boolean(assetUnitId),
+    queryFn: async (): Promise<{ items: InventoryAssetChargeDetail[] }> => rpcClient.inventoryAssetChargesListByUnit({ assetUnitId: assetUnitId! }),
+  })
+}
+
+/** A project's live charges plus their total — consumed by the project cost view (#414). */
+export function useProjectChargesQuery(projectId: string | undefined) {
+  return useWorkspaceScopedQuery({
+    key: (userId) => workspaceQueryKeys.inventoryProjectCharges(userId, projectId ?? "missing"),
+    enabled: Boolean(projectId),
+    queryFn: async (): Promise<InventoryProjectCharges> => {
+      const result = await rpcClient.inventoryAssetChargesListByProject({ projectId: projectId! })
+      return requireEntitySuccess(result).item
+    },
+  })
+}
+
+/** Corrects a past charge; the revision keeps from → to + reason (#413). */
+export function useUpdateAssetChargeMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["inventory", "asset-charges", "update"],
+    mutationFn: async (input: InventoryAssetChargeUpdateInput) => requireEntitySuccess(await rpcClient.inventoryAssetChargesUpdate(input)),
+    onSuccess: async ({ item, message }) => {
+      const userId = getCachedSessionUserId(queryClient)
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetCharges(uid, item.assetUnitId))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryProjectCharges(uid, item.projectId))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetChargeDefault(uid, item.assetUnitId))
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(buildErrorMessage(error, "تعذر تصحيح الاحتساب."))
+    },
+  })
+}
+
+/** Voids a past charge while keeping its history (#413). */
+export function useVoidAssetChargeMutation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationKey: ["inventory", "asset-charges", "void"],
+    mutationFn: async (input: InventoryAssetChargeVoidInput) => requireEntitySuccess(await rpcClient.inventoryAssetChargesVoid(input)),
+    onSuccess: async ({ item, message }) => {
+      const userId = getCachedSessionUserId(queryClient)
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetCharges(uid, item.assetUnitId))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryProjectCharges(uid, item.projectId))
+      await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryAssetChargeDefault(uid, item.assetUnitId))
+      showSuccessToast(message)
+    },
+    onError: (error) => {
+      showErrorToast(buildErrorMessage(error, "تعذر إلغاء الاحتساب."))
     },
   })
 }
@@ -231,6 +477,9 @@ export function useTransferInventoryConsumableMutation() {
       for (const location of affectedLocations) {
         await invalidateUserScopedQuery(queryClient, userId, (uid) => workspaceQueryKeys.inventoryLocationContents(uid, location))
       }
+      // Quantity moved between two sources, so either source's availability
+      // answer changed.
+      await invalidateStockDependentItemReads(queryClient, userId)
       await invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryInvoices)
       showSuccessToast(message)
     },
@@ -326,7 +575,10 @@ export function useCreateOutboundTransferMutation() {
     mutationKey: ["inventory", "outbound-transfers", "create"],
     mutationFn: async (input: InventoryOutboundTransferCreateInput) => requireEntitySuccess(await rpcClient.inventoryOutboundTransfersCreate(input)),
     onSuccess: async ({ item, message }) => {
-      await invalidateUserScopedQuery(queryClient, getCachedSessionUserId(queryClient), workspaceQueryKeys.inventoryOutboundTransfers)
+      const userId = getCachedSessionUserId(queryClient)
+      await invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryOutboundTransfers)
+      // The outbound consumed stock at its source.
+      await invalidateStockDependentItemReads(queryClient, userId)
       showSuccessToast(message)
       return item
     },
