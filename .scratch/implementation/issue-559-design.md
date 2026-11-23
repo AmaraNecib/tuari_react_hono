@@ -52,6 +52,12 @@ Greptile found that automatic earning selection retained the previous editable p
 
 A later hosted review found an unrelated advance repayment draft was erased when the wage source disappeared. Reassessment after three correction rounds identifies shared editable `amount` state across cash, offset and repayment as the relevant coupling. The source-selection invalidation must match its dependencies: cash and offset use an earning, repayment does not. Keep the existing state model for this bounded fix and condition earning-driven draft invalidation on action not being repay. Splitting all action state or replacing the form is not needed to correct the reachable defect. Preserve locked retry behavior. A failing-first form regression exhausts the unrelated earning, preserves 1500 DZD repayment input and verifies submission still references the original advance.
 
+## CI earnings navigation synchronization
+
+Full CI E2E at 965e01cd failed only employee-earnings.spec.ts at the post-save breadcrumb bounds assertion, all three attempts; 85 other cases passed. The retained retry trace shows the edit page still present when the substring heading locator matched the employee name within the edit heading. The save toast had appeared, but navigation had not completed. A focused Windows reproduction passed, so do not claim a local failing replay or change production layout to fit this timing observation.
+
+Reassessment identifies an independent test synchronization defect, not another payroll-state correction: wait for the details URL, an exact employee heading and exact current breadcrumb text before preserving the existing geometry assertion. Before saving, assert the exact employee heading is absent to prove it discriminates the edit state. This strengthens the original check without relaxing any boundary or financial assertion. Keep CI trace and initial failure logs local. Verify the focused earnings spec, not all unrelated E2E cases locally.
+
 ## Architecture
 
 Retain the existing payroll write and retry interfaces. A pure percentage calculator should own rational conversion and display approximation so integer money rules do not spread through event handlers. No schema, ledger, rounding-policy or published-contract change is proposed.
