@@ -23,7 +23,7 @@ const env = {
   TUARI_LICENSE_STATUS: "trial",
 }
 export default defineConfig({
-  testDir: "./tests/e2e", testMatch: ["payroll-connected-exact.spec.ts", "inventory-attachment-connected-exact.spec.ts"], workers: 1, retries: 0,
+  testDir: "./tests/e2e", testMatch: "payroll-connected-exact.spec.ts", workers: 1, retries: 0,
   timeout: 90_000, reporter: [["line"]], outputDir: resolve(run, "artifacts"),
   use: { ...devices["Desktop Chrome"], baseURL: web, trace: "retain-on-failure" },
   webServer: [

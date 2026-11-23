@@ -21,7 +21,7 @@ The transport owns origin policy; the inventory module owns resource lookup and 
 
 Use the issue-requested HTTP and real browser-link interfaces. Extend selected-http integration for plain and encrypted native databases with originless authorized bytes/content type, anonymous and nonowner refusal, missing resource, explicit unsafe origins, unsafe upload and unrelated-route refusal. Preserve existing attachment storage and upload checks.
 
-Add a connected-exact browser test using real bootstrap cookies, real purchase creation and upload, reload, actual rendered link click and popup. Assert absent Origin/Referer, status 200, exact PNG bytes/type and rendered image. Register it in the existing connected suite and typecheck scope. No mocked auth, middleware bypass or real owner database.
+Add a connected-exact browser test using real bootstrap cookies, real purchase creation and upload, reload, actual rendered link click and popup. Assert absent Origin/Referer, status 200, exact PNG bytes/type and rendered image. Keep it in the existing payroll-connected-exact spec, which already owns dedicated CI routing and typecheck scope. The initial separate spec failed the selector anti-rot check and was not dispatched by the dedicated CI command. Move the unchanged browser case into the routed spec instead of changing CI gates or dispatch policy. No mocked auth, middleware bypass or real owner database.
 
 Expected-red native integration produced 403 instead of 200 in both cases. Focused API suite then passed 42 tests. Browser link passed one case. Logs stay ignored under .scratch/reviews/592. The contracts package needed compilation after frozen-lockfile dependency installation; no dependency versions changed.
 
