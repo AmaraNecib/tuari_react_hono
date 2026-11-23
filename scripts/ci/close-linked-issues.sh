@@ -226,7 +226,13 @@ body_flat=$(printf '%s' "$PR_BODY" | tr '\n' ' ' | sed -E \
 # recoverable drop instead of a close. Comma-, colon- and unpunctuated clauses
 # are the same sentence, so "Not sure, but Closes #N" and "found no blockers,
 # so Closes #N" are the same class of conservative miss.
-body_sentences=$(printf '%s' "$body_flat" | LC_ALL=C sed -E 's/([.!?;])([[:space:]]+[A-Z0-9#])/\1\n\2/g')
+# #502: known abbreviations are not sentence ends, even before uppercase
+# continuations. Remove their final dot only in the negation view; extraction
+# still uses body_flat. Unknown abbreviations retain the existing split rule.
+# An abbreviation at a real sentence end conservatively extends negation.
+body_sentences=$(printf '%s' "$body_flat" | LC_ALL=C sed -E \
+  -e 's/\b(e\.g|i\.e|etc|cf|vs|al|approx)\.([[:space:]]|$)/\1\2/gI' \
+  -e 's/([.!?;])([[:space:]]+[A-Z0-9#])/\1\n\2/g')
 
 to_numbers() { # stdin: matched closing spans → one issue number per line
   grep -oE '#[0-9]+' | tr -d '#' | sort -un

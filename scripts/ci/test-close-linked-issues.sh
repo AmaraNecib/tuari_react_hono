@@ -657,6 +657,21 @@ run_script "This does not (see v1.2) fix #515. Closes #516."
 assert_not_closed "a version number between negator and verb still negates (#515)" 515
 assert_closed "the affirmative control in that body closes (#516)" 516
 
+# #502: each abbreviation must retain negation before uppercase, emphasis,
+# multiple spaces, and form feed. A same-body close pins non-vacuous execution.
+for abbreviation in e.g. i.e. etc. cf. vs. al. approx. E.G.; do
+  for continuation in ' Fix' ' **fix**' '  Fix' $'\fFix'; do
+    reset_state
+    mk_issue 630 open "abbreviation must preserve negation"
+    mk_issue 631 open "affirmative control after a real sentence end"
+    run_script "This does not ${abbreviation}${continuation} #630. Closes #631."
+    check "abbreviation '$abbreviation' continuation '$continuation' exits 0" "0" "$RC"
+    assert_not_closed "'$abbreviation$continuation' preserves negation (#630)" 630
+    assert_has "$OUT" "Ignoring #630" "abbreviation candidate is explicitly negated"
+    assert_closed "affirmative control after '$abbreviation$continuation' closes (#631)" 631
+  done
+done
+
 # The other three terminators are load-bearing too: `!`, `?` and `;` end a
 # sentence, so a negation cannot reach across them.
 reset_state
