@@ -38,6 +38,10 @@ The E2E selector returns full scope because Arabic resources are a critical path
 
 Dependencies were installed with `pnpm install --frozen-lockfile`, without package additions. No package additions are proposed. The Impeccable context script reports no PRODUCT.md; use existing UI conventions, without expanding this issue into product documentation. Its referenced `reference/product.md` is absent in this checkout.
 
+## Bounded correction after initial reviews
+
+Retain the failed initial connected-suite log. Scope existing native cash, offset and repayment assertions by employee_id, preserving every literal amount. Extend the connected percentage case with quarter/half interactions and derived previews, a three-cent earning whose 50 percent payment persists as two cents, reload with one cent outstanding, approximate reciprocal percentage and invalid/excess percentage rejection. No runtime source, money policy or API changed in this correction.
+
 ## Architecture
 
 Retain the existing payroll write and retry interfaces. A pure percentage calculator should own rational conversion and display approximation so integer money rules do not spread through event handlers. No schema, ledger, rounding-policy or published-contract change is proposed.

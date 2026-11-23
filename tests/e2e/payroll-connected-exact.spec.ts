@@ -65,11 +65,19 @@ test("percentage entry uses approved earnings and preserves a frozen retry after
   const panel = page.getByRole("region", { name: "حساب الأجور والسلف", exact: true })
   const amount = panel.getByRole("textbox", { name: "المبلغ المدفوع من الأجر", exact: true })
   const percentage = panel.getByRole("textbox", { name: "نسبة هذه الدفعة (%)", exact: true })
+  await panel.getByRole("button", { name: "ربع الأجر", exact: true }).click()
+  await expect(amount).toHaveValue("15000.00")
+  await expect(percentage).toHaveValue("25")
+  await expect(panel.getByText(/المتبقي بعدها/)).toContainText("55%")
+  await panel.getByRole("button", { name: "نصف الأجر", exact: true }).click()
+  await expect(amount).toHaveValue("30000.00")
+  await expect(percentage).toHaveValue("50")
   await amount.fill("30000")
   await expect(percentage).toHaveValue("50")
   await percentage.fill("60")
   await expect(amount).toHaveValue("36000.00")
   await expect(panel.getByText(/إجمالي المسوّى بعدها/)).toContainText("80%")
+  await expect(panel.getByText(/إجمالي المدفوع نقداً بعدها/)).toContainText("80%")
   await expect(panel.getByText(/المتبقي بعدها/)).toContainText("20%")
   expect((await rpc(page, "employeePayrollGet", { employeeId })).cash).toHaveLength(1)
   await panel.locator(".employee-payment-form").screenshot({ path: test.info().outputPath("559-percentage-preview-desktop.png") })
@@ -116,6 +124,27 @@ test("percentage entry uses approved earnings and preserves a frozen retry after
   expect(final.summary).toMatchObject({ wageCashPaid: "60000.00", wagesOwed: "0.00" })
   expect(final.cash).toHaveLength(4)
   await panel.getByRole("button", { name: "إلغاء", exact: true }).click()
+  const fractional = await rpc(page, "employeeEarningsApprove", { requestId: crypto.randomUUID(), employeeId, currencyCode: "DZD", periodStart: "2026-12-01T00:00:00.000Z", periodEnd: "2027-01-01T00:00:00.000Z", totalAmount: "0.03", unallocatedAmount: "0.03", segments: [] })
+  if (!fractional.success) throw new Error(JSON.stringify(fractional))
+  await page.reload()
+  await percentage.fill("1e1")
+  await expect(panel.getByRole("button", { name: "تسجيل الدفع", exact: true })).toBeDisabled()
+  await percentage.fill("50")
+  await expect(amount).toHaveValue("0.02")
+  const fractionSaved = page.waitForResponse(response => response.url().endsWith("/rpc/employeePayrollCashRecord") && response.request().method() === "POST")
+  await panel.getByRole("button", { name: "تسجيل الدفع", exact: true }).click()
+  expect((await fractionSaved).ok()).toBe(true)
+  await expect(panel.getByRole("button", { name: "تسجيل الدفع", exact: true })).toBeEnabled()
+  await page.reload()
+  const fractionalBalance = await rpc(page, "employeePayrollGet", { employeeId })
+  expect(fractionalBalance.summary).toMatchObject({ approvedEarnings: "60000.03", wageCashPaid: "60000.02", wagesOwed: "0.01" })
+  expect(fractionalBalance.cash).toHaveLength(5)
+  expect(fractionalBalance.earnings.find(item => item.earning.id === fractional.item.id)?.remaining).toBe("0.01")
+  await amount.fill("0.01")
+  await expect(percentage).toHaveValue("33.33")
+  await expect(panel.getByText("النسبة المعروضة تقريبية", { exact: false })).toBeVisible()
+  await percentage.fill("100")
+  await expect(panel.getByRole("button", { name: "تسجيل الدفع", exact: true })).toBeDisabled()
 })
 
 // No financial fixtures or legacy SQL seed/reset. The only interception forwards
@@ -212,9 +241,9 @@ test("selected exact payroll persists UI cash, offset and repayment across reloa
   try {
     persisted = {
       database: process.env.APP_DB_PATH,
-      cash: db.prepare("SELECT amount_minor FROM employee_salary_cash").all(),
-      offsets: db.prepare("SELECT amount_minor FROM employee_salary_advance_offset").all(),
-      repayments: db.prepare("SELECT amount_minor FROM employee_salary_settlement").all(),
+      cash: db.prepare("SELECT amount_minor FROM employee_salary_cash WHERE employee_id=?").all(employeeId),
+      offsets: db.prepare("SELECT amount_minor FROM employee_salary_advance_offset WHERE employee_id=?").all(employeeId),
+      repayments: db.prepare("SELECT amount_minor FROM employee_salary_settlement WHERE employee_id=?").all(employeeId),
       labor: db.prepare("SELECT amount_minor FROM employee_earning_segment WHERE project_id=?").all(project.item.id),
     }
     expect(persisted.cash).toEqual([{ amount_minor: 3000000 }])
