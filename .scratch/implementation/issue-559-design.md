@@ -70,6 +70,10 @@ PaymentUnit is presentation state only. A DZD edit uses existing exact-money par
 
 Update the existing form and connected browser assertions to select modes explicitly rather than querying two simultaneous fields. Preserve all literal amounts, stale balance, fractional rounding, reload, retry and repayment assertions. Add a failing-first one-field/mode-switch drift regression. Local focused form/calculator proof is 45 tests; connected spec is 3 cases. Verify desktop/mobile light/dark screenshots, keyboard unit selection, no horizontal overflow and a new cropped recording before presenting to owner. Reports and recordings stay ignored; only source/tests/style/copy and this note are committed.
 
+## Single-field review correction
+
+The three initial UI lenses confirmed a presentation defect: comparing rounded cash and settlement percentage strings can suppress distinct settlement information. Keep the compact single-row preview only when exact cumulative minor-unit amounts match. A failing-first case uses a 1,000,000 DZD earning, 1 DZD prior offset and 800,000 DZD proposed payment: cash is exactly 80 percent, while settlement rounds to approximately 80 percent and must remain visible. Compare prior cash against approved total minus remaining in BigInt, not display strings. No money conversion, write or interaction changes. The recorded demo has no offsets, so its rendering remains identical under this correction.
+
 ## Architecture
 
 Retain the existing payroll write and retry interfaces. A pure percentage calculator should own rational conversion and display approximation so integer money rules do not spread through event handlers. No schema, ledger, rounding-policy or published-contract change is proposed.

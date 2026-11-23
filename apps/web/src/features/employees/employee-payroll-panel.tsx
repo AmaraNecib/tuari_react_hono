@@ -178,6 +178,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   let previewError = ""
   let paymentPreview: ReturnType<typeof previewPayrollPayment> | null = null
   let cumulativeCashPercentage: ReturnType<typeof paymentPercentage> | null = null
+  let hasNonCashSettlement = false
   if (percentageBasis && selectedEarning && !locked) {
     try {
       const display = paymentPercentage(amount || ZERO, percentageBasis)
@@ -188,6 +189,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
         .filter(allocation => allocation.source.kind === "EARNING" && allocation.source.id === selectedEarning.earning.id)
         .reduce((sum, allocation) => sum + minor(allocation.amount), 0n)
       cumulativeCashPercentage = paymentPercentage(wire(previouslyPaid + minor(paymentPreview.amount)), percentageBasis)
+      hasNonCashSettlement = previouslyPaid !== minor(percentageBasis) - minor(selectedEarning.remaining)
     } catch {
       try {
         if (minor(amount) > minor(selectedEarning.remaining)) previewError = "AMOUNT_EXCEEDS_BALANCE"
@@ -457,7 +459,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
                 </div>
                 <div className="payroll-preview-ratios">
                   {cumulativeCashPercentage ? <p>{t("payroll.cumulativeCashPaid")} <bdi>{cumulativeCashPercentage.approximate ? "≈ " : ""}{cumulativeCashPercentage.value}%</bdi></p> : null}
-                  {cumulativeCashPercentage?.value !== paymentPreview.cumulative.value ? <p>{t("payroll.cumulativeSettlement")} <bdi>{paymentPreview.cumulative.approximate ? "≈ " : ""}{paymentPreview.cumulative.value}%</bdi></p> : null}
+                  {hasNonCashSettlement ? <p>{t("payroll.cumulativeSettlement")} <bdi>{paymentPreview.cumulative.approximate ? "≈ " : ""}{paymentPreview.cumulative.value}%</bdi></p> : null}
                 </div>
               </div> : null}
             </div> : <label className="space-y-1 text-sm">

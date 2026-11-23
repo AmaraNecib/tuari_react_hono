@@ -64,6 +64,21 @@ function paymentField(unit: "amount" | "percentage") {
 }
 
 describe("employee payroll controls", () => {
+  it("keeps distinct settlement visible when exact totals round to the same percentage", () => {
+    const original = structuredClone(mocks.payroll)
+    try {
+      mocks.payroll.earnings[0]!.earning.totalAmount = "1000000.00"
+      mocks.payroll.earnings[0]!.remaining = "999999.00"
+      const timestamp = "2026-11-19T00:00:00.000Z"
+      const leg = { debtAccountId: "debt-1", debtEntryId: "entry-1", settlementEntryId: "settlement-1" }
+      mocks.payroll.offsets = [payrollOffsetRecordSchema.parse({ id: "offset-1", employeeId: "employee-1", currency: "DZD", amount: "1.00", settlementDate: timestamp, createdAt: timestamp, actorUserId: null, actorLabel: null, transactionId: null, wageSource: { kind: "EARNING", id: "earning-1" }, advanceSource: { kind: "ADVANCE", id: "advance-1" }, wage: leg, advance: leg })]
+      renderPanel()
+      fireEvent.change(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" }), { target: { value: "800000" } })
+      expect(screen.getByText(/إجمالي المدفوع نقداً بعدها/).textContent).toContain("80%")
+      expect(screen.getByText(/إجمالي المسوّى بعدها/).textContent).toContain("≈ 80%")
+    } finally { Object.assign(mocks.payroll, original) }
+  })
+
   it("uses one payment field with inline currency and percentage modes without changing exact money", async () => {
     const original = structuredClone(mocks.payroll)
     try {
