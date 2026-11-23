@@ -84,8 +84,8 @@ export function AuditLogPage() {
     const rows = filteredLogs.map((log: AuditLog) => [
       new Date(log.timestamp).toLocaleString("ar-DZ"),
       log.actor,
-      log.domain,
-      log.action,
+      getEntityTypeLabel(t, log.domain),
+      getActionTypeLabel(t, log.action),
       log.resourceId,
       log.changes,
     ]);

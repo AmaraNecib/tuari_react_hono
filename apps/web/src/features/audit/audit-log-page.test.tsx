@@ -14,7 +14,7 @@ vi.mock("@/lib/orpc-client", () => ({
 }))
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock("@/components/ui/date-picker", () => ({ DatePicker: ({ value, onChange }: { value: string; onChange: (value: string) => void }) => <input value={value} onChange={(event) => onChange(event.target.value)} /> }))
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 const entry = { id: "e1", createdAt: "2026-01-15T10:00:00Z", actorLabel: "Actor", entityType: "INVENTORY_ITEM", actionType: "INVENTORY_ITEM_CREATED", entityId: "item1", summary: "Inventory created" }
 function Observer() { useSystemLogQuery({ filters: {} }); return null }
 function mount() {
@@ -44,6 +44,21 @@ it("uses contract enum filters and delegates inclusive dates to the shared query
   await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith(expect.objectContaining({ toDate: "2026-01-15T22:59:59.999Z" })))
   fireEvent.change(screen.getByLabelText("auditLog.search"), { target: { value: "missing" } })
   await screen.findByText("auditLog.noResults")
+})
+it("exports translated labels for the searched rows", async () => {
+  mocks.list.mockResolvedValue({ items: [entry, { ...entry, id: "e2", summary: "Other entry" }] })
+  let csv = ""
+  vi.stubGlobal("Blob", class { constructor(parts: string[]) { csv = parts.join("") } })
+  vi.stubGlobal("URL", { createObjectURL: () => "blob:export" })
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+  mount()
+  await screen.findByText("Inventory created")
+  fireEvent.change(screen.getByLabelText("auditLog.search"), { target: { value: "Inventory" } })
+  fireEvent.click(screen.getByRole("button", { name: "auditLog.exportCsv" }))
+  expect(csv).toContain("systemLog.entityInventoryItem")
+  expect(csv).toContain("systemLog.inventoryItemCreated")
+  expect(csv).toContain("Inventory created")
+  expect(csv).not.toContain("Other entry")
 })
 it("shows RPC failures", async () => {
   mocks.list.mockRejectedValue(new Error("Unavailable"))
