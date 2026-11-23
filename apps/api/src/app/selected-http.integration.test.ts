@@ -34,6 +34,11 @@ function httpClient(app: ReturnType<typeof createApp>, token = "") {
   }
   return {
     request,
+    catalogCreate: procedure<AppClient["inventoryItemDefinitionsCreate"]>("inventoryItemDefinitionsCreate"),
+    catalogUpdate: procedure<AppClient["inventoryItemDefinitionsUpdate"]>("inventoryItemDefinitionsUpdate"),
+    catalogGet: procedure<AppClient["inventoryItemDefinitionsGet"]>("inventoryItemDefinitionsGet"),
+    catalogList: procedure<AppClient["inventoryItemDefinitionsList"]>("inventoryItemDefinitionsList"),
+    catalogOptions: procedure<AppClient["inventoryItemDefinitionOptions"]>("inventoryItemDefinitionOptions"),
     employeesCreate: procedure<AppClient["employeesCreate"]>("employeesCreate"),
     projectsCreate: procedure<AppClient["projectsCreate"]>("projectsCreate"),
     employeeEarningsApprove: procedure<AppClient["employeeEarningsApprove"]>("employeeEarningsApprove"),
@@ -105,6 +110,7 @@ describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 
       const denied = httpClient(app, token);
       await expect(denied.employeePayrollCashRecord({ ...wageInput, requestId: "denied" })).rejects.toMatchObject({ status: 401, code: "UNAUTHORIZED" });
       await expect(denied.metadata()).rejects.toMatchObject({ status: 401, code: "UNAUTHORIZED" });
+      await expect(denied.catalogCreate({ name: "Denied", itemType: "ASSET" })).rejects.toMatchObject({ status: 401, code: "UNAUTHORIZED" });
       for (const [path, method] of [["/api/inventory/attachments/missing", "GET"], ["/api/inventory/invoice-groups/missing/attachments", "POST"]]) {
         const response = await app.request(base + path, { method, headers: { origin, authorization: token ? `Bearer ${token}` : "" } });
         expect(response.status).toBe(401);
@@ -112,7 +118,13 @@ describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 
         expect(response.headers.get("cache-control")).toBe("no-store, private");
       }
     }
-    const definition = root.catalogService.createItemDefinition({ name: "HTTP cement", itemType: "CONSUMABLE", unit: "bag" }, { actorUserId: bootstrap.item.id });
+    const definition = await client.catalogCreate({ name: "HTTP cement", itemType: "CONSUMABLE", unit: "bag" });
+    if (!definition.success) throw new Error("Catalog create failed");
+    expect(await client.catalogUpdate({ id: definition.item.id, name: "HTTP cement updated" })).toMatchObject({ success: true, item: { name: "HTTP cement updated" } });
+    expect(await client.catalogGet({ id: definition.item.id })).toMatchObject({ success: true, item: { unit: "bag" } });
+    expect((await client.catalogList({})).items).toMatchObject([{ id: definition.item.id }]);
+    expect(await client.catalogOptions({ usage: { surface: "INVOICE_LINE", kind: "CONSUMABLE" }, search: "cement", limit: 1 })).toMatchObject({ total: 1, hasMore: false, items: [{ id: definition.item.id }] });
+    await expect(client.request("inventoryItemDefinitionsCreate", { name: "", itemType: "CONSUMABLE" })).rejects.toMatchObject({ status: 400, code: "BAD_REQUEST" });
     const warehouse = root.operationsService.createWarehouse({ name: "HTTP depot", status: "ACTIVE" }, { actorUserId: bootstrap.item.id });
     const purchase = root.financial.services.inventory.createInvoiceGroup({ requestId: "http-stock", warehouseId: warehouse.item.id, entries: [{ kind: "CONSUMABLE", itemDefinitionId: definition.item.id, quantity: 1, unitPriceDzd: "12.3400" }] });
     const assets = root.catalogService.createItemDefinition({ name: "HTTP equipment", itemType: "ASSET" }, { actorUserId: bootstrap.item.id });
