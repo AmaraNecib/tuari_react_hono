@@ -32,11 +32,11 @@ export function WorkspaceBreadcrumbs({ items }: { items: BreadcrumbItemRecord[] 
 
           return (
             <Fragment key={`${item.label}-${index}`}>
-              <BreadcrumbItem className={isLast ? "min-w-0" : "hidden shrink-0 md:inline-flex"}>
+              <BreadcrumbItem className={isLast ? "min-w-0 max-w-full shrink-0" : "hidden min-w-0 max-w-[40%] md:inline-flex md:flex-1"}>
                 {isLast || !item.to ? (
                   <BreadcrumbPage className="truncate" title={item.label}>{item.label}</BreadcrumbPage>
                 ) : (
-                  <BreadcrumbLink render={<Link {...getWorkspaceLinkProps(item.to)} />}>{item.label}</BreadcrumbLink>
+                  <BreadcrumbLink className="block truncate" title={item.label} render={<Link {...getWorkspaceLinkProps(item.to)} />}>{item.label}</BreadcrumbLink>
                 )}
               </BreadcrumbItem>
               {!isLast ? <BreadcrumbSeparator className="hidden shrink-0 md:flex" /> : null}

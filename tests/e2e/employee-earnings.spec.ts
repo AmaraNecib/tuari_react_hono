@@ -10,7 +10,8 @@ installManagedApiLifecycle()
 
 const evidenceDir = join(process.cwd(), ".scratch", "reviews", "543-browser")
 const suffix = uniqueSuffix()
-const employeeName = `عامل إثبات ${suffix}`
+const employeeLastName = `إثبات ${"الاسم الطويل ".repeat(6)}${suffix}`
+const employeeName = `عامل ${employeeLastName}`
 const managerName = `مدير إثبات ${suffix}`
 const projectA = `مشروع أ ${suffix}`
 const projectB = `مشروع ب ${suffix}`
@@ -103,7 +104,7 @@ test("employee earnings approval keeps exact references, retries one committed r
   await createProject(page, projectB, managerName)
   await createEmployee(page, {
     firstName: "عامل",
-    lastName: `إثبات ${suffix}`,
+    lastName: employeeLastName,
     phone: `054${digits.slice(0, 7)}`,
     role: "عامل",
     salary: "12345.67",
@@ -117,13 +118,37 @@ test("employee earnings approval keeps exact references, retries one committed r
   await employeeRow.getByRole("button", { name: /^عرض$/ }).click()
   await page.getByRole("link", { name: /^تعديل$/ }).first().click()
   await expect(page.getByLabel("قيمة الأجر")).toHaveValue("12345.67")
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 })
+    const breadcrumb = page.getByRole("navigation", { name: "breadcrumb" })
+    const current = breadcrumb.locator('[data-slot="breadcrumb-page"]')
+    await expect(current).toBeVisible()
+    const geometry = await breadcrumb.evaluate(nav => {
+      const current = nav.querySelector('[data-slot="breadcrumb-page"]')!
+      const box = current.getBoundingClientRect()
+      const bounds = nav.getBoundingClientRect()
+      return { width: box.width, left: box.left, right: box.right, start: bounds.left, end: bounds.right }
+    })
+    expect(geometry.width).toBeGreaterThan(20)
+    expect(geometry.left).toBeGreaterThanOrEqual(geometry.start - 1)
+    expect(geometry.right).toBeLessThanOrEqual(geometry.end + 1)
+    const parent = breadcrumb.getByRole("link", { name: employeeName, exact: true })
+    if (width >= 768) {
+      await expect(parent).toHaveAttribute("title", employeeName)
+      expect(await parent.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true)
+    } else {
+      await expect(parent).toBeHidden()
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await breadcrumb.screenshot({ path: join(evidenceDir, `breadcrumb-${width}-${suffix}.png`) })
+  }
+  await page.setViewportSize({ width: 1280, height: 1000 })
   await page.getByRole("button", { name: "حفظ كل التغييرات" }).click()
   await expect(page.getByRole("heading", { name: employeeName, level: 1 })).toBeVisible({ timeout: 15_000 })
 
   await page.getByRole("tab", { name: "المالية" }).click()
   await expect(page.getByText("12,345.67")).toBeVisible()
-  const financeHeader = page.getByRole("heading", { name: "سجل الرواتب" }).locator("xpath=../..")
-  await financeHeader.getByRole("button", { name: "اعتماد الأجر" }).click()
+  await page.getByRole("tabpanel").getByRole("button", { name: "اعتماد الأجر" }).first().click()
   await expect(page).toHaveURL(/\/employees\/[^/]+\/earnings\/new\?returnTo=employee-finance/)
   await expect(page.getByRole("heading", { name: "اعتماد الأجر المكتسب" })).toBeVisible()
   const approvalForm = page.getByRole("main").locator("form")
@@ -216,6 +241,7 @@ test("employee earnings approval keeps exact references, retries one committed r
   await page.unroute("**/rpc/employeeEarningsApprove")
 
   await openEmployeeFinance(page)
+  await page.locator("summary").filter({ hasText: /^سجل الأجور المعتمدة$/ }).click()
   const history = page.getByRole("region", { name: "سجل الأجور المعتمدة" })
   await expect(history).toContainText("62,500")
   await expect(history).toContainText("0")
@@ -225,6 +251,7 @@ test("employee earnings approval keeps exact references, retries one committed r
   await expect(history.getByRole("row")).toHaveCount(2)
   await history.screenshot({ path: join(evidenceDir, `history-${suffix}.png`) })
   await page.reload()
+  await page.locator("summary").filter({ hasText: /^سجل الأجور المعتمدة$/ }).click()
   await expect(page.getByRole("region", { name: "سجل الأجور المعتمدة" })).toContainText("62,500")
 
   for (const [name, expectedAmounts] of [[projectA, ["10,000", "15,000"]], [projectB, ["37,500"]]] as const) {
