@@ -19,7 +19,7 @@ vi.mock("./employee-earnings-queries", () => ({
 import { EmployeeOpeningPanel } from "./employee-opening-panel"
 afterEach(() => { cleanup(); localStorage.clear() })
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
   Object.defineProperty(navigator, "locks", { configurable: true, value: { request: (_name: string, callback: () => Promise<unknown>) => callback() } })
 })
 function render(element: Parameters<typeof baseRender>[0]) {
@@ -84,7 +84,7 @@ describe("opening correction confirmation", () => {
     mocks.correct.mockRejectedValueOnce(new Error("Response lost"))
     render(<EmployeeOpeningPanel employeeId="employee-1" />)
     prepareCorrection()
-    await screen.findByRole("button", { name: "إعادة إرسال الطلب نفسه" })
+    await waitFor(() => expect(screen.getByRole("button", { name: "إعادة إرسال الطلب نفسه" })).toHaveProperty("disabled", false))
     const entered = deferred()
     const release = deferred()
     Object.defineProperty(navigator, "locks", { configurable: true, value: { request: async (_name: string, callback: () => Promise<unknown>) => {
@@ -106,6 +106,7 @@ describe("opening correction confirmation", () => {
     } else if (state === "replacement") {
       expect(JSON.parse(localStorage.getItem(key)!).payload.requestId).toBe(replacement.payload.requestId)
       mocks.correct.mockResolvedValueOnce(mocks.opening)
+      await waitFor(() => expect(screen.getByRole("button", { name: "إعادة إرسال الطلب نفسه" })).toHaveProperty("disabled", false))
       fireEvent.click(screen.getByRole("button", { name: "إعادة إرسال الطلب نفسه" }))
       await waitFor(() => expect(mocks.correct).toHaveBeenCalledTimes(2))
       expect(mocks.correct.mock.calls[1]![0].requestId).toBe(replacement.payload.requestId)
