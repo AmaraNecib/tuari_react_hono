@@ -11,6 +11,10 @@ export function installRuntimeEvents(sink: EventSink, emitter: EventEmitter = pr
   };
   const rejection = (error: unknown) => {
     exception(error);
+    if (sink.degraded) {
+      try { console.error(error instanceof Error ? error.stack ?? error.message : String(error)); }
+      catch { /* A broken stderr must not interrupt fatal termination. */ }
+    }
     if (emitter === process) process.exit(1);
   };
   // Observe fatal exceptions without suppressing Node's default termination.

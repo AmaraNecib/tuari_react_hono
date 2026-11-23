@@ -4,6 +4,18 @@ import { installRuntimeEvents } from "./runtime-events";
 import { StructuredLogger } from "./logger";
 import type { EventSink } from "./event-sink";
 
+it("preserves the original rejection stack on stderr when storage is degraded", () => {
+  const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+  const sink: EventSink = { emit: vi.fn(), flush: vi.fn(), degraded: true };
+  const emitter = new EventEmitter();
+  const uninstall = installRuntimeEvents(sink, emitter);
+  const error = new Error("original rejection reason");
+  try {
+    emitter.emit("unhandledRejection", error);
+    expect(stderr).toHaveBeenCalledWith(error.stack);
+  } finally { uninstall(); }
+});
+
 afterEach(() => { StructuredLogger.setSink(undefined); vi.restoreAllMocks(); });
 it("routes structured errors, fatal hooks, shutdown and slow operations through one sink", () => {
   vi.spyOn(console, "error").mockImplementation(() => {});

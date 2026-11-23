@@ -294,14 +294,27 @@ pub fn emit(severity: &str, message: &str, error: Option<String>) {
         let sink = SINK
             .get()
             .ok_or_else(|| std::io::Error::other("logger unavailable"))?;
-        let mut guard = sink
-            .try_lock()
-            .map_err(|_| std::io::Error::other("logger busy"))?;
-        guard.emit(severity, message, error, Local::now().fixed_offset())
+        let mut guard = if std::thread::panicking() {
+            sink.try_lock()
+                .map_err(|_| std::io::Error::other("logger busy during panic"))?
+        } else {
+            sink.lock()
+                .map_err(|_| std::io::Error::other("logger poisoned"))?
+        };
+        guard.emit(
+            severity,
+            message,
+            error.clone(),
+            Local::now().fixed_offset(),
+        )
     })();
     if result.is_err() {
         DEGRADED.store(true, Ordering::Relaxed);
-        let _ = writeln!(std::io::stderr(), "Local logging degraded: {message}");
+        let _ = writeln!(
+            std::io::stderr(),
+            "Local logging degraded: {message}: {}",
+            error.as_deref().unwrap_or("")
+        );
     }
 }
 pub fn degraded() -> bool {
@@ -342,10 +355,72 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
+    fn ordinary_concurrent_capture_waits_and_preserves_details() {
+        if let Ok(root) = std::env::var("TUARI_CONCURRENT_ROOT") {
+            initialize(PathBuf::from(&root));
+            let guard = SINK.get().unwrap().lock().unwrap();
+            let (started_tx, started_rx) = std::sync::mpsc::channel();
+            let (done_tx, done_rx) = std::sync::mpsc::channel();
+            let worker = std::thread::spawn(move || {
+                started_tx.send(()).unwrap();
+                emit(
+                    "error",
+                    "API stderr",
+                    Some("concurrent failure details".into()),
+                );
+                done_tx.send(()).unwrap();
+            });
+            started_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            let early = done_rx.recv_timeout(std::time::Duration::from_millis(100));
+            drop(guard);
+            worker.join().unwrap();
+            assert!(
+                early.is_err(),
+                "ordinary writes must wait, not discard the error"
+            );
+            done_rx
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            return;
+        }
+        let root = std::env::temp_dir().join(format!("tuari-concurrent-{}", rand::random::<u64>()));
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "event_sink::tests::ordinary_concurrent_capture_waits_and_preserves_details",
+            ])
+            .env("TUARI_CONCURRENT_ROOT", &root)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let day = fs::read_dir(&root).unwrap().next().unwrap().unwrap().path();
+        let log = fs::read_to_string(day.join("desktop.log")).unwrap();
+        let events: Vec<serde_json::Value> = log
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        assert!(events
+            .iter()
+            .any(|e| e["attributes"]["error"] == "concurrent failure details"));
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
     fn panic_hook_records_failure() {
         if let Ok(root) = std::env::var("TUARI_PANIC_TEST_ROOT") {
             initialize(PathBuf::from(root));
+            let guard = if std::env::var_os("TUARI_PANIC_LOCKED").is_some() {
+                Some(SINK.get().unwrap().lock().unwrap())
+            } else {
+                None
+            };
             let _ = std::panic::catch_unwind(|| panic!("panic capture probe"));
+            drop(guard);
             return;
         }
         let root = std::env::temp_dir().join(format!("tuari-panic-{}", rand::random::<u64>()));
@@ -364,6 +439,25 @@ mod tests {
         assert!(events
             .iter()
             .any(|e| e["message"] == "desktop panic" && e["severity"] == "error"));
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn panic_while_locked_preserves_details_without_deadlocking() {
+        let root =
+            std::env::temp_dir().join(format!("tuari-locked-panic-{}", rand::random::<u64>()));
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "event_sink::tests::panic_hook_records_failure"])
+            .env("TUARI_PANIC_TEST_ROOT", &root)
+            .env("TUARI_PANIC_LOCKED", "1")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("Local logging degraded: desktop panic:"),
+            "{stderr}"
+        );
+        assert!(stderr.contains("panic capture probe"), "{stderr}");
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
