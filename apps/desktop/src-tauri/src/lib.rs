@@ -263,6 +263,7 @@ fn strip_windows_extended_path_prefix(path: &str) -> String {
 pub mod error;
 pub mod crypto;
 pub mod clock;
+pub mod event_sink;
 pub mod license;
 pub mod recovery;
 pub mod update;
@@ -1046,9 +1047,18 @@ fn get_current_version() -> Result<String, String> {
 #[tauri::command]
 fn check_for_updates() -> Result<UpdateCheckResult, String> {
     let provider = crate::update::GithubReleasesProvider::new("AmaraNecib", "tuari_react_hono");
+    check_for_updates_with(&provider)
+}
+
+fn check_for_updates_with(provider: &dyn UpdateProvider) -> Result<UpdateCheckResult, String> {
+    crate::event_sink::emit("info", "update check started", None);
     let info = provider
         .check_for_updates(env!("CARGO_PKG_VERSION"))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            crate::event_sink::emit("error", "update check failed", None);
+            e.to_string()
+        })?;
+    crate::event_sink::emit("info", "update check complete", None);
     match info {
         Some(update) => Ok(UpdateCheckResult {
             update_available: true,
@@ -1883,7 +1893,7 @@ fn ensure_runtime_files(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), 
     let project_dir = resolve_project_dir(app)?;
     let logs_dir = resolve_logs_dir(app)?;
     create_dir_all(&project_dir).map_err(|error| error.to_string())?;
-    create_dir_all(&logs_dir).map_err(|error| error.to_string())?;
+    let _ = create_dir_all(&logs_dir);
 
     let auth_db_path = project_dir.join("tuari.sqlite");
     let app_db_path = project_dir.join("tuari.sqlite");
@@ -1900,7 +1910,7 @@ fn ensure_runtime_files(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), 
     migrate_legacy_db_if_needed(&app_db_path, &legacy_app_db_path)?;
 
     ensure_file_exists(&auth_db_path)?;
-    ensure_file_exists(&server_log_path)?;
+    // Log storage failure must not prevent the application from starting.
 
     Ok((auth_db_path, app_db_path, server_log_path))
 }
@@ -1987,6 +1997,10 @@ pub fn run() {
             app_ready
         ])
         .setup(|app| {
+            match resolve_logs_dir(app.handle()) {
+                Ok(root) => crate::event_sink::initialize(root),
+                Err(_) => eprintln!("Local logging degraded: cannot resolve log directory"),
+            }
             // The DB-key rotation commands operate on the same secret store the
             // API sidecar's APP_DB_KEY comes from, so a rotation stays in sync
             // with what the next spawned process will read.
@@ -2037,6 +2051,7 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+                crate::event_sink::emit("info", "shutdown", None);
                 kill_api(app);
             }
         });
@@ -2048,6 +2063,23 @@ fn kill_api(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn update_caller_records_success_and_failure() {
+        struct Provider(bool);
+        impl crate::update::UpdateProvider for Provider {
+            fn check_for_updates(&self, _: &str) -> Result<Option<crate::update::UpdateInfo>, crate::error::RustCoreError> {
+                if self.0 { Err(crate::error::RustCoreError::Internal("offline".into())) } else { Ok(None) }
+            }
+            fn download_update(&self, _: &crate::update::UpdateInfo, _: &std::path::Path) -> Result<(), crate::error::RustCoreError> { unreachable!() }
+        }
+        let events = crate::event_sink::capture_events(|| {
+            assert!(!super::check_for_updates_with(&Provider(false)).unwrap().update_available);
+            assert!(super::check_for_updates_with(&Provider(true)).is_err());
+        });
+        assert!(events.iter().any(|e| e["message"] == "update check started" && e["severity"] == "info" && e["lifecycle"] == true));
+        assert!(events.iter().any(|e| e["message"] == "update check complete" && e["severity"] == "info" && e["lifecycle"] == true));
+        assert!(events.iter().any(|e| e["message"] == "update check failed" && e["severity"] == "error"));
+    }
     use super::{
         api_sidecar_entry_path, clear_app_ready, complete_db_key_rotation_in_store,
         configure_api_child_environment, copy_allowlisted_legacy_runtime_files_if_missing,
