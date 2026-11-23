@@ -345,7 +345,19 @@ export function createApp(
 
   app.use("/rpc/*", createOriginBlockingMiddleware((origin) => transport.isAllowedOrigin(origin)));
 
-  app.use("/api/inventory/*", createOriginBlockingMiddleware((origin) => transport.isAllowedOrigin(origin)));
+  const inventoryOriginGuard = createOriginBlockingMiddleware((origin) => transport.isAllowedOrigin(origin));
+  const attachmentNavigationOriginGuard = createOriginBlockingMiddleware(
+    (origin) => transport.isAllowedOrigin(origin),
+    { allowOriginlessSafelist: true },
+  );
+  app.use("/api/inventory/*", (c, next) => {
+    // Only the single-file read route permits originless browser navigation.
+    // Session and bootstrap-owner authorization still run in its handler.
+    const guard = /^\/api\/inventory\/attachments\/[^/]+$/.test(c.req.path)
+      ? attachmentNavigationOriginGuard
+      : inventoryOriginGuard;
+    return guard(c, next);
+  });
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 

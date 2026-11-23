@@ -194,7 +194,8 @@ describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 
     expect(db.prepare("SELECT invoice_group_id AS groupId, byte_size AS size FROM inventory_invoice_attachment WHERE id=?").get(attachment.id)).toEqual({ groupId: purchase.group.id, size: 8 });
     const downloadPath = base + `/api/inventory/attachments/${attachment.id}`;
     const assertDownload = async (target: ReturnType<typeof createApp>) => {
-      const response = await target.request(downloadPath, { headers });
+      // Browser attachment navigation sends neither Origin nor Referer.
+      const response = await target.request(downloadPath, { headers: { authorization: headers.authorization, "sec-fetch-mode": "navigate", "sec-fetch-dest": "document", "sec-fetch-site": "same-site" } });
       expect(response.status).toBe(200);
       expect(response.headers.get("content-type")).toBe("application/pdf");
       expect(response.headers.get("content-length")).toBe("8");
@@ -202,12 +203,28 @@ describe("selected exact Hono HTTP (not default activation)", { timeout: 60_000 
       expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
     };
     await assertDownload(app);
+    for (const requestOrigin of [undefined, "https://evil.test", "null"]) {
+      const guardedHeaders = { authorization: headers.authorization, ...(requestOrigin === undefined ? {} : { origin: requestOrigin }) };
+      const upload = await app.request(uploadPath, { method: "POST", headers: guardedHeaders, body: form() });
+      expect(upload.status).toBe(403);
+      expect(await upload.json()).toEqual({ message: "Blocked origin." });
+      if (requestOrigin !== undefined) {
+        const download = await app.request(downloadPath, { headers: guardedHeaders });
+        expect(download.status).toBe(403);
+        expect(await download.json()).toEqual({ message: "Blocked origin." });
+      }
+    }
+    const unrelated = await app.request(base + "/api/inventory/unrelated", { headers: { authorization: headers.authorization } });
+    expect(unrelated.status).toBe(403);
+    const missingDownload = await app.request(base + "/api/inventory/attachments/missing", { headers: { authorization: headers.authorization } });
+    expect(missingDownload.status).toBe(404);
     const snapshot = db.prepare("SELECT total_changes() AS n").get();
     const storedFiles = readdirSync(config.attachmentsRootPath, { recursive: true });
     for (const token of ["", otherSession.token]) {
       const refusedHeaders = { origin, authorization: token ? `Bearer ${token}` : "" };
       expect((await app.request(uploadPath, { method: "POST", headers: refusedHeaders, body: form() })).status).toBe(401);
       expect((await app.request(downloadPath, { headers: refusedHeaders })).status).toBe(401);
+      expect((await app.request(downloadPath, { headers: { authorization: refusedHeaders.authorization } })).status).toBe(401);
     }
     expect(db.prepare("SELECT total_changes() AS n").get()).toEqual(snapshot);
     expect(readdirSync(config.attachmentsRootPath, { recursive: true })).toEqual(storedFiles);

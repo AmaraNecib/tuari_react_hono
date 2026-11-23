@@ -14,6 +14,7 @@
   },
   "include": [
     "./payroll-connected-exact.spec.ts",
+    "./inventory-attachment-connected-exact.spec.ts",
     "../../playwright.connected-exact.config.ts",
     "../../apps/api/tests/connected-exact-server.ts",
     "../../apps/web/vite.connected-exact.config.ts"
