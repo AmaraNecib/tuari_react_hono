@@ -969,6 +969,16 @@ export const ar = {
           phonePlaceholder: "0612345678",
         },
         reasonCategory: "سبب الدين",
+        categories: {
+          salaryAdvance: { label: "سلفة راتب", description: "صرفنا للعامل مال قبل استحقاقه" },
+          reimbursement: { label: "تعويض مصاريف", description: "العامل دفع شيء نيابة عنا (ماء، مواد، نقل)" },
+          cashTake: { label: "أخذ كاش", description: "العامل أخذ كاش من الصندوق" },
+          equipmentDamage: { label: "تلف معدات", description: "العامل مدين لنا بسبب تلف معدات" },
+          personalLoan: { label: "قرض شخصي", description: "أعطينا العامل قرض نقدي ليرجعه" },
+          directLoanGiven: { label: "قرض مباشر (أعطينا)", description: "أعطينا الطرف الخارجي قرض" },
+          directLoanTaken: { label: "قرض مباشر (أخذنا)", description: "طرف خارجي أقرضنا مال" },
+          other: { label: "أخرى", description: "سبب آخر — يرجى تقديم تفصيل" },
+        },
         direction: {
           owedToUs: "مستحقات لنا",
           owedByUs: "مستحقات علينا",
