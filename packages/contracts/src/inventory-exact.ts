@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { paymentMethodSchema } from "./core";
+import { exactDebtEntrySchema } from "./debts-exact";
 import { Money, UnitPrice, Quantity, parseExactLine } from "./exact-money";
 import {
   inventoryInvoiceAttachmentSchema, inventoryAssetUnitCreateInputSchema, inventoryAssetEntryCreateInputSchema, inventoryConsumableBalanceSchema, inventoryMovementSchema, inventoryItemDefinitionSchema,
@@ -62,9 +64,10 @@ const exactAssetEntryInput = z.object({ ...inventoryAssetEntryCreateInputSchema.
   if (input.warehouseId && input.projectId) ctx.addIssue({ code: "custom", message: "Choose one destination", path: ["warehouseId"] });
 });
 export const exactInventoryInvoiceCreateSchema = z.object({ ...inventoryInvoiceGroupCreateInputSchema.shape,
-  ...command, paidAmountDzd: exactInventoryMoneySchema.nullable().optional(),
+  ...command, initialPaymentMethod: paymentMethodSchema.optional(), paidAmountDzd: exactInventoryMoneySchema.nullable().optional(),
   entries: z.array(z.discriminatedUnion("kind", [exactConsumableInput, exactAssetEntryInput])).min(1).max(10000),
 }).superRefine((input, ctx) => {
+  if (input.initialPaymentMethod && !input.createDebt) ctx.addIssue({ code: "custom", message: "Initial method requires debt mode", path: ["initialPaymentMethod"] });
   if (input.warehouseId && input.projectId) ctx.addIssue({ code: "custom", message: "Choose one default destination", path: ["warehouseId"] });
   if (input.createDebt && !input.externalCounterpartyId) ctx.addIssue({ code: "custom", message: "Debt requires an external counterparty", path: ["externalCounterpartyId"] });
   if (input.createDebt && !input.paymentInputType) ctx.addIssue({ code: "custom", message: "Choose first-payment input mode", path: ["paymentInputType"] });
@@ -131,7 +134,7 @@ export const exactInventoryLocationInputSchema = z.object({ warehouseId: z.strin
   if (Boolean(input.warehouseId) === Boolean(input.projectId)) ctx.addIssue({ code: "custom", message: "Choose exactly one location" });
 });
 export const exactInventoryLocationSchema = z.object({ assets: z.array(exactInventoryAssetSchema), consumables: z.array(inventoryConsumableBalanceSchema) });
-export const exactInventoryDetailSchema = z.object({ attachments: z.array(inventoryInvoiceAttachmentSchema), group: exactInventoryInvoiceSchema, entries: z.array(exactInventoryEntrySchema),
+export const exactInventoryDetailSchema = z.object({ payments: z.array(exactDebtEntrySchema).optional(), attachments: z.array(inventoryInvoiceAttachmentSchema), group: exactInventoryInvoiceSchema, entries: z.array(exactInventoryEntrySchema),
   consumableBalances: z.array(inventoryConsumableBalanceSchema), movements: z.array(inventoryMovementSchema) });
 const aggregateAmount = z.string().max(256).regex(/^-?(?:0|[1-9]\d*)\.\d{2}$/);
 export const exactInventoryProjectContributionSchema = z.object({ projectId: z.string().min(1), chargedMaterialsDzd: aggregateAmount, equipmentChargesDzd: aggregateAmount,

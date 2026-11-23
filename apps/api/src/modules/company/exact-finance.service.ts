@@ -211,6 +211,15 @@ export class ExactFinanceService {
   }
   recordPayment(raw: PayExactDebtEntry & ExactDebtAudit): ExactDebtEntry {
     const input = payExactDebtEntrySchema.parse(raw);
+    return this.recordValidatedPayment(input, raw);
+  }
+  /** Preserve unknown tender for inventory purchases without changing generic-pay defaults. */
+  recordInventoryPayment(raw: Omit<PayExactDebtEntry, "paymentMethod"> & { paymentMethod?: PayExactDebtEntry["paymentMethod"] } & ExactDebtAudit): ExactDebtEntry {
+    if (this.producer?.type !== "INVENTORY_PURCHASE") throw new ExactDebtError("Inventory payment requires purchase ownership", "CONFLICT");
+    const input = payExactDebtEntrySchema.parse(raw);
+    return this.recordValidatedPayment({ ...input, paymentMethod: raw.paymentMethod ?? null }, raw);
+  }
+  private recordValidatedPayment(input: Omit<ReturnType<typeof payExactDebtEntrySchema.parse>, "paymentMethod"> & { paymentMethod: ExactDebtEntry["paymentMethod"] }, raw: ExactDebtAudit): ExactDebtEntry {
     const audit = this.audit(raw);
     return this.command("payment", { ...input, ...audit }, input, () => {
       const target = this.obligation(input.debtEntryId);

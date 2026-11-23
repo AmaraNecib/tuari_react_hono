@@ -350,6 +350,8 @@ export const ar = {
       "externalParty": "الطرف الخارجي",
       "supplierName": "اسم المورد",
       "supplierFromParty": "يُستخدم اسم الطرف المحدد. لإدخال اسم مورد يدويًا، ألغِ تحديد الطرف الخارجي.",
+      "unknownPaymentMethod": "غير محددة",
+      "purchasePayments": "سجل دفعات الشراء",
       "initialPaymentMode": "إدخال الدفعة الأولى",
       "fixedAmount": "مبلغ",
       "percentage": "نسبة مئوية",

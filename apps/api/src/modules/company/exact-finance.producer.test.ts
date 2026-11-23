@@ -8,6 +8,15 @@ const invoiceId = "00000000-0000-4000-8000-000000000111";
 const producer = { type: "INVOICE" as const, id: invoiceId };
 
 describe("exact producer ledger interface", () => {
+  it("rejects inventory payments without a purchase capability before any journal write", () => {
+    const repo = new InMemoryExactFinanceRepository({ externalCounterpartyIds: [partyId] });
+    const finance = new ExactFinanceService(repo, { id: randomUUID, now: () => "2026-11-10T00:00:00.000Z" });
+    const input = { requestId: "inventory-bypass", debtEntryId: "missing-original", amountDzd: "1.00" };
+    expect(() => finance.recordInventoryPayment(input)).toThrow(/purchase ownership/);
+    expect(() => finance.forProducer(producer).recordInventoryPayment(input)).toThrow(/purchase ownership/);
+    expect(finance.listAccounts()).toEqual([]);
+    expect(repo.getCommand(input.requestId)).toBeNull();
+  });
   it("rolls back domain state and ledger when aggregate receipt persistence fails, then replays once", () => {
     const repo = new InMemoryExactFinanceRepository({ externalCounterpartyIds: [partyId] });
     const finance = new ExactFinanceService(repo, { id: randomUUID, now: () => "2026-11-10T00:00:00.000Z" });

@@ -23,6 +23,16 @@ it("keeps absent and null item destinations compatible without inventing a locat
   expect(exactInventoryHistoryItemSchema.safeParse({ ...item, to: { type: "SUPPLIER", id: "same", name: "Site" } }).success).toBe(false);
 });
 
+it("validates initial tender independently from AMOUNT/PERCENT and rejects invalid methods", () => {
+  const base = { requestId: "method-contract", warehouseId: "warehouse", createDebt: true, externalCounterpartyId: "party", paidAmountDzd: "2.50", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 2, unitPriceDzd: "5.0000" }] };
+  for (const initialPaymentMethod of ["CASH", "BANK_TRANSFER", "CHECK", undefined]) {
+    for (const paymentInputType of ["AMOUNT", "PERCENT"]) {
+      expect(exactInventoryInvoiceCreateSchema.parse({ ...base, initialPaymentMethod, paymentInputType, paidPercent: 25 })).toMatchObject({ paymentInputType });
+    }
+  }
+  expect(exactInventoryInvoiceCreateSchema.safeParse({ ...base, paymentInputType: "AMOUNT", initialPaymentMethod: "CARD" }).success).toBe(false);
+  expect(exactInventoryInvoiceCreateSchema.safeParse({ ...base, createDebt: false, initialPaymentMethod: "CASH" }).success).toBe(false);
+});
 it("accepts price4 and independent fractional stock without a client rounded line total", () => {
   const input = exactInventoryInvoiceCreateSchema.parse({
     requestId: "purchase:1", warehouseId: "warehouse-1",

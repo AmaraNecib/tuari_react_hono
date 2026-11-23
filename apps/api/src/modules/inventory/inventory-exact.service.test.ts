@@ -16,6 +16,32 @@ import { ExactFinanceService } from "../company/exact-finance.service";
 import { InMemoryExactFinanceRepository } from "../company/adapters/inmemory-exact-finance.repository";
 import { InMemoryExactInventoryRepository } from "./adapters/inmemory-exact-inventory.repository";
 import { ExactInventoryService } from "./inventory-exact.service";
+it.each(["memory", "plain", "keyed"] as const)("%s: initial methods retain exact payment identity independently of input mode", kind => {
+  const { inventory, openPeer } = setup(kind);
+  const peer = openPeer?.();
+  for (const method of ["CASH", "BANK_TRANSFER", "CHECK", undefined] as const) {
+    for (const mode of ["AMOUNT", "PERCENT"] as const) {
+      const input = { requestId: `method-${method}-${mode}`, warehouseId: "warehouse", createDebt: true, externalCounterpartyId: partyId,
+        paymentInputType: mode, paidAmountDzd: mode === "AMOUNT" ? "2.50" : undefined, paidPercent: mode === "PERCENT" ? 25 : undefined,
+        initialPaymentMethod: method, entries: [{ kind: "CONSUMABLE" as const, itemDefinitionId: "material", quantity: 2, unitPriceDzd: "5.0000" }] };
+      const detail = inventory.createInvoiceGroup(input);
+      expect(detail.payments).toHaveLength(1);
+      expect(detail.payments[0]).toMatchObject({ paymentMethod: method ?? null, signedAmountDzd: "-2.50", targetEntryId: detail.group.debtEntryId, producerId: detail.group.id, producerType: "INVENTORY_PURCHASE" });
+      expect(inventory.createInvoiceGroup(input)).toEqual(detail);
+      expect((peer ?? inventory).getInvoiceGroup(detail.group.id).payments).toEqual(detail.payments);
+      expect(() => inventory.createInvoiceGroup({ ...input, initialPaymentMethod: method === "CHECK" ? "CASH" : "CHECK" })).toThrow(/conflict/i);
+    }
+  }
+});
+it("rejects invalid or zero-payment method metadata without writing inventory", () => {
+  const { inventory } = setup("memory");
+  const input = { requestId: "invalid-method", warehouseId: "warehouse", createDebt: true, externalCounterpartyId: partyId, paymentInputType: "AMOUNT" as const, paidAmountDzd: "0.00", entries: [{ kind: "CONSUMABLE" as const, itemDefinitionId: "material", quantity: 1, unitPriceDzd: "5.0000" }] };
+  expect(() => inventory.createInvoiceGroup({ ...input, initialPaymentMethod: "CARD" } as never)).toThrow();
+  expect(() => inventory.createInvoiceGroup({ ...input, initialPaymentMethod: "CASH" })).toThrow();
+  expect(inventory.listInvoiceGroups()).toHaveLength(0);
+  const detail = inventory.createInvoiceGroup(input);
+  expect(detail.payments).toEqual([]);
+});
 const date = "2026-11-10T00:00:00.000Z";
 const partyId = "party";
 const dependencies = { id: randomUUID, now: () => date };
