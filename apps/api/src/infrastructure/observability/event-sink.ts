@@ -80,6 +80,9 @@ export class LocalEventSink implements EventSink {
     if (lstatSync(dir).isSymbolicLink()) throw new Error("Log directory is a link");
     const payload = JSON.stringify({ ...event, schemaVersion: 1 });
     const line = '{"count":' + String(1).padStart(12) + ',' + payload.slice(1) + "\n";
+    const bytesToWrite = Buffer.byteLength(line);
+    if (bytesToWrite > (this.options.totalBytes ?? 200 * 1024 * 1024)) throw new Error("Event exceeds log capacity");
+    this.cleanup(bytesToWrite);
     let index = 0;
     let path: string;
     let size: number;
@@ -102,7 +105,7 @@ export class LocalEventSink implements EventSink {
     appendFileSync(path, line);
     return { path, offset: size + 9 };
   }
-  private cleanup(): void {
+  private cleanup(reservedBytes = 0): void {
     const now = this.options.now?.() ?? new Date();
     const cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     cutoff.setDate(cutoff.getDate() - (this.options.retentionDays ?? 30) + 1);
@@ -119,7 +122,7 @@ export class LocalEventSink implements EventSink {
     files.sort((a, b) => a.day.localeCompare(b.day) || a.mtime - b.mtime);
     let total = files.reduce((sum, file) => sum + file.size, 0);
     for (const file of files) {
-      if (file.day < localTimestamp(cutoff).slice(0, 10) || total > (this.options.totalBytes ?? 200 * 1024 * 1024)) {
+      if (file.day < localTimestamp(cutoff).slice(0, 10) || total + reservedBytes > (this.options.totalBytes ?? 200 * 1024 * 1024)) {
         unlinkSync(file.path); total -= file.size;
         for (const [key, duplicate] of this.duplicates) if (duplicate.path === file.path) this.duplicates.delete(key);
       }

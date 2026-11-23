@@ -284,6 +284,16 @@ pub(super) fn configure_api_child_environment(command: &mut Command, development
     }
 }
 
+fn initialize_license_for_api(root: &Path) -> Result<crate::license::LicenseManager, crate::error::RustCoreError> {
+    let result = crate::license::LicenseManager::initialize(root);
+    if result.is_ok() {
+        crate::event_sink::emit("info", "license validation complete", None);
+    } else {
+        crate::event_sink::emit("error", "license validation failed", None);
+    }
+    result
+}
+
 fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
     let temp_dir = prepare_api_temp_directory(&resolve_private_runtime_dir(app)?)?;
@@ -360,9 +370,8 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     // the API and support can tell WHY licensing failed instead of seeing an
     // omitted variable. The API keeps its own fail-closed default regardless.
     if let Ok(tuari_dir) = resolve_tuari_dir(app) {
-        match crate::license::LicenseManager::initialize(&tuari_dir) {
+        match initialize_license_for_api(&tuari_dir) {
             Ok(manager) => {
-                crate::event_sink::emit("info", "license validation complete", None);
                 let env_map = manager.to_env_map();
                 for (key, value) in &env_map {
                     command.env(key, value);
@@ -373,7 +382,6 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
                 }
             }
             Err(error) => {
-                crate::event_sink::emit("error", "license validation failed", None);
                 for (key, value) in license_failure_env_map(&error) {
                     command.env(key, value);
                 }
@@ -405,6 +413,19 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn license_caller_records_success_and_invalid_license_failure() {
+        let root = std::env::temp_dir().join(format!("tuari-license-events-{}", rand::random::<u64>()));
+        create_dir_all(&root).unwrap();
+        let events = crate::event_sink::capture_events(|| {
+            assert!(initialize_license_for_api(&root).is_ok());
+            std::fs::write(root.join("license.lic"), "invalid-license").unwrap();
+            assert!(initialize_license_for_api(&root).is_err());
+        });
+        assert!(events.iter().any(|e| e["message"] == "license validation complete" && e["severity"] == "info" && e["lifecycle"] == true));
+        assert!(events.iter().any(|e| e["message"] == "license validation failed" && e["severity"] == "error"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
     fn child() -> Child {
         Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "api_runtime::tests::sleeping_child", "--nocapture"])

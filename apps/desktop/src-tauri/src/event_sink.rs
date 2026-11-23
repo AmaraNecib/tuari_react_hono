@@ -60,6 +60,10 @@ impl EventSink {
             "severity": severity, "source": "desktop", "message": message,
             "lifecycle": severity != "error", "attributes": { "error": error } }).to_string();
         let line = format!("{{\"count\":{:>12},{}\n", 1, &payload[1..]);
+        if line.len() as u64 > 200 * 1024 * 1024 {
+            return Err(std::io::Error::other("event exceeds log capacity"));
+        }
+        self.cleanup_reserved(now, line.len() as u64)?;
         let mut index = 0;
         let (path, size) = loop {
             let name = if index == 0 {
@@ -112,6 +116,13 @@ impl EventSink {
         self.cleanup(now)
     }
     pub fn cleanup(&mut self, now: DateTime<FixedOffset>) -> std::io::Result<()> {
+        self.cleanup_reserved(now, 0)
+    }
+    fn cleanup_reserved(
+        &mut self,
+        now: DateTime<FixedOffset>,
+        reserved: u64,
+    ) -> std::io::Result<()> {
         fs::create_dir_all(&self.root)?;
         let cutoff = (now.date_naive() - chrono::Duration::days(29)).to_string();
         let mut files = Vec::new();
@@ -138,7 +149,7 @@ impl EventSink {
         files.sort();
         let mut total: u64 = files.iter().map(|f| f.3).sum();
         for (day, _, path, size) in files {
-            if day < cutoff || total > 200 * 1024 * 1024 {
+            if day < cutoff || total + reserved > 200 * 1024 * 1024 {
                 match fs::remove_file(&path) {
                     Ok(()) => {
                         total -= size;
@@ -181,7 +192,45 @@ pub fn initialize(root: PathBuf) {
     }));
     emit("info", "startup", None);
 }
+#[cfg(test)]
+thread_local! {
+    static TEST_SINK: std::cell::RefCell<Option<EventSink>> = const { std::cell::RefCell::new(None) };
+}
+#[cfg(test)]
+pub(crate) fn capture_events(operation: impl FnOnce()) -> Vec<serde_json::Value> {
+    let root = std::env::temp_dir().join(format!("tuari-caller-events-{}", rand::random::<u64>()));
+    TEST_SINK.with(|cell| *cell.borrow_mut() = Some(EventSink::new(root.clone())));
+    operation();
+    TEST_SINK.with(|cell| *cell.borrow_mut() = None);
+    let mut events = Vec::new();
+    for day in fs::read_dir(&root).unwrap() {
+        let text = fs::read_to_string(day.unwrap().path().join("desktop.log")).unwrap();
+        events.extend(
+            text.lines()
+                .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap()),
+        );
+    }
+    fs::remove_dir_all(root).unwrap();
+    events
+}
 pub fn emit(severity: &str, message: &str, error: Option<String>) {
+    #[cfg(test)]
+    if TEST_SINK.with(|cell| {
+        if let Some(sink) = cell.borrow_mut().as_mut() {
+            sink.emit(
+                severity,
+                message,
+                error.clone(),
+                Local::now().fixed_offset(),
+            )
+            .unwrap();
+            true
+        } else {
+            false
+        }
+    }) {
+        return;
+    }
     let result = (|| -> std::io::Result<()> {
         let sink = SINK
             .get()

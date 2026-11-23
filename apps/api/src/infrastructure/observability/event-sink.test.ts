@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, readdirSync, mkdirSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { LocalEventSink } from "./event-sink";
 
 const roots: string[] = [];
@@ -62,6 +62,29 @@ it("routes timezone changes using event dates rather than instant order", () => 
   sink.emit({ severity: "warn", source: "api", message: "east", timestamp: "2025-08-11T00:30:00.000+02:00" });
   sink.emit({ severity: "warn", source: "api", message: "west", timestamp: "2025-08-10T23:45:00.000+01:00" });
   expect(readdirSync(dir).sort()).toEqual(["2025-08-10", "2025-08-11"]);
+});
+it("drops an oversized event before it can evict valid history", () => {
+  const dir = root();
+  const sink = new LocalEventSink(dir, { totalBytes: 400, now: () => new Date("2025-08-10T12:00:00Z") });
+  sink.emit({ severity: "warn", source: "api", message: "kept" });
+  sink.emit({ severity: "warn", source: "api", message: "x".repeat(1000) });
+  const file = join(dir, "2025-08-10", "app.log");
+  expect(existsSync(file)).toBe(true);
+  expect(JSON.parse(readFileSync(file, "utf8")).message).toBe("kept");
+  expect(sink.degraded).toBe(true);
+});
+it("marks degraded and falls back when a buffered day fails but the error day remains writable", () => {
+  const dir = root();
+  const fallback = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const sink = new LocalEventSink(dir, { now: () => new Date("2025-08-10T12:00:00Z") });
+    sink.emit({ severity: "info", source: "api", message: "buffered", timestamp: "2025-08-10T23:59:59.000+01:00" });
+    writeFileSync(join(dir, "2025-08-10"), "not-a-directory");
+    sink.emit({ severity: "error", source: "api", message: "failure", timestamp: "2025-08-11T00:00:01.000+01:00" });
+    expect(sink.degraded).toBe(true);
+    expect(fallback).toHaveBeenCalledWith("Local logging degraded");
+    expect(JSON.parse(readFileSync(join(dir, "2025-08-11", "app.log"), "utf8")).message).toBe("failure");
+  } finally { fallback.mockRestore(); }
 });
 function root() { const path = mkdtempSync(join(tmpdir(), "tuari-events-")); roots.push(path); return path; }
 it("routes each event by its own local date and retains its offset across midnight", () => {

@@ -89,8 +89,9 @@ Capture-adapter integration checks should prove that logger output, uncaught fai
 - The first error is durable immediately. A twelve-byte padded JSON numeric count permits in-place updates without rewriting or shifting subsequent records. The duplicate table is bounded to 1000 signatures and expires per one-minute window. A torn count update remains an inherent removable-media risk.
 - Lifecycle milestones bypass the routine debug/info ring. The API ring retains 1000 events and drains before each error. Rust emits lifecycle/error records only.
 - Before appending, trim only a non-newline-terminated trailing record. Complete earlier records remain intact.
-- Startup and durable emits enforce 30 local calendar days and a 200 MiB total cap. Cleanup touches only owned day-folder log names, not arbitrary files.
+- Startup and durable emits enforce 30 local calendar days and a 200 MiB total cap. Capacity for the serialized record is reclaimed before appending. Oversized records are dropped with degraded state and console fallback rather than evicting valid history. Cleanup touches only owned day-folder log names, not arbitrary files.
 - The API receives TUARI_LOGS_DIR from the desktop. The legacy unbounded api-server.log writer is removed; raw sidecar stderr is captured in bounded 8192-byte reads through the desktop sink. Log-directory creation failures no longer abort runtime file initialization.
+- Caller-level proof imports the actual API entry with controlled composition dependencies and inspects serialized startup/database success/failure events. Rust caller tests exercise real license initialization on temporary files and the actual update command implementation with a fake provider. They capture serialized sink records, not emitted-call counts.
 - Panic capture uses try_lock and best-effort stderr fallback. The original panic hook is preserved. A subprocess regression proves panic capture without changing the test runner's global hook.
 - Never record license keys, database keys, authentication secrets, or entire process environments.
 

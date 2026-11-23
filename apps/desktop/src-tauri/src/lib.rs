@@ -1046,8 +1046,12 @@ fn get_current_version() -> Result<String, String> {
 
 #[tauri::command]
 fn check_for_updates() -> Result<UpdateCheckResult, String> {
-    crate::event_sink::emit("info", "update check started", None);
     let provider = crate::update::GithubReleasesProvider::new("AmaraNecib", "tuari_react_hono");
+    check_for_updates_with(&provider)
+}
+
+fn check_for_updates_with(provider: &dyn UpdateProvider) -> Result<UpdateCheckResult, String> {
+    crate::event_sink::emit("info", "update check started", None);
     let info = provider
         .check_for_updates(env!("CARGO_PKG_VERSION"))
         .map_err(|e| {
@@ -2059,6 +2063,23 @@ fn kill_api(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn update_caller_records_success_and_failure() {
+        struct Provider(bool);
+        impl crate::update::UpdateProvider for Provider {
+            fn check_for_updates(&self, _: &str) -> Result<Option<crate::update::UpdateInfo>, crate::error::RustCoreError> {
+                if self.0 { Err(crate::error::RustCoreError::Internal("offline".into())) } else { Ok(None) }
+            }
+            fn download_update(&self, _: &crate::update::UpdateInfo, _: &std::path::Path) -> Result<(), crate::error::RustCoreError> { unreachable!() }
+        }
+        let events = crate::event_sink::capture_events(|| {
+            assert!(!super::check_for_updates_with(&Provider(false)).unwrap().update_available);
+            assert!(super::check_for_updates_with(&Provider(true)).is_err());
+        });
+        assert!(events.iter().any(|e| e["message"] == "update check started" && e["severity"] == "info" && e["lifecycle"] == true));
+        assert!(events.iter().any(|e| e["message"] == "update check complete" && e["severity"] == "info" && e["lifecycle"] == true));
+        assert!(events.iter().any(|e| e["message"] == "update check failed" && e["severity"] == "error"));
+    }
     use super::{
         api_sidecar_entry_path, clear_app_ready, complete_db_key_rotation_in_store,
         configure_api_child_environment, copy_allowlisted_legacy_runtime_files_if_missing,
