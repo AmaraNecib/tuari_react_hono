@@ -268,6 +268,7 @@ pub mod recovery;
 pub mod update;
 pub mod trust;
 
+#[path = "commands/api_runtime.rs"]
 mod api_runtime;
 use api_runtime::ApiRuntime;
 #[cfg(test)]

@@ -12,6 +12,10 @@ Keep existing Rust secret, license, private directory, portable layout, installa
 
 Deletion test: removing the runtime module removes process construction, health polling, failed-start cleanup and shutdown together; Tauri contains only lifecycle calls. No domain glossary change: this is runtime ownership, not a new business concept.
 
+## Shell placement
+
+CI reserves `src/commands/` for Tauri-dependent shell adapters and prohibits Tauri imports in Rust Core. Place the runtime there and retain its logical root module name with a path attribute, so lifecycle callers and test selection remain stable. Do not exempt the module or weaken the core dependency guard. The initial root placement failed that guard on Ubuntu before test execution.
+
 ## Proof
 
 Retain existing environment subprocess and installation matching tests. Add runtime tests with real owned subprocesses for successful readiness, failed readiness cleanup and idempotent exit cleanup; inject only the readiness observation to avoid binding the production API port. Verify existing launch selection and path tests, Windows smoke-probe tests where runnable. Run focused Rust checks through heavy queue if compilation requires minutes; no full suites or production builds authorized.

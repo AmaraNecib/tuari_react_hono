@@ -400,7 +400,7 @@ mod tests {
         Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "api_runtime::tests::sleeping_child", "--nocapture"])
             .env("TUARI_LIFECYCLE_TEST_CHILD", "1")
-            .stdout(Stdio::null())
+            .stdout(Stdio::piped())
             .spawn()
             .unwrap()
     }
@@ -422,6 +422,8 @@ mod tests {
     #[test]
     fn sleeping_child() {
         if std::env::var_os("TUARI_LIFECYCLE_TEST_CHILD").is_some() {
+            println!("TUARI_CHILD_STARTED");
+            std::io::stdout().flush().unwrap();
             sleep(Duration::from_secs(30));
         }
     }
@@ -469,9 +471,41 @@ mod tests {
 
     #[test]
     fn exit_cleanup_takes_owned_child_and_is_idempotent() {
-        let runtime = ApiRuntime { child: Mutex::new(Some(child())) };
+        use std::io::BufRead;
+        let mut child = child();
+        let pid = child.id();
+        let stdout = child.stdout.take().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let observer = std::thread::spawn(move || {
+            let mut reader = std::io::BufReader::new(stdout);
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap() != 0 {
+                if line.contains("TUARI_CHILD_STARTED") {
+                    tx.send("started").unwrap();
+                    break;
+                }
+                line.clear();
+            }
+            let mut remainder = String::new();
+            reader.read_to_string(&mut remainder).unwrap();
+            let _ = tx.send("exited");
+        });
+        let runtime = ApiRuntime { child: Mutex::new(Some(child)) };
+        let started = rx.recv_timeout(Duration::from_secs(5));
         runtime.stop();
         assert!(runtime.child.lock().unwrap().is_none());
         runtime.stop();
+        let exited = rx.recv_timeout(Duration::from_secs(5));
+        if exited != Ok("exited") {
+            // Clean up the exact fixture even when a mutation removes stop().
+            #[cfg(target_os = "windows")]
+            let _ = Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"]).status();
+            #[cfg(not(target_os = "windows"))]
+            let _ = Command::new("kill").args(["-9", &pid.to_string()]).status();
+        }
+        observer.join().unwrap();
+        assert_eq!(started, Ok("started"), "fixture never became live");
+        assert_eq!(exited, Ok("exited"), "stop() left its child running");
     }
 }
