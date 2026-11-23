@@ -58,22 +58,52 @@ beforeEach(() => {
   } })
 })
 
+function paymentField(unit: "amount" | "percentage") {
+  fireEvent.click(screen.getByRole("button", { name: unit === "amount" ? "د.ج" : "%" }))
+  return screen.getByRole("textbox", { name: unit === "amount" ? "المبلغ المدفوع من الأجر" : "نسبة هذه الدفعة (%)" })
+}
+
 describe("employee payroll controls", () => {
+  it("uses one payment field with inline currency and percentage modes without changing exact money", async () => {
+    const original = structuredClone(mocks.payroll)
+    try {
+      mocks.payroll.earnings[0]!.earning.totalAmount = "0.03"
+      mocks.payroll.earnings[0]!.remaining = "0.03"
+      renderPanel()
+      const unit = screen.getByRole("group", { name: "وحدة إدخال الدفعة" })
+      expect(screen.getByRole("button", { name: "د.ج", pressed: true })).toBeTruthy()
+      expect(unit.querySelectorAll("button")).toHaveLength(2)
+      expect(screen.queryByRole("textbox", { name: "نسبة هذه الدفعة (%)" })).toBeNull()
+      fireEvent.change(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" }), { target: { value: "0.01" } })
+      for (let index = 0; index < 3; index++) {
+        fireEvent.click(screen.getByRole("button", { name: "%" }))
+        expect(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })).toHaveProperty("value", "33.33")
+        expect(screen.queryByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toBeNull()
+        fireEvent.click(screen.getByRole("button", { name: "د.ج" }))
+        expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "0.01")
+      }
+      fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفع" }))
+      await waitFor(() => expect(mocks.cash).toHaveBeenCalledTimes(1))
+      expect(mocks.cash.mock.calls[0]![0].wages).toEqual([{ earningId: "earning-1", amount: "0.01" }])
+      await waitFor(() => expect(localStorage.length).toBe(0))
+    } finally { Object.assign(mocks.payroll, original) }
+  })
+
   it("converts percentage and amount against approved earnings, not the remainder", async () => {
     const original = structuredClone(mocks.payroll)
     try {
       mocks.payroll.earnings[0]!.earning.totalAmount = "60000.00"
       mocks.payroll.earnings[0]!.remaining = "48000.00"
       renderPanel()
-      fireEvent.change(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" }), { target: { value: "60" } })
-      expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "36000.00")
+      fireEvent.change(paymentField("percentage"), { target: { value: "60" } })
+      expect(paymentField("amount")).toHaveProperty("value", "36000.00")
       expect(screen.getByText(/إجمالي المسوّى بعدها/).textContent).toContain("80%")
-      expect(screen.getByText(/المتبقي بعدها/).textContent).toContain("20%")
+      expect(screen.getByText(/المتبقي بعدها/).parentElement?.textContent).toContain("20%")
       expect(mocks.cash).not.toHaveBeenCalled()
       fireEvent.change(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" }), { target: { value: "30000" } })
-      expect(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })).toHaveProperty("value", "50")
+      expect(paymentField("percentage")).toHaveProperty("value", "50")
       fireEvent.click(screen.getByRole("button", { name: "ربع الأجر" }))
-      expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "15000.00")
+      expect(paymentField("amount")).toHaveProperty("value", "15000.00")
       fireEvent.click(screen.getByRole("button", { name: "نصف الأجر" }))
       expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "30000.00")
       fireEvent.click(screen.getByRole("button", { name: "كامل المتبقي" }))
@@ -91,13 +121,13 @@ describe("employee payroll controls", () => {
       mocks.payroll.earnings[0]!.remaining = "60000.00"
       mocks.payroll.earnings.push({ ...structuredClone(mocks.payroll.earnings[0]!), earning: { ...mocks.payroll.earnings[0]!.earning, id: "earning-2", totalAmount: "100000.00" }, remaining: "100000.00" })
       const view = renderPanel()
-      fireEvent.change(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" }), { target: { value: "50" } })
-      expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "30000.00")
+      fireEvent.change(paymentField("percentage"), { target: { value: "50" } })
+      expect(paymentField("amount")).toHaveProperty("value", "30000.00")
       mocks.payroll.earnings[0]!.remaining = "0.00"
       view.rerender(<EmployeePayrollPanel employeeId="employee-1" />)
       expect(screen.getByRole("combobox", { name: "الأجر المعتمد" })).toHaveProperty("value", "earning-2")
       expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "")
-      expect(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })).not.toHaveProperty("value", "50")
+      expect(paymentField("percentage")).not.toHaveProperty("value", "50")
       expect(mocks.cash).not.toHaveBeenCalled()
     } finally { Object.assign(mocks.payroll, original) }
   })
@@ -125,7 +155,7 @@ describe("employee payroll controls", () => {
       mocks.payroll.earnings[0]!.earning.totalAmount = "60000.00"
       mocks.payroll.earnings[0]!.remaining = "60000.00"
       const view = renderPanel()
-      fireEvent.change(screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" }), { target: { value: "50" } })
+      fireEvent.change(paymentField("percentage"), { target: { value: "50" } })
       fireEvent.click(screen.getByRole("button", { name: "تسجيل الدفع" }))
       await screen.findByRole("button", { name: "إعادة العملية نفسها" })
       const first = mocks.cash.mock.calls[0]![0]
@@ -147,7 +177,7 @@ describe("employee payroll controls", () => {
       mocks.payroll.earnings[0]!.earning.totalAmount = "60000.00"
       mocks.payroll.earnings[0]!.remaining = "12000.00"
       renderPanel()
-      const percentage = screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })
+      const percentage = paymentField("percentage")
       fireEvent.change(percentage, { target: { value: "50" } })
       expect(screen.getByRole("alert").textContent).toContain("المبلغ يتجاوز الرصيد المتبقي")
       expect(screen.getByRole("button", { name: "تسجيل الدفع" })).toHaveProperty("disabled", true)
@@ -159,11 +189,11 @@ describe("employee payroll controls", () => {
 
   it("blocks invalid percentage rather than submitting the last valid amount", () => {
     renderPanel()
-    const field = screen.getByRole("textbox", { name: "نسبة هذه الدفعة (%)" })
+    const field = paymentField("percentage")
     fireEvent.change(field, { target: { value: "50" } })
     fireEvent.change(field, { target: { value: "1e1" } })
     expect(screen.getByRole("button", { name: "تسجيل الدفع" })).toHaveProperty("disabled", true)
-    expect(screen.getByRole("textbox", { name: "المبلغ المدفوع من الأجر" })).toHaveProperty("value", "")
+    expect(field).toHaveProperty("value", "1e1")
     expect(mocks.cash).not.toHaveBeenCalled()
   })
 

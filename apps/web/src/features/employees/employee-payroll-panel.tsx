@@ -72,6 +72,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
   const [advanceId, setAdvanceId] = useState("")
   const [amount, setAmount] = useState("")
   const [percentageDraft, setPercentageDraft] = useState<string | null>(null)
+  const [paymentUnit, setPaymentUnit] = useState<"amount" | "percentage">("amount")
   const [advanceAmount, setAdvanceAmount] = useState("")
   const [date, setDate] = useState(getAlgeriaDateInputValue())
   const locked = pending !== null
@@ -192,6 +193,11 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
         if (minor(amount) > minor(selectedEarning.remaining)) previewError = "AMOUNT_EXCEEDS_BALANCE"
       } catch { /* Incomplete drafts have no valid preview. */ }
     }
+  }
+  function changePaymentUnit(unit: "amount" | "percentage") {
+    setPaymentUnit(unit)
+    // Switching presentation never reparses an approximate displayed ratio.
+    if (unit === "amount") { setPercentageDraft(null); setError("") }
   }
   function editPercentage(value: string) {
     setPercentageDraft(value)
@@ -407,7 +413,7 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
           {action === "offset" ? <p className="text-sm text-muted-foreground">{t("payroll.offsetOptions")}</p> : null}
           <form className="employee-payment-form grid min-w-0 grid-cols-1 gap-4 [&>label]:min-w-0 sm:grid-cols-2" onSubmit={submit}>
             {action !== "repay" ? (
-              <label className="space-y-1 text-sm">
+              <label className={action === "cash" ? "space-y-1 text-sm sm:col-span-2" : "space-y-1 text-sm"}>
                 <span>{t("payroll.earning")}</span>
                 <NativeSelect aria-label={t("payroll.earning")} value={earningId} onChange={event => { setEarningId(event.target.value); setAmount(""); setPercentageDraft(null); setError("") }} disabled={locked || (availableEarnings.length === 0 && !openingWage)}>
                   {availableEarnings.map(item => <option key={item.earning.id} value={item.earning.id}>{item.earning.periodStart.slice(0, 10)} · {t(`payroll.registration.${item.registration}`)} · {item.remaining} {currencyLabel}</option>)}
@@ -426,28 +432,38 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
                 </NativeSelect>
               </label>
             ) : null}
-            <label className="space-y-1 text-sm">
+            {percentageBasis && !locked ? <div className="payroll-payment-entry sm:col-span-2">
+              <label htmlFor={`payroll-value-${employeeId}`}>{t(paymentUnit === "percentage" ? "payroll.paymentPercentage" : "payroll.wageCashAmount")}</label>
+              <div className="payroll-value-control" dir="ltr">
+                <div className="payroll-unit-switch" role="group" aria-label={t("payroll.inputUnit")}>
+                  <button type="button" aria-pressed={paymentUnit === "amount"} onClick={() => changePaymentUnit("amount")}>{currencyLabel}</button>
+                  <button type="button" aria-pressed={paymentUnit === "percentage"} onClick={() => changePaymentUnit("percentage")}>%</button>
+                </div>
+                <input id={`payroll-value-${employeeId}`} inputMode="decimal" dir="ltr" aria-label={t(paymentUnit === "percentage" ? "payroll.paymentPercentage" : "payroll.wageCashAmount")} aria-describedby={`payroll-basis-${employeeId}${currentError ? ` payroll-error-${employeeId}` : ""}`} aria-invalid={Boolean(error || previewError)} value={paymentUnit === "percentage" ? percentageDraft ?? (amount ? percentageDisplay : "") : amount} placeholder="0" onChange={event => {
+                  if (paymentUnit === "percentage") editPercentage(event.target.value)
+                  else { setAmount(event.target.value); setPercentageDraft(null); setError("") }
+                }} />
+              </div>
+              <p id={`payroll-basis-${employeeId}`} className="payroll-payment-basis">{t("payroll.percentageBasis")} <MoneyValue exact value={percentageBasis} currencyLabel={currencyLabel} />{percentageApproximate ? ` · ${t("payroll.approximatePercentage")}` : ""}</p>
+              <div className="payroll-shortcuts">
+                <Button type="button" variant="ghost" onClick={() => editPercentage("25")}>{t("payroll.quarter")}</Button>
+                <Button type="button" variant="ghost" onClick={() => editPercentage("50")}>{t("payroll.half")}</Button>
+                <Button type="button" variant="ghost" onClick={() => { setAmount(selectedEarning!.remaining); setPercentageDraft(null); setError("") }}>{t("payroll.entireRemainder")}</Button>
+              </div>
+              {paymentPreview ? <div role="status" className="payroll-payment-preview">
+                <div className="payroll-preview-amounts">
+                  <p><span>{t("payroll.proposedPayment")}</span><strong><MoneyValue exact value={paymentPreview.amount} currencyLabel={currencyLabel} /></strong></p>
+                  <p><span>{t("payroll.remainingAfterPayment")}</span><strong><MoneyValue exact value={paymentPreview.remaining} currencyLabel={currencyLabel} /></strong><span>{paymentPreview.outstanding.approximate ? "≈ " : ""}{paymentPreview.outstanding.value}%</span></p>
+                </div>
+                <div className="payroll-preview-ratios">
+                  {cumulativeCashPercentage ? <p>{t("payroll.cumulativeCashPaid")} <bdi>{cumulativeCashPercentage.approximate ? "≈ " : ""}{cumulativeCashPercentage.value}%</bdi></p> : null}
+                  {cumulativeCashPercentage?.value !== paymentPreview.cumulative.value ? <p>{t("payroll.cumulativeSettlement")} <bdi>{paymentPreview.cumulative.approximate ? "≈ " : ""}{paymentPreview.cumulative.value}%</bdi></p> : null}
+                </div>
+              </div> : null}
+            </div> : <label className="space-y-1 text-sm">
               <span>{action === "offset" ? t("payroll.offsetAmount") : action === "repay" ? t("payroll.repaymentAmount") : t("payroll.wageCashAmount")}</span>
               <CurrencyInput aria-label={action === "offset" ? t("payroll.offsetAmount") : action === "repay" ? t("payroll.repaymentAmount") : t("payroll.wageCashAmount")} currencyLabel={currencyLabel} value={amount} onChange={event => { setAmount(event.target.value); setPercentageDraft(null); setError("") }} disabled={locked} required={action !== "cash"} />
-            </label>
-            {percentageBasis && !locked ? <>
-              <label className="space-y-1 text-sm">
-                <span>{t("payroll.paymentPercentage")}</span>
-                <input className="h-9 w-full rounded-md border border-input bg-background px-3" dir="ltr" inputMode="decimal" aria-label={t("payroll.paymentPercentage")} value={percentageDraft ?? percentageDisplay} onChange={event => editPercentage(event.target.value)} />
-                <span className="block text-xs text-muted-foreground">{t("payroll.percentageBasis")} <MoneyValue exact value={percentageBasis} currencyLabel={currencyLabel} />{percentageApproximate ? ` · ${t("payroll.approximatePercentage")}` : ""}</span>
-              </label>
-              <div className="flex flex-wrap items-end gap-2">
-                <Button type="button" variant="outline" onClick={() => editPercentage("25")}>{t("payroll.quarter")}</Button>
-                <Button type="button" variant="outline" onClick={() => editPercentage("50")}>{t("payroll.half")}</Button>
-                <Button type="button" variant="outline" onClick={() => { setAmount(selectedEarning!.remaining); setPercentageDraft(null); setError("") }}>{t("payroll.entireRemainder")}</Button>
-              </div>
-              {paymentPreview ? <div role="status" className="space-y-1 rounded-md border border-border p-3 text-sm sm:col-span-2">
-                <p>{t("payroll.proposedPayment")} <MoneyValue exact value={paymentPreview.amount} currencyLabel={currencyLabel} /></p>
-                <p>{t("payroll.remainingAfterPayment")} <MoneyValue exact value={paymentPreview.remaining} currencyLabel={currencyLabel} /> · {paymentPreview.outstanding.approximate ? "≈ " : ""}{paymentPreview.outstanding.value}%</p>
-                {cumulativeCashPercentage ? <p>{t("payroll.cumulativeCashPaid")} {cumulativeCashPercentage.approximate ? "≈ " : ""}{cumulativeCashPercentage.value}%</p> : null}
-                <p>{t("payroll.cumulativeSettlement")} {paymentPreview.cumulative.approximate ? "≈ " : ""}{paymentPreview.cumulative.value}%</p>
-              </div> : null}
-            </> : null}
+            </label>}
             {action === "cash" ? (
               <label className="space-y-1 text-sm">
                 <span>{t("payroll.advanceCashAmount")}</span>
@@ -458,9 +474,9 @@ export function EmployeePayrollPanel({ employeeId }: { employeeId: string }) {
               <span>{t("payroll.date")}</span>
               <DatePicker value={date} onChange={setDate} disabled={locked} aria-required="true" />
             </label>
-            {action === "cash" && selectedEarning ? <p className="self-end text-xs text-muted-foreground">{t("payroll.wageAvailable")} <MoneyValue exact value={selectedEarning.remaining} currencyLabel={currencyLabel} /></p> : null}
+            {action === "cash" && selectedEarning ? <p className="payroll-available sm:col-span-2">{t("payroll.wageAvailable")} <MoneyValue exact value={selectedEarning.remaining} currencyLabel={currencyLabel} /></p> : null}
             {action === "offset" && selectedAdvance && selectedEarning ? <p className="self-end text-xs text-muted-foreground">{t("payroll.offsetMaximum")} <MoneyValue exact value={minor(selectedEarning.remaining) < minor(selectedAdvance.remaining) ? wire(minor(selectedEarning.remaining)) : wire(minor(selectedAdvance.remaining))} currencyLabel={currencyLabel} /></p> : null}
-            {currentError ? <p role="alert" className="sm:col-span-2 text-sm text-destructive">{t(`payroll.error.${currentError}`, { defaultValue: t("payroll.writeError") })}</p> : null}
+            {currentError ? <p id={`payroll-error-${employeeId}`} role="alert" className="sm:col-span-2 text-sm text-destructive">{t(`payroll.error.${currentError}`, { defaultValue: t("payroll.writeError") })}</p> : null}
             {pending ? (
               <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
                 <div role="status" className="space-y-1 text-sm text-muted-foreground">

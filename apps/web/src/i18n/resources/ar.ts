@@ -77,6 +77,7 @@ export const ar = {
       date: "تاريخ العملية",
       wageCashAmount: "المبلغ المدفوع من الأجر",
       paymentPercentage: "نسبة هذه الدفعة (%)",
+      inputUnit: "وحدة إدخال الدفعة",
       percentageBasis: "من إجمالي الأجر المكتسب المعتمد المحدد:",
       approximatePercentage: "النسبة المعروضة تقريبية",
       quarter: "ربع الأجر",
