@@ -189,12 +189,19 @@ fn stop_child_process(child: &mut Child) {
 }
 
 fn wait_for_api_ready(child: &mut Child, server_log_path: &Path) -> Result<(), String> {
-    let deadline = Instant::now() + API_STARTUP_TIMEOUT;
+    wait_for_api_ready_with(child, server_log_path, API_STARTUP_TIMEOUT, is_api_ready)
+}
+
+fn wait_for_api_ready_with(
+    child: &mut Child,
+    server_log_path: &Path,
+    timeout: Duration,
+    mut ready: impl FnMut() -> bool,
+) -> Result<(), String> {
+    let deadline = Instant::now() + timeout;
 
     loop {
-        if is_api_ready() {
-            return Ok(());
-        }
+        let healthy = ready();
 
         match child.try_wait() {
             Ok(Some(status)) => {
@@ -209,6 +216,10 @@ fn wait_for_api_ready(child: &mut Child, server_log_path: &Path) -> Result<(), S
                     "Failed while waiting for the local API to start: {error}"
                 ));
             }
+        }
+
+        if healthy {
+            return Ok(());
         }
 
         if Instant::now() >= deadline {
@@ -421,6 +432,30 @@ mod tests {
         ensure_ready(&mut child, |_| Ok(())).unwrap();
         assert!(child.try_wait().unwrap().is_none());
         stop_child_process(&mut child);
+        assert_stopped(&mut child);
+    }
+
+    #[test]
+    fn exited_child_is_not_ready_even_when_health_succeeds() {
+        let mut child = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "api_runtime::tests::sleeping_child"])
+            .env_remove("TUARI_LIFECYCLE_TEST_CHILD")
+            .stdout(Stdio::null())
+            .spawn().unwrap();
+        child.wait().unwrap();
+        let error = wait_for_api_ready_with(
+            &mut child, Path::new("api-server.log"), Duration::ZERO, || true,
+        ).unwrap_err();
+        assert!(error.contains("stopped before startup completed"), "{error}");
+    }
+
+    #[test]
+    fn readiness_deadline_stops_a_live_child() {
+        let mut child = child();
+        let error = ensure_ready(&mut child, |child| wait_for_api_ready_with(
+            child, Path::new("api-server.log"), Duration::ZERO, || false,
+        )).unwrap_err();
+        assert!(error.contains("Timed out"), "{error}");
         assert_stopped(&mut child);
     }
 
