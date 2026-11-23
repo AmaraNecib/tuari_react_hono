@@ -74,6 +74,18 @@ async function main() {
         server.close(() => resolve())
       }),
     close: appDependencies.close,
+  }, {
+    log: (message) => {
+      eventSink.emit({
+        severity: message.startsWith("Failed") || message.startsWith("Shutdown timed out") ? "error" : "info",
+        source: "api",
+        message,
+        lifecycle: true,
+      });
+      if (eventSink.degraded) {
+        try { console.error(message); } catch { /* Shutdown must continue if stderr is unavailable. */ }
+      }
+    },
   });
 }
 
