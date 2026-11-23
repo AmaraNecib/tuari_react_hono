@@ -28,8 +28,7 @@ import { encodeCursor } from "../shared/cursor"
 import { schemaStatements } from "../../infrastructure/database/schema-definitions"
 import { createInventoryRepository } from "./adapters/sqlite-inventory.repository"
 import type { InventoryRepository } from "./inventory.repository"
-import { InventoryService } from "./inventory.service"
-import type { InventoryAttachmentStorage } from "./inventory.storage"
+import { CatalogService } from "./catalog.service"
 import { InventoryError } from "./inventory.errors"
 
 const NOW = "2026-06-01T00:00:00.000Z"
@@ -315,7 +314,7 @@ describe("item-offer rule: SQL path equals JS path", () => {
       )
       .run(NOW, NOW)
 
-    const service = new InventoryService(env.repository, {} as unknown as InventoryAttachmentStorage)
+    const service = new CatalogService(env.repository)
     const audit = { actorUserId: "u1", actorLabel: "T", transactionId: crypto.randomUUID() }
 
     expect(() =>
