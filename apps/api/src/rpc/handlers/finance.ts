@@ -33,7 +33,8 @@ export function createFinanceHandlers(
       financeService.listDebtAccounts(input as DebtAccountListFilters | undefined)
     )),
     debtAccountsGet: os.debtAccountsGet.handler(m.queryAuth(async ({ input }) =>
-      financeService.getDebtAccount((input as IdInput).id)
+      financeService.getDebtAccount((input as IdInput).id),
+      toFailureResult,
     )),
     debtAccountsCreate: os.debtAccountsCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => financeService.createDebtAccount(input as DebtAccountCreateInput, auditContext),
@@ -63,7 +64,8 @@ export function createFinanceHandlers(
       toFailureResult,
     )),
     debtPartyDetail: os.debtPartyDetail.handler(m.queryAuth(async ({ input }) =>
-      financeService.getDebtPartyDetail(input as DebtPartyDetailInput)
+      financeService.getDebtPartyDetail(input as DebtPartyDetailInput),
+      toFailureResult,
     )),
     debtsSummary: os.debtsSummary.handler(m.queryAuth(async () =>
       financeService.listDebtsSummary()
@@ -85,7 +87,8 @@ export function createCounterpartyHandlers(
       financeService.listExternalCounterparties(input as ExternalCounterpartyListFilters | undefined)
     )),
     externalCounterpartiesGet: os.externalCounterpartiesGet.handler(m.queryAuth(async ({ input }) =>
-      financeService.getExternalCounterparty((input as IdInput).id)
+      financeService.getExternalCounterparty((input as IdInput).id),
+      toFailureResult,
     )),
     externalCounterpartiesCreate: os.externalCounterpartiesCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => financeService.createExternalCounterparty(input as ExternalCounterpartyCreateInput, auditContext),
