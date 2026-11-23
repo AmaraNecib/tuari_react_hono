@@ -24,7 +24,7 @@ test("debt payroll read shows exact settlement directions after reload #560", as
     if (!response.ok) throw new Error(`metadata ${response.status}`)
     return (await response.json()).json
   }, process.env.PLAYWRIGHT_API_URL!)
-  const role = metadata.roles.find((row: { key: string }) => row.key === "worker")
+  const role = metadata.roles.find((row: { key: string }) => row.key === "project_manager")
   const employee = await rpc(page, "employeesCreate", { firstName: "عامل", lastName: "ديون 560", phone: "0555123560", roleId: role.id })
   if (!employee.success) throw new Error("Employee fixture failed")
   const employeeId = employee.item.id
@@ -51,7 +51,10 @@ test("debt payroll read shows exact settlement directions after reload #560", as
   await page.reload()
   await expect(panel.getByText("0", { exact: true }).first()).toBeVisible()
   await expect(panel.getByText("5,000", { exact: true }).first()).toBeVisible()
-  await expect(panel.getByRole("link", { name: /ملف الموظف/ })).toHaveAttribute("href", `/employees/${employeeId}?tab=financial`)
+  await expect(panel.getByRole("link", { name: /ملف الموظف/ })).toHaveAttribute("href", `/employees/${employeeId}?tab=finance`)
+  await panel.getByRole("link", { name: /ملف الموظف/ }).click()
+  await expect(page.getByRole("tab", { name: "المالية", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect(page.getByRole("region", { name: "حساب الأجور والسلف", exact: true })).toBeVisible()
 })
 async function captureEmployeeFinance(page: Page, name: string) {
   await page.evaluate(() => document.fonts.ready)

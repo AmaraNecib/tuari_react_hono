@@ -36,7 +36,7 @@ export function EmployeePayrollDebtSection({ employees, scopedParty }: { employe
     <p className="text-sm text-muted-foreground">{t("debtPayroll.ledgerExplanation")}</p>
     {!scopedParty && workers.length > 0 && <label className="block text-sm">{t("debtPayroll.employee")}<NativeSelect aria-label={t("debtPayroll.selectEmployee")} value={employee?.id ?? ""} onChange={event => setSelectedId(event.target.value)}>{workers.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</NativeSelect></label>}
     {!employee ? <p>{t("debtPayroll.noEmployee")}</p> : <>
-      <Link to="/employees/$employeeId" params={{ employeeId: employee.id }} search={{ tab: "financial" }} className="text-sm underline">{t("debtPayroll.employeeProfile")}: {employee.label}</Link>
+      <Link to="/employees/$employeeId" params={{ employeeId: employee.id }} search={{ tab: "finance" }} className="text-sm underline">{t("debtPayroll.employeeProfile")}: {employee.label}</Link>
       {payroll.isPending ? <p role="status">{t("debtPayroll.loading")}</p> : payroll.isError ? <div role="alert">{t("debtPayroll.error")} <Button variant="outline" onClick={() => void payroll.refetch()}>{t("debtPayroll.retry")}</Button></div> : data && <div key={employee.id} className="space-y-3">
         {data.opening.reminder && <p role="note">{t("employeeOpening.unknown")}</p>}
         <div className="flex flex-wrap gap-8 border-y border-border py-3">
