@@ -17,9 +17,8 @@
  * deletion all require it, so a backups root pointed at a shared directory can
  * never have an unrelated same-named folder treated as a backup (or deleted).
  *
- * Attachments are NOT backed up in this version (deliberate MVP cut; see
- * docs/backups.md). A restored database may therefore reference attachment
- * files that are gone.
+ * Production snapshots include immutable attachment objects referenced by
+ * the copied database. Link fallback details are recorded in the marker.
  *
  * Failure is non-fatal: `runDueBackup` never throws, the app stays usable, and
  * the reason is recorded on the status the UI reads. Every previous backup is
@@ -90,6 +89,7 @@ const snapshotMarkerSchema = z.object({
   // wire, whose schema is `timestampSchema`; a marker that cannot be a
   // timestamp is not one of ours.
   takenAt: z.string().datetime({ offset: true }),
+  attachments: z.object({ linked: z.number().int().nonnegative(), copied: z.number().int().nonnegative(), fallbackReasons: z.array(z.string()) }).optional(),
 });
 
 type SnapshotMarker = z.infer<typeof snapshotMarkerSchema>;
@@ -454,6 +454,10 @@ export const createBackupService = (
         join(stagingDirectory, BACKUP_DB_FILE_NAME),
       );
 
+      if (snapshot.attachments) {
+        logger.info(`[backup] attachments: ${JSON.stringify(snapshot.attachments)}`);
+      }
+
       // The marker is written while the copy is still in staging, so a dated
       // folder that exists is always complete AND identified as ours.
       const marker: SnapshotMarker = {
@@ -463,6 +467,7 @@ export const createBackupService = (
         databaseFile: BACKUP_DB_FILE_NAME,
         encrypted: snapshot.encrypted,
         takenAt: runAt.toISOString(),
+        ...(snapshot.attachments ? { attachments: snapshot.attachments } : {}),
       };
       writeFileSync(
         join(stagingDirectory, BACKUP_MARKER_FILE_NAME),

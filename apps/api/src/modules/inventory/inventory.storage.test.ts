@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 
@@ -32,6 +32,27 @@ describe("InventoryAttachmentStorage", () => {
 
     expect(saved.relativePath).toMatch(/^invoice-group-1\//)
     expect(Array.from(body)).toEqual([1, 2, 3])
+  })
+
+  it("stores bytes once in an immutable content-addressed object and keeps deletion from removing it", async () => {
+    const storage = await createStorage()
+    const first = await storage.saveInvoiceAttachment({ invoiceGroupId: "group", originalName: "invoice.pdf", bytes: new Uint8Array([1, 2, 3]) })
+    const second = await storage.saveInvoiceAttachment({ invoiceGroupId: "group", originalName: "copy.pdf", bytes: new Uint8Array([1, 2, 3]) })
+    const objectPath = join(tempDirs[tempDirs.length - 1]!, "attachments-store", first.sha256, "object")
+
+    expect(second.sha256).toBe(first.sha256)
+    expect((await stat(objectPath)).ino).toBe((await stat(join(tempDirs[tempDirs.length - 1]!, first.relativePath))).ino)
+    await storage.deleteRelativePath(first.relativePath)
+    expect(Array.from(await readFile(objectPath))).toEqual([1, 2, 3])
+  })
+
+  it("preserves the earlier immutable object when the same attachment id is uploaded again", async () => {
+    const storage = await createStorage()
+    const first = await storage.saveInvoiceAttachment({ attachmentId: "same", invoiceGroupId: "group", originalName: "invoice.pdf", bytes: new Uint8Array([1]) })
+    const second = await storage.saveInvoiceAttachment({ attachmentId: "same", invoiceGroupId: "group", originalName: "invoice.pdf", bytes: new Uint8Array([2]) })
+
+    expect(first.sha256).not.toBe(second.sha256)
+    expect(Array.from(await readFile(join(tempDirs[tempDirs.length - 1]!, "attachments-store", first.sha256, "object")))).toEqual([1])
   })
 
   it("rejects attachment writes that escape the storage root", async () => {

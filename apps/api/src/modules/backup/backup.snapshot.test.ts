@@ -1,5 +1,6 @@
 import Database from "better-sqlite3";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { InventoryAttachmentStorage } from "../inventory/inventory.storage";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -48,6 +49,68 @@ describe("createWorkerSnapshotter", () => {
       count: 50,
     });
     copy.close();
+  });
+
+  it("links immutable attachments, preserves old uploads, and copies a standalone snapshot", async () => {
+    seedDatabase(1);
+    const db = new Database(databasePath);
+    db.exec("CREATE TABLE inventory_invoice_attachment (relative_path TEXT, sha256 TEXT)");
+    const attachmentsRootPath = join(tempRoot, "attachments");
+    const storage = new InventoryAttachmentStorage(attachmentsRootPath);
+    const args = { attachmentId: "same", invoiceGroupId: "group", originalName: "invoice.txt" };
+    const first = await storage.saveInvoiceAttachment({ ...args, bytes: Buffer.from("first") });
+    db.prepare("INSERT INTO inventory_invoice_attachment VALUES (?, ?)").run(first.relativePath, first.sha256);
+    const take = createWorkerSnapshotter({ databasePath, attachmentsRootPath });
+    const day1 = join(tempRoot, "day1");
+    mkdirSync(day1);
+    const result1 = await take(join(day1, "tuari.sqlite"));
+    expect(result1.attachments).toMatchObject({ linked: 1, copied: 0 });
+    const second = await storage.saveInvoiceAttachment({ ...args, bytes: Buffer.from("second") });
+    db.prepare("UPDATE inventory_invoice_attachment SET relative_path = ?, sha256 = ?").run(second.relativePath, second.sha256);
+    const day2 = join(tempRoot, "day2");
+    mkdirSync(day2);
+    expect((await take(join(day2, "tuari.sqlite"))).attachments).toMatchObject({ linked: 1, copied: 0 });
+    db.close();
+    await storage.deleteRelativePath(second.relativePath);
+    expect(readFileSync(join(day1, "attachments", first.relativePath), "utf8")).toBe("first");
+    expect(readFileSync(join(day2, "attachments", second.relativePath), "utf8")).toBe("second");
+    const detached = join(tempRoot, "detached");
+    cpSync(day1, detached, { recursive: true });
+    rmSync(day1, { recursive: true });
+    expect(readFileSync(join(detached, "attachments", first.relativePath), "utf8")).toBe("first");
+    expect(statSync(join(day2, "attachments", second.relativePath)).nlink).toBeGreaterThan(1);
+    unlinkSync(join(attachmentsRootPath, "attachments-store", second.sha256, "object"));
+    expect(readFileSync(join(day2, "attachments", second.relativePath), "utf8")).toBe("second");
+  });
+
+  it.each(["missing", "mismatched", "escaped"])("rejects %s database attachment references", async (scenario) => {
+    seedDatabase(1);
+    const db = new Database(databasePath);
+    db.exec("CREATE TABLE inventory_invoice_attachment (relative_path TEXT, sha256 TEXT)");
+    const attachmentsRootPath = join(tempRoot, "attachments");
+    mkdirSync(attachmentsRootPath);
+    writeFileSync(join(attachmentsRootPath, "legacy"), "wrong bytes");
+    db.prepare("INSERT INTO inventory_invoice_attachment VALUES (?, ?)").run(
+      scenario === "escaped" ? "../escape" : scenario === "missing" ? "missing" : "legacy",
+      "a".repeat(64),
+    );
+    db.close();
+    await expect(createWorkerSnapshotter({ databasePath, attachmentsRootPath })(join(tempRoot, "out.sqlite")))
+      .rejects.toThrow(scenario === "missing" ? /ENOENT/ : scenario === "escaped" ? /escaped/ : /hash mismatch/);
+  });
+
+  it("imports a legacy attachment without a stored digest and preserves its restore path", async () => {
+    seedDatabase(1);
+    const db = new Database(databasePath);
+    db.exec("CREATE TABLE inventory_invoice_attachment (relative_path TEXT, sha256 TEXT)");
+    db.prepare("INSERT INTO inventory_invoice_attachment VALUES (?, NULL)").run("group/legacy.txt");
+    db.close();
+    const attachmentsRootPath = join(tempRoot, "live");
+    mkdirSync(join(attachmentsRootPath, "group"), { recursive: true });
+    writeFileSync(join(attachmentsRootPath, "group/legacy.txt"), "legacy bytes");
+    const result = await createWorkerSnapshotter({ databasePath, attachmentsRootPath })(join(tempRoot, "out.sqlite"));
+    expect(result.attachments).toMatchObject({ linked: 1, copied: 0 });
+    expect(readFileSync(join(tempRoot, "attachments/group/legacy.txt"), "utf8")).toBe("legacy bytes");
   });
 
   it("runs the copy off the event loop instead of blocking it", async () => {

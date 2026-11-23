@@ -6,13 +6,13 @@ app bug that loses a week of entered data.
 
 ## What is backed up
 
-**The database only**, as a full copy. In this version attachments (invoice
-files) are **not** backed up (see [Limitations](#limitations)).
+**The database and its referenced invoice attachments.** Each snapshot stores a full database copy and the attachment paths referenced by that database copy. Attachment bytes live in immutable SHA-256-addressed objects under `attachments-store/`; snapshot files link to those objects when the filesystem supports hard links, with verified copies as a fallback. A fallback is recorded in snapshot metadata and the backup log.
 
 ## Where
 
 ```
 <backups root>/<YYYY-MM-DD>/tuari.sqlite
+<backups root>/<YYYY-MM-DD>/attachments/<database-relative path>
 ```
 
 The folder is named for the period the backup covers (the day that just ended),
@@ -76,8 +76,8 @@ key: the key in force at the moment the copy is taken.
 
 ## How to restore
 
-Restore is "copy the file back". The database is a single file, so there is
-nothing to reassemble.
+Restore the database and the matching attachment tree from one dated folder.
+Copying the folder materializes normal files; the object store is not needed.
 
 1. **Close the app.** The API sidecar holds the database open; replacing it
    while the app runs can corrupt it.
@@ -88,7 +88,9 @@ nothing to reassemble.
    - delete any leftover `tuari.sqlite-wal` and `tuari.sqlite-shm` files next
      to it. A stale write-ahead log belongs to the old database and must not be
      replayed against the restored one.
-4. Start the app.
+4. Copy the dated folder's `attachments/` contents into the configured live
+   attachment root, normally `<project>/attachments/invoices/`, preserving paths.
+5. Start the app.
 
 If the database is encrypted, the backup carries the encryption key that was
 **in force when the snapshot was taken**. A restore onto a **fresh install with
@@ -105,8 +107,7 @@ existing backups. A snapshot stays encrypted with the key that was in force when
 it was taken, so a snapshot taken **before** a rotation opens only with the
 pre-rotation key. Keep that key for as long as you may need to restore that
 snapshot, and note the rotation point when restoring an older one. Handling
-rotated keys for backups is deliberately out of scope here, alongside the
-attachment coverage follow-up (#433).
+rotated keys for backups is deliberately out of scope here.
 
 ## Retention
 
@@ -142,11 +143,7 @@ backups are left untouched.
 
 ## Limitations
 
-- **Attachments are not backed up in this version.** A restored database may
-  reference invoice files that no longer exist (or that were never in the
-  backup). This is a deliberate MVP cut: the data the operator actually entered
-  lives in the database, which is what this feature protects. Attachment backup
-  is tracked separately.
+- Attachment objects are retained conservatively. Deleting a live attachment or pruning a snapshot never removes a store object, so disk usage can grow until an operator verifies no retained snapshot needs an object before removing it.
 - **A corrected clock can orphan snapshots.** If the machine clock is set
   forward, backups taken then are dated in the future. After the clock is
   corrected they are left on disk (deleting them would be guessing) but are not

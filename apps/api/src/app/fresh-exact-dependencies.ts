@@ -126,7 +126,7 @@ export async function createFreshExactAppDependencies(
       recoveryKeyService: new RecoveryKeyService(new SqliteRecoveryKeyPort(db, connection, lock)),
       updateService: new UpdateService(),
       updateHistoryService: new UpdateHistoryService(new SqliteUpdateHistoryPort(connection, lock)),
-      backupService: createBackupService({ snapshot: createWorkerSnapshotter({ databasePath, databaseKey }), backupsRootPath: config.backupsRootPath ?? appConfig.backupsRootPath, now: config.now }),
+      backupService: createBackupService({ snapshot: createWorkerSnapshotter({ databasePath, databaseKey, attachmentsRootPath: appConfig.attachmentsRootPath }), backupsRootPath: config.backupsRootPath ?? appConfig.backupsRootPath, now: config.now }),
       backupFolderPersister: createConfigFileBackupFolderPersister(process.env.TUARI_CONFIG_FILE?.trim() || null),
       databaseKeyManager: createDatabaseKeyManager(connection),
       databaseKeyPersister: createConfigFileKeyPersister(process.env.APP_DB_KEY ? null : process.env.TUARI_CONFIG_FILE?.trim() || null),
