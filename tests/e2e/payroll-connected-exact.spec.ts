@@ -327,4 +327,3 @@ test("owner opens the persisted invoice attachment through its actual browser li
   await expect(popup.locator("img")).toBeVisible()
   await popup.close()
 })
-
