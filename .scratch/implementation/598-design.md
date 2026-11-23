@@ -6,7 +6,7 @@
 
 ## Boundary
 
-`ApiRuntime` owns the API child from construction through readiness and stopping. Tauri setup calls `start(app)` and exit calls `stop()`; neither touches a Child or its lock. A successful start means readiness succeeded, not merely that spawn succeeded. Failed readiness must stop the child. Repeated exit events must be safe.
+`ApiRuntime` owns the API child from construction through readiness and stopping. Tauri setup calls `start(app)` and exit calls `stop()`; neither touches a Child or its lock. A successful start means the existing HTTP health check succeeded and no child exit was observed after that probe, not merely that spawn succeeded. This preserves the baseline fixed-port readiness contract; it does not authenticate the responding listener as the child. Failed readiness must stop the child. Repeated exit events must be safe.
 
 Keep existing Rust secret, license, private directory, portable layout, installation identity and path-normalization helpers; do not recreate them or change IPC/authorization. Runtime imports those helpers. Move environment configuration unchanged, including development-only PATH and Windows SystemRoot, private TEMP/TMP/SQLITE_TMPDIR. Preserve log append behavior, 15-second deadline and 250ms poll interval.
 
@@ -18,4 +18,6 @@ Retain existing environment subprocess and installation matching tests. Add runt
 
 ## Risks
 
-No dependencies, schema changes, crypto decisions or inherited environment additions. Windows process-tree termination remains unchanged. Bundled/portable launch artifacts may not exist in this worktree; report that proof boundary rather than claim a packaged launch.
+No dependencies, schema changes, crypto decisions or inherited environment additions. Windows process-tree termination remains unchanged.
+
+Parent review disposition: accept the completed-child false-success finding and fix it with a discriminating regression. The separate live-child/foreign-listener attribution race exists unchanged on the pinned base. This extraction does not introduce a health identity protocol or claim to fix that baseline property. The issue requires preserving launch behavior and distinguishing process failures; the correction rejects observed process exit, while preserving existing health semantics. The earlier design sentence implied stronger attribution than the implementation or issue promised; corrected above. Reviewers must assess this explicit scope decision, not treat it as proof of authenticated readiness. Bundled/portable launch artifacts may not exist in this worktree; report that proof boundary rather than claim a packaged launch.
