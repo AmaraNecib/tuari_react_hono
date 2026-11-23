@@ -117,6 +117,7 @@ describe("exact-money import inventory", () => {
       "apps/web/src/features/employees/employee-earning-allocation.ts",
       "apps/web/src/features/employees/employee-edit-page.tsx",
       "apps/web/src/features/employees/employee-opening-panel.tsx",
+      "apps/web/src/features/employees/payroll-percentage.ts",
       "apps/web/src/features/inventory/inventory-exact-movement-form.tsx",
       "apps/web/src/features/inventory/inventory-exact-page.tsx",
       "apps/web/src/features/inventory/inventory-exact-purchase-form.tsx",
