@@ -100,7 +100,7 @@ export function HomeViewPageDetailContent({
         route="debts"
         payrollEmployees={derived.employeeRows.map(employee => ({ id: employee.id, label: employee.name }))}
         parties={[
-          ...derived.employeeRows.filter(employee => employee.isWorker).map(employee => ({ id: employee.id, label: employee.name, type: "WORKER" as const })),
+          ...derived.employeeRows.map(employee => ({ id: employee.id, label: employee.name, type: "WORKER" as const })),
           ...derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName, type: "EXTERNAL_COUNTERPARTY" as const })),
         ]}
         locations={[]}
