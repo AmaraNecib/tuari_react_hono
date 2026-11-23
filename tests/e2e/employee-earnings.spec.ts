@@ -143,9 +143,12 @@ test("employee earnings approval keeps exact references, retries one committed r
     await breadcrumb.screenshot({ path: join(evidenceDir, `breadcrumb-${width}-${suffix}.png`) })
   }
   await page.setViewportSize({ width: 1280, height: 1000 })
+  await expect(page.getByRole("heading", { name: employeeName, level: 1, exact: true })).toHaveCount(0)
   await page.getByRole("button", { name: "حفظ كل التغييرات" }).click()
-  await expect(page.getByRole("heading", { name: employeeName, level: 1 })).toBeVisible({ timeout: 15_000 })
+  await expect(page).toHaveURL(/\/employees\/[^/?]+(?:\?[^#]*)?$/)
+  await expect(page.getByRole("heading", { name: employeeName, level: 1, exact: true })).toBeVisible({ timeout: 15_000 })
   const detailBreadcrumb = page.getByRole("navigation", { name: "breadcrumb" })
+  await expect(detailBreadcrumb.locator('[data-slot="breadcrumb-page"]')).toHaveText(employeeName)
   expect(await detailBreadcrumb.evaluate(nav => {
     const label = nav.querySelector('[data-slot="breadcrumb-page"]')!.getBoundingClientRect()
     const bounds = nav.getBoundingClientRect()
