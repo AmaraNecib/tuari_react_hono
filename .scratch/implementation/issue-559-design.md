@@ -80,6 +80,10 @@ The owner rejected the cropped near-square recording and inset floating unit but
 
 This is a bounded appearance/recording correction, not another money interaction revision. Add browser geometry assertions: input and selector are exactly 52px tall, aligned at top, with selector right edge meeting input left edge, no outer wrapper border, and existing 44px keyboard/touch checks retained. First execution caught the project's 15px root making 3.25rem input height 48.75px while the fixed unit selector was 52px. Correct the input to 52px rather than relaxing equal-height assertions. Keep failed log. No arithmetic, draft, API, persistence or retry source changes. Fresh combined-delta review carries unchanged prior lenses. Owner approval remains required; no merge.
 
+## Attached-control focused-error correction
+
+Fresh appearance review raised focused invalid styling. Source inspection shows the destructive border rule already follows focus, contrary to the report's stated cascade order; the actual issue is the primary inward outline painting over that border. Preserve destructive outline color as well for invalid input. Browser proof compares focused border and outline against a separate destructive-token probe. An intermediate test captured a border transition frame as its expected color; replace that timing-sensitive snapshot with a retrying final-token assertion, not a weaker palette expectation. Preserve both failed logs and the passing focused run. Normal valid-input recording is visually unchanged by this error-only correction.
+
 ## Architecture
 
 Retain the existing payroll write and retry interfaces. A pure percentage calculator should own rational conversion and display approximation so integer money rules do not spread through event handlers. No schema, ledger, rounding-policy or published-contract change is proposed.

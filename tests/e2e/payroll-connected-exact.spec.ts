@@ -174,6 +174,16 @@ test("percentage entry uses approved earnings and preserves a frozen retry after
   await percentage.fill("100")
   await expect(panel.getByRole("button", { name: "تسجيل الدفع", exact: true })).toBeDisabled()
   await expect(panel.getByRole("alert")).toContainText("المبلغ يتجاوز الرصيد المتبقي")
+  await percentage.focus()
+  await expect.poll(() => percentage.evaluate(element => {
+    const probe = document.createElement("span")
+    probe.style.color = "var(--destructive)"
+    document.body.append(probe)
+    const expected = getComputedStyle(probe).color
+    probe.remove()
+    const style = getComputedStyle(element)
+    return style.borderTopColor === expected && style.outlineColor === expected
+  })).toBe(true)
 })
 
 // No financial fixtures or legacy SQL seed/reset. The only interception forwards

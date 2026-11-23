@@ -37,7 +37,7 @@
 .payroll-value-control { display: flex; align-items: stretch; gap: 0; }
 .payroll-value-control input { width: 100%; min-width: 0; height: 52px; padding-inline: 1rem; border: 1px solid var(--border); border-left: 0; border-radius: 0 8px 8px 0; background: var(--background); color: var(--foreground); font-size: 1.25rem; font-weight: 500; font-variant-numeric: tabular-nums; text-align: right; outline: none; transition: border-color 160ms ease-out; }
 .payroll-value-control input:focus-visible { border-color: var(--primary); outline: 1px solid var(--primary); outline-offset: -1px; }
-.payroll-value-control input[aria-invalid="true"] { border-color: var(--destructive); }
+.payroll-value-control input[aria-invalid="true"] { border-color: var(--destructive); outline-color: var(--destructive); }
 .payroll-value-control input::placeholder { color: var(--muted-foreground); opacity: 1; }
 .employee-payroll .payroll-unit-switch { display: flex; flex-shrink: 0; gap: 0; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: 8px 0 0 8px; background: var(--muted); }
 .payroll-unit-switch button { min-width: 48px; min-height: 50px; border-radius: 0; color: var(--foreground); font-size: .875rem; transition: color 160ms ease-out, background-color 160ms ease-out; }
