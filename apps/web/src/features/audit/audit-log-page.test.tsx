@@ -18,7 +18,10 @@ const { systemLogList } = vi.hoisted(() => ({ systemLogList: vi.fn() }))
 
 vi.mock("@/lib/orpc-client", () => ({
   rpcClient: { systemLogList },
+  orpc: { session: { queryOptions: () => ({ queryKey: ["session"] }) } },
 }))
+
+vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: "user-1" } } }) }))
 
 function logEntry(overrides: Pick<SystemLogEntry, "id" | "createdAt" | "summary">): SystemLogEntry {
   return {
@@ -49,8 +52,8 @@ afterEach(() => {
 })
 
 /**
- * The audit log's date range is applied client-side over the fetched system
- * log. The end bound must include the whole picked day (#428 round 2): before
+ * The audit log sends its date range through the shared query to the server.
+ * The end bound must include the whole picked day (#428 round 2): before
  * the fix a bare `yyyy-MM-dd` parsed as UTC midnight and dropped every log
  * written after 00:00 on the picked end date.
  */
@@ -100,12 +103,13 @@ describe("AuditLogPage end-of-day range boundary", () => {
     const lastMillisecond = toAlgeriaDayBoundaryIso(endDay, "end")!
     const dayAfter = new Date(Date.parse(lastMillisecond) + 1).toISOString()
 
-    systemLogList.mockResolvedValue({
-      items: [
-        logEntry({ id: "log-on-end-day", createdAt: lastMillisecond, summary: "حدث في نهاية اليوم" }),
-        logEntry({ id: "log-next-day", createdAt: dayAfter, summary: "حدث بعد منتصف الليل" }),
-      ],
-    })
+    const items = [
+      logEntry({ id: "log-on-end-day", createdAt: lastMillisecond, summary: "حدث في نهاية اليوم" }),
+      logEntry({ id: "log-next-day", createdAt: dayAfter, summary: "حدث بعد منتصف الليل" }),
+    ]
+    systemLogList.mockImplementation(async (filters) => ({
+      items: items.filter((entry) => !filters?.toDate || entry.createdAt <= filters.toDate),
+    }))
 
     renderPage()
 
@@ -121,8 +125,9 @@ describe("AuditLogPage end-of-day range boundary", () => {
     expect(cell, `day ${endDay} not found`).not.toBeNull()
     fireEvent.click(cell!.querySelector("button") ?? (cell as HTMLElement))
 
-    // 23:59 on the end day stays; 00:00 the next day is filtered out.
-    expect(screen.getByText("حدث في نهاية اليوم")).toBeTruthy()
+    // Wait for the new server-filtered query before checking the rows.
+    await screen.findByText("حدث في نهاية اليوم")
+    expect(systemLogList).toHaveBeenLastCalledWith(expect.objectContaining({ toDate: lastMillisecond }))
     await waitFor(() => expect(screen.queryByText("حدث بعد منتصف الليل")).toBeNull())
   })
 })
