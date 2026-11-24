@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, lstat, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -57,6 +57,24 @@ test('emission redacts raw messages, operation values, attributes and unknown ma
   await emitReport(parsed, join(root, 'redacted.html'));
   for (const name of ['redacted.html', 'report-data.json', 'report.js']) assert.ok(!(await readFile(join(root, name), 'utf8')).includes('SECRET_TOKEN'));
   assert.equal(JSON.parse(await readFile(join(root, 'report-data.json'), 'utf8')).events[0].errorCode, 42);
+});
+test('output collisions preserve existing files and roll back only this attempt so retry succeeds', async () => {
+  const data = await parseInput(await folder());
+  for (const collision of ['report.html', 'report.js', 'report-data.json']) {
+    const root = await mkdtemp(join(tmpdir(), 'viewer-collision-'));
+    const existing = join(root, collision);
+    await writeFile(existing, 'original sidecar content');
+    await assert.rejects(emitReport(data, join(root, 'report.html')), { code: 'EEXIST' });
+    assert.equal(await readFile(existing, 'utf8'), 'original sidecar content');
+    for (const name of ['report.html', 'report.js', 'report-data.json']) {
+      if (name !== collision) await assert.rejects(lstat(join(root, name)), { code: 'ENOENT' });
+    }
+    await rename(existing, join(root, 'preserved-original'));
+    await emitReport(data, join(root, 'report.html'));
+    assert.ok((await readFile(join(root, 'report.html'), 'utf8')).startsWith('<!doctype html>'));
+    assert.deepEqual(JSON.parse(await readFile(join(root, 'report-data.json'), 'utf8')), redactReport(data));
+    assert.equal(await readFile(join(root, 'preserved-original'), 'utf8'), 'original sidecar content');
+  }
 });
 test('CRC corruption and oversized lines are rejected', async () => {
   const root = await folder();
