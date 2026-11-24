@@ -3,7 +3,7 @@
  *
  * Uses file-based SQLite per PRD decision (not in-memory).
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createRecoveryKeyTestEnv } from "./test-helpers/recovery-key-env";
 
 describe("RecoveryKeyService", () => {
@@ -167,6 +167,18 @@ describe("RecoveryKeyService", () => {
   });
 
   describe("revokeKey", () => {
+    it("revokes without loading the hash-bearing key list", async () => {
+      await env.service.generateKeys();
+      const id = (await env.service.getPoolStatus()).maskedKeys[0]!.id;
+      const list = vi.spyOn(env.port, "listAllKeys").mockRejectedValue(new Error("hash list forbidden"));
+      try {
+        expect(await env.service.revokeKey(id)).toBe(true);
+        expect(await env.service.revokeKey(id)).toBe(false);
+      } finally {
+        list.mockRestore();
+      }
+      expect((await env.service.getPoolStatus()).availableCount).toBe(2);
+    });
     it("revokes an available key", async () => {
       const keys = await env.service.generateKeys();
       const status = await env.service.getPoolStatus();

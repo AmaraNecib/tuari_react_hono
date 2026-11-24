@@ -991,6 +991,7 @@ describe("RPC router", () => {
       ]);
     const recoveryKeyService = new RecoveryKeyService({
       insertKey: vi.fn(),
+      findKeyById: vi.fn(),
       findKeyByHash: vi.fn(),
       updateKeyStatus: vi.fn(),
       countAvailableKeys: vi.fn(),
@@ -1033,6 +1034,7 @@ describe("RPC router", () => {
     const insertKey = vi.fn();
     const stubPort = {
       insertKey,
+      findKeyById: vi.fn(),
       findKeyByHash: vi.fn(),
       updateKeyStatus: vi.fn(),
       // First call: empty pool → 3 generated. Second: full pool → none.

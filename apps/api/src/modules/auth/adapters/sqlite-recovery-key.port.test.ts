@@ -41,6 +41,19 @@ describe("SqliteRecoveryKeyPort", () => {
     expect(await port.updateKeyStatus("missing", "REVOKED")).toBe(false);
   });
 
+  it("findKeyById returns only identity and status, including in a transaction", async () => {
+    const { port } = env;
+    await port.insertKey(insert("key-1", "hash-1"));
+    await port.insertKey(insert("key-2", "hash-2"));
+    expect(await port.findKeyById("key-2")).toEqual({ id: "key-2", status: "AVAILABLE" });
+    expect(await port.findKeyById("missing")).toBeNull();
+    await port.withTransaction(async (tx) => {
+      await tx.updateKeyStatus("key-1", "REVOKED");
+      expect(await tx.findKeyById("key-1")).toEqual({ id: "key-1", status: "REVOKED" });
+      expect(await tx.findKeyById("missing")).toBeNull();
+    });
+  });
+
   it("findKeyByHash returns null for an unknown hash", async () => {
     const { port } = env;
     await port.insertKey(insert("key-1", "hash-1"));
