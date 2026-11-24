@@ -5,7 +5,7 @@
   "packageManager": "pnpm@10.8.1",
   "scripts": {
     "tuari-viewer": "node ./scripts/tuari-viewer.mjs",
-    "check:telemetry-viewer": "node --test ./tests/telemetry-viewer.test.mjs",
+    "check:telemetry-viewer": "node --test ./tests/telemetry-viewer.test.mjs ./tests/viewer-dashboard.test.mjs",
     "check:dependency-security": "node --test ./tests/dependency-security.test.mjs",
     "check:web-hygiene": "node --test ./tests/web-hygiene.test.mjs",
     "check:i18n-keys": "node --test ./tests/i18n-keys.test.mjs",

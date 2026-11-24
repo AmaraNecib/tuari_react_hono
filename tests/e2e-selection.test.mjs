@@ -36,7 +36,7 @@ test('CI E2E shell runs full and affected scopes without silently dropping cover
     cwd: rootDir, encoding: 'utf8', env: { ...process.env, E2E_MODE: mode, E2E_SPECS: specs },
   }).trim().split('\n');
   const dedicated = 'exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts';
-  const viewer = 'node --test tests/telemetry-viewer.browser.test.mjs';
+  const viewer = 'node --test tests/telemetry-viewer.browser.test.mjs tests/viewer-dashboard.browser.test.mjs';
   const full = run('full', '');
   assert.equal(full.filter(line => line === viewer).length, 1);
   assert.equal(full[0], '--filter @tuari/contracts build');
@@ -141,6 +141,12 @@ test('selectSpecs: telemetry viewer source and tests select browser CI', () => {
   for (const file of [
     'scripts/tuari-viewer.mjs',
     'scripts/viewer/pipeline.mjs',
+    'scripts/viewer/dashboard.jsx',
+    'scripts/viewer/dashboard.css',
+    'scripts/viewer/model.mjs',
+    'scripts/viewer/build-dashboard.mjs',
+    'tests/viewer-dashboard.browser.test.mjs',
+    'tests/viewer-dashboard.test.mjs',
     'tests/fixtures/viewer/2026-01-02/app.1.log',
     'tests/telemetry-viewer.test.mjs',
     'tests/telemetry-viewer.browser.test.mjs',
