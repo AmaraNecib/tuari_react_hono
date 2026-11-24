@@ -128,5 +128,6 @@ it("refreshes audit entries after the account update mutation succeeds", async (
 it("shows RPC failures", async () => {
   mocks.list.mockRejectedValue(new Error("Unavailable"))
   mount()
-  await screen.findByText(/Unavailable/)
+  await screen.findByText(/TUARI-[0-9A-F]{8}/)
+  expect(screen.queryByText(/Unavailable/)).toBeNull()
 })
