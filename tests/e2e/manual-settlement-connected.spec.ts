@@ -125,8 +125,10 @@ test("external manual pair baseline and responsive evidence #613", async ({ page
         if (phase === "after") {
           const row = history.locator(`[data-manual-settlement-id="${latest.id}"]`)
           const details = row.getByText("عرض تفاصيل القيدين الأصليين", { exact: true })
-          await details.focus()
-          await view.keyboard.press("Enter")
+          if (!(await row.locator("details").first().getAttribute("open") === "")) {
+            await details.focus()
+            await view.keyboard.press("Enter")
+          }
           await expect(row.locator("details").first()).toHaveAttribute("open", "")
           await expect(row).toContainText("تفاصيل المصدر غير متاحة")
           await expect(row.locator("details").last()).not.toHaveAttribute("open", "")
