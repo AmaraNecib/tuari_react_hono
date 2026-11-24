@@ -58,6 +58,7 @@ export class SqliteManualSettlementRepository implements ManualSettlementReposit
     this.withTransaction(() => {
       const settlement = this.getSettlement(row.settlementId);
       if (!settlement) throw new Error("Settlement not found");
+      this.validateLinks(settlement, [settlement.payableSettlementEntryId, settlement.receivableSettlementEntryId], false);
       this.validateLinks(settlement, [row.payableReversalEntryId, row.receivableReversalEntryId], true);
       const columns = Object.values(reversalFields);
       this.db.prepare(`INSERT INTO manual_debt_settlement_reversal (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`).run(...Object.keys(reversalFields).map(key => row[key as keyof typeof reversalFields]));
