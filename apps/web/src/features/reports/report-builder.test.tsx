@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import "@/i18n"
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { format } from "date-fns"
 import { exactReportSchema } from "@tuari/contracts"
 import { ReportBuilder } from "./report-builder"
+import { setDateFormat } from "@/features/preferences/date-format-preference"
 import { formatReportAsCSV } from "@/hooks/use-report-queries"
 import { MIDNIGHT_CROSSING, pinUtcTimeZone } from "@/test-utils/algeria-day"
 
@@ -48,6 +49,7 @@ function pickDay(index: number, day: string) {
 }
 afterEach(() => {
   cleanup()
+  setDateFormat("DD/MM/YYYY")
   clients.splice(0).forEach(client => client.clear())
   vi.resetAllMocks()
   vi.unstubAllGlobals()
@@ -166,9 +168,51 @@ describe("exact report consumers", () => {
       expect(screen.queryByText("30/09/2026")).toBeNull()
       for (const report of [inventory, debt, movement]) {
         expect(formatReportAsCSV(report).split("\n")[1]).toBe("Generated: 01/10/2026 12:00:00 ص")
-        expect(formatReportAsCSV(report, "MM/DD/YYYY").split("\n")[1]).toBe("Generated: 10/01/2026 12:00:00 ص")
+        for (const [order, expected] of [
+          ["DD/MM/YYYY", "01/10/2026"], ["MM/DD/YYYY", "10/01/2026"],
+          ["YYYY/MM/DD", "2026/10/01"], ["YYYY/DD/MM", "2026/01/10"],
+        ] as const) {
+          expect(formatReportAsCSV(report, order).split("\n")[1]).toBe(`Generated: ${expected} 12:00:00 ص`)
+        }
       }
     } finally { restore() }
+  })
+
+  it.each([inventory, debt, movement])("downloads the current preference without changing the $type report or wire query", async (report) => {
+    generate.mockResolvedValue(report)
+    const original = JSON.stringify(report)
+    const blobs: Blob[] = []
+    vi.stubGlobal("URL", class extends URL { static createObjectURL(blob: Blob) { blobs.push(blob); return "blob:report" } })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    try {
+      renderPage()
+      fireEvent.change(screen.getByRole("combobox"), { target: { value: report.type } })
+      generateReport()
+      const download = await screen.findByRole("button", { name: "تحميل CSV" })
+      let unchangedBody: string | undefined
+      for (const [order, expected] of [
+        ["DD/MM/YYYY", "01/10/2026"], ["MM/DD/YYYY", "10/01/2026"],
+        ["YYYY/MM/DD", "2026/10/01"], ["YYYY/DD/MM", "2026/01/10"],
+      ] as const) {
+        act(() => setDateFormat(order))
+        fireEvent.click(download)
+        const blob = blobs.at(-1)!
+        const csv = await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.readAsText(blob)
+        })
+        expect(blob.type).toBe("text/csv;charset=utf-8;")
+        expect(csv.split("\n")[1]).toBe(`Generated: ${expected} 12:00:00 ص`)
+        expect(csv).not.toMatch(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/)
+        const body = csv.split("\n").slice(2).join("\n")
+        if (unchangedBody !== undefined) expect(body).toBe(unchangedBody)
+        unchangedBody = body
+      }
+      expect(JSON.stringify(report)).toBe(original)
+      expect(generate).toHaveBeenCalledExactlyOnceWith({ type: report.type, startDate: undefined, endDate: undefined })
+      expect(click).toHaveBeenCalledTimes(4)
+    } finally { click.mockRestore() }
   })
 
   it("shows loading then a real rejection after the configured retry, never fake totals", async () => {

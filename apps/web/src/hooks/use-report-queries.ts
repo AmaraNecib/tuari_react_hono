@@ -1,4 +1,5 @@
-import { formatDateTimeInAlgeria, type DateFormat } from "@/lib/algeria-time";
+import { formatDateTimeInAlgeria } from "@/lib/algeria-time";
+import type { DateFormat } from "@/lib/date-format";
 /**
  * Hooks for querying report data.
  */
@@ -70,7 +71,7 @@ export function formatReportAsCSV(report: ExactReport, dateFormat: DateFormat = 
   if (report.type === "INVENTORY") {
     const r = report;
     lines.push("Inventory Report");
-    lines.push(`Generated: ${formatDateTimeInAlgeria(new Date(r.generatedAt), "ar-DZ", dateFormat)}`);
+    lines.push(`Generated: ${formatDateTimeInAlgeria(new Date(r.generatedAt), "ar-DZ", dateFormat, "medium")}`);
     lines.push("Basis,Purchase-entry quantities and purchase locations; not current stock");
     lines.push("");
     lines.push("Summary");
@@ -86,7 +87,7 @@ export function formatReportAsCSV(report: ExactReport, dateFormat: DateFormat = 
   } else if (report.type === "DEBT") {
     const r = report;
     lines.push("Debt Report");
-    lines.push(`Generated: ${formatDateTimeInAlgeria(new Date(r.generatedAt), "ar-DZ", dateFormat)}`);
+    lines.push(`Generated: ${formatDateTimeInAlgeria(new Date(r.generatedAt), "ar-DZ", dateFormat, "medium")}`);
     lines.push("");
     lines.push("Summary");
     lines.push(`Total Outstanding (DZD),${r.summary.totalOutstandingDzd}`);
@@ -102,7 +103,7 @@ export function formatReportAsCSV(report: ExactReport, dateFormat: DateFormat = 
   } else if (report.type === "MOVEMENT") {
     const r = report;
     lines.push("Movement Report");
-    lines.push(`Generated: ${formatDateTimeInAlgeria(new Date(r.generatedAt), "ar-DZ", dateFormat)}`);
+    lines.push(`Generated: ${formatDateTimeInAlgeria(new Date(r.generatedAt), "ar-DZ", dateFormat, "medium")}`);
     lines.push("");
     lines.push("Summary");
     lines.push(`Total Movements,${r.summary.totalMovements}`);

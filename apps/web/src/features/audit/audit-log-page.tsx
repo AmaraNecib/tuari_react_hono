@@ -88,7 +88,7 @@ export function AuditLogPage() {
   const handleExportCSV = () => {
     const headers = [featureI18n.t("featureCopy.auditLogPage.date"), featureI18n.t("featureCopy.auditLogPage.user"), featureI18n.t("featureCopy.auditLogPage.scope"), featureI18n.t("featureCopy.auditLogPage.action"), featureI18n.t("featureCopy.auditLogPage.resourceId"), featureI18n.t("featureCopy.auditLogPage.changes")];
     const rows = filteredLogs.map((log: AuditLog) => [
-      formatDateTimeInAlgeria(new Date(log.timestamp), i18n.language || "ar-DZ", dateFormat),
+      formatDateTimeInAlgeria(new Date(log.timestamp), i18n.language || "ar-DZ", dateFormat, "medium"),
       log.actor,
       getEntityTypeLabel(t, log.domain),
       getActionTypeLabel(t, log.action),

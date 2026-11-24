@@ -16,7 +16,7 @@ vi.mock("@/lib/orpc-client", () => ({
 }))
 vi.mock("react-i18next", async (importOriginal) => ({
   ...await importOriginal<typeof import("react-i18next")>(),
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: "ar-DZ" } }),
 }))
 vi.mock("@/lib/auth-api", () => ({ updateCurrentProfile: mocks.updateProfile }))
 vi.mock("@/lib/toast", () => ({ showSuccessToast: vi.fn(), showErrorToast: vi.fn() }))
