@@ -1,4 +1,4 @@
-import { open, lstat, readdir, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { open, lstat, readdir, mkdtemp, mkdir, writeFile, rm, unlink } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -163,11 +163,26 @@ export async function emitReport(data, destination) {
   const root = dirname(resolve(destination));
   await mkdir(root, { recursive: true });
   // Refuse collisions, including sidecars belonging to another report.
-  const handles = [];
+  const created = [];
   try {
-    for (const path of [destination, join(root, 'report.js'), join(root, 'report-data.json')]) handles.push(await open(path, 'wx'));
-    await handles[0].writeFile(html);
-    await handles[1].writeFile("'use strict';\nconst data = JSON.parse(document.getElementById('report-data').textContent);\ndocument.getElementById('report').textContent = JSON.stringify(data, null, 2);\n");
-    await handles[2].writeFile(json + '\n');
-  } finally { await Promise.all(handles.map(file => file.close())); }
+    for (const path of [resolve(destination), join(root, 'report.js'), join(root, 'report-data.json')]) {
+      const file = await open(path, 'wx');
+      created.push({ path, file });
+    }
+    await created[0].file.writeFile(html);
+    await created[1].file.writeFile("'use strict';\nconst data = JSON.parse(document.getElementById('report-data').textContent);\ndocument.getElementById('report').textContent = JSON.stringify(data, null, 2);\n");
+    await created[2].file.writeFile(json + '\n');
+  } catch (error) {
+    const cleanup = await Promise.allSettled(created.map(async ({ path, file }) => {
+      const owned = await file.stat({ bigint: true });
+      try {
+        const current = await lstat(path, { bigint: true });
+        // Do not remove a path that has been replaced since our exclusive open.
+        if (current.dev === owned.dev && current.ino === owned.ino) await unlink(path);
+      } catch (failure) { if (failure.code !== 'ENOENT') throw failure; }
+    }));
+    const failures = cleanup.filter(result => result.status === 'rejected').map(result => result.reason);
+    if (failures.length) throw new AggregateError([error, ...failures], 'Report failed; could not remove all newly created outputs');
+    throw error;
+  } finally { await Promise.all(created.map(({ file }) => file.close())); }
 }

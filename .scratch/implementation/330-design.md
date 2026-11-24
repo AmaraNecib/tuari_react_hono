@@ -76,4 +76,14 @@ emitReport writes an inert escaped copy of data plus a reusable script and JSON 
 
 Focused Node tests exercise folder/ZIP parity, offset normalization, chunk parsing, truncation, malformed JSONL, path rejection and report escaping. Full repo gates remain CI-final. No packages or native builds required. Actual producer bundle proof and three independent lenses must be supplied before parent publication.
 
+## Bounded collision correction and browser proof
+
+Correction base a5325072. The parent assigned the emitter collision/retry finding and actual file:// proof at the existing seams. Verification remains focused-local / CI-final-enforced as supplied by the parent. Parent owns final independent reviews and publication. No packages, worktrees, producer changes or dashboard work are authorized.
+
+The observable failure was an empty report left behind after a sidecar collision, which blocked retry. Exclusive opens now track each created path. Failed emission rolls back those files only, comparing the current path's device/inode with its open handle before unlinking. Existing outputs are never acquired or deleted. Cleanup failures are reported with the original failure. The identity check avoids deleting an already replaced path; it cannot make check-and-unlink atomic against hostile concurrent directory mutation. Output directories require one writer. The public emitReport interface and CLI caller are unchanged, and no new seam or domain vocabulary is introduced.
+
+The regression exercises collisions at all three output positions, verifies original bytes survive, checks absence of partial outputs and retries the same destination after preserving the collision under another name. A separate real-browser assertion invokes the CLI and loads the emitted HTML via file:// in an isolated offline Chromium profile. It checks the visible model against the JSON sidecar and independent fixture expectations, with no console errors or network requests. An optional hash-pinned native #618 export proves the six producer events and version/OS/build metadata. Browser proof is run once at the committed head through heavy_run using the installed browser and existing Playwright package.
+
+The existing selector expands the whole #330 branch to full scope because package.json changed. That full application suite remains CI-final. The specific local gap is static file:// execution, which the application browser suite does not cover. Only the two viewer browser cases run locally.
+
 The accepted redaction seam remains mandatory. Emission projects metadata and categorizes free-text signatures rather than sharing raw message or operation strings. HTML is a minimal pipeline carrier, not the React dashboard owned by #331.

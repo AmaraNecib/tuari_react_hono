@@ -13,6 +13,8 @@ Inputs use manifest.json and YYYY-MM-DD folders containing app.log, api.log, des
 
 Archive input accepts stored or deflated ZIP entries with matching central/local metadata and CRC. Only producer paths are accepted. Encryption, links, ZIP64, descriptors and arbitrary archive directories are rejected. Extraction uses a fresh temporary folder that is removed after parsing. Input limits are 100 MiB total, 8 MiB per chunk, 1 MiB per line, 1024 chunks and 100000 events. Manifest size is capped at 64 KiB. Keep input folders unchanged during parsing; this local tool is not a sandbox for concurrently hostile filesystem mutation.
 
-Output files must not already exist. Use a separate output directory per report. No packages, network access or running app are required.
+Output files must not already exist. A failed emission removes only files created by that attempt, leaving pre-existing reports and sidecars intact. Move the conflicting output aside before retrying. Use a separate output directory per report, with one writer. Rollback checks file identity before deletion, but is not a sandbox against hostile concurrent path swaps. No additional packages, network access or running app are required.
 
 Run focused proof with `node --test tests/telemetry-viewer.test.mjs`.
+
+Run the offline browser assertion through the heavy-work queue with `node --test tests/telemetry-viewer.browser.test.mjs`. It uses the existing `@playwright/test` dependency and an isolated temporary browser profile, with no server. Set `VIEWER_BROWSER_EXECUTABLE` to an installed Chrome or Edge executable if bundled Chromium is unavailable. `VIEWER_PLAYWRIGHT_MODULE` can point to another installed workspace's `@playwright/test/index.mjs`; it does not install anything. Set `VIEWER_NATIVE_618_ZIP` to the independently captured six-event native #618 export to include its hash-pinned integration case. Without that private fixture, the native case is explicitly skipped.
