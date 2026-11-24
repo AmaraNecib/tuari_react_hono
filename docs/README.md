@@ -17,4 +17,4 @@ Use this page to find current project documentation. Architecture decision recor
 - [Rust Core requirements](prd/rust-core-prd.md)
 - [Update requirements](prd/update-prd.md)
 
-Read the decision record and its linked successor where applicable. Current source and the engineering workflow govern implementation and verification; historical documents do not override them.
+Read the decision record and its linked successor where applicable. Current source shows what is implemented; the engineering workflow defines verification. Accepted decisions remain authoritative until explicitly superseded.

@@ -21,6 +21,10 @@ The API composition root opens SQLite. Better Auth and account persistence use D
 
 ## Development
 
+Use Node.js 22 or later and pnpm 10.8.1. Desktop development also requires a Rust toolchain with Windows desktop build support.
+
+For phased delivery, see the [branch workflow](docs/branch-workflow.md) and [multi-agent delivery plan](plans/tuari-multi-agent-delivery-plan.md).
+
 Install dependencies with `pnpm install`. Run the web and API development processes with `pnpm dev`; run the desktop app with `pnpm dev:desktop`. See the package scripts for current build commands. The desktop build does not generate a Prisma client.
 
 For changes, follow [the engineering workflow](docs/engineering-workflow.md); it defines the affected local checks and CI-final gates. The app stores local data in SQLite; exact runtime paths are resolved by the desktop runtime and exposed in its diagnostics.
