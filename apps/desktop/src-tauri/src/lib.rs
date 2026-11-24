@@ -265,6 +265,7 @@ pub mod crypto;
 pub mod clock;
 pub mod event_sink;
 mod support_zip;
+mod support_bundle;
 pub mod license;
 pub mod recovery;
 pub mod update;
@@ -1053,30 +1054,15 @@ fn get_recent_diagnostic_events() -> RecentDiagnosticEvents {
 }
 
 #[tauri::command]
-async fn export_support_bundle(app: AppHandle) -> Result<serde_json::Value, String> {
+async fn export_support_bundle(window: tauri::Window, app: AppHandle) -> Result<serde_json::Value, String> {
+    assert_sensitive_command_window(&window)?;
     use tauri_plugin_dialog::DialogExt;
     let destination = app.dialog().file().set_file_name("tuari-support.zip").add_filter("ZIP", &["zip"]).blocking_save_file();
     let Some(destination) = destination else { return Ok(serde_json::json!({"status":"cancelled"})); };
     let path = destination.into_path().map_err(|_| "Invalid destination".to_string())?;
     let root = resolve_logs_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let sink = crate::event_sink::EventSink::new(root);
-        let events = sink.persisted_diagnostics().map_err(|_| "Unable to read diagnostics")?;
-        let now = chrono::Local::now().to_rfc3339();
-        let manifest = serde_json::json!({"schemaVersion":1,"product":"Tuari","version":env!("CARGO_PKG_VERSION"),"os":std::env::consts::OS,"build":option_env!("GIT_SHA").unwrap_or("unknown"),"createdAt":now,"firstEventAt":events.first().map(|e| &e.occurred_at),"lastEventAt":events.last().map(|e| &e.occurred_at)});
-        let mut entries = vec![("manifest.json".into(), manifest.to_string().into_bytes()), ("config.json".into(), br#"{"localLogging":true,"telemetry":false}"#.to_vec())];
-        let mut days = std::collections::BTreeMap::<String, Vec<u8>>::new();
-        for event in events {
-            let day = format!("{}/{}.log", &event.occurred_at[..10], event.source);
-            let record = serde_json::json!({"schemaVersion":1,"timestamp":event.occurred_at,"severity":event.level,"source":event.source,"message":event.category,"attributes":{"errorId":event.error_id}});
-            let bytes = days.entry(day).or_default();
-            bytes.extend(record.to_string().as_bytes()); bytes.push(b'\n');
-        }
-        for (name, bytes) in days { entries.push((name, bytes)); }
-        let bytes = crate::support_zip::encode(&entries).map_err(|_| "Support bundle exceeds limits")?;
-        use std::io::Write;
-        let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&path).map_err(|_| "Choose a new destination filename")?;
-        file.write_all(&bytes).and_then(|_| file.sync_all()).map_err(|_| "Unable to save support bundle")?;
+        crate::support_bundle::save(&root, Some(&path)).map_err(|_| "Unable to save complete support bundle; choose a new filename and check retained logs")?;
         Ok(serde_json::json!({"status":"saved","savedPath":path.to_string_lossy()}))
     }).await.map_err(|_| "Support export failed".to_string())?.map_err(str::to_string)
 }

@@ -1,0 +1,13 @@
+# Retained support chunks
+
+Base 44313f924f1cd9658ba620cc0985a4ba737d7f28, isolated tree D:/worktrees/tuari_react_hono/t3-18532e7d-e07d082d4443d828. High assurance for secret disclosure and filesystem traversal. Focused-local / CI-final-pending per docs/ci-final-activation.md. Local only, no publication or merge.
+
+The parent resolved the prototype scope question: export retained day-folder chunks, while the recent viewer remains bounded to 100. A retained chunk is a trusted desktop, app or api .log file, including numeric rotation suffixes, under a valid date folder. Its sanitized copy preserves JSONL structure, timestamps, severity, numeric count and numeric correlation ID. Free text and arbitrary attributes are replaced by fixed category/source vocabulary. Database and configuration files are excluded. The manifest describes this projection, exact counts, completeness and time range.
+
+support_bundle owns discovery, validation, projection and native save, separate from recent history. Its encode and save interfaces hide filesystem and budget rules; deleting it would put those rules back into the native command. The ZIP encoder retains CRC and format ownership. No dependency or MSRV change. The command now uses the existing sensitive-window ACL.
+
+Bounds fail the entire export instead of returning a silently shortened bundle: 100 MiB input, 1 MiB per line, 8 MiB projected payload, 1022 chunks plus manifest/config, 4096 directory entries per level. Malformed records and incomplete trailing lines fail. Windows opens reparse points themselves and holds root/day handles without delete sharing during reads. Static links and junctions fail. Non-Windows concurrent directory replacement has not been proven safe and needs review. Destination is create-new, never overwrite. Write failure can leave a partial destination; it is reported as failure, not success.
+
+Focused proof covers 240 events across two days and four chunks, excluded database/token/free text, malformed input, oversized lines, junction days and native save/cancel/existing/error paths. Python zipfile independently checks names, CRC and exact 240 count. Tests were not captured red-first, so no red-first claim. Actual native dialog/IPC and owner-facing screenshots/video remain separate required evidence, not proven by save seam tests. Existing prototype web evidence is historical, not rerun here.
+
+Applied wisdom: preserve earlier failed logs and reuse existing Rust target with incremental disabled for 3.5 GiB disk headroom. No matching security lesson changed these filesystem assumptions. No wisdom files edited.

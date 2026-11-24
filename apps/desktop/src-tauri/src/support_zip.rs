@@ -2,7 +2,7 @@
 use std::io::{self, Write};
 
 pub const MAX_BYTES: usize = 8 * 1024 * 1024;
-const MAX_ENTRIES: usize = 64;
+const MAX_ENTRIES: usize = 1024;
 
 fn valid_name(name: &str) -> bool {
     if matches!(name, "manifest.json" | "config.json") {
@@ -19,7 +19,7 @@ fn valid_name(name: &str) -> bool {
                 c.is_ascii_digit()
             }
         })
-        && matches!(file, "desktop.log" | "api.log")
+        && crate::support_bundle::chunk_name(file)
 }
 
 fn crc32(bytes: &[u8]) -> u32 {
@@ -118,7 +118,7 @@ mod tests {
         .is_err());
         assert!(encode(&[("manifest.json".into(), vec![0; MAX_BYTES + 1])]).is_err());
         assert!(encode(
-            &(0..65)
+            &(0..1025)
                 .map(|_| ("config.json".into(), vec![]))
                 .collect::<Vec<_>>()
         )
