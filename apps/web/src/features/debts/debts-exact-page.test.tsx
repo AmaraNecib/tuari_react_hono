@@ -230,7 +230,7 @@ describe("injected exact debt page", () => {
     expect(within(ledger).queryByRole("button", { name: "تصحيح المبلغ" })).toBeNull()
     expect(within(ledger).queryByRole("button", { name: "إلغاء الحركة" })).toBeNull()
     fireEvent.click(screen.getByRole("tab", { name: "التسوية وسجلها" }))
-    expect((screen.getByRole("button", { name: "تسوية الحساب بالكامل" }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole("button", { name: "تصفير رصيد الحساب" }) as HTMLButtonElement).disabled).toBe(true)
   })
   it("submits localized payment as canonical text, with per-obligation maximum and first-click full amount", async () => {
     const { client } = fixture()
@@ -401,7 +401,7 @@ describe("injected exact debt page", () => {
   it("sends explicit correction, void reason, signed adjustment and attributed settlement commands", async () => {
     const { client } = fixture()
     await openAccount()
-    for (const [button, method, value] of [["تصحيح المبلغ", "correct", "90071992547409.92"], ["إلغاء الحركة", "void", null], ["تسجيل قيد", "post", "-0.01"], ["تسوية الحساب بالكامل", "settle", null]] as const) {
+    for (const [button, method, value] of [["تصحيح المبلغ", "correct", "90071992547409.92"], ["إلغاء الحركة", "void", null], ["تسجيل قيد", "post", "-0.01"], ["تصفير رصيد الحساب", "settle", null]] as const) {
       if (method === "settle") fireEvent.click(screen.getByRole("tab", { name: "التسوية وسجلها" }))
       fireEvent.click(screen.getByRole("button", { name: button }))
       const dialog = await screen.findByRole("dialog")

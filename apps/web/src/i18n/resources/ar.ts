@@ -397,7 +397,7 @@ export const ar = {
       correct: "تصحيح المبلغ المتفق عليه",
       void: "إلغاء الحركة",
       post: "تسجيل قيد",
-      settle: "تسوية الحساب بالكامل",
+      settle: "تصفير رصيد الحساب",
       opening: "رصيد افتتاحي",
       adjustment: "تعديل",
       advance: "سلفة",
