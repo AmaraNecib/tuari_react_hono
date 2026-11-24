@@ -326,6 +326,34 @@ jobs:
             pnpm exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts
           fi
 
+      - name: Upload manual settlement failure artifacts
+        if: failure() && !cancelled() && needs.detect.outputs.e2e_mode != 'skip'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: manual-settlement-failure-artifacts
+          path: |
+            .scratch/evidence/613-ui/run-*/artifacts/**/trace.zip
+            .scratch/evidence/613-ui/run-*/after/*/activity-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/settlements-idle-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/preview-element.png
+            .scratch/evidence/613-ui/run-*/after/*/form-element.png
+            .scratch/evidence/613-ui/run-*/after/*/preview-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/payable-activity-links.png
+            .scratch/evidence/613-ui/run-*/after/*/receivable-activity-links.png
+            .scratch/evidence/613-ui/run-*/after/*/payable-history.png
+            .scratch/evidence/613-ui/run-*/after/*/receivable-history.png
+            .scratch/evidence/613-ui/run-*/after/*/payable-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/receivable-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/mobile-drawer.png
+            .scratch/evidence/613-ui/run-*/after/*/manual-settlement-element.png
+            .scratch/evidence/613-ui/run-*/after/*/settlement-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/ledger-element.png
+            .scratch/evidence/613-ui/run-*/after/*/viewport-sidebar.png
+            .scratch/evidence/613-ui/run-*/after/*/sidebar-element.png
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Upload connected payroll failure artifacts
         if: needs.detect.outputs.e2e_mode != 'skip' && !cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 (immutable SHA, matching the cache action pinning practice)

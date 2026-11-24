@@ -1,5 +1,21 @@
 # Manual obligation settlement
 
+## Recovery and failure artifact retention
+
+Recovery starts at committed a8c7799d without replaying or replacing the earlier
+cross-layer corrections. The earlier full API run exhausted disk and has no valid
+coverage verdict. Preserve that log; use a fresh D: temporary directory for retry,
+check free space before heavy work, and serialize the API and browser runs.
+
+Discussion r4685333844 is valid. CI now retains only failure traces from the
+dedicated artifacts directory and the named after-capture PNGs used by the browser
+spec. The upload is failure-only, retains hidden scratch files for seven days,
+and ignores missing captures when failure happens before rendering. Never upload
+the run root, databases, auth/config files, attachments, backup files or videos.
+A synthetic glob fixture exercises inclusion and refusal, including sensitive
+files nested inside artifacts. No financial interface, schema or domain term
+changes; architecture: no seam moved. Parent owns combined review and publication.
+
 ## Hosted finding correction at 5684f06b
 
 Sole writer: D:/worktrees/tuari_react_hono/t3-82cb7302-cbc95bbc1a45a5ba.
