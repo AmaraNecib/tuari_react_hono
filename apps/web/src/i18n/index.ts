@@ -5,12 +5,14 @@ import i18n from "i18next"
 import { initReactI18next } from "react-i18next"
 
 import { ar } from "./resources/ar"
+import { en } from "./resources/en"
 
 /**
  * resources = component.
  */
 export const resources = {
   ar,
+  en,
 } as const
 
 if (!i18n.isInitialized) {
@@ -18,7 +20,7 @@ if (!i18n.isInitialized) {
     resources,
     lng: "ar",
     fallbackLng: "ar",
-    supportedLngs: ["ar"],
+    supportedLngs: ["ar", "en"],
     interpolation: {
       escapeValue: false,
     },

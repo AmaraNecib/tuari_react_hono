@@ -1,17 +1,18 @@
 //! Desktop adapter for the event-sink protocol. Each process owns its chunk prefix.
 use chrono::{DateTime, FixedOffset, Local, SecondsFormat};
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     Mutex, OnceLock,
 };
 
 static SINK: OnceLock<Mutex<EventSink>> = OnceLock::new();
 static DEGRADED: AtomicBool = AtomicBool::new(false);
+static DROPPED_EVENTS: AtomicUsize = AtomicUsize::new(0);
 struct Duplicate {
     path: PathBuf,
     offset: u64,
@@ -24,6 +25,7 @@ pub struct EventSink {
     root: PathBuf,
     duplicates: HashMap<String, Duplicate>,
     chunks: HashMap<String, usize>,
+    recent: VecDeque<DiagnosticEvent>,
 }
 impl EventSink {
     pub fn new(root: PathBuf) -> Self {
@@ -31,6 +33,7 @@ impl EventSink {
             root,
             duplicates: HashMap::new(),
             chunks: HashMap::new(),
+            recent: VecDeque::new(),
         }
     }
     /// Emit lifecycle milestones or errors. Routine API info/debug uses its memory ring.
@@ -41,11 +44,21 @@ impl EventSink {
         error: Option<String>,
         now: DateTime<FixedOffset>,
     ) -> std::io::Result<()> {
+        self.emit_with_error_id(severity, message, error, None, now)
+    }
+    fn emit_with_error_id(
+        &mut self,
+        severity: &str,
+        message: &str,
+        error: Option<String>,
+        error_id: Option<u32>,
+        now: DateTime<FixedOffset>,
+    ) -> std::io::Result<()> {
         let instant = now.timestamp_millis();
         self.duplicates
             .retain(|_, d| instant >= d.instant && instant - d.instant < 60_000);
         let day = now.format("%Y-%m-%d").to_string();
-        let signature = json!([day, message, error]).to_string();
+        let signature = json!([day, message, error, error_id]).to_string();
         if severity == "error" {
             if let Some(duplicate) = self.duplicates.get_mut(&signature) {
                 if update_duplicate(duplicate)? {
@@ -58,9 +71,14 @@ impl EventSink {
         if fs::symlink_metadata(&dir)?.file_type().is_symlink() {
             return Err(std::io::Error::other("log directory is a link"));
         }
+        let mut attributes = serde_json::Map::new();
+        attributes.insert("error".into(), json!(error));
+        if let Some(id) = error_id {
+            attributes.insert("errorId".into(), json!(id));
+        }
         let payload = json!({ "schemaVersion": 1, "timestamp": now.to_rfc3339_opts(SecondsFormat::Millis, false),
             "severity": severity, "source": "desktop", "message": message,
-            "lifecycle": severity != "error", "attributes": { "error": error } }).to_string();
+            "lifecycle": severity != "error", "attributes": attributes }).to_string();
         let marker = format!(",\"recordId\":\"{:032x}\",", rand::random::<u128>());
         let line = format!("{{\"count\":{:>12}{}{}\n", 1, marker, &payload[1..]);
         if line.len() as u64 > 100 * 1024 * 1024 {
@@ -132,6 +150,24 @@ impl EventSink {
             .open(&path)?
             .write_all(line.as_bytes())?;
         self.chunks.insert(day, index);
+        if matches!(severity, "error" | "warn" | "info") {
+            if self.recent.len() == 100 {
+                self.recent.pop_front();
+            }
+            let category = match message {
+                "UI failure" => "ui",
+                "desktop panic" => "crash",
+                _ if severity == "error" => "error",
+                _ => "lifecycle",
+            };
+            self.recent.push_back(DiagnosticEvent {
+                occurred_at: now.to_rfc3339_opts(SecondsFormat::Millis, false),
+                level: severity.to_owned(),
+                source: "desktop".into(),
+                category: category.to_owned(),
+                error_id,
+            });
+        }
         if severity == "error" {
             if self.duplicates.len() >= 1000 {
                 self.duplicates.clear();
@@ -148,6 +184,136 @@ impl EventSink {
             );
         }
         self.cleanup(now)
+    }
+    pub fn diagnostic_snapshot(&self) -> Vec<DiagnosticEvent> {
+        let mut events = self.persisted_diagnostics().unwrap_or_default();
+        // Reconcile multiplicities, not just unique metadata. Distinct failures can
+        // have identical timestamps and projections, including absent error IDs.
+        let mut counts = HashMap::new();
+        for event in &events {
+            *counts.entry(event.clone()).or_insert(0usize) += 1;
+        }
+        for event in &self.recent {
+            match counts.get_mut(event) {
+                Some(count) if *count > 0 => *count -= 1,
+                _ => events.push(event.clone()),
+            }
+        }
+        bound_diagnostics(&mut events);
+        events
+    }
+    /// Read bounded metadata projections, never messages, attributes or raw errors.
+    pub fn persisted_diagnostics(&self) -> std::io::Result<Vec<DiagnosticEvent>> {
+        let mut events = Vec::new();
+        if !self.root.exists() {
+            return Ok(events);
+        }
+        if fs::symlink_metadata(&self.root)?.file_type().is_symlink() {
+            return Err(std::io::Error::other("log root is a link"));
+        }
+        let mut days = Vec::new();
+        for entry in fs::read_dir(&self.root)?.take(1024) {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if entry.file_type()?.is_dir()
+                && name.len() == 10
+                && chrono::NaiveDate::parse_from_str(&name, "%Y-%m-%d").is_ok()
+            {
+                days.push(entry.path());
+            }
+        }
+        days.sort();
+        let mut budget = 8 * 1024 * 1024;
+        for day in days.into_iter().rev().take(30) {
+            let mut files = Vec::new();
+            for entry in fs::read_dir(day)?.take(256) {
+                let entry = entry?;
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !entry.file_type()?.is_file()
+                    || !(owned_log(&entry.path())
+                        || name == "app.log"
+                        || name == "api.log"
+                        || name
+                            .strip_prefix("api.")
+                            .or_else(|| name.strip_prefix("app."))
+                            .and_then(|n| n.strip_suffix(".log"))
+                            .is_some_and(|n| {
+                                !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+                            }))
+                {
+                    continue;
+                }
+                files.push((entry.path(), name));
+            }
+            files.sort();
+            let mut remaining = files.len();
+            for (path, name) in files {
+                // Give every chunk a tail allowance so directory enumeration order
+                // and an older large chunk cannot hide the latest records.
+                let allowance = budget / remaining;
+                remaining -= 1;
+                let mut file = std::fs::File::open(path)?;
+                let size = file.metadata()?.len();
+                let start = size.saturating_sub(allowance as u64);
+                file.seek(SeekFrom::Start(start))?;
+                let mut bytes = Vec::new();
+                file.take(allowance as u64).read_to_end(&mut bytes)?;
+                budget -= bytes.len();
+                let bytes = if start > 0 {
+                    // The first fragment may be half a JSON record.
+                    bytes
+                        .iter()
+                        .position(|b| *b == b'\n')
+                        .map_or(&[][..], |end| &bytes[end + 1..])
+                } else {
+                    &bytes[..]
+                };
+                for line in bytes.split(|b| *b == b'\n') {
+                    let Ok(value) = serde_json::from_slice::<serde_json::Value>(line) else {
+                        continue;
+                    };
+                    let Some(timestamp) = value["timestamp"]
+                        .as_str()
+                        .and_then(|v| DateTime::parse_from_rfc3339(v).ok())
+                    else {
+                        continue;
+                    };
+                    let Some(level @ ("error" | "warn" | "info")) = value["severity"].as_str()
+                    else {
+                        continue;
+                    };
+                    let error_id = value["attributes"]["errorId"]
+                        .as_u64()
+                        .and_then(|v| u32::try_from(v).ok());
+                    events.push(DiagnosticEvent {
+                        occurred_at: timestamp.to_rfc3339_opts(SecondsFormat::Millis, false),
+                        level: level.into(),
+                        source: if name.starts_with("desktop") {
+                            "desktop"
+                        } else {
+                            "api"
+                        }
+                        .into(),
+                        category: match value["message"].as_str() {
+                            Some("UI failure") => "ui",
+                            Some("desktop panic") => "crash",
+                            _ if level == "error" => "error",
+                            _ => "lifecycle",
+                        }
+                        .into(),
+                        error_id,
+                    });
+                }
+                if budget == 0 {
+                    break;
+                }
+            }
+            if budget == 0 {
+                break;
+            }
+        }
+        bound_diagnostics(&mut events);
+        Ok(events)
     }
     pub fn cleanup(&mut self, now: DateTime<FixedOffset>) -> std::io::Result<()> {
         self.cleanup_reserved(now, 0)
@@ -273,13 +439,20 @@ pub(crate) fn capture_events(operation: impl FnOnce()) -> Vec<serde_json::Value>
     events
 }
 pub fn emit(severity: &str, message: &str, error: Option<String>) {
+    emit_record(severity, message, error, None);
+}
+pub fn record_ui_failure(error_id: u32) {
+    emit_record("error", "UI failure", None, Some(error_id));
+}
+fn emit_record(severity: &str, message: &str, error: Option<String>, error_id: Option<u32>) {
     #[cfg(test)]
     if TEST_SINK.with(|cell| {
         if let Some(sink) = cell.borrow_mut().as_mut() {
-            sink.emit(
+            sink.emit_with_error_id(
                 severity,
                 message,
                 error.clone(),
+                error_id,
                 Local::now().fixed_offset(),
             )
             .unwrap();
@@ -301,14 +474,16 @@ pub fn emit(severity: &str, message: &str, error: Option<String>) {
             sink.lock()
                 .map_err(|_| std::io::Error::other("logger poisoned"))?
         };
-        guard.emit(
+        guard.emit_with_error_id(
             severity,
             message,
             error.clone(),
+            error_id,
             Local::now().fixed_offset(),
         )
     })();
     if result.is_err() {
+        DROPPED_EVENTS.fetch_add(1, Ordering::Relaxed);
         DEGRADED.store(true, Ordering::Relaxed);
         let _ = writeln!(
             std::io::stderr(),
@@ -321,9 +496,185 @@ pub fn degraded() -> bool {
     DEGRADED.load(Ordering::Relaxed)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticEvent {
+    pub occurred_at: String,
+    pub level: String,
+    pub source: String,
+    pub category: String,
+    pub error_id: Option<u32>,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticStatus {
+    pub enabled: bool,
+    pub initialized: bool,
+    pub buffered_event_count: usize,
+    pub dropped_event_count: usize,
+}
+
+fn bound_diagnostics(events: &mut Vec<DiagnosticEvent>) {
+    events.sort_by_key(|e| {
+        DateTime::parse_from_rfc3339(&e.occurred_at)
+            .map(|d| d.timestamp_millis())
+            .unwrap_or(0)
+    });
+    if events.len() > 100 {
+        events.drain(..events.len() - 100);
+    }
+}
+
+fn read_diagnostics(
+    lock: &Mutex<EventSink>,
+    scan: impl FnOnce(EventSink) -> Vec<DiagnosticEvent>,
+) -> Vec<DiagnosticEvent> {
+    let snapshot = {
+        let Ok(sink) = lock.lock() else {
+            return Vec::new();
+        };
+        let mut snapshot = EventSink::new(sink.root.clone());
+        snapshot.recent = sink.recent.clone();
+        snapshot
+    };
+    scan(snapshot)
+}
+
+/// Copy process state under the writer lock; scan retained files without it.
+pub fn recent_diagnostics() -> (Vec<DiagnosticEvent>, DiagnosticStatus) {
+    let initialized = SINK.get().is_some();
+    let events = SINK
+        .get()
+        .map(|lock| read_diagnostics(lock, |sink| sink.diagnostic_snapshot()))
+        .unwrap_or_default();
+    (
+        events,
+        DiagnosticStatus {
+            enabled: initialized,
+            initialized,
+            // Native events are written synchronously; there is no pending buffer.
+            buffered_event_count: 0,
+            dropped_event_count: DROPPED_EVENTS.load(Ordering::Relaxed),
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn retained_scan_releases_writer_lock_and_keeps_snapshot() {
+        let root = std::env::temp_dir().join(format!("tuari-read-lock-{}", rand::random::<u64>()));
+        let lock = Mutex::new(EventSink::new(root.clone()));
+        let now = DateTime::parse_from_rfc3339("2026-01-02T12:00:00Z").unwrap();
+        lock.lock()
+            .unwrap()
+            .emit("info", "startup", None, now)
+            .unwrap();
+        let events = read_diagnostics(&lock, |snapshot| {
+            let mut writer = lock
+                .try_lock()
+                .expect("scan must not hold the logging lock");
+            writer
+                .emit("error", "concurrent failure", None, now)
+                .unwrap();
+            drop(writer);
+            snapshot.diagnostic_snapshot()
+        });
+        assert_eq!(events.len(), 2);
+        assert_eq!(events.last().unwrap().level, "error");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn oversized_single_chunk_reads_tail_not_partial_prefix() {
+        let root = std::env::temp_dir().join(format!("tuari-large-tail-{}", rand::random::<u64>()));
+        fs::create_dir_all(root.join("2026-01-02")).unwrap();
+        let mut bytes = vec![b' '; 9 * 1024 * 1024];
+        bytes.extend_from_slice(b"\n{\"timestamp\":\"2026-01-02T12:00:00Z\",\"severity\":\"error\",\"attributes\":{\"errorId\":99}}\n");
+        fs::write(root.join("2026-01-02/desktop.log"), bytes).unwrap();
+        let events = EventSink::new(root.clone())
+            .persisted_diagnostics()
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].error_id, Some(99));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn bounded_history_keeps_newest_chunk_tail_and_memory_events() {
+        let root = std::env::temp_dir().join(format!("tuari-tail-{}", rand::random::<u64>()));
+        let day = root.join("2026-01-02");
+        fs::create_dir_all(&day).unwrap();
+        let padding = vec![b' '; 5 * 1024 * 1024];
+        fs::write(day.join("desktop.log"), &padding).unwrap();
+        let mut newer = padding;
+        newer.extend_from_slice(b"\n{\"timestamp\":\"2026-01-02T12:00:00Z\",\"severity\":\"error\",\"attributes\":{\"errorId\":42}}\n");
+        fs::write(day.join("desktop.1.log"), newer).unwrap();
+        let mut sink = EventSink::new(root.clone());
+        sink.recent.push_back(DiagnosticEvent {
+            occurred_at: "2026-01-02T13:00:00.000+00:00".into(),
+            level: "error".into(),
+            source: "desktop".into(),
+            category: "ui".into(),
+            error_id: Some(43),
+        });
+        let events = sink.diagnostic_snapshot();
+        assert_eq!(
+            events.iter().map(|e| e.error_id).collect::<Vec<_>>(),
+            vec![Some(42), Some(43)]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn reopened_sink_projects_history_and_excludes_business_data() {
+        let root = std::env::temp_dir().join(format!("tuari-history-{}", rand::random::<u64>()));
+        fs::create_dir_all(root.join("2026-01-02")).unwrap();
+        fs::write(root.join("2026-01-02/desktop.log"), concat!(
+            "{\"timestamp\":\"2026-01-02T12:00:00Z\",\"severity\":\"error\",\"message\":\"UI failure\",\"attributes\":{\"errorId\":42,\"token\":\"SECRET_TOKEN\"},\"customer\":\"PRIVATE_CUSTOMER\"}\n",
+            "{\"timestamp\":\"SECRET_TIMESTAMP\",\"severity\":\"error\"}\n"
+        )).unwrap();
+        fs::write(root.join("2026-01-02/database.sqlite"), "SECRET_DATABASE").unwrap();
+        fs::write(root.join("config.json"), "SECRET_CONFIG").unwrap();
+        let events = EventSink::new(root.clone())
+            .persisted_diagnostics()
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].error_id, Some(42));
+        assert_eq!(events[0].category, "ui");
+        assert_eq!(events[0].occurred_at, "2026-01-02T12:00:00.000+00:00");
+        let text = serde_json::to_string(&events).unwrap();
+        assert!(!text.contains("SECRET"));
+        assert!(!text.contains("PRIVATE"));
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn diagnostics_are_bounded_redacted_and_keep_distinct_failure_codes() {
+        let root = std::env::temp_dir().join(format!("tuari-snapshot-{}", rand::random::<u64>()));
+        let mut sink = EventSink::new(root);
+        let now = DateTime::parse_from_rfc3339("2026-01-02T03:04:05+00:00").unwrap();
+        for id in 0..105 {
+            sink.emit_with_error_id(
+                "error",
+                "secret customer payload",
+                Some("token=secret".into()),
+                Some(id),
+                now,
+            )
+            .unwrap();
+        }
+        let events = sink.diagnostic_snapshot();
+        assert_eq!(events.len(), 100);
+        assert_eq!(events.first().unwrap().error_id, Some(5));
+        assert_eq!(events.last().unwrap().error_id, Some(104));
+        assert_eq!(events[0].occurred_at, "2026-01-02T03:04:05.000+00:00");
+        let serialized = serde_json::to_string(&events).unwrap();
+        assert!(!serialized.contains("secret"));
+        assert!(!serialized.contains("token"));
+        assert_eq!(events[0].category, "error");
+    }
     #[test]
     fn event_sink_preserves_other_writers_replacements_and_midnight_errors() {
         let root = std::env::temp_dir().join(format!("tuari-isolation-{}", rand::random::<u64>()));
@@ -460,6 +811,16 @@ mod tests {
         assert!(stderr.contains("panic capture probe"), "{stderr}");
         fs::remove_dir_all(root).unwrap();
     }
+    #[test]
+    fn ui_failure_event_contains_only_numeric_correlation_id() {
+        let events = capture_events(|| record_ui_failure(4_294_967_295));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0]["message"], "UI failure");
+        assert_eq!(events[0]["severity"], "error");
+        assert_eq!(events[0]["attributes"]["errorId"], 4_294_967_295_u64);
+        assert!(events[0]["attributes"]["error"].is_null());
+    }
+
     #[test]
     fn event_sink_routes_dates_and_counts_errors() {
         let root = std::env::temp_dir().join(format!(

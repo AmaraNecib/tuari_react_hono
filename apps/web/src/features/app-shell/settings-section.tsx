@@ -13,6 +13,7 @@ import { AppDate } from "@/components/app-date"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { BackupSettings } from "./backup-settings"
+import { DiagnosticsSettings } from "./diagnostics-settings"
 import { RecoveryKeySettings } from "./recovery-key-settings"
 import { UpdateSection } from "@/features/update/update-section"
 import { useQueryClient } from "@tanstack/react-query"
@@ -271,7 +272,7 @@ export function SettingsSection({
   const licenseStatus = useLicenseStatus()
 
   const [activeTab, setActiveTab] = useUrlTab(
-    ['account', 'appearance', 'licensing', 'system', 'security', 'about'] as const,
+    ['account', 'appearance', 'licensing', 'system', 'diagnostics', 'security', 'about'] as const,
     'account'
   )
 
@@ -309,6 +310,13 @@ export function SettingsSection({
           onClick={() => setActiveTab('system')}
         >
           {t('settings.tabs.system')}
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'diagnostics' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveTab('diagnostics')}
+        >
+          {t('settings.tabs.diagnostics')}
         </button>
         <button
           type="button"
@@ -525,6 +533,16 @@ export function SettingsSection({
       )}
 
       {/* Security Tab — recovery keys + DB encryption key */}
+      {activeTab === 'diagnostics' && (
+        isDesktopRuntime() ? <DiagnosticsSettings /> : (
+          <div className="p-5 border border-line rounded-xl">
+            <p className="text-sm text-muted-foreground">
+              {t('settings.about.onlyAvailableInDesktop')}
+            </p>
+          </div>
+        )
+      )}
+
       {activeTab === 'security' && <RecoveryKeySettings />}
 
       {/* About Tab */}
