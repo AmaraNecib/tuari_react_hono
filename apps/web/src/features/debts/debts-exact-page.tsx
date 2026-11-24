@@ -16,6 +16,8 @@ import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
 import { getCachedSessionUserId } from "@/features/app-shell/workspace-keys"
 import { Money, sumMoneyHistory } from "@tuari/contracts"
 import { useExactDebtCommand, useExactDebtDetail, useExactDebtSummary, type ExactDebtCommand } from "./debts-exact-queries"
+import { ManualSettlementLink } from "./manual-settlement-link"
+import type { ManualSettlementClient } from "./manual-settlement-panel"
 import { EmployeePayrollDebtSection } from "./employee-payroll-debt-section"
 
 export type ExactDebtPartyOption = { id: string; label: string; phone?: string; partyType: ExactDebtAccount["partyType"] }
@@ -36,7 +38,7 @@ function amount(value: string, positive: boolean) {
 }
 
 /** Authenticated debt ledger using the exact financial client. */
-export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees }: { client: ExactDebtsClient; parties: ExactDebtPartyOption[]; scopedParty?: ExactDebtPartyOption; payrollEmployees?: ExactDebtPartyOption[] }) {
+export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees, manualSettlementClient }: { manualSettlementClient?: ManualSettlementClient; client: ExactDebtsClient; parties: ExactDebtPartyOption[]; scopedParty?: ExactDebtPartyOption; payrollEmployees?: ExactDebtPartyOption[] }) {
   const { t } = useTranslation()
   const [selected, setSelected] = useState<string | null>(null)
   const [tab, setTab] = useState("ledger")
@@ -152,7 +154,7 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
             <TableCell><div>{t(entryLabel[row.entryType])}{row.correctionOfEntryId ? t("exactDebts.correctionSuffix") : ""}{row.status === "VOIDED" ? t("exactDebts.voidSuffix") : ""}</div><div className="mt-1 text-xs text-muted-foreground"><AppDate value={row.entryDate} includeTime timeStyle="medium" /></div></TableCell>
             <TableCell><MoneyValue exact signed value={row.signedAmountDzd} currencyLabel={t("exactDebts.currency")} /></TableCell><TableCell><MoneyValue exact value={row.balanceAfterDzd} currencyLabel={t("exactDebts.currency")} /></TableCell>
             <TableCell>{row.remainingDzd !== null ? <MoneyValue exact value={row.remainingDzd} currencyLabel={t("exactDebts.currency")} /> : "—"}</TableCell>
-            <TableCell className="min-w-56"><p className="mb-2 max-w-72 whitespace-normal break-words text-xs text-muted-foreground">{row.note} {row.actorLabel}{row.voidReason ? ` · ${row.voidReason}` : ""}</p>
+            <TableCell className="min-w-56">{manualSettlementClient && account.partyType === "EXTERNAL_COUNTERPARTY" && <ManualSettlementLink client={manualSettlementClient} accountId={account.id} entryId={row.id} />}<p className="mb-2 max-w-72 whitespace-normal break-words text-xs text-muted-foreground">{row.note} {row.actorLabel}{row.voidReason ? ` · ${row.voidReason}` : ""}</p>
               {(row.targetEntryId || row.correctionOfEntryId) && <p className="mb-2 text-xs">{t("exactDebts.linkedEntry")} <bdi dir="ltr">#{detail.data.entries.find(target => target.id === (row.targetEntryId ?? row.correctionOfEntryId))?.postingSequence}</bdi></p>}
               {row.status === "LIVE" && !row.producerType && <div className="flex flex-wrap gap-2">
                 {!row.targetEntryId && !row.correctionOfEntryId && row.remainingDzd !== null && !row.remainingDzd.startsWith("-") && row.remainingDzd !== "0.00" && <Button size="sm" variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "pay", entry: row })}>{t("exactDebts.pay")}</Button>}
@@ -169,7 +171,7 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
       <SectionHeader title={t("exactDebts.settlementTab")} description={t("exactDebts.settleHelp")} />
       {account && detailAccountId ? <>
         <Button disabled={mutation.isPending || !detail.data?.entries.some(row => row.remainingDzd !== null && row.remainingDzd !== "0.00" && !row.producerType && !row.targetEntryId && !row.correctionOfEntryId)} onClick={() => open({ kind: "settle" })}>{t("exactDebts.settle")}</Button>
-        <ul className="max-h-96 space-y-3 overflow-auto">{orderedEntries.filter(row => row.entryType === "SETTLEMENT").map(row => <li key={row.id} className="flex flex-wrap items-center gap-3 border-b border-border py-3"><AppDate value={row.entryDate} /><MoneyValue signed value={row.signedAmountDzd} currencyLabel={t("exactDebts.currency")} /><StatusBadge label={t(row.status === "VOIDED" ? "exactDebts.voidStatus" : "exactDebts.liveStatus")} tone={row.status === "VOIDED" ? "bad" : "good"} /><span>{row.note} {row.actorLabel}</span></li>)}</ul>
+        <ul className="max-h-96 space-y-3 overflow-auto">{orderedEntries.filter(row => row.entryType === "SETTLEMENT").map(row => <li key={row.id} className="flex flex-wrap items-center gap-3 border-b border-border py-3"><AppDate value={row.entryDate} /><MoneyValue signed value={row.signedAmountDzd} currencyLabel={t("exactDebts.currency")} /><StatusBadge label={t(row.status === "VOIDED" ? "exactDebts.voidStatus" : "exactDebts.liveStatus")} tone={row.status === "VOIDED" ? "bad" : "good"} /><span>{row.note} {row.actorLabel}</span>{manualSettlementClient && account.partyType === "EXTERNAL_COUNTERPARTY" && <ManualSettlementLink client={manualSettlementClient} accountId={account.id} entryId={row.id} />}</li>)}</ul>
         {!orderedEntries.some(row => row.entryType === "SETTLEMENT") && <EmptyState title={t("exactDebts.noSettlements")} description={t("exactDebts.settleHelp")} />}
       </> : <EmptyState title={t("exactDebts.selectAccount")} description={t("exactDebts.selectHelp")} />}
     </TabsContent>

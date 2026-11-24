@@ -43,6 +43,12 @@ export class SqliteManualSettlementRepository implements ManualSettlementReposit
       return rows.map(row => this.getSettlement(row.id)!);
     });
   }
+  listAccountSettlements(accountId: string): ManualSettlementRecord[] {
+    return this.withTransaction(() => {
+      const rows = this.db.prepare("SELECT s.id FROM manual_debt_settlement s WHERE EXISTS (SELECT 1 FROM debt_entry e WHERE e.debt_account_id=? AND e.id IN (s.payable_original_entry_id,s.receivable_original_entry_id)) ORDER BY s.recorded_at DESC,s.id DESC").all(accountId) as { id: string }[];
+      return rows.map(row => this.getSettlement(row.id)!);
+    });
+  }
   insertSettlement(row: ManualSettlementRecord): void {
     this.withTransaction(() => {
       this.validateLinks(row, [row.payableSettlementEntryId, row.receivableSettlementEntryId], false);

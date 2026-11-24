@@ -24,7 +24,7 @@ export function ExactFinancialRoutePage({ route, parties, locations, expenses, i
   const clients: FinancialClient = financialClient
   switch (route) {
     case "debts":
-      return <ExactDebtsPage client={clients.debts} payrollEmployees={payrollEmployees?.map(employee => ({ ...employee, partyType: "INTERNAL_WORKER" as const }))} parties={parties.map(party => ({
+      return <ExactDebtsPage manualSettlementClient={clients.manualSettlement} client={clients.debts} payrollEmployees={payrollEmployees?.map(employee => ({ ...employee, partyType: "INTERNAL_WORKER" as const }))} parties={parties.map(party => ({
         id: party.id,
         label: party.label,
         ...(party.phone ? { phone: party.phone } : {}),

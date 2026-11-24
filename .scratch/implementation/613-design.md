@@ -1,5 +1,51 @@
 # Manual obligation settlement
 
+## Integrated correction F1–F6
+
+Correction base: b644594320b66170d03281a2aa5b1f6a5e2f8b59. Isolated implementation tree:
+D:/worktrees/tuari_react_hono/t3-95d1f0bd-73f81eaebc6ed27c.
+High-assurance, focused-local / CI-final-pending; protection HTTP 404 remains a separate parent gate.
+The initial integrated lenses found defects; they are not clean verdicts. Parent owns the single fresh combined-delta review.
+
+Recovery now treats generic permission/session/license/busy/availability refusals as unresolved.
+Only a successful known result or server-issued UNCOMMITTED outcome releases the pending intent.
+The latter is produced by the existing aggregate rollback callback only after receipt absence and
+work rollback, never by replay mismatch or authorization refusal. Original authorization-before-replay remains unchanged.
+Cleanup failure after acceptance keeps the same recoverable identity; query refresh failure cannot turn acceptance into refusal.
+Storage save refuses a different existing full body, and removal compares the complete validated command.
+This protects a remounted instance's newer intent from an unmounted instance's late completion.
+
+Manual receipts use stable authenticated user ID and a neutral fingerprint label. Actual immutable
+postings, operation/reversal and recorded results retain their original captured label. No generic
+aggregate caller changes. This intentionally changes manual fingerprint compatibility for disposable
+draft databases only: use fresh test data. It is not a migration or authorization to reuse live receipts.
+
+Two read-only namespace operations complete existing selection/history intent:
+candidates requires current debts:read and returns only positive outstanding manual originals for
+the selected external party; accountHistory requires current debts:read and joins all linked operations
+for one account, not the party's first five rows. The account's existing 100000-entry write bound
+also bounds linked records. Generic summary/detail owner gates and role grants are untouched.
+Both the external-party account view and shared debt route inject the manual client into their
+read-only linkage presentation. LIVE posting status stays immutable and generic zeroing remains distinct.
+
+Focused tests cover persisted full bodies at dispatch, denied recovery after lost success,
+storage read/parse/write/remove failures, stale X cleanup and stale retry ownership, deferred identity
+changes, stable-label authenticated replay/reopen, current-grant candidate reads and both-account links.
+The isolated browser fixture seeds real producer-owned ledger data and temporarily removes the
+owner's manual authority only after the existing owner-gated shell has loaded. Restoring authority
+and reloading recovers the identical full body. This does not claim unrelated shell support for non-owners.
+
+Capture diagnosis: internal scroll-host clipping and sticky occlusion invalidate viewport-style full
+composition captures. The dedicated harness retains actual functional viewports, then expands scroll
+hosts and makes sticky elements static only for complete native-width element/composition captures.
+That normalization is recorded in geometry/manifest files, not shipped as application CSS.
+A four-pixel section inset keeps Arabic glyph overhang inside the screenshot boundary.
+Before artifacts and failed attempts remain untouched. Owner visual acceptance remains pending.
+
+No dependencies, live migration, default activation, publication, PR or wisdom writes.
+Applied lessons: synchronous driver composition, immediate write reservation and nested savepoint joins.
+Full suites/builds remain CI-final. Only contracts compilation is an API execution prerequisite.
+
 ## UI implementation checkpoint
 
 The UI worker stopped before changing source despite available local base and gh issue access. Parent captured actual authenticated external-route baseline at `da07929d` before any UI source change, with seeded 100.00/60.00 originals at desktop 1280x800, tablet 1024x768 and mobile 390x844. Baseline element/full-page sidebar PNGs and route recordings are preserved under `.scratch/evidence/613-ui/run-IPJZOa/before/`. Dedicated test-server opt-in and harness setup were the only draft changes during baseline capture.

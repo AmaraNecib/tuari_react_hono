@@ -36,7 +36,7 @@ export function ExternalCounterpartyDetailsPage({
       </RecordInfoGrid>
 
       {manualSettlementClient && <ManualSettlementPanel client={manualSettlementClient} debtClient={debtClient} partyId={counterparty.id} />}
-      <ExactDebtsPage client={debtClient} scopedParty={{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }} parties={[{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }]} />
+      <ExactDebtsPage manualSettlementClient={manualSettlementClient} client={debtClient} scopedParty={{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }} parties={[{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }]} />
     </RecordPageFrame>
   )
 }

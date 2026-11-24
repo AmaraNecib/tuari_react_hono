@@ -15,17 +15,17 @@ import { clearPendingSettlement, isDefiniteSettlementRefusal, loadPendingSettlem
 export type ManualSettlementClient = AppClient["financial"]["manualSettlement"]
 const scopes = new WeakMap<object, number>()
 let nextScope = 0
-function scope(client: object) { if (!scopes.has(client)) scopes.set(client, ++nextScope); return scopes.get(client)! }
+export function manualSettlementScope(client: object) { if (!scopes.has(client)) scopes.set(client, ++nextScope); return scopes.get(client)! }
 type Props = { client: ManualSettlementClient; debtClient: ExactDebtsClient; partyId: string }
 export function ManualSettlementPanel(props: Props) {
   const session = useSessionQuery()
   const user = session.data?.user
-  return user ? <ManualSettlementForm key={JSON.stringify([user.id, props.partyId, scope(props.client)])} {...props} owner={user.id} /> : null
+  return user ? <ManualSettlementForm key={JSON.stringify([user.id, props.partyId, manualSettlementScope(props.client)])} {...props} owner={user.id} /> : null
 }
 function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { owner: string }) {
   const { t } = useTranslation()
   const queries = useQueryClient()
-  const prefix = ["manual-settlement", scope(client), owner, partyId] as const
+  const prefix = ["manual-settlement", manualSettlementScope(client), owner, partyId] as const
   const [payable, setPayable] = useState("")
   const [receivable, setReceivable] = useState("")
   const [amount, setAmount] = useState("")
@@ -39,12 +39,7 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
   const [initial] = useState(() => { try { return { pending: loadPendingSettlement(sessionStorage, owner, partyId), failed: false } } catch { return { pending: null, failed: true } } })
   const [pending, setPending] = useState<PendingSettlement | null>(initial.pending)
   const [storageFailed, setStorageFailed] = useState(initial.failed)
-  const options = useQuery({ queryKey: [...prefix, "originals"], queryFn: async () => {
-    const summary = await debtClient.summary()
-    const accounts = summary.accounts.filter(account => account.partyType === "EXTERNAL_COUNTERPARTY" && account.externalCounterpartyId === partyId && account.currency === "DZD")
-    const details = await Promise.all(accounts.map(account => debtClient.detail({ id: account.id })))
-    return details.flatMap(detail => detail.entries.filter(entry => entry.status === "LIVE" && !entry.targetEntryId && !entry.correctionOfEntryId && !entry.producerType && !entry.producerId && !entry.invoiceId && Money.parse(entry.signedAmountDzd).compare(Money.parse("0")) > 0 && entry.remainingDzd !== null && Money.parse(entry.remainingDzd).compare(Money.parse("0")) > 0).map(entry => ({ ...entry, direction: detail.account.direction })))
-  } })
+  const options = useQuery({ queryKey: [...prefix, "originals"], queryFn: () => client.candidates({ externalCounterpartyId: partyId }), retry: false })
   const history = useQuery({ queryKey: [...prefix, "history", offset], queryFn: () => client.history({ externalCounterpartyId: partyId, limit: 5, offset }), retry: false })
   const unavailable = history.error && "code" in history.error && history.error.code === "SERVICE_UNAVAILABLE"
   const locked = busy || pending !== null || storageFailed
@@ -58,7 +53,7 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
   const canReverse = true
   function change(action: () => void) { action(); setPreview(null); setNotice("") }
   async function refresh() {
-    await Promise.all([queries.invalidateQueries({ queryKey: prefix }), invalidateExactDebtQueries(queries, debtClient, owner)])
+    await Promise.all([queries.invalidateQueries({ queryKey: ["manual-settlement"] }), invalidateExactDebtQueries(queries, debtClient, owner)])
   }
   async function execute(command: PendingSettlement) {
     if (busy || storageFailed) return
@@ -67,13 +62,13 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
     try {
       if (command.kind === "confirm") await client.confirm(command.input)
       else await client.reverse(command.input)
-      clearPendingSettlement(sessionStorage, owner, partyId)
+      try { clearPendingSettlement(sessionStorage, owner, partyId, command) } catch { setStorageFailed(true); setNotice(t("manualSettlement.saved")); return }
       setPending(null); setPreview(null); setReverseId(null); setReason(""); setOffset(0)
       setNotice(t("manualSettlement.saved"))
-      await refresh()
+      await refresh().catch(() => { setNotice(t("manualSettlement.saved")) })
     } catch (error) {
       if (isDefiniteSettlementRefusal(error)) {
-        try { clearPendingSettlement(sessionStorage, owner, partyId); setPending(null); setPreview(null) } catch { setStorageFailed(true) }
+        try { clearPendingSettlement(sessionStorage, owner, partyId, command); setPending(null); setPreview(null) } catch { setStorageFailed(true) }
         setNotice(error instanceof Error ? error.message : t("manualSettlement.invalid"))
       } else setNotice(t("manualSettlement.pending"))
     } finally { setBusy(false) }
@@ -90,11 +85,12 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
     void execute({ kind: "confirm", input: { requestId: crypto.randomUUID(), externalCounterpartyId: partyId, payableOriginalEntryId: payable, receivableOriginalEntryId: receivable, currency: "DZD", amountDzd: parsed, expectedPayableRemainingDzd: preview.payableRemainingDzd, expectedReceivableRemainingDzd: preview.receivableRemainingDzd, note: note.trim() || null } })
   }
   const money = (value: string) => <AmountDisplay exact value={value} currencyLabel={t("exactDebts.currency")} />
-  return <section aria-label={t("manualSettlement.title")} className="min-w-0 space-y-4 border-y border-border py-5">
+  return <section aria-label={t("manualSettlement.title")} className="min-w-0 space-y-4 border-y border-border px-1 py-5">
     <div className="flex flex-wrap items-start justify-between gap-3"><h2 className="text-lg font-semibold">{t("manualSettlement.title")}</h2><details className="max-w-prose text-sm"><summary className="cursor-pointer rounded-md px-2 py-2 focus-visible:outline-2">{t("manualSettlement.information")}</summary><p className="py-2 leading-relaxed">{t("manualSettlement.help")}</p></details></div>
     {storageFailed && <p role="alert">{t("manualSettlement.storageError")}</p>}
     {pending && <div role="status" className="space-y-2 rounded-lg border border-border p-3"><p>{t("manualSettlement.pending")}</p><p>{pending.kind === "confirm" ? <>{t("manualSettlement.frozenAmount")}: {money(pending.input.amountDzd)}</> : pending.input.reason}</p><Button disabled={busy || storageFailed} onClick={() => void execute(pending)}>{busy ? t("manualSettlement.saving") : t("manualSettlement.retry")}</Button></div>}
-    {unavailable ? <p role="status">{t("manualSettlement.unavailable")}</p> : options.isPending || history.isPending ? <p role="status">{t("manualSettlement.loading")}</p> : options.isError || history.isError ? <div role="alert">{t("manualSettlement.loadError")} <Button variant="outline" onClick={() => { void options.refetch(); void history.refetch() }}>{t("exactDebts.retry")}</Button></div> : <>
+    {unavailable ? <p role="status">{t("manualSettlement.unavailable")}</p> : history.isPending ? <p role="status">{t("manualSettlement.loading")}</p> : history.isError ? <div role="alert">{t("manualSettlement.loadError")} <Button variant="outline" onClick={() => { void options.refetch(); void history.refetch() }}>{t("exactDebts.retry")}</Button></div> : <>
+      {options.isError && <p role="alert">{t("manualSettlement.loadError")}</p>}
       <form aria-label={t("manualSettlement.title")} className="grid min-w-0 gap-4 md:grid-cols-2" onSubmit={event => { event.preventDefault(); void requestPreview() }}>
         {(["PAYABLE", "RECEIVABLE"] as const).map(direction => <label key={direction} className="min-w-0 space-y-2 text-sm"><span>{t(direction === "PAYABLE" ? "manualSettlement.payable" : "manualSettlement.receivable")}</span><NativeSelect aria-label={t(direction === "PAYABLE" ? "manualSettlement.payable" : "manualSettlement.receivable")} disabled={locked} value={direction === "PAYABLE" ? payable : receivable} onChange={event => change(() => direction === "PAYABLE" ? setPayable(event.target.value) : setReceivable(event.target.value))}><option value="">{t("manualSettlement.select")}</option>{options.data?.filter(entry => entry.direction === direction).map(entry => <option key={entry.id} value={entry.id}>{t("manualSettlement.original", { sequence: entry.postingSequence, amount: entry.remainingDzd })}</option>)}</NativeSelect></label>)}
         <CurrencyAmountInput exact label={t("manualSettlement.amount")} value={amount} onChange={value => change(() => setAmount(value))} disabled={locked} />

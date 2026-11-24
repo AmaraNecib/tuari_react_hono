@@ -54,7 +54,13 @@ export const manualSettlementReversalSchema = z.object({
 export const manualSettlementConfirmOutputSchema = z.object({ settlement: manualSettlementRecordSchema, preview: manualSettlementPreviewSchema });
 export const manualSettlementReverseOutputSchema = z.object({ settlement: manualSettlementRecordSchema, reversal: manualSettlementReversalSchema });
 export const manualSettlementHistoryOutputSchema = z.object({ items: z.array(manualSettlementRecordSchema.extend({ reversal: manualSettlementReversalSchema.nullable() })), nextOffset: z.number().int().nullable() });
+export const manualSettlementCandidateSchema = z.object({
+  id: entityIdSchema, debtAccountId: entityIdSchema, direction: z.enum(["PAYABLE", "RECEIVABLE"]),
+  postingSequence: z.number().int(), remainingDzd: positive,
+});
 export const manualSettlementContract = {
+  candidates: oc.input(z.object({ externalCounterpartyId: entityIdSchema }).strict()).output(z.array(manualSettlementCandidateSchema)),
+  accountHistory: oc.input(z.object({ debtAccountId: entityIdSchema }).strict()).output(manualSettlementHistoryOutputSchema),
   preview: oc.input(previewManualSettlementSchema).output(manualSettlementPreviewSchema),
   confirm: oc.input(confirmManualSettlementSchema).output(manualSettlementConfirmOutputSchema),
   history: oc.input(manualSettlementHistoryInputSchema).output(manualSettlementHistoryOutputSchema),

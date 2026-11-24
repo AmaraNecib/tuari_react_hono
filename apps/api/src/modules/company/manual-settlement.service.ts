@@ -8,6 +8,11 @@ export class ManualSettlementAuthorizationError extends Error {
   constructor() { super("Required settlement permissions are unavailable"); }
 }
 
+export class ManualSettlementUncommittedError extends ExactDebtError {
+  constructor(cause: ExactDebtError) { super(cause.message, cause.code); }
+}
+const rolledBack = (cause: unknown) => cause instanceof ExactDebtError ? new ManualSettlementUncommittedError(cause) : cause;
+
 export type ManualSettlementAuthorization = {
   readonly transactionIdentity?: ExactTransactionIdentity;
   authorize(permissions: readonly string[]): { actorUserId: string; actorLabel: string };
@@ -18,6 +23,22 @@ export class ManualSettlementService {
     const identity = finance.transactionIdentity;
     if (authorization.transactionIdentity && (identity.connection !== authorization.transactionIdentity.connection || identity.lock !== authorization.transactionIdentity.lock)) throw new ExactDebtError("Settlement authorization requires the same connection and shared FIFO");
     for (const participant of [ledger, repository]) if (identity.connection !== participant.transactionIdentity.connection || identity.lock !== participant.transactionIdentity.lock) throw new ExactDebtError("Manual settlement requires the same connection and shared FIFO");
+  }
+  candidates(input: { externalCounterpartyId: string }) {
+    return this.repository.withTransaction(() => {
+      this.authorization.authorize(["debts:read"]);
+      return this.finance.listAccounts().filter(account => account.partyType === "EXTERNAL_COUNTERPARTY" && account.externalCounterpartyId === input.externalCounterpartyId && account.currency === "DZD").flatMap(account =>
+        this.finance.listEntries(account.id).filter(entry => entry.status === "LIVE" && !entry.targetEntryId && !entry.correctionOfEntryId && !entry.producerType && !entry.producerId && !entry.invoiceId && Money.parse(entry.signedAmountDzd).compare(Money.parse("0")) > 0)
+          .map(entry => ({ id: entry.id, debtAccountId: account.id, direction: account.direction, postingSequence: entry.postingSequence, remainingDzd: this.finance.remaining(entry.id) }))
+          .filter(entry => Money.parse(entry.remainingDzd).compare(Money.parse("0")) > 0));
+    });
+  }
+  accountHistory(input: { debtAccountId: string }) {
+    return this.repository.withTransaction(() => {
+      this.authorization.authorize(["debts:read"]);
+      this.finance.getAccount(input.debtAccountId);
+      return { items: this.repository.listAccountSettlements(input.debtAccountId).map(row => ({ ...row, reversal: this.repository.getReversal(row.id) })), nextOffset: null };
+    });
   }
   private pair(input: PreviewManualSettlement) {
     const entries = [input.payableOriginalEntryId, input.receivableOriginalEntryId].map((id, index) => {
@@ -46,7 +67,7 @@ export class ManualSettlementService {
     const input = confirmManualSettlementSchema.parse(raw);
     return this.repository.withTransaction(() => {
       const actor = this.authorization.authorize(["debts:read", "debts:settle"]);
-      return this.finance.runAggregate({ requestId: input.requestId, producer: { type: "MANUAL_SETTLEMENT", id: input.externalCounterpartyId }, intent: { kind: "confirm", ...input, note: input.note ?? null }, ...actor }, this.repository, () => {
+      return this.finance.runAggregate({ requestId: input.requestId, producer: { type: "MANUAL_SETTLEMENT", id: input.externalCounterpartyId }, intent: { kind: "confirm", ...input, note: input.note ?? null }, actorUserId: actor.actorUserId, actorLabel: null }, this.repository, () => {
         const preview = this.pair(input);
         if (preview.payableRemainingDzd !== input.expectedPayableRemainingDzd || preview.receivableRemainingDzd !== input.expectedReceivableRemainingDzd) throw new ExactDebtError("Stale remaining amounts; preview again", "CONFLICT");
         const amount = Money.parse(input.amountDzd).negate().toWire();
@@ -55,7 +76,7 @@ export class ManualSettlementService {
         const settlement: ManualSettlementRecord = { id: this.dependencies.id(), externalCounterpartyId: input.externalCounterpartyId, currency: input.currency, payableOriginalEntryId: input.payableOriginalEntryId, receivableOriginalEntryId: input.receivableOriginalEntryId, payableSettlementEntryId: payable.id, receivableSettlementEntryId: receivable.id, amountDzd: input.amountDzd, recordedAt: this.dependencies.now(), ...actor, note: input.note ?? null };
         this.repository.insertSettlement(settlement);
         return { settlement, preview };
-      });
+      }, rolledBack);
     });
   }
   history(raw: { externalCounterpartyId: string; limit?: number; offset?: number }) {
@@ -72,14 +93,14 @@ export class ManualSettlementService {
       const actor = this.authorization.authorize(["debts:read", "debts:settle", "debts:update"]);
       const settlement = this.repository.getSettlement(input.settlementId);
       if (!settlement) throw new ExactDebtError("Settlement not found", "NOT_FOUND");
-      return this.finance.runAggregate({ requestId: input.requestId, producer: { type: "MANUAL_SETTLEMENT", id: settlement.externalCounterpartyId }, intent: { kind: "reverse", ...input }, ...actor }, this.repository, () => {
+      return this.finance.runAggregate({ requestId: input.requestId, producer: { type: "MANUAL_SETTLEMENT", id: settlement.externalCounterpartyId }, intent: { kind: "reverse", ...input }, actorUserId: actor.actorUserId, actorLabel: null }, this.repository, () => {
         if (this.repository.getReversal(settlement.id)) throw new ExactDebtError("Settlement is already reversed", "CONFLICT");
         const payable = this.finance.appendManualSettlementPortion(settlement.payableOriginalEntryId, settlement.amountDzd, actor);
         const receivable = this.finance.appendManualSettlementPortion(settlement.receivableOriginalEntryId, settlement.amountDzd, actor);
         const reversal: ManualSettlementReversalRecord = { id: this.dependencies.id(), settlementId: settlement.id, payableReversalEntryId: payable.id, receivableReversalEntryId: receivable.id, recordedAt: this.dependencies.now(), ...actor, reason: input.reason };
         this.repository.insertReversal(reversal);
         return { settlement, reversal };
-      });
+      }, rolledBack);
     });
   }
 }

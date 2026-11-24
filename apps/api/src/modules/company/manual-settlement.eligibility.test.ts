@@ -51,6 +51,9 @@ it("refuses wrong party, direction, worker, derived, voided, credit and producer
     f.finance.voidEntry({ requestId: randomUUID(), entryId: voided.id, voidReason: "Cancelled original" });
     const credit = f.post(f.payable.id, "-10.00");
     const producer = f.finance.forProducer({ type: "INVOICE", id: f.invoice }).postEntry({ requestId: randomUUID(), debtAccountId: f.payable.id, invoiceId: f.invoice, entryType: "ADJUSTMENT", signedAmountDzd: "100.00" });
+    const exhausted = f.post(f.payable.id, "1.00");
+    f.finance.recordPayment({ requestId: randomUUID(), debtEntryId: exhausted.id, amountDzd: "1.00" });
+    expect(f.service.candidates({ externalCounterpartyId: f.party }).map(row => row.id).sort()).toEqual([f.p.id, f.r.id, wrongDirection.id].sort());
     for (const original of [wrongParty, wrongDirection, worker, derived, correction, voided, credit, producer]) {
       const before = f.snapshot();
       expect(() => f.service.confirm({ ...f.input, requestId: randomUUID(), payableOriginalEntryId: original.id })).toThrow();

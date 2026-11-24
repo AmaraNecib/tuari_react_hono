@@ -20,9 +20,16 @@ export function loadPendingSettlement(storage: StoragePort, owner: string, party
 export function savePendingSettlement(storage: StoragePort, owner: string, party: string, value: PendingSettlement): void {
   const pending = validate(value)
   if (pending.kind === "confirm" && pending.input.externalCounterpartyId !== party) throw new Error("Pending settlement party mismatch")
+  const current = loadPendingSettlement(storage, owner, party)
+  if (current && JSON.stringify(current) !== JSON.stringify(pending)) throw new Error("Another settlement intent owns this slot")
   storage.setItem(key(owner, party), JSON.stringify({ owner, party, pending }))
 }
-export function clearPendingSettlement(storage: StoragePort, owner: string, party: string): void { storage.removeItem(key(owner, party)) }
+export function clearPendingSettlement(storage: StoragePort, owner: string, party: string, expected: PendingSettlement): boolean {
+  const current = loadPendingSettlement(storage, owner, party)
+  if (!current || JSON.stringify(current) !== JSON.stringify(validate(expected))) return false
+  storage.removeItem(key(owner, party))
+  return true
+}
 export function isDefiniteSettlementRefusal(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && ["BAD_REQUEST", "FORBIDDEN", "UNAUTHORIZED", "CONFLICT", "NOT_FOUND", "SERVICE_UNAVAILABLE", "UPGRADE_REQUIRED"].includes(String(error.code))
+  return typeof error === "object" && error !== null && "data" in error && typeof error.data === "object" && error.data !== null && "manualSettlementOutcome" in error.data && error.data.manualSettlementOutcome === "UNCOMMITTED"
 }

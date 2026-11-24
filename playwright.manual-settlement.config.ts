@@ -3,7 +3,7 @@ import { resolve } from "node:path"
 import { defineConfig, devices } from "@playwright/test"
 import { BOOTSTRAP_SETUP_KEY } from "./tests/e2e/helpers/session"
 mkdirSync(resolve(".scratch/evidence/613-ui"), { recursive: true })
-const run = mkdtempSync(resolve(".scratch/evidence/613-ui/run-"))
+const run = process.env.MANUAL_SETTLEMENT_RUN ?? mkdtempSync(resolve(".scratch/evidence/613-ui/run-"))
 process.env.MANUAL_SETTLEMENT_RUN = run
 process.env.MANUAL_SETTLEMENT_CAPTURE ??= "after"
 process.env.CONNECTED_EXACT_RUN = run

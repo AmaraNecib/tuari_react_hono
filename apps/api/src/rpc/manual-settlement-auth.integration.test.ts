@@ -48,12 +48,17 @@ it("binds manual settlement to a real authenticated session and retains original
   const operatorSession = await adapter.createSession(operatorId);
   const cachedContext = createRpcContext(new Headers({ authorization: `Bearer ${operatorSession.token}` }), root.sessionService);
   const operator = createRouterClient(createRouter(root), { context: cachedContext }) as AppClient;
+  expect((await operator.financial.manualSettlement.candidates({ externalCounterpartyId: party.item.id })).sort((a,b) => a.direction.localeCompare(b.direction))).toEqual([
+    expect.objectContaining({ id: pair.payableOriginalEntryId, direction: "PAYABLE", remainingDzd: "100.00" }),
+    expect.objectContaining({ id: pair.receivableOriginalEntryId, direction: "RECEIVABLE", remainingDzd: "60.00" }),
+  ]);
   await operator.financial.manualSettlement.preview(pair);
   expect((await cachedContext.resolveCurrentUser())?.permissions).toContain("debts:settle");
   for (const permission of ["debts:read", "debts:settle"]) {
     db.prepare("DELETE FROM role_permission WHERE role_id=? AND permission=?").run(role.id, permission);
     await expect(operator.financial.manualSettlement.confirm(input)).rejects.toMatchObject({ code: "FORBIDDEN" });
     if (permission === "debts:read") {
+      await expect(operator.financial.manualSettlement.candidates({ externalCounterpartyId: party.item.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(operator.financial.manualSettlement.preview(pair)).rejects.toMatchObject({ code: "FORBIDDEN" });
       await expect(operator.financial.manualSettlement.history({ externalCounterpartyId: party.item.id })).rejects.toMatchObject({ code: "FORBIDDEN" });
     }
@@ -85,6 +90,8 @@ it("binds manual settlement to a real authenticated session and retains original
   db.prepare("UPDATE user SET name='Current persisted label' WHERE id=?").run(operatorId);
   const saved = await operator.financial.manualSettlement.confirm(input);
   expect(saved.settlement).toMatchObject({ actorUserId: operatorId, actorLabel: "Current persisted label" });
+  db.prepare("UPDATE user SET name='Renamed after confirm' WHERE id=?").run(operatorId);
+  expect(await operator.financial.manualSettlement.confirm(input)).toEqual(saved);
   expect(physicalSnapshot()).toEqual(unchanged);
   for (const permission of ["debts:read", "debts:settle"]) {
     db.prepare("DELETE FROM role_permission WHERE role_id=? AND permission=?").run(role.id, permission);
@@ -101,8 +108,9 @@ it("binds manual settlement to a real authenticated session and retains original
   await expect(client.financial.manualSettlement.history({ externalCounterpartyId: party.item.id, limit: 101 })).rejects.toMatchObject({ code: "BAD_REQUEST" });
   expect(await client.financial.manualSettlement.history({ externalCounterpartyId: party.item.id, offset: 1, limit: 1 })).toEqual({ items: [], nextOffset: null });
   expect((await client.financial.manualSettlement.history({ externalCounterpartyId: party.item.id })).items).toEqual([{ ...saved.settlement, reversal: null }]);
-  await expect(client.financial.manualSettlement.confirm({ ...input, requestId: "stale" })).rejects.toMatchObject({ code: "CONFLICT" });
+  await expect(client.financial.manualSettlement.confirm({ ...input, requestId: "stale" })).rejects.toMatchObject({ code: "CONFLICT", data: { manualSettlementOutcome: "UNCOMMITTED" } });
   await expect(client.financial.manualSettlement.confirm({ ...input, amountDzd: "24.00" })).rejects.toMatchObject({ code: "CONFLICT" });
+  for (const id of [payable.id, receivable.id]) expect((await operator.financial.manualSettlement.accountHistory({ debtAccountId: id })).items).toEqual([{ ...saved.settlement, reversal: null }]);
   const reverse = { requestId: "reverse", settlementId: saved.settlement.id, reason: "Wrong pair" };
   for (const permission of permissions) {
     db.prepare("DELETE FROM role_permission WHERE role_id=? AND permission=?").run(role.id, permission);
@@ -110,6 +118,9 @@ it("binds manual settlement to a real authenticated session and retains original
     grant(permission);
   }
   const reversed = await operator.financial.manualSettlement.reverse(reverse);
+  expect(reversed.reversal.actorLabel).toBe("Renamed after confirm");
+  db.prepare("UPDATE user SET name='Renamed after reverse' WHERE id=?").run(operatorId);
+  expect(await operator.financial.manualSettlement.reverse(reverse)).toEqual(reversed);
   expect(physicalSnapshot()).toEqual(unchanged);
   const stockAfter = await client.financial.reports.generate({ type: "INVENTORY" });
   expect({ ...stockAfter, generatedAt: null }).toEqual({ ...stockBefore, generatedAt: null });
@@ -122,6 +133,7 @@ it("binds manual settlement to a real authenticated session and retains original
   expect(finance.remaining(pair.receivableOriginalEntryId)).toBe("60.00");
   expect((await client.financial.manualSettlement.history({ externalCounterpartyId: party.item.id })).items).toEqual([{ ...saved.settlement, reversal: reversed.reversal }]);
   await expect(client.financial.manualSettlement.reverse({ requestId: "missing", settlementId: randomUUID(), reason: "Missing" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  for (const id of [payable.id, receivable.id]) expect((await operator.financial.manualSettlement.accountHistory({ debtAccountId: id })).items).toEqual([{ ...saved.settlement, reversal: reversed.reversal }]);
   const second = await operator.financial.manualSettlement.confirm({ ...input, requestId: "second", amountDzd: "1.00" });
   const page1 = await operator.financial.manualSettlement.history({ externalCounterpartyId: party.item.id, limit: 1 });
   expect(page1.nextOffset).toBe(1);
@@ -130,6 +142,15 @@ it("binds manual settlement to a real authenticated session and retains original
   expect(new Set([page1.items[0]!.id, page2.items[0]!.id])).toEqual(new Set([saved.settlement.id, second.settlement.id]));
   expect(await operator.financial.manualSettlement.history({ externalCounterpartyId: party.item.id, limit: 1 })).toEqual(page1);
   await operator.financial.manualSettlement.reverse({ requestId: "second-reverse", settlementId: second.settlement.id, reason: "Test complete reversal" });
+  for (let index = 0; index < 6; index++) {
+    const additional = await operator.financial.manualSettlement.confirm({ ...input, requestId: `older-page-${index}`, amountDzd: "1.00" });
+    await operator.financial.manualSettlement.reverse({ requestId: `older-page-reverse-${index}`, settlementId: additional.settlement.id, reason: "Pagination fixture" });
+  }
+  for (const id of [payable.id, receivable.id]) {
+    const linked = await operator.financial.manualSettlement.accountHistory({ debtAccountId: id });
+    expect(linked.items).toHaveLength(8);
+    expect(linked.items.find(item => item.id === saved.settlement.id)).toEqual({ ...saved.settlement, reversal: reversed.reversal });
+  }
   const produced = finance.forProducer({ type: "PAYROLL_ADVANCE", id: randomUUID() }).postEntry({ requestId: "producer", debtAccountId: payable.id, entryType: "ADJUSTMENT", signedAmountDzd: "1.00" });
   const beforeRefusal = finance.listEntries(payable.id);
   await expect(client.financial.manualSettlement.confirm({ ...input, requestId: "producer-refused", payableOriginalEntryId: produced.id, amountDzd: "1.00", expectedPayableRemainingDzd: "1.00" })).rejects.toMatchObject({ code: "CONFLICT" });
@@ -140,5 +161,6 @@ it("binds manual settlement to a real authenticated session and retains original
   const retry = createRouterClient(createRouter(reopened), { context: createRpcContext(headers, reopened.sessionService) }) as AppClient;
   const reopenedOperator = createRouterClient(createRouter(reopened), { context: createRpcContext(new Headers({ authorization: `Bearer ${operatorSession.token}` }), reopened.sessionService) }) as AppClient;
   expect(await reopenedOperator.financial.manualSettlement.confirm(input)).toEqual(saved);
+  expect(await reopenedOperator.financial.manualSettlement.reverse(reverse)).toEqual(reversed);
   expect((await retry.financial.manualSettlement.history({ externalCounterpartyId: party.item.id })).items.find(row => row.id === saved.settlement.id)?.reversal).toEqual(reversed.reversal);
 }, 60000);
