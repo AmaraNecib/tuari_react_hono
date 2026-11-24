@@ -88,9 +88,9 @@ function normalize(value, source) {
   if (typeof timestamp !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(timestamp) || !Number.isFinite(Date.parse(timestamp)) || !['trace', 'debug', 'info', 'warn', 'error', 'fatal'].includes(level)) throw new Error('Malformed event');
   const attrs = value.attributes ?? {};
   const rawCode = attrs.errorId ?? value.errorCode;
-  const code = typeof rawCode === 'number' ? rawCode : typeof rawCode === 'string' ? Number(rawCode.match(/(?:^|[-_])(\d+)$/)?.[1]) : null;
+  const code = typeof rawCode === 'number' ? rawCode : typeof rawCode === 'string' ? Number.parseInt(rawCode.match(/^[A-Za-z][A-Za-z0-9_-]*-([0-9a-f]{8})$/i)?.[1] ?? '', 16) : null;
   const duration = attrs.durationMs ?? value.durationMs;
-  return { level, timestamp, signature: typeof value.signature === 'string' ? value.signature : typeof value.message === 'string' ? value.message : '', operation: typeof attrs.operation === 'string' ? attrs.operation : null, errorCode: Number.isSafeInteger(code) && code >= 0 ? code : null, duration: Number.isFinite(duration) && duration >= 0 ? duration : null, source, count: Number.isSafeInteger(value.count) && value.count > 0 ? value.count : 1 };
+  return { level, timestamp, signature: typeof value.signature === 'string' ? value.signature : typeof value.message === 'string' ? value.message : '', operation: typeof attrs.operation === 'string' ? attrs.operation : null, errorCode: Number.isSafeInteger(code) && code >= 0 && code <= 0xffffffff ? code : null, duration: Number.isFinite(duration) && duration >= 0 ? duration : null, source, count: Number.isSafeInteger(value.count) && value.count > 0 ? value.count : 1 };
 }
 async function parseFolder(root) {
   if (!(await lstat(root)).isDirectory() || (await lstat(root)).isSymbolicLink()) throw new Error('Unsafe logs folder');
@@ -142,8 +142,22 @@ export async function parseInput(input) {
 }
 // JSON remains reusable independently. The inert HTML copy avoids file:// fetch
 // restrictions and keeps the reusable script free of bundle-specific content.
+export function redactReport(data) {
+  const manifest = {};
+  const input = data.manifest ?? {};
+  for (const key of ['version', 'build']) {
+    const value = input[key];
+    if (typeof value === 'string' && (key === 'version' ? /^\d+(?:\.\d+)*(?:-[A-Za-z0-9.]+)?$/ : /^(?:[a-f0-9]{3,64}|unknown)$/i).test(value)) manifest[key] = value;
+  }
+  if (typeof input.product === 'string' && input.product.toUpperCase() === PRODUCT_PREFIX) manifest.product = input.product;
+  if (['windows', 'linux', 'macos', 'android', 'ios'].includes(input.os)) manifest.os = input.os;
+  for (const key of ['createdAt', 'firstEventAt', 'lastEventAt']) {
+    if (typeof input[key] === 'string' && /^\d{4}-\d\d-\d\dT[0-9:.+-]+Z?$/.test(input[key]) && Number.isFinite(Date.parse(input[key]))) manifest[key] = input[key];
+  }
+  return { ...data, manifest: data.manifest ? manifest : null, events: data.events.map(event => ({ ...event, signature: ['error', 'ui', 'crash', 'lifecycle'].includes(event.signature) ? event.signature : event.errorCode !== null ? `error:${event.errorCode}` : event.level, operation: null })) };
+}
 export async function emitReport(data, destination) {
-  const json = JSON.stringify(data);
+  const json = JSON.stringify(redactReport(data));
   const escaped = json.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   const html = '<!doctype html><html lang="en"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\'"><title>Diagnostics report</title><h1>Diagnostics report</h1><pre id="report"></pre><div id="report-data" hidden>' + escaped + '</div><script src="report.js"></script></html>\n';
   const root = dirname(resolve(destination));
