@@ -321,7 +321,7 @@ jobs:
           if [ "$manual_settlement" = true ]; then
             pnpm exec playwright test --config=playwright.manual-settlement.config.ts tests/e2e/manual-settlement-connected.spec.ts
           fi
-          node --test tests/telemetry-viewer.browser.test.mjs
+          node --test tests/telemetry-viewer.browser.test.mjs tests/viewer-dashboard.browser.test.mjs
           if [ "$connected_exact" = true ]; then
             pnpm exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts
           fi

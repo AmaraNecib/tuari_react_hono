@@ -65,13 +65,13 @@ test('emission redacts raw messages, operation values, attributes and unknown ma
 });
 test('output collisions preserve existing files and roll back only this attempt so retry succeeds', async () => {
   const data = await parseInput(await folder());
-  for (const collision of ['report.html', 'report.js', 'report-data.json']) {
+  for (const collision of ['report.html', 'report.js', 'report-data.json', 'report.css']) {
     const root = await mkdtemp(join(tmpdir(), 'viewer-collision-'));
     const existing = join(root, collision);
     await writeFile(existing, 'original sidecar content');
     await assert.rejects(emitReport(data, join(root, 'report.html')), { code: 'EEXIST' });
     assert.equal(await readFile(existing, 'utf8'), 'original sidecar content');
-    for (const name of ['report.html', 'report.js', 'report-data.json']) {
+    for (const name of ['report.html', 'report.js', 'report-data.json', 'report.css']) {
       if (name !== collision) await assert.rejects(lstat(join(root, name)), { code: 'ENOENT' });
     }
     await rename(existing, join(root, 'preserved-original'));
