@@ -87,7 +87,8 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
   const scopedPayableDzd = scopedGross("PAYABLE")
   const scopedReceivableDzd = scopedGross("RECEIVABLE")
   const accountPaging = paginate(matchingAccounts, accountPage, 15)
-  const orderedEntries = (detail.data?.entries ?? []).slice().sort((a, b) => b.entryDate.localeCompare(a.entryDate) || b.postingSequence - a.postingSequence)
+  // Running balances follow posting order, even when a refund has an earlier event date.
+  const orderedEntries = (detail.data?.entries ?? []).slice().sort((a, b) => b.postingSequence - a.postingSequence)
   const entryPaging = paginate(orderedEntries, entryPage, 10)
   // Commit clamps to state as well as the visible slice. A later refetch that
   // grows the dataset must not resurrect a page discarded by an earlier shrink.

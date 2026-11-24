@@ -34,6 +34,21 @@ async function openAccount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(query => query.clear()); setMoneyGrouping(true) })
 describe("injected exact debt page", () => {
+  it("keeps a late-recorded earlier-dated refund in posting order with its running balance", async () => {
+    const { client } = fixture()
+    const opening = { ...entry, id: "posted-opening", postingSequence: 1, entryDate: "2026-11-10T10:00:00.000Z", signedAmountDzd: "100.00", balanceAfterDzd: "100.00", remainingDzd: "85.00" }
+    const payment = { ...entry, id: "posted-payment", postingSequence: 2, entryType: "PAYMENT" as const, entryDate: "2026-11-12T10:00:00.000Z", signedAmountDzd: "-20.00", balanceAfterDzd: "80.00", targetEntryId: opening.id, remainingDzd: null }
+    const refund = { ...entry, id: "late-refund", postingSequence: 3, entryType: "ADJUSTMENT" as const, entryDate: "2026-11-01T10:00:00.000Z", signedAmountDzd: "5.00", balanceAfterDzd: "85.00", targetEntryId: opening.id, producerType: "PAYROLL_OPENING", remainingDzd: null }
+    client.detail.mockResolvedValue({ account: { ...account, currentBalance: "85.00" }, entries: [opening, payment, refund] })
+    await openAccount()
+    const rows = within(screen.getByRole("region", { name: "جدول حركات الدين" })).getAllByRole("row").slice(1)
+    expect(rows.map(row => row.getAttribute("data-entry-id"))).toEqual(["late-refund", "posted-payment", "posted-opening"])
+    for (const [index, balance] of ["85", "80", "100"].entries()) {
+      expect(within(rows[index]!).getAllByRole("cell")[2]!.textContent).toContain(balance)
+    }
+    expect(client.pay).not.toHaveBeenCalled()
+  })
+
   it("finds accounts by the actual supplied party phone as well as name", async () => {
     fixture()
     await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ })
