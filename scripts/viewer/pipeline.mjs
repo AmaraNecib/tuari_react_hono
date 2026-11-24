@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { inflateRawSync } from 'node:zlib';
+import { buildDashboard } from './build-dashboard.mjs';
 
 export const PRODUCT_PREFIX = 'TUARI';
 const MAX_BYTES = 100 * 1024 * 1024;
@@ -157,21 +158,23 @@ export function redactReport(data) {
   return { ...data, manifest: data.manifest ? manifest : null, events: data.events.map(event => ({ ...event, signature: ['error', 'ui', 'crash', 'lifecycle'].includes(event.signature) ? event.signature : event.errorCode !== null ? `error:${event.errorCode}` : event.level, operation: null })) };
 }
 export async function emitReport(data, destination) {
+  const assets = await buildDashboard();
   const json = JSON.stringify(redactReport(data));
   const escaped = json.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-  const html = '<!doctype html><html lang="en"><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\'"><title>Diagnostics report</title><h1>Diagnostics report</h1><pre id="report"></pre><div id="report-data" hidden>' + escaped + '</div><script src="report.js"></script></html>\n';
+  const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'self\'; style-src \'self\'; connect-src \'none\'; base-uri \'none\'; form-action \'none\'"><title>Diagnostics report</title><link rel="stylesheet" href="report.css"></head><body><div id="report"></div><noscript>This offline diagnostics report requires JavaScript enabled.</noscript><div id="report-data" hidden>' + escaped + '</div><script src="report.js"></script></body></html>\n';
   const root = dirname(resolve(destination));
   await mkdir(root, { recursive: true });
   // Refuse collisions, including sidecars belonging to another report.
   const created = [];
   try {
-    for (const path of [resolve(destination), join(root, 'report.js'), join(root, 'report-data.json')]) {
+    for (const path of [resolve(destination), join(root, 'report.js'), join(root, 'report-data.json'), join(root, 'report.css')]) {
       const file = await open(path, 'wx');
       created.push({ path, file });
     }
     await created[0].file.writeFile(html);
-    await created[1].file.writeFile("'use strict';\nconst data = JSON.parse(document.getElementById('report-data').textContent);\ndocument.getElementById('report').textContent = JSON.stringify(data, null, 2);\n");
+    await created[1].file.writeFile(assets.js);
     await created[2].file.writeFile(json + '\n');
+    await created[3].file.writeFile(assets.css);
   } catch (error) {
     const cleanup = await Promise.allSettled(created.map(async ({ path, file }) => {
       const owned = await file.stat({ bigint: true });

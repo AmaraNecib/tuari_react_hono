@@ -30,10 +30,9 @@ async function openReport(input, check) {
     page.on('request', request => { if (!request.url().startsWith('file:')) network.push(request.url()); });
     await context.setOffline(true);
     await page.goto(pathToFileURL(output).href);
-    await expect(page.getByRole('heading', { name: 'Diagnostics report' })).toBeVisible();
-    const report = page.locator('#report');
-    await expect(report).toContainText('"events"');
-    const rendered = JSON.parse(await report.innerText());
+    await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
+    const rendered = JSON.parse(await page.locator('#report-data').textContent());
+    await expect(page.getByRole('region', { name: 'Report summary' })).toContainText('log records');
     assert.deepEqual(rendered, sidecar);
     await check(rendered);
     await expect(page.locator('img')).toHaveCount(0);
