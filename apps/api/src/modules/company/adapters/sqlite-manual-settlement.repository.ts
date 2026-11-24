@@ -4,6 +4,7 @@ import { bindMoney, prepareMoneyRead } from "../../../infrastructure/database/ex
 import type { ManualSettlementRecord, ManualSettlementRepository, ManualSettlementReversalRecord } from "../manual-settlement.repository";
 import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import { SqliteExactFinanceRepository } from "./sqlite-exact-finance.repository";
+import type { ExactInventoryRepository } from "../../inventory/inventory-exact.repository";
 
 const settlementFields = {
   id: "id", externalCounterpartyId: "external_counterparty_id", currency: "currency", payableOriginalEntryId: "payable_original_entry_id", receivableOriginalEntryId: "receivable_original_entry_id", payableSettlementEntryId: "payable_settlement_entry_id", receivableSettlementEntryId: "receivable_settlement_entry_id", recordedAt: "recorded_at", actorUserId: "actor_user_id", actorLabel: "actor_label", note: "note",
@@ -16,7 +17,7 @@ const projection = (fields: Record<string, string>) => Object.entries(fields).ma
 /** Append-only pairing storage on the shared connection and immediate transaction. */
 export class SqliteManualSettlementRepository implements ManualSettlementRepository {
   private readonly ledger: SqliteExactFinanceRepository;
-  constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock) {
+  constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock, private readonly inventory?: ExactInventoryRepository) {
     this.ledger = new SqliteExactFinanceRepository(db, lock);
   }
   get transactionIdentity() { return { connection: this.db, lock: this.lock }; }
@@ -30,10 +31,12 @@ export class SqliteManualSettlementRepository implements ManualSettlementReposit
       const original = this.ledger.getEntry(index === 0 ? row.payableOriginalEntryId : row.receivableOriginalEntryId);
       const account = original && this.ledger.getAccount(original.debtAccountId);
       const posting = this.ledger.getEntry(postingIds[index]!);
-      if (!original || !account || !posting || original.status !== "LIVE" || original.targetEntryId || original.correctionOfEntryId || original.producerType || original.producerId || original.invoiceId
+      const trusted = Boolean(original && this.inventory && ((direction === "PAYABLE" && original.producerType === "INVENTORY_PURCHASE" && original.producerId && this.inventory.getGroup(original.producerId)?.debtEntryId === original.id && this.inventory.getGroup(original.producerId)?.externalCounterpartyId === row.externalCounterpartyId)
+        || (direction === "RECEIVABLE" && original.producerType === "INVENTORY_OUTBOUND" && original.producerId && this.inventory.getOutbound(original.producerId)?.transferType === "SALE" && this.inventory.getOutbound(original.producerId)?.debtEntryId === original.id && this.inventory.getOutbound(original.producerId)?.counterpartyId === row.externalCounterpartyId)));
+      if (!original || !account || !posting || original.status !== "LIVE" || original.targetEntryId || original.correctionOfEntryId || ((original.producerType || original.producerId) && !trusted) || original.invoiceId
         || Money.parse(original.signedAmountDzd).compare(Money.parse("0")) <= 0
         || account.partyType !== "EXTERNAL_COUNTERPARTY" || account.externalCounterpartyId !== row.externalCounterpartyId || account.direction !== direction || account.currency !== row.currency
-        || posting.debtAccountId !== account.id || posting.status !== "LIVE" || posting.currency !== row.currency || posting.targetEntryId !== original.id || posting.correctionOfEntryId || posting.producerType || posting.producerId || posting.invoiceId
+        || posting.debtAccountId !== account.id || posting.status !== "LIVE" || posting.currency !== row.currency || posting.targetEntryId !== original.id || posting.correctionOfEntryId || (trusted ? posting.producerType !== original.producerType || posting.producerId !== original.producerId : posting.producerType || posting.producerId) || posting.invoiceId
         || posting.entryType !== (reversing ? "ADJUSTMENT" : "SETTLEMENT") || Money.parse(posting.signedAmountDzd).compare(reversing ? amount : amount.negate()) !== 0 || posting.paymentMethod !== null) throw new Error("Invalid manual settlement linkage");
     }
   }

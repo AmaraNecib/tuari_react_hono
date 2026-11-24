@@ -77,10 +77,10 @@ it("binds manual settlement to a real authenticated session and retains original
   const employee = await client.employeesCreate({ firstName: "Cash", lastName: "Worker", phone: "0555123999", roleId: role.id });
   if (!employee.success) throw new Error("Cash setup failed");
   await client.employeePayrollCashRecord({ requestId: "actual-cash", employeeId: employee.item.id, amount: "10.00", paymentDate: now, wages: [], advanceAmount: "10.00" });
-  const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%cash%' OR name LIKE '%inventory%' OR name LIKE '%consumable%' OR name LIKE '%asset%') ORDER BY name").all() as { name: string }[]).map(row => row.name);
+  const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%cash%' OR name LIKE '%inventory%' OR name LIKE '%consumable%' OR name LIKE '%asset%' OR name LIKE '%project_cost%') ORDER BY name").all() as { name: string }[]).map(row => row.name);
   expect(tables.length).toBeGreaterThan(0);
   const physicalSnapshot = () => Object.fromEntries(tables.map(name => [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
-  const unchanged = physicalSnapshot();
+  let unchanged = physicalSnapshot();
   expect(db.prepare("SELECT COUNT(*) AS n FROM employee_salary_cash").get()).toEqual({ n: 1 });
   expect(db.prepare("SELECT COUNT(*) AS n FROM inventory_entry").get()).toEqual({ n: 1 });
   const stockBefore = await client.financial.reports.generate({ type: "INVENTORY" });
@@ -158,7 +158,44 @@ it("binds manual settlement to a real authenticated session and retains original
   const produced = finance.forProducer({ type: "PAYROLL_ADVANCE", id: randomUUID() }).postEntry({ requestId: "producer", debtAccountId: payable.id, entryType: "ADJUSTMENT", signedAmountDzd: "1.00" });
   const beforeRefusal = finance.listEntries(payable.id);
   await expect(client.financial.manualSettlement.confirm({ ...input, requestId: "producer-refused", payableOriginalEntryId: produced.id, amountDzd: "1.00", expectedPayableRemainingDzd: "1.00" })).rejects.toMatchObject({ code: "CONFLICT" });
+
   expect(finance.listEntries(payable.id)).toEqual(beforeRefusal);
+  const inventory = root.financial.services.inventory;
+  const purchase = inventory.createInvoiceGroup({ requestId: "settle-purchase", warehouseId: warehouse.item.id, externalCounterpartyId: party.item.id, createDebt: true, paymentInputType: "AMOUNT", paidAmountDzd: "20000.00",
+    entries: [{ kind: "CONSUMABLE", itemDefinitionId: material.item.id, quantity: 2, priceSource: { mode: "agreed-total", total: "100000.00", quantity: "2" } }] });
+  const sale = inventory.createOutboundTransfer({ requestId: "settle-sale", fromType: "WAREHOUSE", fromId: warehouse.item.id,
+    counterpartyId: party.item.id, transferType: "SALE", debtAmountDzd: "30000.00", firstPaymentAmountDzd: "5000.00", items: [{ itemId: material.item.id, quantity: 1, unitPriceDzd: "30000.00" }] });
+  const purchaseOriginal = purchase.group.debtEntryId!;
+  const saleOriginal = sale.debtEntryId!;
+  unchanged = physicalSnapshot();
+  const settlementPair = { externalCounterpartyId: party.item.id, payableOriginalEntryId: purchaseOriginal, receivableOriginalEntryId: saleOriginal, currency: "DZD" as const, amountDzd: "25000.00" };
+  expect(await client.financial.manualSettlement.preview(settlementPair)).toMatchObject({ payableRemainingDzd: "80000.00", receivableRemainingDzd: "25000.00", projectedPayableRemainingDzd: "55000.00", projectedReceivableRemainingDzd: "0.00" });
+  const inventoryState = () => Object.fromEntries(tables.filter(name => (name.includes("inventory") && !name.includes("invoice_group") && !name.includes("outbound_transfer")) || name.includes("project_cost") || name.includes("asset_charge")).map(name => [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
+  const sourceState = inventoryState();
+  const actualPayments = () => [purchase.group.debtEntryId, sale.debtEntryId].map(id => finance.listEntries(id === purchase.group.debtEntryId ? purchase.group.debtAccountId! : sale.associatedDebtAccountId!).filter(entry => entry.entryType === "PAYMENT").map(entry => ({ amount: entry.signedAmountDzd, method: entry.paymentMethod, target: entry.targetEntryId })));
+  const paymentsBefore = actualPayments();
+  const confirm = { ...settlementPair, requestId: "settle-inventory-pair", expectedPayableRemainingDzd: "80000.00", expectedReceivableRemainingDzd: "25000.00" };
+  const settled = await client.financial.manualSettlement.confirm(confirm);
+  expect(settled.preview).toMatchObject({ projectedPayableRemainingDzd: "55000.00", projectedReceivableRemainingDzd: "0.00" });
+  expect(inventoryState()).toEqual(sourceState);
+  expect(actualPayments()).toEqual(paymentsBefore);
+  expect(finance.remaining(purchaseOriginal)).toBe("55000.00");
+  expect(finance.remaining(saleOriginal)).toBe("0.00");
+  expect(inventory.getInvoiceGroup(purchase.group.id).group.remainingDebtDzd).toBe("55000.00");
+  const inventoryReversal = await client.financial.manualSettlement.reverse({ requestId: "reverse-inventory-pair", settlementId: settled.settlement.id, reason: "Test reversal" });
+  expect(inventoryReversal.settlement.id).toBe(settled.settlement.id);
+  expect(inventoryState()).toEqual(sourceState);
+  expect(actualPayments()).toEqual(paymentsBefore);
+  expect(finance.remaining(purchaseOriginal)).toBe("80000.00");
+  expect(finance.remaining(saleOriginal)).toBe("25000.00");
+  expect(inventory.getInvoiceGroup(purchase.group.id).group.remainingDebtDzd).toBe("80000.00");
+  const project = await client.projectsCreate({ name: "Settlement project", status: "ACTIVE" });
+  if (!project.success) throw new Error("Project setup failed");
+  inventory.createInvoiceGroup({ requestId: "project-stock", projectId: project.item.id, entries: [{ kind: "CONSUMABLE", itemDefinitionId: material.item.id, quantity: 1, priceSource: { mode: "agreed-total", total: "10.00", quantity: "1" } }] });
+  const projectSale = inventory.createOutboundTransfer({ requestId: "project-sale", fromType: "PROJECT", fromId: project.item.id, counterpartyId: party.item.id,
+    transferType: "SALE", debtAmountDzd: "10.00", items: [{ itemId: material.item.id, quantity: 1, unitPriceDzd: "10.00" }] });
+  expect(await client.financial.manualSettlement.preview({ externalCounterpartyId: party.item.id, payableOriginalEntryId: pair.payableOriginalEntryId,
+    receivableOriginalEntryId: projectSale.debtEntryId!, currency: "DZD", amountDzd: "1.00" })).toMatchObject({ payableRemainingDzd: "100.00", receivableRemainingDzd: "10.00", projectedPayableRemainingDzd: "99.00", projectedReceivableRemainingDzd: "9.00" });
   root.close();
   const reopened = await createFreshExactAppDependencies({ databasePath, databaseKey: "", disposableManualSettlement: true }, config);
   roots.push(reopened);

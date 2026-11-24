@@ -14,7 +14,7 @@ Settlement records payment of an existing source transaction. It must preserve t
 
 Follow the existing #613 manual-settlement contract and service interfaces where applicable. Add source-specific adapters or operations only where those interfaces cannot represent purchase and outbound sale without weakening their existing invariants. Verify through authenticated native integration paths and browser interactions if UI changes are needed.
 
-Write failing tests first for eligibility, source-kind boundaries, atomic settlement and reversal, and preserved source values. Add focused adapter and connected-client tests at the existing finance/write seams. Do not infer proof from mocked services alone.
+Write failing tests first for eligibility, source-kind boundaries, atomic settlement and reversal, and preserved source values. Add focused adapter and connected-client tests at the existing finance/write seams. Settlement postings retain trusted inventory producer ownership; only purchase payables and outbound SALE receivables qualify. Purchase source remaining debt follows the ledger balance while paid cash stays unchanged. Outbound source reads derive remaining debt from the ledger. Do not infer proof from mocked services alone.
 
 ## Review and verification
 

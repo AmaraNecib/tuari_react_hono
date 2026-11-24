@@ -257,7 +257,8 @@ export class ExactFinanceService {
       const target = this.obligation(originalId);
       const account = this.getAccount(target.debtAccountId);
       const amount = Money.parse(signedAmountDzd);
-      if (this.producer || target.producerType || target.producerId || target.invoiceId || account.partyType !== "EXTERNAL_COUNTERPARTY" || Money.parse(target.signedAmountDzd).compare(zero()) <= 0 || amount.compare(zero()) === 0) throw new ExactDebtError("Manual settlement requires an eligible external original", "CONFLICT");
+      const ownsTarget = this.producer?.type === target.producerType && this.producer.id === target.producerId;
+      if ((this.producer && !ownsTarget) || ((target.producerType || target.producerId) && !ownsTarget) || target.invoiceId || account.partyType !== "EXTERNAL_COUNTERPARTY" || Money.parse(target.signedAmountDzd).compare(zero()) <= 0 || amount.compare(zero()) === 0) throw new ExactDebtError("Manual settlement requires an eligible external original", "CONFLICT");
       if (amount.compare(zero()) < 0 && amount.negate().compare(this.remainingFrom(target, this.listEntries(account.id))) > 0) throw new ExactDebtError("Settlement exceeds remaining obligation", "CONFLICT");
       return this.append(account, { entryType: amount.compare(zero()) < 0 ? "SETTLEMENT" : "ADJUSTMENT", signedAmountDzd: amount.toWire(), targetEntryId: target.id, entryDate: this.dependencies.now() }, audit);
     });
