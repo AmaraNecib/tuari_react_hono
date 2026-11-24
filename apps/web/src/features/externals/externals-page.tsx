@@ -75,7 +75,7 @@ export function ExternalCounterpartiesPage({
                 const balance = {
                   phrase: comparison === 0 ? DEBT_BALANCE_STATE_PHRASE.settled : comparison > 0 ? DEBT_BALANCE_STATE_PHRASE.owedToUs : DEBT_BALANCE_STATE_PHRASE.owedByUs,
                   amount: display.text.replace(/^-/, ""),
-                  textClassName: comparison === 0 ? "text-muted-foreground" : comparison > 0 ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300",
+                  textClassName: comparison === 0 ? "text-muted-foreground" : comparison > 0 ? "text-good" : "text-bad",
                 }
 
                 return (

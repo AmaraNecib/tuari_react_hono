@@ -209,11 +209,11 @@ export function DebtLedgerPanel({
                       </td>
                       <td className="px-4 py-4 text-start">
                         {isLive ? (
-                          <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                          <span className="inline-flex items-center rounded-full bg-good/10 px-2.5 py-0.5 text-xs font-medium text-good">
                             نشط
                           </span>
                         ) : (
-                          <span className="inline-flex items-center rounded-full bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300">
+                          <span className="inline-flex items-center rounded-full bg-bad/10 px-2.5 py-0.5 text-xs font-medium text-bad">
                             ملغية
                           </span>
                         )}
@@ -236,7 +236,7 @@ export function DebtLedgerPanel({
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="text-rose-600 hover:text-rose-700"
+                              className="text-bad hover:text-bad"
                               onClick={() => setVoidTargetEntry(entry)}
                             >
                               إلغاء

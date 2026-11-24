@@ -155,8 +155,8 @@ export function RecordPaymentDialog({
             </label>
           </div>
         ) : (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
-            <p className="text-sm font-medium text-emerald-900 dark:text-emerald-300">{t("detailPages.debt.payment.settlePrompt")}</p>
+          <div className="rounded-xl border border-good/30 bg-good-soft p-4">
+            <p className="text-sm font-medium text-good">{t("detailPages.debt.payment.settlePrompt")}</p>
           </div>
         )}
 

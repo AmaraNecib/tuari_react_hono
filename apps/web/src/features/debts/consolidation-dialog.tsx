@@ -251,9 +251,9 @@ export function ConsolidationDialog({
 
           {/* Preview */}
           {selectedPayable && selectedReceivable && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-800 dark:bg-amber-950/20">
+            <div className="rounded-xl border border-warn/30 bg-warn-soft/50 p-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                <span className="text-sm font-medium text-warn">
                   <CurrencyProse text={consolidationPreview?.label ?? ""} />
                 </span>
                 <span className="text-xs text-muted-foreground">

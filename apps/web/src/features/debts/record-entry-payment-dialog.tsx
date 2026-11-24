@@ -105,7 +105,7 @@ export function RecordEntryPaymentDialog({
               {<AppDate value={entry.entryDate} />}
               {entry.note?.trim() ? ` — ${entry.note.trim()}` : ""}
             </p>
-            <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+            <p className="mt-2 text-xs text-warn">
               {t("debts.payment.maxAmount")} {maxPaymentDisplay.phrase} <CurrencyRun amount={formatDebtAmount(maxPaymentDisplay.amount)} currencyLabel="دج" />
             </p>
           </div>
@@ -119,7 +119,7 @@ export function RecordEntryPaymentDialog({
               onChange={(e) => setAmount(e.target.value)}
             />
             {amountExceedsMax && (
-              <p className="text-xs text-rose-600">{t("debts.payment.amountExceeds")}</p>
+              <p className="text-xs text-bad">{t("debts.payment.amountExceeds")}</p>
             )}
           </label>
 

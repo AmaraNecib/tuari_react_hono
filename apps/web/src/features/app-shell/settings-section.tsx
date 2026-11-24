@@ -586,13 +586,13 @@ export function SettingsSection({
                 )}
 
                 {updateState.status === "success" && (
-                  <div className="mt-4 rounded-md bg-green-50 dark:bg-green-950 p-3 text-sm text-green-800 dark:text-green-200">
+                  <div className="mt-4 rounded-md bg-good-soft p-3 text-sm text-good">
                     {updateState.message || settingsUpdateSuccess}
                   </div>
                 )}
 
                 {updateState.status === "error" && (
-                  <div className="mt-4 rounded-md bg-red-50 dark:bg-red-950 p-3 text-sm text-red-800 dark:text-red-200">
+                  <div className="mt-4 rounded-md bg-bad-soft p-3 text-sm text-bad">
                     {updateState.message || settingsUpdateError}
                   </div>
                 )}

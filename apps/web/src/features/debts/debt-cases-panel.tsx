@@ -193,13 +193,13 @@ export function DebtCasesPanel({
               className={cn(
                 "rounded-xl border p-3 transition-all",
                 direction === "owed-to-us"
-                  ? "border-emerald-500/30 bg-primary/8"
+                  ? "border-good/30 bg-primary/8"
                   : "border-border/60 hover:bg-muted/40",
               )}
               type="button"
               onClick={() => setDirection("owed-to-us")}
             >
-              <p className="font-semibold text-emerald-700 dark:text-emerald-300">
+              <p className="font-semibold text-good">
                 {t("detailPages.debt.direction.owedToUs")}
               </p>
             </button>
@@ -207,13 +207,13 @@ export function DebtCasesPanel({
               className={cn(
                 "rounded-xl border p-3 transition-all",
                 direction === "owed-by-us"
-                  ? "border-rose-500/30 bg-primary/8"
+                  ? "border-bad/30 bg-primary/8"
                   : "border-border/60 hover:bg-muted/40",
               )}
               type="button"
               onClick={() => setDirection("owed-by-us")}
             >
-              <p className="font-semibold text-rose-700 dark:text-rose-300">
+              <p className="font-semibold text-bad">
                 {t("detailPages.debt.direction.owedByUs")}
               </p>
             </button>

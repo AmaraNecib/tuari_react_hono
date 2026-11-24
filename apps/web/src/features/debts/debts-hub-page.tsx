@@ -114,8 +114,8 @@ export function DebtsHubPage({
     >
       <div className="grid gap-4 md:grid-cols-4">
         <HubStatCard label="عدد الأرصدة المفتوحة" value={String(filter === "all" ? totals.openCount : filteredOpenCount)} />
-        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedToUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedToUsDzd)} currencyLabel="دج" />} valueClassName="text-emerald-700 dark:text-emerald-300" />
-        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedByUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedByUsDzd)} currencyLabel="دج" />} valueClassName="text-rose-700 dark:text-rose-300" />
+        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedToUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedToUsDzd)} currencyLabel="دج" />} valueClassName="text-good" />
+        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedByUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedByUsDzd)} currencyLabel="دج" />} valueClassName="text-bad" />
         <HubStatCard label="عدد الحسابات" value={String(rows.length)} />
       </div>
 

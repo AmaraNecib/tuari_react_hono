@@ -277,16 +277,16 @@ export function DebtCreatePage({
             className={cn(
               "rounded-xl border p-4 text-center",
               resolvedDirection === "owed-to-us"
-                ? "border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20"
-                : "border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20",
+                ? "border-good/30 bg-good-soft/50"
+                : "border-bad/30 bg-bad-soft/50",
             )}
           >
             <p
               className={cn(
                 "text-lg font-semibold",
                 resolvedDirection === "owed-to-us"
-                  ? "text-emerald-700 dark:text-emerald-300"
-                  : "text-rose-700 dark:text-rose-300",
+                  ? "text-good"
+                  : "text-bad",
               )}
             >
               {directionLabel}
@@ -306,13 +306,13 @@ export function DebtCreatePage({
                   className={cn(
                     "rounded-xl border p-3 transition-all",
                     direction === "owed-to-us"
-                      ? "border-emerald-500/30 bg-primary/8"
+                      ? "border-good/30 bg-primary/8"
                       : "border-border/60 hover:bg-muted/40",
                   )}
                   type="button"
                   onClick={() => setDirection("owed-to-us")}
                 >
-                  <p className="font-semibold text-emerald-700 dark:text-emerald-300">
+                  <p className="font-semibold text-good">
                     {t("detailPages.debt.direction.owedToUs")}
                   </p>
                 </button>
@@ -320,13 +320,13 @@ export function DebtCreatePage({
                   className={cn(
                     "rounded-xl border p-3 transition-all",
                     direction === "owed-by-us"
-                      ? "border-rose-500/30 bg-primary/8"
+                      ? "border-bad/30 bg-primary/8"
                       : "border-border/60 hover:bg-muted/40",
                   )}
                   type="button"
                   onClick={() => setDirection("owed-by-us")}
                 >
-                  <p className="font-semibold text-rose-700 dark:text-rose-300">
+                  <p className="font-semibold text-bad">
                     {t("detailPages.debt.direction.owedByUs")}
                   </p>
                 </button>

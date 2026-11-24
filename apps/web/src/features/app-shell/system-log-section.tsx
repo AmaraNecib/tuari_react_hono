@@ -69,7 +69,7 @@ function parseDetailTokens(line: string) {
 
 function getDetailTokenClassName(token: string) {
   if (token.startsWith(i18n.t("systemLog.value")) || token.startsWith(i18n.t("systemLog.balance"))) {
-    return "border-emerald-300 bg-emerald-100 text-emerald-950 dark:border-emerald-800 dark:bg-emerald-950/35 dark:text-emerald-200 font-mono font-semibold"
+    return "border-good/30 bg-good-soft text-good font-mono font-semibold"
   }
 
   if (token.startsWith(i18n.t("systemLog.entryType")) || token.startsWith(i18n.t("systemLog.status"))) {

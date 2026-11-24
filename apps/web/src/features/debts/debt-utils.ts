@@ -41,23 +41,23 @@ type DebtBalanceTone = {
 
 const DEBT_BALANCE_STATE_TONE: Record<DebtBalanceState, DebtBalanceTone> = {
   owedToUs: {
-    badgeClassName: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    textClassName: "text-emerald-700 dark:text-emerald-300",
+    badgeClassName: "border-good/25 bg-good/10 text-good",
+    textClassName: "text-good",
     description: `رصيد لنا — ${DEBT_BALANCE_STATE_PHRASE.owedToUs}.`,
   },
   owedByUs: {
-    badgeClassName: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-    textClassName: "text-rose-700 dark:text-rose-300",
+    badgeClassName: "border-bad/25 bg-bad/10 text-bad",
+    textClassName: "text-bad",
     description: `رصيد علينا — ${DEBT_BALANCE_STATE_PHRASE.owedByUs}.`,
   },
   creditWithUs: {
-    badgeClassName: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    textClassName: "text-emerald-700 dark:text-emerald-300",
+    badgeClassName: "border-good/25 bg-good/10 text-good",
+    textClassName: "text-good",
     description: `دفعنا أكثر مما علينا — ${DEBT_BALANCE_STATE_PHRASE.creditWithUs}.`,
   },
   creditWithThem: {
-    badgeClassName: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-    textClassName: "text-rose-700 dark:text-rose-300",
+    badgeClassName: "border-bad/25 bg-bad/10 text-bad",
+    textClassName: "text-bad",
     description: `دفعوا أكثر مما علينا — ${DEBT_BALANCE_STATE_PHRASE.creditWithThem}.`,
   },
   settled: {
