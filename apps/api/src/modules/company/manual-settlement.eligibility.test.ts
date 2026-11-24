@@ -82,6 +82,22 @@ it.each(["PAYABLE", "RECEIVABLE"] as const)("refuses an amount exceeding only th
   } finally { f.db.close(); }
 });
 
+it("refuses zero, excessive and producer-scoped manual portions at the ledger interface without writes", () => {
+  const f = fixture();
+  try {
+    const before = f.snapshot();
+    const actor = { actorUserId: "operator", actorLabel: "Operator" };
+    expect(() => f.finance.appendManualSettlementPortion(f.p.id, "0.00", actor)).toThrow(/eligible external original/i);
+    expect(f.snapshot()).toEqual(before);
+    expect(() => f.finance.appendManualSettlementPortion(f.p.id, "-100.01", actor)).toThrow(/exceeds remaining/i);
+    expect(f.snapshot()).toEqual(before);
+    expect(() => f.finance.forProducer({ type: "INVOICE", id: f.invoice }).appendManualSettlementPortion(f.p.id, "-25.00", actor)).toThrow(/eligible external original/i);
+    expect(f.snapshot()).toEqual(before);
+    expect(f.finance.remaining(f.p.id)).toBe("100.00");
+    expect(f.finance.remaining(f.r.id)).toBe("60.00");
+  } finally { f.db.close(); }
+});
+
 it("refuses reversal atomically when an intervening posting fills one account's int64 capacity", () => {
   const f = fixture();
   try {

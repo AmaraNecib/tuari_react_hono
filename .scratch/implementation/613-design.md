@@ -18,7 +18,11 @@ confirmation-only fields caused strict codec refusal before insufficient-side
 validation. Pass only the actual preview contract fields; keep both independent
 PAYABLE/RECEIVABLE refusal and atomic snapshot assertions. The D: retry also
 exposed Windows path normalization in the harness; use native-separator TEMP,
-not a production or assertion change. No financial interface, schema or domain term
+not a production or assertion change. The passing functional suite still measured
+2415/2440 global branches (98.97%). Add direct ledger-interface refusals for a
+zero portion, an excessive portion and a producer-scoped caller, asserting exact
+balances and unchanged posting/receipt snapshots. These are reachable protection
+branches in the settlement module's direct caller, not threshold changes. No financial interface, schema or domain term
 changes; architecture: no seam moved. Parent owns combined review and publication.
 
 ## Hosted finding correction at 5684f06b
