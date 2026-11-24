@@ -39,7 +39,15 @@ it("settles both manual originals once across reopen and restores both recorded 
     const p = f.finance.listEntries(payable.id)[0]!.id;
     const r = f.finance.listEntries(receivable.id)[0]!.id;
     const input = { requestId: "confirm", currency: "DZD" as const, externalCounterpartyId: party, payableOriginalEntryId: p, receivableOriginalEntryId: r, amountDzd: "25.00", expectedPayableRemainingDzd: "100.00", expectedReceivableRemainingDzd: "60.00" };
-    expect(f.service.preview({ externalCounterpartyId: party, payableOriginalEntryId: p, receivableOriginalEntryId: r, currency: "DZD", amountDzd: "25.00" })).toMatchObject({ payableRemainingDzd: "100.00", receivableRemainingDzd: "60.00", projectedPayableRemainingDzd: "75.00", projectedReceivableRemainingDzd: "35.00" });
+    const previewInput = { externalCounterpartyId: party, payableOriginalEntryId: p, receivableOriginalEntryId: r, currency: "DZD" as const, amountDzd: "25.00" };
+    const snapshot = () => ({ accounts: f.finance.listAccounts(), entries: f.finance.listAccounts().flatMap(account => f.finance.listEntries(account.id)), settlements: db.prepare("SELECT * FROM manual_debt_settlement ORDER BY id").all(), reversals: db.prepare("SELECT * FROM manual_debt_settlement_reversal ORDER BY id").all(), debtReceipts: db.prepare("SELECT * FROM debt_command ORDER BY id").all(), aggregateReceipts: db.prepare("SELECT * FROM exact_finance_command ORDER BY id").all() });
+    const beforePreview = snapshot();
+    granted.delete("debts:read");
+    expect(() => f.service.preview(previewInput)).toThrow(/FORBIDDEN/);
+    expect(snapshot()).toEqual(beforePreview);
+    granted.add("debts:read");
+    expect(f.service.preview(previewInput)).toMatchObject({ payableRemainingDzd: "100.00", receivableRemainingDzd: "60.00", projectedPayableRemainingDzd: "75.00", projectedReceivableRemainingDzd: "35.00" });
+    expect(snapshot()).toEqual(beforePreview);
     for (const permission of ["debts:read", "debts:settle"]) {
       granted.delete(permission);
       expect(() => f.service.confirm(input)).toThrow(/FORBIDDEN/);
@@ -99,6 +107,16 @@ it("settles both manual originals once across reopen and restores both recorded 
     expect(f.finance.remaining(p)).toBe("100.00");
     expect(f.finance.remaining(r)).toBe("60.00");
     expect(f.service.reverse(reverse)).toEqual(reversed);
+    const afterReversal = snapshot();
+    for (const entryId of [reversed.reversal.payableReversalEntryId, reversed.reversal.receivableReversalEntryId, result.settlement.payableSettlementEntryId, result.settlement.receivableSettlementEntryId]) {
+      const requestId = `post-reverse-void-${entryId}`;
+      expect(() => f.finance.voidEntry({ requestId, entryId, voidReason: "Cannot void linked half" })).toThrow(/linked postings/);
+      expect(f.ledger.getEntry(entryId)?.status).toBe("LIVE");
+      expect(f.finance.remaining(p)).toBe("100.00");
+      expect(f.finance.remaining(r)).toBe("60.00");
+      expect(f.ledger.getCommand(requestId)).toBeNull();
+      expect(snapshot()).toEqual(afterReversal);
+    }
     for (const permission of ["debts:read", "debts:settle", "debts:update"]) {
       granted.delete(permission);
       expect(() => f.service.reverse(reverse)).toThrow(/FORBIDDEN/);
