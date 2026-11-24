@@ -1,8 +1,12 @@
-# Manual obligation settlement, approval proposal
+# Manual obligation settlement
 
 ## State and authority
 
-Issue #613 live acceptance was read on 2026-10-21. This is a proposal, not approved schema or writer activation. No inventory, invoice or payroll settlement is authorized. No financial implementation, RPC registration, schema initializer change or UI change is included in this checkpoint.
+The supervisor's recovery brief approves design revision `866ad7c4416b26de34127fe4c5223632966cf007` for local disposable-data implementation. Issue #613 was read again during recovery. No live migration, publication, merge, inventory, invoice or payroll settlement is authorized. The decision sections below retain the accepted design's original proposal wording as historical context.
+
+The recovery tree was clean at that revision. The first backend worker stopped without a commit or behavioral verification. Its two uncommitted edits remain preserved in `D:/worktrees/tuari_react_hono/t3-7ff35ea2-c2b63c72601bcf41`; no source was copied from it. The manager implemented the strict input codecs and aggregate-owner capability boundary here. This checkpoint exports input schemas only, not an RPC namespace or financial writer. A separate isolated storage worker owns the inert exact-only repository slice. Service composition, authorization, native atomicity/replay/reversal, UI and independent review remain incomplete.
+
+Focused contract proof starts with the missing-module expected red, followed by six passing tests across the new input codecs and existing debt codecs. Contracts typecheck passes. Logs remain ignored under `.scratch/reviews/613-contract/`. These checks establish only input validation and producer-capability separation, not financial behavior. Dependency setup used the existing lockfile offline without manifest or lock changes. Current protection again returned HTTP 404; CI-final remains pending.
 
 Worktree: `D:/worktrees/tuari_react_hono/t3-82cb7302-cbc95bbc1a45a5ba`.
 Branch: `feat/613-manual-settlement-design`.
