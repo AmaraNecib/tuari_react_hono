@@ -15,7 +15,7 @@ Tuari is a local-first desktop application with a React frontend, a Hono API, an
 - `apps/web` owns React routes, UI, and API clients.
 - `packages/contracts` owns shared RPC contracts and is built by the workspace contract scripts.
 
-The API process entry point is `apps/api/src/index.ts`. It loads configuration, creates dependencies through `apps/api/src/app/dependencies.ts`, builds the Hono app, and starts the HTTP server. The desktop shell launches this API as a local sidecar.
+The API process entry point is `apps/api/src/index.ts`. It loads configuration, creates dependencies through `apps/api/src/app/fresh-exact-dependencies.ts`, builds the Hono app, and starts the HTTP server. The desktop shell launches this API as a local sidecar.
 
 The API composition root opens SQLite. Better Auth and account persistence use Drizzle; feature repositories can also use SQL directly. See the [persistence guide](docs/ARCHITECTURE.md#persistence) for concrete adapters and the difference between current source and ADR-001. Feature services and repositories live under `apps/api/src/modules`; `apps/api/src/rpc` maps transport requests to application behavior.
 
