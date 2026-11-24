@@ -185,6 +185,7 @@ export function HomeViewPageDetailContent({
             <ExternalCounterpartyDetailsPage
               counterparty={selectedCounterparty}
               debtClient={financialClient.debts}
+              manualSettlementClient={financialClient.manualSettlement}
             />,
           )
         : (

@@ -9,7 +9,7 @@ async function main() {
   if (process.env.CONNECTED_EXACT_TEST !== "1" || !process.env.APP_DB_PATH) throw new Error("Explicit isolated test environment required")
   const config = createAppConfig()
   if (existsSync(config.databasePath)) throw new Error("Connected acceptance requires a fresh database file")
-  const root = await createFreshExactAppDependencies({}, config)
+  const root = await createFreshExactAppDependencies({ disposableManualSettlement: process.env.MANUAL_SETTLEMENT_BROWSER === "1" }, config)
   const app = createApp(root, { allowedOrigins: config.allowedOrigins, authRateLimitMaxRequests: config.authRateLimitMaxRequests })
   const server = serve({ fetch: app.fetch, hostname: config.host, port: config.port })
   console.log(JSON.stringify({ entry: import.meta.url, mode: root.mode, database: config.databasePath, port: config.port }))

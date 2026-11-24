@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import type { ExactDebtsClient, CreateExactDebtAccount, PostExactDebtEntry, PayExactDebtEntry, CorrectExactDebtEntry, VoidExactDebtEntry, SettleExactDebtAccount } from "@tuari/contracts"
 import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
 import { getCachedSessionUserId } from "@/features/app-shell/workspace-keys"
@@ -16,6 +16,9 @@ function prefix(client: ExactDebtsClient) {
   let scope = scopes.get(client)
   if (scope === undefined) { scope = ++next; scopes.set(client, scope) }
   return ["phase1", "workspace", "debts-exact", scope] as const
+}
+export function invalidateExactDebtQueries(queries: QueryClient, client: ExactDebtsClient, owner: string | null) {
+  return queries.invalidateQueries({ queryKey: [...prefix(client), owner] })
 }
 export function useExactDebtSummary(client: ExactDebtsClient, { enabled = true }: { enabled?: boolean } = {}) {
   return useWorkspaceScopedQuery({ key: userId => [...prefix(client), userId, "summary"], enabled, queryFn: () => client.summary() })

@@ -1,5 +1,13 @@
 # Manual obligation settlement
 
+## UI implementation checkpoint
+
+The UI worker stopped before changing source despite available local base and gh issue access. Parent captured actual authenticated external-route baseline at `da07929d` before any UI source change, with seeded 100.00/60.00 originals at desktop 1280x800, tablet 1024x768 and mobile 390x844. Baseline element/full-page sidebar PNGs and route recordings are preserved under `.scratch/evidence/613-ui/run-IPJZOa/before/`. Dedicated test-server opt-in and harness setup were the only draft changes during baseline capture.
+
+Parent added a separate Arabic manual-settlement section in the external party view, preserving generic payment/account-zeroing screens. It uses actual preview/confirm/history/reverse clients, eligible original selectors, optional note, information disclosure, exact side remainders and unchanged net. Full pending confirm/reverse intent is persisted in sessionStorage under user+party keys before dispatch. Uncertain transport freezes edits and retries the same request after reload; definite refusals clear the pending request. Browser storage failure refuses new dispatch. The server remains permission authority because the existing session wire does not expose grants.
+
+Actual native-route browser proof at all three viewports confirms 25.00, deliberately loses the first successful confirm response, reloads and retries an identical request body, reads 75.00/35.00 on both accounts, reverses to100.00/60.00 and retains history. Keyboard activates preview. Draft after artifacts are `.scratch/evidence/613-ui/run-YiXfvG/after/`; a committed-head visual pass remains required. One Vite setup failure, Windows environment syntax failure and a history-count selector failure are preserved in separate logs. Seventy-nine selected web tests, web typecheck and i18n key checks pass. New panel still needs independent integration review, richer component negative cases, producer selector browser proof, matched trimmed clips and owner visual signoff. No whole-issue readiness, default startup activation or publication is claimed.
+
 ## State and authority
 
 The supervisor's recovery brief approves design revision `866ad7c4416b26de34127fe4c5223632966cf007` for local disposable-data implementation. Issue #613 was read again during recovery. No live migration, publication, merge, inventory, invoice or payroll settlement is authorized. The decision sections below retain the accepted design's original proposal wording as historical context.
