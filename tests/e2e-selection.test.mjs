@@ -117,6 +117,14 @@ test('selectSpecs: shared controls and exact money inputs route both payroll reg
   }
 });
 
+test('selectSpecs: debt UI and settlement service changes retain both connected and ordinary debt coverage', () => {
+  for (const file of ['apps/web/src/features/debts/debts-exact-page.tsx', 'apps/api/src/modules/company/manual-settlement.service.ts']) {
+    const scope = selectSpecs([file]);
+    assert.equal(scope.mode, 'affected', file);
+    for (const spec of ['debt-entry.spec.ts', 'manual-settlement-connected.spec.ts']) assert.ok(scope.specs.includes(spec), spec);
+  }
+});
+
 test('selectSpecs: both sides of a rename are honoured', () => {
   // The hook and CI pass --no-renames so a rename reports source and
   // destination. A feature moved out of apps/web (destination inert) must still
