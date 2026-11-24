@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Location-level transfer history component.
  * Embeddable in warehouse/project detail pages to show transfers for that location.
@@ -14,11 +15,11 @@ import { useLocationTransferHistoryQuery, type TransferHistoryItem } from "./tra
 /** getTransferTypeLabel - helper function. */
 function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
   const labels: Record<string, string> = {
-    PURCHASE: "شراء",
-    INTERNAL: "تحويل داخلي",
-    SALE: "بيع",
-    GIFT: "هدية",
-    RETURN: "مرتجع",
+    PURCHASE: featureI18n.t("featureCopy.locationTransferHistory.purchase"),
+    INTERNAL: featureI18n.t("featureCopy.locationTransferHistory.internal"),
+    SALE: featureI18n.t("featureCopy.locationTransferHistory.sale"),
+    GIFT: featureI18n.t("featureCopy.locationTransferHistory.gift"),
+    RETURN: featureI18n.t("featureCopy.locationTransferHistory.returned"),
   }
   return labels[type] ?? type
 }
@@ -55,8 +56,8 @@ function getMovementDirection(
 /** getMovementLabel - helper function. */
 function getMovementLabel(direction: "INCOMING" | "OUTGOING" | "BETWEEN"): string {
   const labels: Record<string, string> = {
-    INCOMING: "وارد",
-    OUTGOING: "صادر",
+    INCOMING: featureI18n.t("featureCopy.locationTransferHistory.incoming"),
+    OUTGOING: featureI18n.t("featureCopy.locationTransferHistory.outgoing"),
     BETWEEN: "—",
   }
   return labels[direction] ?? "—"
@@ -173,7 +174,7 @@ function LocationTransferItem({
         <div className="truncate">
           {transfer.items.map((item, index) => (
             <span key={item.id}>
-              {index > 0 && "، "}{item.name} <bdi dir="ltr">×{String(item.quantity)}</bdi>
+              {index > 0 && featureI18n.t("featureCopy.locationTransferHistory.listSeparator")}{item.name} <bdi dir="ltr">×{String(item.quantity)}</bdi>
             </span>
           ))}
         </div>
@@ -183,7 +184,7 @@ function LocationTransferItem({
       <div className="text-xs text-ink-4 text-start">
         {otherLocation ? (
           <span>
-            {otherLocation.type === "WAREHOUSE" ? "مستودع" : "مشروع"}: {otherLocation.name}
+            {otherLocation.type === "WAREHOUSE" ? featureI18n.t("featureCopy.locationTransferHistory.warehouse") : featureI18n.t("featureCopy.locationTransferHistory.project")}: {otherLocation.name}
           </span>
         ) : counterparty ? (
           <span>{counterparty.name}</span>
@@ -193,7 +194,7 @@ function LocationTransferItem({
       {/* Amount (for sales) */}
       {transfer.totalAmountDzd !== null && (
         <span className="text-xs font-medium tabular-nums min-w-[80px] text-start">
-          <CurrencyRun amount={transfer.totalAmountDzd!} currencyLabel="دج" />
+          <CurrencyRun amount={transfer.totalAmountDzd!} currencyLabel={featureI18n.t("featureCopy.locationTransferHistory.currency")} />
           {transfer.type === "PURCHASE" && <span className="block font-normal">{t("inventory.transferHistory.wholeInvoiceAmounts")}</span>}
         </span>
       )}

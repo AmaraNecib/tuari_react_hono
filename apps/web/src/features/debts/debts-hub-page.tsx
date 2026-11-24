@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { CurrencyRun } from "@/features/shared/money-value"
 import { useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -109,14 +110,14 @@ export function DebtsHubPage({
           <Button size="lg" onClick={onCreateDebt}>{t("debts.terminology.buttons.recordDebt")}</Button>
         </div>
       }
-      title="مركز الديون"
-      description="ملخص سريع لحساب دين واحد لكل عامل أو طرف خارجي. الأخضر يعني مستحق لنا، والأحمر يعني مستحق علينا."
+      title={featureI18n.t("featureCopy.debtsHubPage.title")}
+      description={featureI18n.t("featureCopy.debtsHubPage.description")}
     >
       <div className="grid gap-4 md:grid-cols-4">
-        <HubStatCard label="عدد الأرصدة المفتوحة" value={String(filter === "all" ? totals.openCount : filteredOpenCount)} />
-        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedToUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedToUsDzd)} currencyLabel="دج" />} valueClassName="text-good" />
-        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedByUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedByUsDzd)} currencyLabel="دج" />} valueClassName="text-bad" />
-        <HubStatCard label="عدد الحسابات" value={String(rows.length)} />
+        <HubStatCard label={featureI18n.t("featureCopy.debtsHubPage.openBalances")} value={String(filter === "all" ? totals.openCount : filteredOpenCount)} />
+        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedToUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedToUsDzd)} currencyLabel={featureI18n.t("featureCopy.debtsHubPage.currency")} />} valueClassName="text-good" />
+        <HubStatCard label={DEBT_BALANCE_STATE_PHRASE.owedByUs} value={<CurrencyRun amount={formatDebtAmount(totals.owedByUsDzd)} currencyLabel={featureI18n.t("featureCopy.debtsHubPage.currency")} />} valueClassName="text-bad" />
+        <HubStatCard label={featureI18n.t("featureCopy.debtsHubPage.accountCount")} value={String(rows.length)} />
       </div>
 
       {/* Filter bar */}
@@ -152,12 +153,12 @@ export function DebtsHubPage({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>الطرف</TableHead>
-              <TableHead>النوع</TableHead>
-              <TableHead>الهاتف</TableHead>
-              <TableHead>عدد الحسابات</TableHead>
-              <TableHead>الرصيد</TableHead>
-              <TableHead>الإجراء</TableHead>
+              <TableHead>{featureI18n.t("featureCopy.debtsHubPage.party")}</TableHead>
+              <TableHead>{featureI18n.t("featureCopy.debtsHubPage.type")}</TableHead>
+              <TableHead>{featureI18n.t("featureCopy.debtsHubPage.phone")}</TableHead>
+              <TableHead>{featureI18n.t("featureCopy.debtsHubPage.accountCount")}</TableHead>
+              <TableHead>{featureI18n.t("featureCopy.debtsHubPage.balance")}</TableHead>
+              <TableHead>{featureI18n.t("featureCopy.debtsHubPage.action")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -176,7 +177,7 @@ export function DebtsHubPage({
                     }
                   >
                     <TableCell className="font-medium">{row.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{row.type === "worker" ? "عامل داخلي" : "طرف خارجي"}</TableCell>
+                    <TableCell className="text-muted-foreground">{row.type === "worker" ? featureI18n.t("featureCopy.debtsHubPage.internalWorker") : featureI18n.t("featureCopy.debtsHubPage.externalParty")}</TableCell>
                     <TableCell><bdi dir="ltr">{row.phone}</bdi></TableCell>
                     <TableCell>{row.caseCount}</TableCell>
                     <TableCell>
@@ -185,7 +186,7 @@ export function DebtsHubPage({
                           {balance.phrase}
                         </span>
                         <span className={`font-mono text-sm ${balance.textClassName}`.trim()} dir="ltr">
-                          <CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel="دج" />
+                          <CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel={featureI18n.t("featureCopy.debtsHubPage.currency")} />
                         </span>
                       </div>
                     </TableCell>
@@ -202,8 +203,7 @@ export function DebtsHubPage({
                           }
                         }}
                       >
-                        فتح التفاصيل
-                      </Button>
+                        {featureI18n.t("featureCopy.debtsHubPage.openDetails")}</Button>
                     </TableCell>
                   </TableRow>
                 )

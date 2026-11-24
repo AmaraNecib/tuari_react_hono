@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { SalaryReference as ExactSalaryReference, type Role } from "@tuari/contracts"
@@ -571,7 +572,7 @@ export function EmployeeEditPage({
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Field label={t("detailPages.employee.editPage.salaryAmount")} error={errors.salaryReferenceAmount}>
               <CurrencyInput
-                currencyLabel="دج"
+                currencyLabel={featureI18n.t("featureCopy.employeeEditPage.currency")}
                 placeholder="10000"
                 value={state.salaryReferenceAmount}
                 onChange={(event) => {

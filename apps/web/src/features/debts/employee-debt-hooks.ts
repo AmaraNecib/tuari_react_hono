@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Employee debt hooks for mutating employee debt data.
  */
@@ -19,13 +20,13 @@ import { showErrorToast, showSuccessToast } from "@/lib/toast"
 function requireEntitySuccess<T>(result: { success: boolean; message?: string; item?: T; error?: { message: string; code?: AppError["code"]; fieldErrors?: Array<{ field: string; message: string }> } }) {
   if (!result.success || !result.item) {
     throw new AppMutationError({
-      message: result.error?.message ?? "تعذر تنفيذ العملية.",
+      message: result.error?.message ?? featureI18n.t("featureCopy.employeeDebtHooks.operationError"),
       code: result.error?.code,
       fieldErrors: result.error?.fieldErrors,
     })
   }
 
-  return { item: result.item, message: result.message ?? "تم الحفظ بنجاح." }
+  return { item: result.item, message: result.message ?? featureI18n.t("featureCopy.employeeDebtHooks.saved") }
 }
 
 export function useCreateEmployeeDebtEntryMutation() {
@@ -48,7 +49,7 @@ export function useCreateEmployeeDebtEntryMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر تسجيل حساب الدين."))
+      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.employeeDebtHooks.registerError")))
     },
   })
 }

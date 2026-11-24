@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Warehouse details page for viewing and managing warehouse information.
  */
@@ -78,8 +79,8 @@ export function WarehouseDetailsPage({
           { id: "overview", label: t("detailPages.warehouse.overviewTab") },
           { id: "history", label: t("detailPages.warehouse.historyTab") },
           { id: "team", label: t("detailPages.warehouse.teamTab") },
-          { id: "items", label: "العناصر" },
-          { id: "transfers", label: "سجل التحويلات" },
+          { id: "items", label: featureI18n.t("featureCopy.warehouseDetailsPage.items") },
+          { id: "transfers", label: featureI18n.t("featureCopy.warehouseDetailsPage.transfers") },
         ]}
         onChange={onTabChange}
       />

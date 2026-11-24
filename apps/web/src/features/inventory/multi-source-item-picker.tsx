@@ -229,7 +229,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
                     <div className="min-w-0">
                       <span className="font-medium">{item.name}</span>
                       <span className="ms-2 text-ink-4">
-                        ({item.type === "ASSET" ? t("inventory.type.asset") : t("inventory.type.consumable", "استهلاكي")})
+                        ({item.type === "ASSET" ? t("inventory.type.asset") : t("inventory.type.consumable")})
                         — {item.quantity} {item.type === "CONSUMABLE" ? t("inventory.unit.pieces") : ""}
                       </span>
                     </div>
@@ -322,7 +322,7 @@ export function MultiSourceItemPicker({ items, onItemsChange }: MultiSourceItemP
 
           {/* Total */}
           <div className="flex items-center justify-end gap-2 border-t border-line/50 pt-2">
-            <span className="text-sm font-medium text-ink-4">{t("inventory.transfer.total", "الإجمالي")}:</span>
+            <span className="text-sm font-medium text-ink-4">{t("inventory.transfer.total")}:</span>
             <span className="text-lg font-display font-semibold tabular-nums">
               <CurrencyRun amount={totalAmount.toLocaleString("ar-DZ")} currencyLabel={t("common.currency")} />
             </span>

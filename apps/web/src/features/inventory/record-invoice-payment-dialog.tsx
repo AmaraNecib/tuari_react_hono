@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Record invoice payment dialog for recording payments against inventory invoices.
  */
@@ -83,14 +84,14 @@ export function RecordInvoicePaymentDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{t("inventory.payment.title")}</DialogTitle>
-          <DialogDescription>{invoiceDetail.group.supplierName || `الفاتورة ${invoiceDetail.group.invoiceNumber}`}</DialogDescription>
+          <DialogDescription>{invoiceDetail.group.supplierName || featureI18n.t("featureCopy.recordInvoicePaymentDialog.invoiceLabel", { value1: invoiceDetail.group.invoiceNumber })}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <p className="text-sm text-muted-foreground">{t("inventory.payment.remainingDebt")}</p>
             <p className={cn("mt-2 font-mono text-2xl font-semibold", remainingDebt > 0 ? "text-bad" : "text-good")} dir="ltr">
-              <CurrencyRun amount={remainingDebt.toFixed(2)} currencyLabel="دج" />
+              <CurrencyRun amount={remainingDebt.toFixed(2)} currencyLabel={featureI18n.t("featureCopy.recordInvoicePaymentDialog.currency")} />
             </p>
             {remainingDebt <= 0 && <p className="mt-1 text-xs text-good">{t("inventory.payment.fullyPaid")}</p>}
           </div>

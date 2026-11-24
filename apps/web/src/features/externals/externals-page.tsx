@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * External counterparties listing page.
  */
@@ -86,10 +87,10 @@ export function ExternalCounterpartiesPage({
                     </TableCell>
                     <TableCell className={balance.textClassName}>
                       <span className="block text-xs font-medium">{balance.phrase}</span>
-                      <span className="font-mono" dir="ltr"><CurrencyRun amount={balance.amount} currencyLabel="دج" /></span>
+                      <span className="font-mono" dir="ltr"><CurrencyRun amount={balance.amount} currencyLabel={featureI18n.t("featureCopy.externalsPage.currency")} /></span>
                     </TableCell>
                     <TableCell>
-                      {counterparty.totalAccountCount} {t("externalsPage.accountUnit")}{counterparty.openAccountCount ? `، ${counterparty.openAccountCount} ${t("externalsPage.openAccounts")}` : ""}
+                      {counterparty.totalAccountCount} {t("externalsPage.accountUnit")}{counterparty.openAccountCount ? featureI18n.t("featureCopy.externalsPage.balanceSeparator", { value1: counterparty.openAccountCount, value2: t("externalsPage.openAccounts") }) : ""}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{counterparty.note?.trim() || "—"}</TableCell>
                     <TableCell>

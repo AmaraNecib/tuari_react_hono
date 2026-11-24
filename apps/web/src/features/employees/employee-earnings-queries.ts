@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type {
   AppError,
@@ -43,7 +44,7 @@ function requireEarning(result: {
 }) {
   if (!result.success || !result.item) {
     throw new AppMutationError({
-      message: result.error?.message ?? "تعذر اعتماد الأجر.",
+      message: result.error?.message ?? featureI18n.t("featureCopy.employeeEarningsQueries.approvalError"),
       code: result.error?.code,
       fieldErrors: result.error?.fieldErrors,
     })

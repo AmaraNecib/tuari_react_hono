@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import "./employee-finance.css"
 import type { ReactNode } from "react"
 import { Button } from "@/components/ui/button"
@@ -88,8 +89,8 @@ export function EmployeeDetailsPage({
   const canAssignWorkplace = isWorker && employee.status === "ACTIVE"
   const managedProjectCountLabel = managedProjects.length > 0 ? `${managedProjects.length} ${t("detailPages.employee.projectUnit")}` : t("detailPages.employee.noManagedProjects")
   const managedWarehouseCountLabel = managedWarehouses.length > 0 ? `${managedWarehouses.length} ${t("detailPages.employee.warehouseUnit")}` : t("detailPages.employee.noManagedWarehouses")
-  const managedProjectNamesLabel = managedProjects.length > 0 ? managedProjects.join("، ") : t("detailPages.employee.noManagedProjectNames")
-  const managedWarehouseNamesLabel = managedWarehouses.length > 0 ? managedWarehouses.join("، ") : t("detailPages.employee.noManagedWarehouseNames")
+  const managedProjectNamesLabel = managedProjects.length > 0 ? managedProjects.join(featureI18n.t("featureCopy.employeeDetailsPage.listSeparator")) : t("detailPages.employee.noManagedProjectNames")
+  const managedWarehouseNamesLabel = managedWarehouses.length > 0 ? managedWarehouses.join(featureI18n.t("featureCopy.employeeDetailsPage.listSeparator")) : t("detailPages.employee.noManagedWarehouseNames")
   const hasExpandedNotes = (employee.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `employee-record-${employee.id}`
 
@@ -117,7 +118,7 @@ export function EmployeeDetailsPage({
           { id: "personal", label: t("detailPages.employee.personalTab") },
           { id: "history", label: t("detailPages.employee.historyTab") },
           { id: "finance", label: t("detailPages.employee.financeTab") },
-          ...(isWorker ? [{ id: "debts", label: "الديون" }] : []),
+          ...(isWorker ? [{ id: "debts", label: featureI18n.t("featureCopy.employeeDetailsPage.debts") }] : []),
         ]}
         onChange={onTabChange}
       />

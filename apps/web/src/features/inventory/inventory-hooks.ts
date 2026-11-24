@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { useInfiniteQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import type {
@@ -42,13 +43,13 @@ import { showErrorToast, showSuccessToast } from "@/lib/toast"
 function requireEntitySuccess<T>(result: { success: boolean; message?: string; item?: T; error?: { message: string; code?: AppError["code"]; fieldErrors?: Array<{ field: string; message: string }> } }) {
   if (!result.success || !result.item) {
     throw new AppMutationError({
-      message: result.error?.message ?? "تعذر تنفيذ العملية.",
+      message: result.error?.message ?? featureI18n.t("featureCopy.inventoryHooks.operationError"),
       code: result.error?.code,
       fieldErrors: result.error?.fieldErrors,
     })
   }
 
-  return { item: result.item, message: result.message ?? "تم الحفظ بنجاح." }
+  return { item: result.item, message: result.message ?? featureI18n.t("featureCopy.inventoryHooks.saved") }
 }
 
 /**
@@ -305,7 +306,7 @@ export function useCreateInventoryItemDefinitionMutation() {
 /**
  * useTransferInventoryAssetMutation() component.
  */
-      showErrorToast(buildErrorMessage(error, "تعذر إنشاء تعريف العنصر."))
+      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.definitionError")))
     },
   })
 }
@@ -338,7 +339,7 @@ export function useCreateInventoryInvoiceGroupMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر إنشاء الفاتورة."))
+      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.invoiceError")))
     },
 /**
  * useTransferInventoryConsumableMutation() component.
@@ -374,7 +375,7 @@ export function useTransferInventoryAssetMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر تحويل الأصل."))
+      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.assetTransferError")))
     },
   })
 }
@@ -434,7 +435,7 @@ export function useUpdateAssetChargeMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر تصحيح الاحتساب."))
+      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.chargeCorrectionError")))
     },
   })
 }
@@ -454,7 +455,7 @@ export function useVoidAssetChargeMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر إلغاء الاحتساب."))
+      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.chargeVoidError")))
     },
   })
 }
@@ -484,7 +485,7 @@ export function useTransferInventoryConsumableMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر تحويل الكمية."))
+      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.quantityTransferError")))
     },
   })
 }
@@ -533,7 +534,7 @@ export async function uploadInvoiceAttachments(invoiceGroupId: string, files: Fi
     | null
 
   if (!response.ok || !body || body.success === false) {
-    throw new Error(body && "error" in body && body.error?.message ? body.error.message : "تعذر رفع ملفات الفاتورة.")
+    throw new Error(body && "error" in body && body.error?.message ? body.error.message : featureI18n.t("featureCopy.inventoryHooks.uploadError"))
   }
 
   return body.items
@@ -562,7 +563,7 @@ export function useRecordInvoicePaymentMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر تسجيل الدفع."))
+      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.paymentError")))
     },
   })
 }
@@ -583,7 +584,7 @@ export function useCreateOutboundTransferMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر إنشاء التحويل الخارجي."))
+      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.outboundError")))
     },
   })
 }

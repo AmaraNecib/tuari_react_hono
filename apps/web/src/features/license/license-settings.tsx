@@ -135,7 +135,7 @@ export function LicenseSettings() {
               {t("license.warningTitle")}
             </p>
             <p className="mt-1 text-warning-foreground/80">
-              {t("license.warningDescription", "سيتم انتهاء صلاحية الترخيص خلال {{days}} يوم.", { days: data.daysRemaining })}
+              {t("license.warningDescription", { days: data.daysRemaining })}
             </p>
           </div>
         </div>
@@ -153,8 +153,8 @@ export function LicenseSettings() {
             </p>
             <p className="mt-1 text-warning-foreground/80">
               {data.status === "grace"
-                ? t("license.graceDescription", "متبقي {{days}} يوم من فترة التجربة.", { days: Math.max(0, data.daysRemaining) })
-                : t("license.expiredGraceDescription", "متبقي {{days}} يوم من فترة السماح. الرجاء تجديد الترخيص.", { days: Math.max(0, GRACE_PERIOD_DAYS + data.daysRemaining) })
+                ? t("license.graceDescription", { days: Math.max(0, data.daysRemaining) })
+                : t("license.expiredGraceDescription", { days: Math.max(0, GRACE_PERIOD_DAYS + data.daysRemaining) })
               }
             </p>
           </div>
@@ -209,7 +209,7 @@ export function LicenseSettings() {
             {data.validUntil && (
               <p className="text-sm text-muted-foreground">
                 {data.daysRemaining > 0
-                  ? t("license.daysRemaining", "متبقي {{days}} يوم", { days: data.daysRemaining })
+                  ? t("license.daysRemaining", { days: data.daysRemaining })
                   : t("license.expired")}
               </p>
             )}
@@ -230,7 +230,7 @@ export function LicenseSettings() {
             </p>
             {data.maxUsers > 0 && (
               <p className="text-sm text-muted-foreground">
-                {t("license.maxUsers", "الحد الأقصى {{count}} مستخدم", { count: data.maxUsers })}
+                {t("license.maxUsers", { count: data.maxUsers })}
               </p>
             )}
           </div>

@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { AppDate } from "@/components/app-date"
 /**
  * Record entry payment dialog for recording payments against debt entries.
@@ -97,7 +98,7 @@ export function RecordEntryPaymentDialog({
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">{t("debts.payment.openingBalance")}</span>
               <span className={cn("font-mono text-lg font-semibold", openingBalance.textClassName)} dir="ltr">
-                <CurrencyRun amount={formatDebtAmount(openingBalance.amount)} currencyLabel="دج" />
+                <CurrencyRun amount={formatDebtAmount(openingBalance.amount)} currencyLabel={featureI18n.t("featureCopy.recordEntryPaymentDialog.currency")} />
               </span>
             </div>
             <p className={cn("mt-1 text-xs font-medium", openingBalance.textClassName)}>{openingBalance.phrase}</p>
@@ -106,7 +107,7 @@ export function RecordEntryPaymentDialog({
               {entry.note?.trim() ? ` — ${entry.note.trim()}` : ""}
             </p>
             <p className="mt-2 text-xs text-warn">
-              {t("debts.payment.maxAmount")} {maxPaymentDisplay.phrase} <CurrencyRun amount={formatDebtAmount(maxPaymentDisplay.amount)} currencyLabel="دج" />
+              {t("debts.payment.maxAmount")} {maxPaymentDisplay.phrase} <CurrencyRun amount={formatDebtAmount(maxPaymentDisplay.amount)} currencyLabel={featureI18n.t("featureCopy.recordEntryPaymentDialog.currency")} />
             </p>
           </div>
 

@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { AppDate } from "@/components/app-date"
 /**
  * Outbound transfers listing page.
@@ -65,7 +66,7 @@ export function OutboundTransfersPage({ onCreate, onCreateV2 }: { onCreate: () =
     <div className="space-y-6">
       <Surface variant="panel">
         <PageSurfaceContent>
-          <PageHeader title={t("inventoryPage.transfers.title")} description={t("inventoryPage.transfers.description")} action={<PageActionGroup><Button variant="outline" onClick={onCreateV2}>النسخة الجديدة (V2)</Button><Button onClick={onCreate}>{t("inventoryPage.transfers.createButton")}</Button></PageActionGroup>} />
+          <PageHeader title={t("inventoryPage.transfers.title")} description={t("inventoryPage.transfers.description")} action={<PageActionGroup><Button variant="outline" onClick={onCreateV2}>{featureI18n.t("featureCopy.outboundTransfersPage.newVersion")}</Button><Button onClick={onCreate}>{t("inventoryPage.transfers.createButton")}</Button></PageActionGroup>} />
         </PageSurfaceContent>
       </Surface>
 

@@ -103,12 +103,12 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
   const handleSubmit = async () => {
     // Validate
     if (!counterpartyId) {
-      showErrorToast(t("validation.counterpartyRequired", "يرجى اختيار الطرف الخارجي"))
+      showErrorToast(t("validation.counterpartyRequired"))
       return
     }
 
     if (items.length === 0) {
-      showErrorToast(t("validation.itemsRequired", "يرجى إضافة عنصر واحد على الأقل"))
+      showErrorToast(t("validation.itemsRequired"))
       return
     }
 
@@ -352,7 +352,7 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder={t("common.noNotes", "لا توجد ملاحظات")}
+                placeholder={t("common.noNotes")}
                 className="min-h-20 rounded-xl border border-border bg-background px-3 py-2 text-sm"
               />
             </label>

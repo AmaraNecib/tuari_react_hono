@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { AppDate } from "@/components/app-date"
 /**
  * Consolidation dialog for combining multiple debt entries.
@@ -145,18 +146,17 @@ export function ConsolidationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>تجميد الديون</DialogTitle>
+          <DialogTitle>{featureI18n.t("featureCopy.consolidationDialog.title")}</DialogTitle>
           <DialogDescription>
-            اختر حركة افتتاحية من كل جانب لتجميدهما. سيتم إلغاء الحركتين الأصليتين وإنشاء رصيد افتتاحي جديد بالصافي.
-          </DialogDescription>
+            {featureI18n.t("featureCopy.consolidationDialog.description")}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5">
           {/* Payable side */}
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
-              {getDebtDirectionLabel(payableAccount.direction)} — رصيد الحساب:{" "}
-              <CurrencyRun amount={formatDebtAmount(payableDisplay.amount)} currencyLabel="دج" /> ({payableDisplay.phrase})
+              {getDebtDirectionLabel(payableAccount.direction)} {featureI18n.t("featureCopy.consolidationDialog.accountBalance")}{" "}
+              <CurrencyRun amount={formatDebtAmount(payableDisplay.amount)} currencyLabel={featureI18n.t("featureCopy.consolidationDialog.currency")} /> ({payableDisplay.phrase})
             </h4>
             {livePayableOpenings.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings")}</p>
@@ -193,7 +193,7 @@ export function ConsolidationDialog({
                         )}
                       </div>
                       <span className={cn("font-mono text-base font-semibold", entryBalance.textClassName)} dir="ltr">
-                        <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel="دج" />
+                        <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel={featureI18n.t("featureCopy.consolidationDialog.currency")} />
                       </span>
                     </button>
                   )
@@ -205,8 +205,8 @@ export function ConsolidationDialog({
           {/* Receivable side */}
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">
-              {getDebtDirectionLabel(receivableAccount.direction)} — رصيد الحساب:{" "}
-              <CurrencyRun amount={formatDebtAmount(receivableDisplay.amount)} currencyLabel="دج" /> ({receivableDisplay.phrase})
+              {getDebtDirectionLabel(receivableAccount.direction)} {featureI18n.t("featureCopy.consolidationDialog.accountBalance")}{" "}
+              <CurrencyRun amount={formatDebtAmount(receivableDisplay.amount)} currencyLabel={featureI18n.t("featureCopy.consolidationDialog.currency")} /> ({receivableDisplay.phrase})
             </h4>
             {liveReceivableOpenings.length === 0 ? (
               <p className="text-xs text-muted-foreground">{t("debts.consolidation.noOpenings")}</p>
@@ -240,7 +240,7 @@ export function ConsolidationDialog({
                         )}
                       </div>
                       <span className={cn("font-mono text-base font-semibold", entryBalance.textClassName)} dir="ltr">
-                        <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel="دج" />
+                        <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel={featureI18n.t("featureCopy.consolidationDialog.currency")} />
                       </span>
                     </button>
                   )
@@ -257,7 +257,7 @@ export function ConsolidationDialog({
                   <CurrencyProse text={consolidationPreview?.label ?? ""} />
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  <CurrencyRun amount={formatDebtAmount(payableAmount)} currencyLabel="دج" /> ← <CurrencyRun amount={formatDebtAmount(receivableAmount)} currencyLabel="دج" />
+                  <CurrencyRun amount={formatDebtAmount(payableAmount)} currencyLabel={featureI18n.t("featureCopy.consolidationDialog.currency")} /> ← <CurrencyRun amount={formatDebtAmount(receivableAmount)} currencyLabel={featureI18n.t("featureCopy.consolidationDialog.currency")} />
                 </span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -269,13 +269,12 @@ export function ConsolidationDialog({
 
         <DialogFooter className="flex gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            إلغاء
-          </Button>
+            {featureI18n.t("featureCopy.consolidationDialog.cancel")}</Button>
           <Button
             disabled={!canConsolidate || consolidateMutation.isPending}
             onClick={handleSubmit}
           >
-            {consolidateMutation.isPending ? "جاري التجميد..." : "تأكيد التجميد"}
+            {consolidateMutation.isPending ? featureI18n.t("featureCopy.consolidationDialog.pending") : featureI18n.t("featureCopy.consolidationDialog.confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>
