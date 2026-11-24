@@ -206,7 +206,7 @@ fn wait_for_api_ready_with(
         match child.try_wait() {
             Ok(Some(status)) => {
                 return Err(format!(
-                    "The local API stopped before startup completed ({status}). Check {}.",
+                    "The local API stopped before startup completed ({status}). Check day-folder JSONL logs in {}.",
                     server_log_path.display()
                 ));
             }
@@ -224,7 +224,7 @@ fn wait_for_api_ready_with(
 
         if Instant::now() >= deadline {
             return Err(format!(
-                "Timed out while starting the local API. Check {}.",
+                "Timed out while starting the local API. Check day-folder JSONL logs in {}.",
                 server_log_path.display()
             ));
         }
@@ -284,6 +284,16 @@ pub(super) fn configure_api_child_environment(command: &mut Command, development
     }
 }
 
+fn initialize_license_for_api(root: &Path) -> Result<crate::license::LicenseManager, crate::error::RustCoreError> {
+    let result = crate::license::LicenseManager::initialize(root);
+    if result.is_ok() {
+        crate::event_sink::emit("info", "license validation complete", None);
+    } else {
+        crate::event_sink::emit("error", "license validation failed", None);
+    }
+    result
+}
+
 fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
     let temp_dir = prepare_api_temp_directory(&resolve_private_runtime_dir(app)?)?;
@@ -291,12 +301,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     let runtime_secrets = load_runtime_secrets(app)?;
     cleanup_stale_api_processes(app);
 
-    let log_file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&server_log_path)
-        .map_err(|error| error.to_string())?;
-    let error_log_file = log_file.try_clone().map_err(|error| error.to_string())?;
+    let logs_dir = server_log_path.parent().ok_or("Invalid log directory")?;
 
     let mut command = if cfg!(debug_assertions) {
         let mut cmd = Command::new(if cfg!(target_os = "windows") {
@@ -346,8 +351,9 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .env("APP_DB_PATH", app_db_path.as_os_str())
         .env("APP_ATTACHMENTS_ROOT", attachments_root.as_os_str())
         .env("DATABASE_URL", to_sqlite_url(&app_db_path))
-        .stdout(Stdio::from(log_file))
-        .stderr(Stdio::from(error_log_file));
+        .env("TUARI_LOGS_DIR", logs_dir)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
 
     // Point the API sidecar at the user-editable config.json (may not exist
     // yet — the API treats a missing file as "use env/defaults").
@@ -364,7 +370,7 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
     // the API and support can tell WHY licensing failed instead of seeing an
     // omitted variable. The API keeps its own fail-closed default regardless.
     if let Ok(tuari_dir) = resolve_tuari_dir(app) {
-        match crate::license::LicenseManager::initialize(&tuari_dir) {
+        match initialize_license_for_api(&tuari_dir) {
             Ok(manager) => {
                 let env_map = manager.to_env_map();
                 for (key, value) in &env_map {
@@ -387,7 +393,18 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
         .spawn()
         .map_err(|error| format!("Failed to launch API process: {error}"))?;
 
-    ensure_ready(&mut child, |child| wait_for_api_ready(child, &server_log_path))?;
+    if let Some(mut stderr) = child.stderr.take() {
+        std::thread::spawn(move || {
+            let mut buffer = [0_u8; 8192];
+            loop {
+                match stderr.read(&mut buffer) {
+                    Ok(0) | Err(_) => break,
+                    Ok(size) => crate::event_sink::emit("error", "API stderr", Some(String::from_utf8_lossy(&buffer[..size]).into_owned())),
+                }
+            }
+        });
+    }
+    ensure_ready(&mut child, |child| wait_for_api_ready(child, logs_dir))?;
     Ok(child)
 }
 
@@ -396,6 +413,19 @@ fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn license_caller_records_success_and_invalid_license_failure() {
+        let root = std::env::temp_dir().join(format!("tuari-license-events-{}", rand::random::<u64>()));
+        create_dir_all(&root).unwrap();
+        let events = crate::event_sink::capture_events(|| {
+            assert!(initialize_license_for_api(&root).is_ok());
+            std::fs::write(root.join("license.lic"), "invalid-license").unwrap();
+            assert!(initialize_license_for_api(&root).is_err());
+        });
+        assert!(events.iter().any(|e| e["message"] == "license validation complete" && e["severity"] == "info" && e["lifecycle"] == true));
+        assert!(events.iter().any(|e| e["message"] == "license validation failed" && e["severity"] == "error"));
+        std::fs::remove_dir_all(root).unwrap();
+    }
     fn child() -> Child {
         Command::new(std::env::current_exe().unwrap())
             .args(["--exact", "api_runtime::tests::sleeping_child", "--nocapture"])
@@ -446,7 +476,7 @@ mod tests {
             .spawn().unwrap();
         child.wait().unwrap();
         let error = wait_for_api_ready_with(
-            &mut child, Path::new("api-server.log"), Duration::ZERO, || true,
+            &mut child, Path::new("data/logs"), Duration::ZERO, || true,
         ).unwrap_err();
         assert!(error.contains("stopped before startup completed"), "{error}");
     }
@@ -455,9 +485,11 @@ mod tests {
     fn readiness_deadline_stops_a_live_child() {
         let mut child = child();
         let error = ensure_ready(&mut child, |child| wait_for_api_ready_with(
-            child, Path::new("api-server.log"), Duration::ZERO, || false,
+            child, Path::new("data/logs"), Duration::ZERO, || false,
         )).unwrap_err();
         assert!(error.contains("Timed out"), "{error}");
+        assert!(error.contains("day-folder JSONL logs in data/logs"), "{error}");
+        assert!(!error.contains("api-server.log"), "{error}");
         assert_stopped(&mut child);
     }
 
