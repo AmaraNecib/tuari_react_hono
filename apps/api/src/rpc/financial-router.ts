@@ -43,7 +43,10 @@ export function createFinancialRouter(
   const os = implement(financialContract).$context<RpcContext>();
   return os.router({
     manualSettlement: createManualSettlementRouter(manualSettlement, middleware),
-    metadata: os.metadata.handler(middleware.queryAuth(async () => getMetadata())),
+    metadata: os.metadata.handler(middleware.queryAuth(async () => ({
+      ...await getMetadata(),
+      capabilities: { manualSettlement: manualSettlement !== undefined },
+    }))),
     debts: createExactDebtsRouter(services.finance, middleware),
     invoices: createExactInvoicesRouter(services.invoices, middleware),
     inventory: createExactInventoryRouter(services.inventory, middleware),

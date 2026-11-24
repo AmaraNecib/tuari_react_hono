@@ -19,6 +19,7 @@ it("leaves default startup schema unchanged and all manual endpoints unavailable
     if (!owner.success) throw new Error("Bootstrap failed");
     const session = await (await root.auth.$context).internalAdapter.createSession(owner.item.id);
     const client = createRouterClient(createRouter(root), { context: createRpcContext(new Headers({ authorization: `Bearer ${session.token}` }), root.sessionService) }) as AppClient;
+    expect(await client.financial.metadata()).toHaveProperty("capabilities.manualSettlement", false);
     const pair = { externalCounterpartyId: "party", payableOriginalEntryId: "p", receivableOriginalEntryId: "r", currency: "DZD" as const, amountDzd: "1.00" };
     await expect(client.financial.manualSettlement.preview(pair)).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
     await expect(client.financial.manualSettlement.history({ externalCounterpartyId: "party" })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });

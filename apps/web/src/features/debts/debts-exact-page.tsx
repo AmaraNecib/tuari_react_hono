@@ -38,8 +38,9 @@ function amount(value: string, positive: boolean) {
 }
 
 /** Authenticated debt ledger using the exact financial client. */
-export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees, manualSettlementClient }: { manualSettlementClient?: ManualSettlementClient; client: ExactDebtsClient; parties: ExactDebtPartyOption[]; scopedParty?: ExactDebtPartyOption; payrollEmployees?: ExactDebtPartyOption[] }) {
+export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees, manualSettlementSupported = false, manualSettlementClient: suppliedManualClient }: { manualSettlementSupported?: boolean; manualSettlementClient?: ManualSettlementClient; client: ExactDebtsClient; parties: ExactDebtPartyOption[]; scopedParty?: ExactDebtPartyOption; payrollEmployees?: ExactDebtPartyOption[] }) {
   const { t } = useTranslation()
+  const manualSettlementClient = manualSettlementSupported ? suppliedManualClient : undefined
   const partySettlements = scopedParty?.partyType === "EXTERNAL_COUNTERPARTY" && manualSettlementClient
   const [selected, setSelected] = useState<string | null>(null)
   const [tab, setTab] = useState("ledger")

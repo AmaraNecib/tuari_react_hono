@@ -25,6 +25,8 @@ it("binds manual settlement to a real authenticated session and retains original
   const headers = new Headers({ authorization: `Bearer ${session.token}` });
   const client = createRouterClient(createRouter(root), { context: createRpcContext(headers, root.sessionService) }) as AppClient;
   const anonymous = createRouterClient(createRouter(root), { context: createRpcContext(new Headers(), root.sessionService) }) as AppClient;
+  expect(await client.financial.metadata()).toHaveProperty("capabilities.manualSettlement", true);
+  await expect(anonymous.financial.metadata()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   const party = await client.externalCounterpartiesCreate({ fullName: "Pair", phoneNumber: "0555123456" });
   if (!party.success) throw new Error("Party creation failed");
   const finance = root.financial.services.finance;
@@ -48,6 +50,8 @@ it("binds manual settlement to a real authenticated session and retains original
   const operatorSession = await adapter.createSession(operatorId);
   const cachedContext = createRpcContext(new Headers({ authorization: `Bearer ${operatorSession.token}` }), root.sessionService);
   const operator = createRouterClient(createRouter(root), { context: cachedContext }) as AppClient;
+  // Capability metadata does not widen the existing bootstrap-owner shell gate.
+  await expect(operator.financial.metadata()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   expect((await operator.financial.manualSettlement.candidates({ externalCounterpartyId: party.item.id })).sort((a,b) => a.direction.localeCompare(b.direction))).toEqual([
     expect.objectContaining({ id: pair.payableOriginalEntryId, direction: "PAYABLE", remainingDzd: "100.00" }),
     expect.objectContaining({ id: pair.receivableOriginalEntryId, direction: "RECEIVABLE", remainingDzd: "60.00" }),

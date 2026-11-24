@@ -37,7 +37,7 @@ describe("injected exact debt page", () => {
   it("shares balances across one tab bar and preserves settlement drafts across tabs", async () => {
     const f = fixture(); f.unmount()
     const manual = { candidates: vi.fn().mockResolvedValue([]), history: vi.fn().mockResolvedValue({items:[],nextOffset:null}) }
-    render(<QueryClientProvider client={f.query}><ExactDebtsPage client={f.client as ExactDebtsClient} parties={[party]} scopedParty={party} manualSettlementClient={manual as never} /></QueryClientProvider>)
+    render(<QueryClientProvider client={f.query}><ExactDebtsPage client={f.client as ExactDebtsClient} parties={[party]} scopedParty={party} manualSettlementSupported manualSettlementClient={manual as never} /></QueryClientProvider>)
     await screen.findByRole("button", {name:/المورد أحمد · مستحقات علينا/})
     expect(screen.getAllByRole("tablist")).toHaveLength(1)
     expect(screen.queryByRole("textbox", {name:"بحث عن حساب"})).toBeNull()

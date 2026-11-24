@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 
 import { RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shared/record-page-frame"
 
+import { useCompositeWorkspaceQuery } from "@/features/app-shell/workspace-queries"
 import { ExactDebtsPage } from "@/features/debts/debts-exact-page"
 import { type ManualSettlementClient } from "@/features/debts/manual-settlement-panel"
 
@@ -22,6 +23,8 @@ export function ExternalCounterpartyDetailsPage({
   manualSettlementClient?: ManualSettlementClient
 }) {
   const { t } = useTranslation()
+  const metadata = useCompositeWorkspaceQuery({ enabled: Boolean(manualSettlementClient) })
+  const manualSettlementSupported = !metadata.isError && metadata.data?.capabilities?.manualSettlement === true
   return (
     <RecordPageFrame
       backHref="/externals"
@@ -35,7 +38,7 @@ export function ExternalCounterpartyDetailsPage({
         <RecordInfoCard label={t("externals.details.notes")} value={counterparty.note?.trim() || t("common.noNotes")} />
       </RecordInfoGrid>
 
-      <ExactDebtsPage manualSettlementClient={manualSettlementClient} client={debtClient} scopedParty={{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }} parties={[{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }]} />
+      <ExactDebtsPage manualSettlementSupported={manualSettlementSupported} manualSettlementClient={manualSettlementClient} client={debtClient} scopedParty={{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }} parties={[{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }]} />
     </RecordPageFrame>
   )
 }
