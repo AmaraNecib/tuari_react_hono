@@ -695,7 +695,8 @@ describe("HomeView workspace shell", () => {
       query = { ...query, isPending: false, isFetching: false, isError: true, error: new Error("تعذر الاتصال التجريبي") }
       fireEvent.change(input, { target: { value: "أح" } })
       expect(document.activeElement).toBe(input)
-      expect(screen.getByRole("alert").textContent).toContain("تعذر الاتصال التجريبي")
+      expect(screen.getByRole("alert").textContent).not.toContain("تعذر الاتصال التجريبي")
+      expect(screen.getByRole("alert").textContent).toMatch(/TUARI-[0-9A-F]{8}/)
       fireEvent.click(screen.getByRole("button", { name: "إعادة المحاولة" }))
       expect(refetch).toHaveBeenCalledTimes(1)
 

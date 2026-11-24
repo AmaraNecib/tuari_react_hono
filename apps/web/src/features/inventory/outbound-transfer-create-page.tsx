@@ -10,7 +10,7 @@ import { outboundPickUsage } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { showErrorToast } from "@/lib/toast"
+import { showValidationToast } from "@/lib/toast"
 import { ItemListEditor, type ItemEditorRow } from "./item-list-editor"
 import { useCreateOutboundTransferMutation, useInventoryExternalCounterpartiesQuery, useInventoryWarehousesQuery, useInventoryProjectsQuery } from "./inventory-hooks"
 
@@ -73,11 +73,11 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
   const handleSubmit = async () => {
     // Validate required fields
     if (!fromId) {
-      showErrorToast(featureI18n.t("featureCopy.outboundTransferCreatePage.sourceRequired"))
+      showValidationToast(featureI18n.t("featureCopy.outboundTransferCreatePage.sourceRequired"))
       return
     }
     if (!counterpartyId) {
-      showErrorToast(featureI18n.t("featureCopy.outboundTransferCreatePage.counterpartyRequired"))
+      showValidationToast(featureI18n.t("featureCopy.outboundTransferCreatePage.counterpartyRequired"))
       return
     }
 
@@ -105,12 +105,12 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
     }).filter((item) => item !== null)
 
     if (validationErrors.length > 0) {
-      showErrorToast(validationErrors.join("\n"))
+      showValidationToast(validationErrors.join("\n"))
       return
     }
 
     if (validatedItems.length === 0) {
-      showErrorToast(featureI18n.t("featureCopy.outboundTransferCreatePage.itemsRequired"))
+      showValidationToast(featureI18n.t("featureCopy.outboundTransferCreatePage.itemsRequired"))
       return
     }
 
@@ -118,7 +118,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
     if (debtAmount) {
       const debtValue = Number(debtAmount)
       if (!Number.isFinite(debtValue) || debtValue < 0) {
-        showErrorToast(featureI18n.t("featureCopy.outboundTransferCreatePage.invalidDebt"))
+        showValidationToast(featureI18n.t("featureCopy.outboundTransferCreatePage.invalidDebt"))
         return
       }
     }

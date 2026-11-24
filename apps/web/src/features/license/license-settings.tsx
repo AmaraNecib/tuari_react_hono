@@ -71,7 +71,7 @@ function getEditionIcon(edition: string) {
  */
 export function LicenseSettings() {
   const { t } = useTranslation()
-  const { data, isLoading, isError, refetch } = useLicenseStatus()
+  const { data, isLoading, isError, error, errorUpdatedAt, refetch } = useLicenseStatus()
 
   // ── Loading state ──
   if (isLoading) {
@@ -95,6 +95,8 @@ export function LicenseSettings() {
   if (isError || !data) {
     return (
       <LoadErrorSurface
+        error={error}
+        attempt={errorUpdatedAt}
         className="p-5"
         contentClassName="py-12"
         errorClassName="border-line"

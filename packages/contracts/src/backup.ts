@@ -67,6 +67,8 @@ export const setBackupsRootResultSchema = z.discriminatedUnion("success", [
   z.object({
     success: z.literal(false),
     error: z.string().min(1),
+    // Optional for compatibility with older servers; absent means operational failure.
+    reason: z.enum(["not_directory"]).optional(),
   }),
 ]);
 

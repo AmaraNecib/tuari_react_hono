@@ -38,8 +38,8 @@ export function useGenerateRecoveryKeysMutation() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: recoveryKeyPoolQueryKey })
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -54,8 +54,8 @@ export function useRevokeRecoveryKeyMutation() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: recoveryKeyPoolQueryKey })
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }

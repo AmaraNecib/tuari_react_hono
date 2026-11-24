@@ -1,3 +1,4 @@
+import { extractAuthErrorMessage } from "@/lib/auth-api"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -247,7 +248,7 @@ export function SettingsSection({
       setNewPassword("")
       setFieldErrors({})
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("toasts.actionError")
+      const message = extractAuthErrorMessage(error, t("toasts.actionError"))
       if (message.includes(t("auth.errors.invalidPassword")) || message.toLowerCase().includes("invalid password")) {
         setFieldErrors({ currentPassword: t("toasts.accountPasswordCurrentInvalid") })
         return
@@ -451,7 +452,7 @@ export function SettingsSection({
                         </span>
                       </>
                     )}
-                    {checkUpdateState.status === 'error' && settingsUpdateError}
+                    {checkUpdateState.status === 'error' && (checkUpdateState.message || settingsUpdateError)}
                     {checkUpdateState.status === 'idle' && null}
                   </p>
                 </div>

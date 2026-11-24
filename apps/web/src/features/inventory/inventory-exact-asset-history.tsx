@@ -1,3 +1,4 @@
+import { FailureCode } from "@/lib/failure-code"
 import type { ExactInventoryCharge, ExactInventoryClient } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 import { AppDate } from "@/components/app-date"
@@ -10,7 +11,7 @@ export function ExactAssetHistory({ client, assetUnitId }: { client: ExactInvent
   const history = useExactAssetHistory(client, assetUnitId)
   if (history.isPending) return <p role="status">{t("inventory.chargeHistory.loading")}</p>
   if (history.isError || history.data?.assetUnitId !== assetUnitId) return (
-    <div role="alert">{t("inventory.chargeHistory.loadError")} <Button variant="outline" onClick={() => void history.refetch()}>{t("common.retry")}</Button></div>
+    <div role="alert">{t("inventory.chargeHistory.loadError")}<FailureCode error={history.error ?? history.data} attempt={history.errorUpdatedAt} /> <Button variant="outline" onClick={() => void history.refetch()}>{t("common.retry")}</Button></div>
   )
   if (!history.data.items.length) return <p>{t("inventory.chargeHistory.empty")}</p>
   return <div className="space-y-3">{history.data.items.map(charge => <Placement key={charge.id} charge={charge} />)}</div>

@@ -11,7 +11,7 @@ import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { showErrorToast } from "@/lib/toast"
+import { showErrorToast, showValidationToast } from "@/lib/toast"
 
 import {
   uploadInvoiceAttachments,
@@ -262,11 +262,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     ? t("inventory.invoiceCreate.noLines")
     : validateLines(lines)
 
-  /** Upload failures name the file/reason when the server provided one. */
-  function resolveUploadError(error: unknown) {
-    return error instanceof Error && error.message.trim().length > 0
-      ? error.message
-      : t("inventory.invoiceCreate.attachmentsUploadFailed")
+  function resolveUploadError() {
+    return t("inventory.invoiceCreate.attachmentsUploadFailed")
   }
 
   async function handleSubmit() {
@@ -284,7 +281,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     const attachmentValidationMessage = validateInvoiceAttachmentFiles(files, attachmentMessages)
     if (attachmentValidationMessage) {
       setAttachmentError(attachmentValidationMessage)
-      showErrorToast(attachmentValidationMessage)
+      showValidationToast(attachmentValidationMessage)
       return
     }
 
@@ -360,13 +357,12 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       setUploadingAttachments(true)
       try {
         await uploadInvoiceAttachments(groupId, files)
-      } catch (error) {
+      } catch {
         // The invoice was already saved — surface the failed upload (the
         // creation mutation's onError does NOT cover this separate step) and
         // stay on the page in the retry state: the user must see the partial
         // save and be able to retry the upload against the same invoice id.
-        // The server message already names the offending file.
-        showErrorToast(resolveUploadError(error))
+        showErrorToast(resolveUploadError())
         return
       } finally {
         setUploadingAttachments(false)
@@ -392,8 +388,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     setUploadingAttachments(true)
     try {
       await uploadInvoiceAttachments(createdInvoiceGroupId, files)
-    } catch (error) {
-      showErrorToast(resolveUploadError(error))
+    } catch {
+      showErrorToast(resolveUploadError())
       return
     } finally {
       setUploadingAttachments(false)

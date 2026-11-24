@@ -5,7 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { createElement, type ReactNode } from "react"
 
-import { AppMutationError, useCreateDebtAccountMutation, useCreateEmployeesBatchMutation, useResetWorkspaceMutation, useSaveEmployeeMutation } from "./workspace-mutations"
+import * as feedback from "@/lib/toast"
+import { i18n } from "@/i18n"
+import { AppMutationError, useUpdateAccountSettingsMutation, useCreateDebtAccountMutation, useCreateEmployeesBatchMutation, useResetWorkspaceMutation, useSaveEmployeeMutation } from "./workspace-mutations"
 import { workspaceDomainQueryPrefix, workspaceQueryPrefix } from "./workspace-keys"
 
 const rpcMocks = vi.hoisted(() => ({ employeesBatchCreate: vi.fn(), employeesSave: vi.fn(), debtAccountsCreate: vi.fn() }))
@@ -20,6 +22,32 @@ vi.mock("@/lib/orpc-client", async () => {
       debtAccountsCreate: rpcMocks.debtAccountsCreate,
     },
   }
+})
+
+describe("workspace failure feedback", () => {
+  function wrapper({ children }: { children: ReactNode }) {
+    const queryClient = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
+    return createElement(QueryClientProvider, { client: queryClient }, children)
+  }
+  it("does not record account preflight validation as an operational incident", async () => {
+    const validation = vi.spyOn(feedback, "showValidationToast").mockImplementation(() => "validation")
+    const operational = vi.spyOn(feedback, "showErrorToast").mockImplementation(() => "operational")
+    const { result, unmount } = renderHook(() => useUpdateAccountSettingsMutation(), { wrapper })
+    try {
+      await expect(result.current.mutateAsync({})).rejects.toThrow(i18n.t("toasts.accountNoChanges"))
+      expect(validation).toHaveBeenCalledExactlyOnceWith(i18n.t("toasts.accountNoChanges"))
+      expect(operational).not.toHaveBeenCalled()
+    } finally { unmount(); vi.restoreAllMocks() }
+  })
+  it("owns one sanitized notification for a rejected financial operation", async () => {
+    const operational = vi.spyOn(feedback, "showErrorToast").mockImplementation(() => "operational")
+    rpcMocks.debtAccountsCreate.mockRejectedValueOnce(new Error("private-financial-host-path"))
+    const { result, unmount } = renderHook(() => useCreateDebtAccountMutation(), { wrapper })
+    try {
+      await expect(result.current.mutateAsync({ partyType: "EMPLOYEE", partyId: "employee-1", direction: "OWED_TO_US" } as never)).rejects.toThrow("private-financial-host-path")
+      expect(operational).toHaveBeenCalledExactlyOnceWith(i18n.t("toasts.actionError"))
+    } finally { unmount(); vi.restoreAllMocks() }
+  })
 })
 
 describe("useResetWorkspaceMutation — snapshot-aware reset (issue #276)", () => {

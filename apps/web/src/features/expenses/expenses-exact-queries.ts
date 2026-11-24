@@ -44,7 +44,7 @@ function useExactExpenseMutation<Input>(client: ExactExpensesClient, action: "cr
       await queryClient.invalidateQueries({ queryKey: [...prefix(client), getCachedSessionUserId(queryClient)] })
       showSuccessToast(i18n.t(`expenses.toasts.${action}`))
     },
-    onError: error => showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError")),
+    onError: () => showErrorToast(i18n.t("toasts.actionError")),
   })
 }
 

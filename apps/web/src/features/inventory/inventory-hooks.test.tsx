@@ -52,6 +52,7 @@ import {
   useTransferInventoryAssetMutation,
   useTransferInventoryConsumableMutation,
 } from "./inventory-hooks"
+import * as toast from "@/lib/toast"
 import { orpc } from "@/lib/orpc-client"
 
 function makeQueryClient() {
@@ -86,6 +87,20 @@ describe("inventory item definitions — list freshness after create", () => {
       message: "تم إنشاء التعريف بنجاح.",
       item: CREATED_ITEM,
     })
+  })
+
+  it("shows a typed field correction without logging an operational error", async () => {
+    const validate = vi.spyOn(toast, "showValidationToast").mockReturnValue("validation-toast")
+    const incident = vi.spyOn(toast, "showErrorToast").mockReturnValue("error-toast")
+    try {
+      mocks.create.mockResolvedValueOnce({ success: false, error: { code: "VALIDATION", message: "internal exception", fieldErrors: [{ field: "name", message: "اختر اسمًا آخر" }] } })
+      const { result } = renderHook(() => useCreateInventoryItemDefinitionMutation(), { wrapper: wrapper(makeQueryClient()) })
+      await act(async () => {
+        await expect(result.current.mutateAsync({ name: "صنف", itemType: "CONSUMABLE", unit: "قطعة", description: null })).rejects.toThrow()
+      })
+      expect(validate).toHaveBeenCalledWith("اختر اسمًا آخر")
+      expect(incident).not.toHaveBeenCalled()
+    } finally { validate.mockRestore(); incident.mockRestore() }
   })
 
   it("shows the created item in the list after the create mutation resolves", async () => {

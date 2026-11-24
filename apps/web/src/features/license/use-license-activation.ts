@@ -1,3 +1,4 @@
+import { supportFailureMessage } from "@/lib/error-correlation"
 import { i18n as featureI18n } from "@/i18n"
 import { useState, useCallback } from "react"
 
@@ -36,6 +37,7 @@ export function useLicenseActivation() {
       const { invoke } = await import("@tauri-apps/api/core")
       const result = await invoke<LicenseActivationResult>("activate_license", { key })
 
+      if (!result.success) throw new Error("License activation rejected")
       setState({
         isActivating: false,
         result,
@@ -43,13 +45,8 @@ export function useLicenseActivation() {
       })
 
       return result
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : featureI18n.t("featureCopy.useLicenseActivation.activationError")
+    } catch {
+      const message = supportFailureMessage(featureI18n.t("featureCopy.useLicenseActivation.activationError"))
 
       // Store error in state — parent reads from errorMessage prop
       setState({

@@ -25,8 +25,8 @@ import { i18n } from "@/i18n"
 import { rpcClient } from "@/lib/orpc-client"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 
-function reportError(error: unknown) {
-  showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+function reportError() {
+  showErrorToast(i18n.t("toasts.actionError"))
 }
 
 export function useExpensesListQuery(

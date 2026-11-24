@@ -1,3 +1,4 @@
+import { FailureCode } from "@/lib/failure-code"
 import { useId, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
@@ -37,14 +38,14 @@ export function InventoryLocationContentsSection({ warehouseId, projectId }: { w
       <SurfaceHeader title={t("inventory.location.currentItems")} description={t("inventory.location.currentItemsDescription")} />
       {contents.isPending ? <p role="status">{t("exactCommerce.loadingStock")}</p> : contents.isError ? (
         <div role="alert">
-          {t("exactCommerce.loadStockError")}
+          {t("exactCommerce.loadStockError")}<FailureCode error={contents.error} attempt={contents.errorUpdatedAt} />
           <Button variant="outline" onClick={() => void contents.refetch()}>{t("common.retry")}</Button>
         </div>
       ) : (
         <>
           {contextError ? (
             <div role="alert">
-              {t("exactCommerce.loadStockError")}
+              {t("exactCommerce.loadStockError")}<FailureCode error={context.find(query => query.isError)?.error} attempt={context.find(query => query.isError)?.errorUpdatedAt} />
               <Button variant="outline" onClick={() => { context.forEach(query => { void query.refetch() }) }}>{t("common.retry")}</Button>
             </div>
           ) : contextPending ? <p role="status">{t("exactCommerce.loadingStock")}</p> : null}
@@ -98,7 +99,7 @@ export function InventoryLocationContentsSection({ warehouseId, projectId }: { w
           parties={parties}
           source={source}
           pending={action.isPending}
-          error={action.isError ? t("exactCommerce.commandError") : null}
+          error={action.isError ? <>{t("exactCommerce.commandError")}<FailureCode error={action.error} attempt={action.submittedAt} /></> : null}
           close={() => setMovement(false)}
           submit={async command => { await action.mutateAsync(command) }}
         />

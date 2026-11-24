@@ -6,6 +6,11 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { createAppQueryClient } from "@/lib/query-client";
 import { ar } from "@/i18n/resources/ar";
 import { BackupSettings } from "./backup-settings";
+import { supportFailureMessage } from "@/lib/error-correlation";
+vi.mock("@/lib/error-correlation", async (original) => {
+  const actual = await original<typeof import("@/lib/error-correlation")>();
+  return { ...actual, supportFailureMessage: vi.fn(actual.supportFailureMessage) };
+});
 import type { BackupStatus } from "@tuari/contracts";
 
 // ─── Mock the hooks module ─────────────────────────────────────
@@ -216,7 +221,9 @@ describe("BackupSettings", () => {
     const panel = screen.getByTestId("backup-status");
     expect(panel.getAttribute("data-state")).toBe("failed");
     expect(screen.queryByText("فشلت آخر محاولة نسخ احتياطي")).toBeTruthy();
-    expect(screen.queryByText("EACCES: permission denied")).toBeTruthy();
+    expect(screen.queryByText("EACCES: permission denied")).toBeNull();
+    expect(screen.getByText(/تعذر إكمال النسخ الاحتياطي أو تنظيف النسخ القديمة/)).toBeTruthy();
+    expect(screen.queryByText(/تعذر حفظ مجلد النسخ الاحتياطي/)).toBeNull();
   });
 
   it("saves a valid path and reports success", async () => {
@@ -243,6 +250,7 @@ describe("BackupSettings", () => {
     loaded(createStatus());
     const mutateAsync = mutationResolving({
       success: false,
+      reason: "not_directory",
       error: "the path is a file, not a folder: /mnt/usb/file.txt",
     });
 
@@ -257,7 +265,20 @@ describe("BackupSettings", () => {
     });
     expect(
       screen.queryByText("the path is a file, not a folder: /mnt/usb/file.txt"),
-    ).toBeTruthy();
+    ).toBeNull();
+    expect(screen.getByText("المسار المحدد ملف وليس مجلدًا. اختر مجلدًا للنسخ الاحتياطي.")).toBeTruthy();
+    expect(screen.queryByText(/TUARI-/)).toBeNull();
+    expect(supportFailureMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, "persistence_failed"])("keeps unclassified/persistence failure operational (%s)", async (reason) => {
+    loaded(createStatus());
+    mutationResolving({ success: false, error: "private config path", reason });
+    renderWithQuery(<BackupSettings />);
+    fireEvent.click(screen.getByRole("button", { name: "حفظ المسار" }));
+    await waitFor(() => expect(screen.getByText(/TUARI-[0-9A-F]{8}/)).toBeTruthy());
+    expect(screen.queryByText("private config path")).toBeNull();
+    expect(supportFailureMessage).toHaveBeenCalledTimes(1);
   });
 
   it("does not call the server for an empty path", () => {
@@ -314,7 +335,8 @@ describe("BackupSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "حفظ المسار" }));
 
     await waitFor(() => {
-      expect(screen.queryByText("network down")).toBeTruthy();
+      expect(screen.queryByText("network down")).toBeNull();
+      expect(screen.getByText(/TUARI-[0-9A-F]{8}/)).toBeTruthy();
     });
   });
 
@@ -370,7 +392,7 @@ describe("BackupSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "اختيار مجلد..." }));
 
     await waitFor(() => {
-      expect(screen.queryByText("تعذر فتح منتقي المجلدات.")).toBeTruthy();
+      expect(screen.queryByText(/تعذر فتح منتقي المجلدات\./)).toBeTruthy();
     });
   });
 

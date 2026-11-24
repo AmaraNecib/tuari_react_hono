@@ -1,3 +1,4 @@
+import { FailureCode } from "@/lib/failure-code"
 import type { ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -13,6 +14,7 @@ export type TableQuery = {
   isPending: boolean
   isError: boolean
   isFetching: boolean
+  errorUpdatedAt?: number
   error: unknown
   refetch: () => Promise<unknown>
 }
@@ -37,6 +39,7 @@ export function TableQueryState({ query, resource, children }: {
           <p className="font-medium text-destructive">{t("tableQuery.failed", { resource })}</p>
           <p className="max-w-prose whitespace-normal break-words text-ink-2">
             <bdi>{extractRpcIssueMessage(query.error) ?? t("tableQuery.reason")}</bdi>
+            <FailureCode error={query.error} attempt={query.errorUpdatedAt} />
           </p>
           {hasData && <p className="text-ink-3">{t("tableQuery.retained")}</p>}
           <Button size="sm" variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}>
