@@ -69,6 +69,16 @@ there is no English resource file. EN acceptance requires resolving that
 existing product-language boundary, not silently changing global language
 policy as part of a diagnostics screen.
 
+## Browser-discovered routing correction
+
+The first actual Playwright probe clicked Diagnostics but the account form
+remained visible. The button existed, but the useUrlTab allowlist omitted
+diagnostics. Add that tab to the URL state allowlist. The failed browser run
+and video are preserved locally. The next run reached the Diagnostics heading;
+its remaining failure was the probe expecting the definite article in the
+Arabic heading, corrected by using the stable diagnostics-title locator.
+These are distinct failed-attempt boundaries, not passing UI acceptance.
+
 ## ZIP boundary
 
 No native ZIP dependency is declared. Existing Windows packaging uses trusted

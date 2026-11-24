@@ -272,7 +272,7 @@ export function SettingsSection({
   const licenseStatus = useLicenseStatus()
 
   const [activeTab, setActiveTab] = useUrlTab(
-    ['account', 'appearance', 'licensing', 'system', 'security', 'about'] as const,
+    ['account', 'appearance', 'licensing', 'system', 'diagnostics', 'security', 'about'] as const,
     'account'
   )
 
