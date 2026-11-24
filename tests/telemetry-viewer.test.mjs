@@ -24,6 +24,11 @@ test('folder normalization retains offsets, chunks, metadata and truncated-tail 
   assert.deepEqual(data.events[0], { level: 'error', timestamp: event.timestamp, signature: event.message, operation: 'save', errorCode: 42, duration: 12, source: 'app', count: 1 });
   assert.equal(data.warnings.length, 1);
 });
+test('normalization accepts producer duration attributes', async () => {
+  const root = await folder();
+  await writeFile(join(root, '2026-01-02/app.1.log'), JSON.stringify({ ...event, attributes: { duration: 37 } }) + '\n');
+  assert.equal((await parseInput(root)).events[0].duration, 37);
+});
 test('zip uses the folder parser; report is local and escapes hostile event strings', async () => {
   const root = await folder();
   const zip = buildZip([{ name: 'manifest.json', data: Buffer.from('{"version":"618"}') }, { name: '2026-01-02/app.1.log', data: Buffer.from(line) }]);

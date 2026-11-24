@@ -87,3 +87,9 @@ The regression exercises collisions at all three output positions, verifies orig
 The existing selector expands the whole #330 branch to full scope because package.json changed. That full application suite remains CI-final. The specific local gap is static file:// execution, which the application browser suite does not cover. Only the two viewer browser cases run locally.
 
 The accepted redaction seam remains mandatory. Emission projects metadata and categorizes free-text signatures rather than sharing raw message or operation strings. HTML is a minimal pipeline carrier, not the React dashboard owned by #331.
+
+## PR #620 hosted findings
+
+At 5f39a548, Greptile reported that normalization ignored the producer's `attributes.duration` field and the viewer tests did not run in CI. Normalization now accepts `attributes.duration` after the existing `durationMs` field, and the regression uses the producer event shape. Focused proof: `node --test tests/telemetry-viewer.test.mjs`.
+
+CI wiring proposal only; `.github/workflows/ci.yml` and required checks are unchanged pending owner approval. Add the Node viewer test command to the existing `lint` job. Add the browser test to the existing Chromium-enabled `test-e2e` job, with the viewer path included in the E2E selector so the job runs when those files change. Preserve all existing `CI acceptance` dependencies and protection requirements.

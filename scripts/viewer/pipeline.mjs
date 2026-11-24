@@ -89,7 +89,7 @@ function normalize(value, source) {
   const attrs = value.attributes ?? {};
   const rawCode = attrs.errorId ?? value.errorCode;
   const code = typeof rawCode === 'number' ? rawCode : typeof rawCode === 'string' ? Number.parseInt(rawCode.match(/^[A-Za-z][A-Za-z0-9_-]*-([0-9a-f]{8})$/i)?.[1] ?? '', 16) : null;
-  const duration = attrs.durationMs ?? value.durationMs;
+  const duration = attrs.durationMs ?? attrs.duration ?? value.durationMs ?? value.duration;
   return { level, timestamp, signature: typeof value.signature === 'string' ? value.signature : typeof value.message === 'string' ? value.message : '', operation: typeof attrs.operation === 'string' ? attrs.operation : null, errorCode: Number.isSafeInteger(code) && code >= 0 && code <= 0xffffffff ? code : null, duration: Number.isFinite(duration) && duration >= 0 ? duration : null, source, count: Number.isSafeInteger(value.count) && value.count > 0 ? value.count : 1 };
 }
 async function parseFolder(root) {
