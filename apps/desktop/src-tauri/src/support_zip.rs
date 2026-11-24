@@ -118,6 +118,8 @@ mod tests {
         ])
         .is_err());
         assert!(encode(&[("manifest.json".into(), vec![0; MAX_BYTES + 1])]).is_err());
+        // Payload fits exactly, but ZIP headers make the final archive too large.
+        assert!(encode(&[("manifest.json".into(), vec![0; MAX_BYTES])]).is_err());
         assert!(encode(
             &(0..1025)
                 .map(|_| ("config.json".into(), vec![]))
