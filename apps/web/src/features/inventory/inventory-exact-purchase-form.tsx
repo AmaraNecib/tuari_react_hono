@@ -26,7 +26,7 @@ function percentagePaid(gross: string, percent: number): Money {
   return finalizeLines([ExactLine.fromDerived(Money.parse(gross), Quantity.parse(denominator), Quantity.parse(numerator))])
 }
 const fresh = (definition?: InventoryItemDefinition): Line => ({ key: crypto.randomUUID(), itemId: definition?.id ?? "", quantity: "1", mode: "unit-price", value: "", assetName: definition?.name ?? "", location: "" })
-export function ExactInventoryPurchaseForm({ definitions, locations, parties, pending, error, close, submit, onCreated }: { definitions: InventoryItemDefinition[]; locations: ExactInventoryLocation[]; parties: ExactInventoryParty[]; pending: boolean; error: string | null; close(): void; submit(command: ExactInventoryAction): Promise<unknown>; onCreated?(id: string): void }) {
+export function ExactInventoryPurchaseForm({ definitions, locations, parties, pending, error, close, submit, onCreated }: { definitions: InventoryItemDefinition[]; locations: ExactInventoryLocation[]; parties: ExactInventoryParty[]; pending: boolean; error: import("react").ReactNode; close(): void; submit(command: ExactInventoryAction): Promise<unknown>; onCreated?(id: string): void }) {
   const { t, i18n } = useTranslation()
   const attachments = usePurchaseAttachmentDraft()
   const saveReasonId = useId()

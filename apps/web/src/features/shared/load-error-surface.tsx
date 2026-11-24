@@ -7,6 +7,7 @@
  * retained-data guards) stays in the callers; this component only renders.
  */
 import type { ComponentType, ReactNode } from "react"
+import { FailureCode } from "@/lib/failure-code"
 import { TriangleAlert } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -19,6 +20,8 @@ export type LoadErrorSurfaceIcon = ComponentType<{ className?: string }>
 export type LoadErrorSurfaceProps = {
   /** Show the centered loading state instead of the error state. */
   isLoading?: boolean
+  error?: unknown
+  attempt?: number
   /**
    * Render the error state (icon + message + retry). Defaults to true when
    * not loading, so callers can render the surface only from their error
@@ -66,6 +69,8 @@ const DEFAULT_MESSAGE_CLASS = "max-w-md text-sm leading-6 text-foreground"
  */
 export function LoadErrorSurface({
   isLoading = false,
+  error,
+  attempt,
   isError,
   message,
   loadingLabel,
@@ -97,7 +102,7 @@ export function LoadErrorSurface({
     <Surface className={cn("border-destructive/25 p-6", className, errorClassName)} role="alert" variant="panel">
       <div className={cn(DEFAULT_CONTENT_CLASS, contentClassName)}>
         <Icon aria-hidden="true" className={cn(DEFAULT_ICON_CLASS, iconClassName)} />
-        <p className={cn(DEFAULT_MESSAGE_CLASS, messageClassName)}>{message}</p>
+        <p className={cn(DEFAULT_MESSAGE_CLASS, messageClassName)}>{message}<FailureCode error={error} attempt={attempt} /></p>
         <Button type="button" variant="outline" onClick={onRetry}>
           {retryLabel}
         </Button>

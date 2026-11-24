@@ -21,7 +21,7 @@ export function ExternalCounterpartiesRoute({ client, counterparties, onCreate, 
     return <LoadErrorSurface isLoading message={t("debts.loadError")} loadingLabel={featureI18n.t("featureCopy.externalCounterpartiesRoute.loading")} retryLabel={t("common.retry")} onRetry={() => void summary.refetch()} />
   }
   if (summary.isError) {
-    return <LoadErrorSurface message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void summary.refetch()} />
+    return <LoadErrorSurface error={summary.error} attempt={summary.errorUpdatedAt} message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void summary.refetch()} />
   }
 
   return <ExternalCounterpartiesPage

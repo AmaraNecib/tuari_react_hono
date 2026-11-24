@@ -110,7 +110,7 @@ describe("exact equipment and outbound interactions", () => {
     expect((within(dialog).getByRole("button", { name: "تأكيد الحفظ" }) as HTMLButtonElement).disabled).toBe(true)
     expect((within(dialog).getByRole("button", { name: "رجوع" }) as HTMLButtonElement).disabled).toBe(true)
     await act(async () => { rejectVoid(new Error("Synthetic server failure")) })
-    expect((await screen.findByRole("alert")).textContent).toBe("تعذر حفظ العملية أو تأكيد نتيجتها. تحقق من البيانات وأعد المحاولة.")
+    expect((await screen.findByRole("alert")).textContent).toMatch(/^تعذر حفظ العملية أو تأكيد نتيجتها\. تحقق من البيانات وأعد المحاولة\.TUARI-[0-9A-F]{8}$/)
     expect((within(dialog).getByRole("button", { name: "تأكيد الحفظ" }) as HTMLButtonElement).disabled).toBe(false)
   })
 })
