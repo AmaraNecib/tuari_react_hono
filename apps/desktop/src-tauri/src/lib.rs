@@ -1039,6 +1039,23 @@ struct UpdateApplyResult {
     message: String,
 }
 
+#[derive(serde::Serialize)]
+struct RecentDiagnosticEvents {
+    events: Vec<crate::event_sink::DiagnosticEvent>,
+    status: crate::event_sink::DiagnosticStatus,
+}
+
+#[tauri::command]
+fn get_recent_diagnostic_events() -> RecentDiagnosticEvents {
+    let (events, status) = crate::event_sink::recent_diagnostics();
+    RecentDiagnosticEvents { events, status }
+}
+
+#[tauri::command]
+fn record_ui_failure(id: u32) {
+    crate::event_sink::record_ui_failure(id);
+}
+
 #[tauri::command]
 fn get_current_version() -> Result<String, String> {
     Ok(env!("CARGO_PKG_VERSION").to_string())
@@ -1991,6 +2008,8 @@ pub fn run() {
             check_for_updates,
             apply_update,
             get_current_version,
+            get_recent_diagnostic_events,
+            record_ui_failure,
             start_update_download,
             cancel_update_download,
             restart_app,
