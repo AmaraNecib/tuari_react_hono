@@ -34,6 +34,67 @@ async function openAccount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(query => query.clear()); setMoneyGrouping(true) })
 describe("injected exact debt page", () => {
+  it("preserves account and creation drafts across tabs", async () => {
+    const { client } = fixture()
+    await openAccount()
+    expect(screen.getByRole("tab", { name: "القيود والمدفوعات" }).getAttribute("aria-selected")).toBe("true")
+    fireEvent.click(screen.getByRole("tab", { name: "اختيار أو إنشاء حساب" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "سبب الدين" }), { target: { value: "draft" } })
+    fireEvent.click(screen.getByRole("tab", { name: "التسوية وسجلها" }))
+    expect(screen.getByText("لا توجد تسويات مسجلة لهذا الحساب.")).toBeTruthy()
+    fireEvent.click(screen.getByRole("tab", { name: "اختيار أو إنشاء حساب" }))
+    expect((screen.getByRole("textbox", { name: "سبب الدين" }) as HTMLTextAreaElement).value).toBe("draft")
+    fireEvent.click(screen.getByRole("tab", { name: "القيود والمدفوعات" }))
+    expect(screen.getByRole("region", { name: "جدول حركات الدين" })).toBeTruthy()
+    expect(client.detail.mock.calls.every(([input]) => input.id === account.id)).toBe(true)
+  })
+
+  it("reaches all 61 accounts and entries, targets a later-page payment and clamps after shrink", async () => {
+    const { client, query } = fixture()
+    await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ })
+    const accounts = Array.from({ length: 61 }, (_, i) => ({ ...account, id: `account-${i}`, currentBalance: `${i + 1}.00` }))
+    const entries = Array.from({ length: 61 }, (_, i) => ({ ...entry, id: `entry-${i}`, postingSequence: i + 1 }))
+    client.summary.mockResolvedValue({ accounts, grossPayableDzd: "1891.00", grossReceivableDzd: "0.00" })
+    client.detail.mockImplementation(async (input: { id: string }) => ({ account: accounts.find(row => row.id === input.id), entries }))
+    await act(async () => { await query.invalidateQueries() })
+    const seenAccounts = new Set<string>()
+    const accountNav = screen.getByRole("navigation", { name: "حسابات الديون" })
+    const accountPages = screen.getByRole("navigation", { name: "صفحات الحسابات" })
+    await waitFor(() => expect(within(accountNav).getAllByRole("button")).toHaveLength(15))
+    for (let page = 0; page < 5; page++) {
+      for (const button of within(accountNav).getAllByRole("button")) seenAccounts.add(button.textContent!)
+      if (page < 4) fireEvent.click(within(accountPages).getByRole("button", { name: "التالي" }))
+    }
+    expect(seenAccounts.size).toBe(61)
+    fireEvent.click(within(accountNav).getByRole("button"))
+    await screen.findByRole("region", { name: "جدول حركات الدين" })
+    const seenEntries = new Set<string>()
+    const entryPages = screen.getByRole("navigation", { name: "صفحات الحركات" })
+    for (let page = 0; page < 7; page++) {
+      document.querySelectorAll("[data-entry-id]").forEach(row => seenEntries.add(row.getAttribute("data-entry-id")!))
+      if (page < 6) fireEvent.click(within(entryPages).getByRole("button", { name: "التالي" }))
+    }
+    expect(seenEntries.size).toBe(61)
+    fireEvent.click(screen.getByRole("button", { name: "تسجيل دفعة" }))
+    const dialog = await screen.findByRole("dialog")
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "مبلغ الدفعة" }), { target: { value: "0.10" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأكيد الحفظ" }))
+    await waitFor(() => expect(client.pay).toHaveBeenCalledTimes(1))
+    expect(client.pay.mock.calls[0]?.[0]).toMatchObject({ debtEntryId: "entry-0", amountDzd: "0.10" })
+    client.summary.mockResolvedValue({ accounts: [accounts[60]], grossPayableDzd: "61.00", grossReceivableDzd: "0.00" })
+    client.detail.mockResolvedValue({ account: accounts[60], entries: [entries[0]] })
+    await act(async () => { await query.invalidateQueries() })
+    expect(within(accountNav).getAllByRole("button")).toHaveLength(1)
+    expect(document.querySelectorAll("[data-entry-id]")).toHaveLength(1)
+    await waitFor(() => expect((within(screen.getByRole("navigation", { name: "صفحات الحركات" })).getByRole("button", { name: "السابق" }) as HTMLButtonElement).disabled).toBe(true))
+    fireEvent.change(screen.getByRole("textbox", { name: "بحث عن حساب" }), { target: { value: "missing" } })
+    expect(within(accountNav).queryAllByRole("button", { name: /المورد أحمد/ })).toHaveLength(0)
+    fireEvent.change(screen.getByRole("textbox", { name: "بحث عن حساب" }), { target: { value: "أحمد" } })
+    expect(within(accountNav).getAllByRole("button")).toHaveLength(1)
+    client.detail.mockResolvedValue({ account: accounts[60], entries })
+    await act(async () => { await query.invalidateQueries() })
+    await waitFor(() => expect(document.querySelectorAll("[data-entry-id]")).toHaveLength(10))
+  })
   it("resolves active page, ledger and dialog copy from Arabic resources", async () => {
     const replacements = {
       title: "عنوان مترجم للاختبار",
@@ -52,7 +113,9 @@ describe("injected exact debt page", () => {
       for (const { key, value } of originals) i18n.addResource("ar", "translation", key, value)
       fixture()
       expect(screen.getByRole("heading", { name: replacements.title })).toBeTruthy()
+      fireEvent.click(screen.getByRole("tab", { name: "اختيار أو إنشاء حساب" }))
       expect(screen.getByRole("heading", { name: replacements.createTitle })).toBeTruthy()
+      fireEvent.click(screen.getByRole("tab", { name: "القيود والمدفوعات" }))
       fireEvent.click(await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ }))
       const ledger = await screen.findByRole("region", { name: replacements.entriesTable })
       expect(within(ledger).getByText(replacements.opening)).toBeTruthy()
@@ -134,6 +197,7 @@ describe("injected exact debt page", () => {
     expect(within(ledger).queryByRole("button", { name: "تسجيل دفعة" })).toBeNull()
     expect(within(ledger).queryByRole("button", { name: "تصحيح المبلغ" })).toBeNull()
     expect(within(ledger).queryByRole("button", { name: "إلغاء الحركة" })).toBeNull()
+    fireEvent.click(screen.getByRole("tab", { name: "التسوية وسجلها" }))
     expect((screen.getByRole("button", { name: "تسوية الحساب بالكامل" }) as HTMLButtonElement).disabled).toBe(true)
   })
   it("submits localized payment as canonical text, with per-obligation maximum and first-click full amount", async () => {
@@ -306,6 +370,7 @@ describe("injected exact debt page", () => {
     const { client } = fixture()
     await openAccount()
     for (const [button, method, value] of [["تصحيح المبلغ", "correct", "90071992547409.92"], ["إلغاء الحركة", "void", null], ["إضافة حركة", "post", "-0.01"], ["تسوية الحساب بالكامل", "settle", null]] as const) {
+      if (method === "settle") fireEvent.click(screen.getByRole("tab", { name: "التسوية وسجلها" }))
       fireEvent.click(screen.getByRole("button", { name: button }))
       const dialog = await screen.findByRole("dialog")
       if (value) fireEvent.change(within(dialog).getByRole("textbox", { name: /المبلغ المتفق عليه|مبلغ الحركة/ }), { target: { value } })
@@ -322,6 +387,7 @@ describe("injected exact debt page", () => {
   })
   it("keeps omitted opening distinct from explicit zero and sends the selected direction", async () => {
     const { client } = fixture()
+    fireEvent.click(screen.getByRole("tab", { name: "اختيار أو إنشاء حساب" }))
     fireEvent.change(screen.getByRole("textbox", { name: "سبب الدين" }), { target: { value: "حساب دون افتتاح" } })
     fireEvent.change(screen.getByRole("combobox", { name: "اتجاه الحساب" }), { target: { value: "RECEIVABLE" } })
     fireEvent.click(screen.getByRole("button", { name: "حفظ الحساب" }))

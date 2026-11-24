@@ -382,6 +382,17 @@ export const ar = {
       }
     },
     exactDebts: {
+      workflows: "مسارات حساب الدين",
+      ledgerTab: "القيود والمدفوعات",
+      accountsTab: "اختيار أو إنشاء حساب",
+      settlementTab: "التسوية وسجلها",
+      partyTab: "معلومات الطرف",
+      selectAccount: "اختر حساباً لعرض حركاته",
+      selectHelp: "اختر حساباً من القائمة أعلاه، أو افتح تبويب اختيار أو إنشاء حساب.",
+      noSettlements: "لا توجد تسويات مسجلة لهذا الحساب.",
+      liveStatus: "مسجلة",
+      voidStatus: "ملغاة",
+      pageCount: "{{start}}–{{end}} من {{total}} · الصفحة {{page}} من {{pages}}",
       pay: "تسجيل دفعة",
       correct: "تصحيح المبلغ المتفق عليه",
       void: "إلغاء الحركة",

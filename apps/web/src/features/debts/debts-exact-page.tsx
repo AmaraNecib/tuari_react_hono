@@ -9,7 +9,8 @@ import { NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Surface } from "@/features/shared/page-primitives"
-import { MoneyValue } from "@/features/shared/money-value"
+import { AmountDisplay as MoneyValue, DataTable, EmptyState, PageHeader, Pagination, SectionHeader, StatCard, StatusBadge, paginate } from "@/components/ui"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { parseLocalizedMoneyInput } from "@/features/shared/exact-money-input"
 import { getCachedSessionUserId } from "@/features/app-shell/workspace-keys"
 import { Money, sumMoneyHistory } from "@tuari/contracts"
@@ -37,6 +38,7 @@ function amount(value: string, positive: boolean) {
 export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees }: { client: ExactDebtsClient; parties: ExactDebtPartyOption[]; scopedParty?: ExactDebtPartyOption; payrollEmployees?: ExactDebtPartyOption[] }) {
   const { t } = useTranslation()
   const [selected, setSelected] = useState<string | null>(null)
+  const [tab, setTab] = useState("ledger")
   const [accountPage, setAccountPage] = useState(1)
   const [entryPage, setEntryPage] = useState(1)
   const [search, setSearch] = useState("")
@@ -80,27 +82,42 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
   }))
   const scopedPayableDzd = scopedGross("PAYABLE")
   const scopedReceivableDzd = scopedGross("RECEIVABLE")
-  const shownAccounts = matchingAccounts.slice((accountPage - 1) * 25, accountPage * 25)
-  const shownEntries = detail.data?.entries.slice().reverse().slice((entryPage - 1) * 25, entryPage * 25) ?? []
+  const accountPaging = paginate(matchingAccounts, accountPage, 15)
+  const orderedEntries = (detail.data?.entries ?? []).slice().sort((a, b) => b.entryDate.localeCompare(a.entryDate) || b.postingSequence - a.postingSequence)
+  const entryPaging = paginate(orderedEntries, entryPage, 10)
+  // Commit clamps to state as well as the visible slice. A later refetch that
+  // grows the dataset must not resurrect a page discarded by an earlier shrink.
+  if (accountPage !== accountPaging.page) setAccountPage(accountPaging.page)
+  if (entryPage !== entryPaging.page) setEntryPage(entryPaging.page)
+  const shownAccounts = accountPaging.rows
+  const shownEntries = entryPaging.rows
+  const pagingProps = (paging: typeof accountPaging | typeof entryPaging, label: string, onPageChange: (page: number) => void) => ({ ...paging, label, onPageChange, previousLabel: t("exactDebts.previous"), nextLabel: t("exactDebts.next"), countLabel: t("exactDebts.pageCount", { start: paging.start, end: paging.end, total: paging.total, page: paging.page, pages: paging.pages }) })
   return <main dir="rtl" className="min-w-0 space-y-6" aria-label={t("exactDebts.ledgerLabel")}>
-    <header><h1 className="text-2xl font-semibold">{t("exactDebts.title")}</h1><p className="mt-1 text-sm text-muted-foreground">{t("exactDebts.description")}</p></header>
+    <PageHeader title={t("exactDebts.title")} description={t("exactDebts.description")} />
     {summary.isPending ? <p role="status">{t("exactDebts.loadingAccounts")}</p> : summary.isError ? <div role="alert">{t("exactDebts.accountsError")} <Button variant="outline" onClick={() => void summary.refetch()}>{t("exactDebts.retry")}</Button></div> : <>
       <div className="flex flex-wrap gap-x-10 gap-y-4 border-y border-border py-4">
-        <div className="max-w-full overflow-x-auto"><p className="mb-1 text-sm text-muted-foreground">{t("exactDebts.payable")}</p><MoneyValue exact aggregate value={scopedParty ? scopedPayableDzd : summary.data.grossPayableDzd} currencyLabel={t("exactDebts.currency")} variant="detail" /></div>
-        <div className="max-w-full overflow-x-auto"><p className="mb-1 text-sm text-muted-foreground">{t("exactDebts.receivable")}</p><MoneyValue exact aggregate value={scopedParty ? scopedReceivableDzd : summary.data.grossReceivableDzd} currencyLabel={t("exactDebts.currency")} variant="detail" /></div>
+        <StatCard label={t("exactDebts.payable")} value={<MoneyValue aggregate value={scopedParty ? scopedPayableDzd : summary.data.grossPayableDzd} currencyLabel={t("exactDebts.currency")} variant="detail" />} />
+        <StatCard label={t("exactDebts.receivable")} value={<MoneyValue aggregate value={scopedParty ? scopedReceivableDzd : summary.data.grossReceivableDzd} currencyLabel={t("exactDebts.currency")} variant="detail" />} />
       </div>
       <label className="block text-sm">{t("exactDebts.search")}<input aria-label={t("exactDebts.search")} className="mt-2 h-10 w-full rounded-xl border border-border bg-background px-3" value={search} onChange={event => { setSearch(event.target.value); setAccountPage(1) }} /></label>
-      <nav aria-label={t("exactDebts.accounts")} className="flex flex-wrap gap-2">
-        {shownAccounts.map(row => <Button key={row.id} disabled={mutation.isPending} variant={row.id === selected ? "default" : "outline"} className="h-auto min-h-11 max-w-full flex-wrap py-2" onClick={() => { setSelected(row.id); setEntryPage(1); setAction(null); mutation.reset() }}>
+      <nav aria-label={t("exactDebts.accounts")} className="flex max-h-48 flex-wrap gap-2 overflow-y-auto border-b border-border pb-3">
+        {shownAccounts.map(row => <Button key={row.id} aria-pressed={row.id === selected} disabled={mutation.isPending} variant={row.id === selected ? "default" : "outline"} className="h-auto min-h-11 max-w-full flex-wrap py-2" onClick={() => { setSelected(row.id); setEntryPage(1); setTab("ledger"); setAction(null); mutation.reset() }}>
           {partyNames.get(row.workerId ?? row.externalCounterpartyId ?? "") ?? t("exactDebts.unknownParty")} · {row.direction === "PAYABLE" ? t("exactDebts.payable") : t("exactDebts.receivable")} <MoneyValue exact value={row.currentBalance} currencyLabel={t("exactDebts.currency")} />
         </Button>)}
-        {!scopedAccounts.length && <p>{t("exactDebts.emptyAccounts")}</p>}
+        {!matchingAccounts.length && <EmptyState title={t("exactDebts.emptyAccounts")} description={t("exactDebts.selectHelp")} action={{ label: t("exactDebts.accountsTab"), onClick: () => setTab("accounts") }} />}
       </nav>
-      {matchingAccounts.length > 25 && <div className="flex items-center gap-3" aria-label={t("exactDebts.accountPages")}><Button variant="outline" disabled={accountPage === 1} onClick={() => setAccountPage(page => page - 1)}>{t("exactDebts.previous")}</Button><span>{accountPage}</span><Button variant="outline" disabled={accountPage * 25 >= matchingAccounts.length} onClick={() => setAccountPage(page => page + 1)}>{t("exactDebts.next")}</Button></div>}
+      <Pagination {...pagingProps(accountPaging, t("exactDebts.accountPages"), setAccountPage)} />
     </>}
-    {(!scopedParty || scopedParty.partyType === "INTERNAL_WORKER") && <EmployeePayrollDebtSection employees={payrollEmployees ?? scopedParties.filter(row => row.partyType === "INTERNAL_WORKER")} scopedParty={scopedParty} />}
+    <Tabs value={tab} onValueChange={value => setTab(String(value))}>
+    <TabsList aria-label={t("exactDebts.workflows")} className="max-w-full overflow-x-auto">
+      <TabsTrigger value="ledger">{t("exactDebts.ledgerTab")}</TabsTrigger>
+      <TabsTrigger value="accounts">{t("exactDebts.accountsTab")}</TabsTrigger>
+      <TabsTrigger value="settlement">{t("exactDebts.settlementTab")}</TabsTrigger>
+      <TabsTrigger value="party">{t("exactDebts.partyTab")}</TabsTrigger>
+    </TabsList>
+    <TabsContent value="accounts">
     <Surface className="min-w-0 p-5" variant="card">
-      <h2 className="mb-4 text-lg font-semibold">{t("exactDebts.createTitle")}</h2>
+      <SectionHeader className="mb-4" title={t("exactDebts.createTitle")} />
       <form className="grid min-w-0 gap-4 md:grid-cols-2" onSubmit={event => {
         event.preventDefault()
         if (!canCreate || !chosenParty) return
@@ -115,12 +132,15 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
         <div><Button type="submit" disabled={!canCreate || mutation.isPending}>{t("exactDebts.saveAccount")}</Button></div>
       </form>
     </Surface>
+    </TabsContent>
+    <TabsContent value="ledger">
+    {!detailAccountId && <EmptyState title={t("exactDebts.selectAccount")} description={t("exactDebts.selectHelp")} />}
     {detailAccountId && (detail.isPending ? <p role="status">{t("exactDebts.loadingEntries")}</p> : detail.isError ? <div role="alert">{t("exactDebts.entriesError")} <Button variant="outline" onClick={() => void detail.refetch()}>{t("exactDebts.retry")}</Button></div> : account && <Surface className="min-w-0 p-5" variant="card">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <div><h2 className="text-lg font-semibold">{t("exactDebts.entriesTitle")} {account.direction === "PAYABLE" ? t("exactDebts.payable") : t("exactDebts.receivable")}</h2><p className="mt-1"><MoneyValue exact value={account.currentBalance} currencyLabel={t("exactDebts.currency")} variant="detail" /></p></div>
-        <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "post" })}>{t("exactDebts.post")}</Button><Button disabled={mutation.isPending || !detail.data.entries.some(row => row.remainingDzd !== null && row.remainingDzd !== "0.00" && !row.producerType && !row.targetEntryId && !row.correctionOfEntryId)} onClick={() => open({ kind: "settle" })}>{t("exactDebts.settle")}</Button></div>
+        <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "post" })}>{t("exactDebts.post")}</Button></div>
       </div>
-      <div className="max-w-full overflow-x-auto" tabIndex={0} role="region" aria-label={t("exactDebts.entriesTable")}>
+      <DataTable label={t("exactDebts.entriesTable")} pagination={pagingProps(entryPaging, t("exactDebts.entryPages"), setEntryPage)}>
         <Table><TableHeader><TableRow><TableHead>{t("exactDebts.typeDate")}</TableHead><TableHead>{t("exactDebts.amount")}</TableHead><TableHead>{t("exactDebts.balanceAfter")}</TableHead><TableHead>{t("exactDebts.remaining")}</TableHead><TableHead>{t("exactDebts.auditActions")}</TableHead></TableRow></TableHeader><TableBody>
           {shownEntries.map(row => <TableRow key={row.id} data-entry-id={row.id} className={row.status === "VOIDED" ? "opacity-65" : undefined}>
             <TableCell><div>{t(entryLabel[row.entryType])}{row.correctionOfEntryId ? t("exactDebts.correctionSuffix") : ""}{row.status === "VOIDED" ? t("exactDebts.voidSuffix") : ""}</div><div className="mt-1 text-xs text-muted-foreground"><AppDate value={row.entryDate} includeTime timeStyle="medium" /></div></TableCell>
@@ -136,9 +156,23 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
             </TableCell>
           </TableRow>)}
         </TableBody></Table>
-      </div>
-      {detail.data.entries.length > 25 && <div className="mt-4 flex items-center gap-3" aria-label={t("exactDebts.entryPages")}><Button variant="outline" disabled={entryPage === 1} onClick={() => setEntryPage(page => page - 1)}>{t("exactDebts.previous")}</Button><span>{entryPage}</span><Button variant="outline" disabled={entryPage * 25 >= detail.data.entries.length} onClick={() => setEntryPage(page => page + 1)}>{t("exactDebts.next")}</Button></div>}
+      </DataTable>
     </Surface>)}
+    </TabsContent>
+    <TabsContent value="settlement" className="space-y-4">
+      <SectionHeader title={t("exactDebts.settlementTab")} description={t("exactDebts.settleHelp")} />
+      {account && detailAccountId ? <>
+        <Button disabled={mutation.isPending || !detail.data?.entries.some(row => row.remainingDzd !== null && row.remainingDzd !== "0.00" && !row.producerType && !row.targetEntryId && !row.correctionOfEntryId)} onClick={() => open({ kind: "settle" })}>{t("exactDebts.settle")}</Button>
+        <ul className="max-h-96 space-y-3 overflow-auto">{orderedEntries.filter(row => row.entryType === "SETTLEMENT").map(row => <li key={row.id} className="flex flex-wrap items-center gap-3 border-b border-border py-3"><AppDate value={row.entryDate} /><MoneyValue signed value={row.signedAmountDzd} currencyLabel={t("exactDebts.currency")} /><StatusBadge label={t(row.status === "VOIDED" ? "exactDebts.voidStatus" : "exactDebts.liveStatus")} tone={row.status === "VOIDED" ? "bad" : "good"} /><span>{row.note} {row.actorLabel}</span></li>)}</ul>
+        {!orderedEntries.some(row => row.entryType === "SETTLEMENT") && <EmptyState title={t("exactDebts.noSettlements")} description={t("exactDebts.settleHelp")} />}
+      </> : <EmptyState title={t("exactDebts.selectAccount")} description={t("exactDebts.selectHelp")} />}
+    </TabsContent>
+    <TabsContent value="party" className="space-y-4">
+      <SectionHeader title={t("exactDebts.partyTab")} />
+      {account ? <p>{partyNames.get(account.workerId ?? account.externalCounterpartyId ?? "") ?? t("exactDebts.unknownParty")}</p> : <p>{scopedParty?.label ?? t("exactDebts.selectAccount")}</p>}
+      {(!scopedParty || scopedParty.partyType === "INTERNAL_WORKER") && <EmployeePayrollDebtSection employees={payrollEmployees ?? scopedParties.filter(row => row.partyType === "INTERNAL_WORKER")} scopedParty={scopedParty} />}
+    </TabsContent>
+    </Tabs>
     {notice && <p role="status" className="text-sm text-foreground">{notice}</p>}
     {mutation.isError && !action && <p role="alert" className="text-sm text-destructive">{mutation.error.message}</p>}
     {action && detailAccountId && <DebtActionDialog key={`${detailAccountId}-${action.kind}-${"entry" in action ? action.entry.id : "account"}`} action={action} accountId={detailAccountId} canOpen={!detail.data?.entries.length} canAdvance={account?.partyType === "INTERNAL_WORKER" && account.direction === "RECEIVABLE"} pending={mutation.isPending} error={mutation.isError ? mutation.error.message : null} onClose={() => { if (!mutation.isPending) setAction(null) }} onSubmit={execute} />}
