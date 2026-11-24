@@ -42,11 +42,15 @@ test('CI E2E shell runs full and affected scopes without silently dropping cover
   assert.equal(full[0], '--filter @tuari/contracts build');
   const generic = full.find(line => line.startsWith('test:e2e '));
   assert.ok(generic, 'full scope must execute generic tests');
-  for (const spec of readdirSync(specDir).filter(name => name.endsWith('.spec.ts') && name !== 'payroll-connected-exact.spec.ts')) {
+  for (const spec of readdirSync(specDir).filter(name => name.endsWith('.spec.ts') && !['payroll-connected-exact.spec.ts', 'manual-settlement-connected.spec.ts'].includes(name))) {
     assert.ok(generic.split(' ').includes(`tests/e2e/${spec}`), spec);
   }
   assert.ok(!generic.includes('payroll-connected-exact.spec.ts'));
   assert.equal(full.filter(line => line === dedicated).length, 1);
+  const manual = 'exec playwright test --config=playwright.manual-settlement.config.ts tests/e2e/manual-settlement-connected.spec.ts';
+  assert.ok(!generic.includes('manual-settlement-connected.spec.ts'));
+  assert.equal(full.filter(line => line === manual).length, 1);
+  assert.deepEqual(run('affected', 'tests/e2e/manual-settlement-connected.spec.ts').slice(2), [manual, viewer]);
   const affected = run('affected', 'tests/e2e/expenses.spec.ts tests/e2e/payroll-connected-exact.spec.ts');
   assert.deepEqual(affected.slice(2), ['test:e2e tests/e2e/expenses.spec.ts', viewer, dedicated]);
   assert.deepEqual(run('affected', 'tests/e2e/payroll-connected-exact.spec.ts').slice(2), [viewer, dedicated]);
@@ -110,6 +114,14 @@ test('selectSpecs: shared controls and exact money inputs route both payroll reg
     assert.equal(scope.mode, 'affected', file);
     assert.ok(scope.specs.includes('payroll-connected-exact.spec.ts'), file);
     assert.ok(scope.specs.includes('payroll-recovery.spec.ts'), file);
+  }
+});
+
+test('selectSpecs: debt UI and settlement service changes retain both connected and ordinary debt coverage', () => {
+  for (const file of ['apps/web/src/features/debts/debts-exact-page.tsx', 'apps/api/src/modules/company/manual-settlement.service.ts']) {
+    const scope = selectSpecs([file]);
+    assert.equal(scope.mode, 'affected', file);
+    for (const spec of ['debt-entry.spec.ts', 'manual-settlement-connected.spec.ts']) assert.ok(scope.specs.includes(spec), spec);
   }
 });
 

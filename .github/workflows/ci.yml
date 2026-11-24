@@ -304,10 +304,13 @@ jobs:
             read -r -a selected_specs <<< "$E2E_SPECS"
           fi
           generic_specs=()
+          manual_settlement=false
           connected_exact=false
           for spec in "${selected_specs[@]}"; do
             if [ "$spec" = "tests/e2e/payroll-connected-exact.spec.ts" ]; then
               connected_exact=true
+            elif [ "$spec" = "tests/e2e/manual-settlement-connected.spec.ts" ]; then
+              manual_settlement=true
             else
               generic_specs+=("$spec")
             fi
@@ -315,10 +318,41 @@ jobs:
           if [ "${#generic_specs[@]}" -gt 0 ]; then
             pnpm test:e2e "${generic_specs[@]}"
           fi
+          if [ "$manual_settlement" = true ]; then
+            pnpm exec playwright test --config=playwright.manual-settlement.config.ts tests/e2e/manual-settlement-connected.spec.ts
+          fi
           node --test tests/telemetry-viewer.browser.test.mjs tests/viewer-dashboard.browser.test.mjs
           if [ "$connected_exact" = true ]; then
             pnpm exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts
           fi
+
+      - name: Upload manual settlement failure artifacts
+        if: failure() && !cancelled() && needs.detect.outputs.e2e_mode != 'skip'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: manual-settlement-failure-artifacts
+          path: |
+            .scratch/evidence/613-ui/run-*/artifacts/**/trace.zip
+            .scratch/evidence/613-ui/run-*/after/*/activity-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/settlements-idle-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/preview-element.png
+            .scratch/evidence/613-ui/run-*/after/*/form-element.png
+            .scratch/evidence/613-ui/run-*/after/*/preview-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/payable-activity-links.png
+            .scratch/evidence/613-ui/run-*/after/*/receivable-activity-links.png
+            .scratch/evidence/613-ui/run-*/after/*/payable-history.png
+            .scratch/evidence/613-ui/run-*/after/*/receivable-history.png
+            .scratch/evidence/613-ui/run-*/after/*/payable-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/receivable-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/mobile-drawer.png
+            .scratch/evidence/613-ui/run-*/after/*/manual-settlement-element.png
+            .scratch/evidence/613-ui/run-*/after/*/settlement-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/ledger-element.png
+            .scratch/evidence/613-ui/run-*/after/*/viewport-sidebar.png
+            .scratch/evidence/613-ui/run-*/after/*/sidebar-element.png
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload connected payroll failure artifacts
         if: needs.detect.outputs.e2e_mode != 'skip' && !cancelled()

@@ -7,6 +7,7 @@ import { ExactExpensesPage, type ExpensesPageProps } from "@/features/expenses/e
 import { InventoryItemDefinitionsPage } from "@/features/inventory/inventory-item-definitions-page"
 import { ExactInventoryPage, type ExactInventoryLocation, type ExactInventoryParty } from "@/features/inventory/inventory-exact-page"
 import { ExactInvoicesPage, type ExactInvoiceParty } from "@/features/invoices/invoices-exact-page"
+import { useCompositeWorkspaceQuery } from "@/features/app-shell/workspace-queries"
 import { financialClient } from "@/lib/orpc-client"
 
 export type ExactFinancialRoute = "debts" | "expenses" | "inventory" | "invoices"
@@ -21,10 +22,12 @@ export function ExactFinancialRoutePage({ route, parties, locations, expenses, i
   createInvoice?: boolean
   initialInventoryMovement?: boolean
 }) {
+  const metadata = useCompositeWorkspaceQuery({ enabled: route === "debts" })
+  const manualSettlementSupported = !metadata.isError && metadata.data?.capabilities?.manualSettlement === true
   const clients: FinancialClient = financialClient
   switch (route) {
     case "debts":
-      return <ExactDebtsPage client={clients.debts} payrollEmployees={payrollEmployees?.map(employee => ({ ...employee, partyType: "INTERNAL_WORKER" as const }))} parties={parties.map(party => ({
+      return <ExactDebtsPage manualSettlementSupported={manualSettlementSupported} manualSettlementClient={clients.manualSettlement} client={clients.debts} payrollEmployees={payrollEmployees?.map(employee => ({ ...employee, partyType: "INTERNAL_WORKER" as const }))} parties={parties.map(party => ({
         id: party.id,
         label: party.label,
         ...(party.phone ? { phone: party.phone } : {}),

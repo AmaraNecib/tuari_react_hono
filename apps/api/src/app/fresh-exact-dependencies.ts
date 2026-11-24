@@ -7,6 +7,11 @@ import { createAuth } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
 import { createFifoLock } from "../infrastructure/database/fifo-lock";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
+import { ensureFreshManualSettlementApplicationSchema } from "../infrastructure/database/fresh-manual-settlement-schema";
+import { ManualSettlementService } from "../modules/company/manual-settlement.service";
+import { SqliteManualSettlementRepository } from "../modules/company/adapters/sqlite-manual-settlement.repository";
+import { SqliteManualSettlementAuthorization } from "../modules/company/adapters/sqlite-manual-settlement.authorization";
+import type { ManualSettlementCapability } from "../rpc/manual-settlement-router";
 import { ensureFreshExactApplicationSchema } from "../infrastructure/database/fresh-exact-schema";
 import { createDatabaseKeyManager } from "../infrastructure/database/database-key-manager";
 import { createConfigFileKeyPersister } from "../infrastructure/database/database-key-persister";
@@ -57,14 +62,17 @@ export type FreshExactAppDependencies = Omit<AppDependencies,
   companyService: CompanyMetadataService;
   inventoryAttachmentService: AttachmentService;
   catalogService: CatalogService;
-  financial: { services: FinancialDependencies; getMetadata(): Promise<WorkspaceMetadata>; reports: ExactReportCapability };
+  financial: { services: FinancialDependencies; getMetadata(): Promise<WorkspaceMetadata>; reports: ExactReportCapability; manualSettlement?: ManualSettlementCapability };
   listSystemLog: ExactSystemLogReader["listSystemLog"];
   payroll: { service: FinancialDependencies["payroll"]; opening: FinancialDependencies["opening"]; getEmployeePayroll: FinancialDependencies["lifecycle"]["getEmployeePayroll"] };
 };
 
 /** Exact application root used by normal startup; incompatible files are refused. */
 export async function createFreshExactAppDependencies(
-  config: CreateAppDependenciesConfig = {},
+  config: CreateAppDependenciesConfig & {
+    /** Explicit opt-in for disposable data only; never migrates an existing exact graph. */
+    disposableManualSettlement?: boolean;
+  } = {},
   appConfig: AppConfig = createAppConfig(),
 ): Promise<FreshExactAppDependencies> {
   if (appConfig.dbAdapter !== "sqlite") throw new Error("Selected exact root requires sqlite metadata on the shared connection");
@@ -74,7 +82,7 @@ export async function createFreshExactAppDependencies(
   let closed = false;
   const close = () => { if (!closed) { closed = true; connection.close(); } };
   try {
-    await ensureFreshExactApplicationSchema(connection);
+    await (config.disposableManualSettlement ? ensureFreshManualSettlementApplicationSchema : ensureFreshExactApplicationSchema)(connection);
     // WAL persists header changes. Enable it only after the attestation
     // transaction commits, so refusing an incompatible file leaves it intact.
     connection.pragma("journal_mode = WAL");
@@ -101,9 +109,17 @@ export async function createFreshExactAppDependencies(
     const inventoryRepository = createInventoryRepository(connection, lock);
     const catalog = new CatalogService(inventoryRepository, company);
     const attachments = new AttachmentService(new SqliteAttachmentRepository(connection, lock), new InventoryAttachmentStorage(appConfig.attachmentsRootPath), company);
+    const manualSettlement: ManualSettlementCapability | undefined = config.disposableManualSettlement
+      ? userId => new ManualSettlementService(
+        financial.finance, financial.financeRepository,
+        new SqliteManualSettlementRepository(connection, lock),
+        new SqliteManualSettlementAuthorization(connection, lock, userId),
+        { id: () => crypto.randomUUID(), now: () => new Date().toISOString() },
+      )
+      : undefined;
     return {
       mode: "fresh-exact-selected",
-      financial: { services: financial, getMetadata: async () => ({ ...companyService.getWorkspaceMetadata(), roles: await roleModule.list() }), reports },
+      financial: { manualSettlement, services: financial, getMetadata: async () => ({ ...companyService.getWorkspaceMetadata(), roles: await roleModule.list() }), reports },
       listSystemLog: systemLog.listSystemLog,
       payroll: { service: financial.payroll, opening: financial.opening, getEmployeePayroll: id => financial.lifecycle.getEmployeePayroll(id) },
       auth,

@@ -15,7 +15,7 @@ const command = { requestId: z.string().regex(/^[A-Za-z0-9:_-]{1,128}$/), curren
 export const exactDebtAccountSchema = debtAccountSchema.extend({ currency: z.literal("DZD"), currentBalance: exactDebtAmountSchema });
 export const exactDebtProducerTypeSchema = z.enum(["INVOICE", "INVENTORY_PURCHASE", "INVENTORY_OUTBOUND", "PAYROLL_EARNINGS", "PAYROLL_OPENING", "PAYROLL_ADVANCE"]);
 export const exactDebtProducerSchema = z.object({ type: exactDebtProducerTypeSchema, id: entityIdSchema.max(128) }).strict();
-export const exactFinanceAggregateOwnerSchema = z.object({ type: z.enum([...exactDebtProducerTypeSchema.options, "PAYMENT", "INVENTORY_CHARGE", "INVENTORY_TRANSFER"]), id: entityIdSchema.max(128) }).strict();
+export const exactFinanceAggregateOwnerSchema = z.object({ type: z.enum([...exactDebtProducerTypeSchema.options, "PAYMENT", "INVENTORY_CHARGE", "INVENTORY_TRANSFER", "MANUAL_SETTLEMENT"]), id: entityIdSchema.max(128) }).strict();
 export type ExactFinanceAggregateOwner = z.infer<typeof exactFinanceAggregateOwnerSchema>;
 export type ExactDebtProducer = z.infer<typeof exactDebtProducerSchema>;
 

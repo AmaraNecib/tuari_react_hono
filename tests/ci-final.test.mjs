@@ -33,6 +33,45 @@ test('connected failure upload maps only the dedicated artifact directory includ
     '.scratch/reviews/558-connected/run-fixture/artifacts/case/trace.zip']);
 });
 
+test('manual settlement failure upload selects only retained traces and approved page captures', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const step = ci.split('      - name: Upload manual settlement failure artifacts\n')[1]?.split('\n      - name:')[0];
+  assert.ok(step, 'manual runs need their own upload');
+  assert.match(step, /if: failure\(\) && !cancelled\(\) && needs\.detect\.outputs\.e2e_mode != 'skip'/);
+  assert.match(step, /uses: actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  for (const setting of ['include-hidden-files: true', 'if-no-files-found: ignore', 'retention-days: 7']) assert.ok(step.includes(setting));
+  const paths = step.split('          path: |\n')[1]?.split('\n').filter(line => line.startsWith('            ')).map(line => line.trim());
+  const captures = [
+    'activity-viewport', 'settlements-idle-viewport', 'preview-element',
+    'form-element', 'preview-viewport', 'payable-activity-links',
+    'receivable-activity-links', 'payable-history', 'receivable-history',
+    'payable-viewport', 'receivable-viewport', 'mobile-drawer',
+    'manual-settlement-element', 'settlement-viewport', 'ledger-element',
+    'viewport-sidebar', 'sidebar-element',
+  ];
+  assert.deepEqual(paths, ['.scratch/evidence/613-ui/run-*/artifacts/**/trace.zip',
+    ...captures.map(name => `.scratch/evidence/613-ui/run-*/after/*/${name}.png`)]);
+  const config = readFileSync(new URL('../playwright.manual-settlement.config.ts', import.meta.url), 'utf8');
+  assert.match(config, /outputDir: resolve\(run, "artifacts"\)/);
+  assert.match(config, /trace: "retain-on-failure"/);
+  const spec = readFileSync(new URL('../tests/e2e/manual-settlement-connected.spec.ts', import.meta.url), 'utf8');
+  for (const name of captures.filter(name => !/^(payable|receivable)-/.test(name))) assert.ok(spec.includes(name + '.png'));
+  const fixture = mkdtempSync(join(tmpdir(), '613-upload-'));
+  const base = '.scratch/evidence/613-ui/run-fixture/';
+  const approved = ['artifacts/case/trace.zip', ...captures.map(name => 'after/desktop/' + name + '.png')];
+  const refused = ['exact.sqlite', 'exact.sqlite-wal', 'config.json', 'session/auth.json',
+    'attachments/invoice.png', 'backups/backup.sqlite', 'after/desktop/auth.json',
+    'after/desktop/unapproved.png', 'after/desktop/route-clip.webm',
+    'artifacts/case/config.json', 'artifacts/case/exact.sqlite', 'artifacts/case/other.zip'];
+  for (const file of [...approved, ...refused]) {
+    const target = join(fixture, base, file);
+    mkdirSync(join(target, '..'), { recursive: true });
+    writeFileSync(target, 'synthetic');
+  }
+  const selected = [...new Set(paths.flatMap(pattern => [...globSync(pattern, { cwd: fixture })]))].map(file => file.replaceAll('\\', '/')).sort();
+  assert.deepEqual(selected, approved.map(file => base + file).sort());
+});
+
 const success = (outputs = { api: 'false', web: 'false', rust: 'false', encryption: 'false', e2e_mode: 'skip', e2e_specs: '' }) => ({
   detect: { result: 'success', outputs },
   lint: { result: 'success' }, typecheck: { result: 'success' },

@@ -34,6 +34,27 @@ async function openAccount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(query => query.clear()); setMoneyGrouping(true) })
 describe("injected exact debt page", () => {
+  it("shares balances across one tab bar and preserves settlement drafts across tabs", async () => {
+    const f = fixture(); f.unmount()
+    const manual = { candidates: vi.fn().mockResolvedValue([]), history: vi.fn().mockResolvedValue({items:[],nextOffset:null}) }
+    render(<QueryClientProvider client={f.query}><ExactDebtsPage client={f.client as ExactDebtsClient} parties={[party]} scopedParty={party} manualSettlementSupported manualSettlementClient={manual as never} /></QueryClientProvider>)
+    await screen.findByRole("button", {name:/المورد أحمد · مستحقات علينا/})
+    expect(screen.getAllByRole("tablist")).toHaveLength(1)
+    expect(screen.queryByRole("textbox", {name:"بحث عن حساب"})).toBeNull()
+    expect(screen.queryByRole("navigation", {name:"صفحات الحسابات"})).toBeNull()
+    expect(screen.getByRole("tab", {name:"حركة الحساب"}).getAttribute("aria-selected")).toBe("true")
+    expect(screen.queryByRole("button", {name:"تسوية متبادلة جديدة"})).toBeNull()
+    fireEvent.click(screen.getByRole("tab", {name:"التسويات"}))
+    fireEvent.click(await screen.findByRole("button", {name:"تسوية متبادلة جديدة"}))
+    fireEvent.change(screen.getByRole("textbox", {name:"ملاحظة التسوية، اختيارية"}), {target:{value:"draft"}})
+    fireEvent.click(screen.getByRole("button", {name:"إغلاق"}))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    fireEvent.click(screen.getByRole("tab", {name:"حركة الحساب"}))
+    fireEvent.click(screen.getByRole("tab", {name:"التسويات"}))
+    fireEvent.click(screen.getByRole("button", {name:"تسوية متبادلة جديدة"}))
+    expect((screen.getByRole("textbox", {name:"ملاحظة التسوية، اختيارية"}) as HTMLTextAreaElement).value).toBe("draft")
+  })
+
   it("keeps a late-recorded earlier-dated refund in posting order with its running balance", async () => {
     const { client } = fixture()
     const opening = { ...entry, id: "posted-opening", postingSequence: 1, entryDate: "2026-11-10T10:00:00.000Z", signedAmountDzd: "100.00", balanceAfterDzd: "100.00", remainingDzd: "85.00" }

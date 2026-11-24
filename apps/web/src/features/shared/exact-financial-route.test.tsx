@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   pages: { debts: vi.fn((props: unknown) => { void props; return <div data-testid="debts-page" /> }), invoices: vi.fn((props: unknown) => { void props; return <div data-testid="invoices-page" /> }), inventory: vi.fn((props: unknown) => { void props; return <div data-testid="inventory-page" /> }), expenses: vi.fn((props: unknown) => { void props; return <div data-testid="expenses-page" /> }), catalog: vi.fn(() => <div data-testid="catalog-page" />) },
 }))
 
+vi.mock("@/features/app-shell/workspace-queries", () => ({ useCompositeWorkspaceQuery: () => ({ data: undefined, isError: false }) }))
 vi.mock("@/lib/orpc-client", () => ({ financialClient: mocks.financial }))
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "rtl" } }) }))
 vi.mock("@/features/debts/debts-exact-page", () => ({ ExactDebtsPage: (props: unknown) => mocks.pages.debts(props) }))

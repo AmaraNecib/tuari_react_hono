@@ -43,6 +43,7 @@ const financialProxy = createORPCClient<{ financial: FinancialClient }>(rpcLink)
 // ORPC creates a new proxy on every property read. Bind namespaces once because
 // exact-commerce cache scopes and pending requests use client object identity.
 export const financialClient: FinancialClient = {
+  manualSettlement: financialProxy.manualSettlement,
   metadata: financialProxy.metadata,
   debts: financialProxy.debts,
   invoices: financialProxy.invoices,

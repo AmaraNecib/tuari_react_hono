@@ -251,6 +251,18 @@ export class ExactFinanceService {
       return this.append(account, { entryType: "ADJUSTMENT", signedAmountDzd: amount.toWire(), targetEntryId: target.id, entryDate: input.refundDate, paymentMethod: "CASH", note: input.note }, audit, undefined, true);
     });
   }
+  /** Internal bilateral composition only. Never register this method in generic debt RPC. */
+  appendManualSettlementPortion(originalId: string, signedAmountDzd: string, audit: ExactDebtAudit): ExactDebtEntry {
+    return this.repository.withTransaction(() => {
+      const target = this.obligation(originalId);
+      const account = this.getAccount(target.debtAccountId);
+      const amount = Money.parse(signedAmountDzd);
+      if (this.producer || target.producerType || target.producerId || target.invoiceId || account.partyType !== "EXTERNAL_COUNTERPARTY" || Money.parse(target.signedAmountDzd).compare(zero()) <= 0 || amount.compare(zero()) === 0) throw new ExactDebtError("Manual settlement requires an eligible external original", "CONFLICT");
+      if (amount.compare(zero()) < 0 && amount.negate().compare(this.remainingFrom(target, this.listEntries(account.id))) > 0) throw new ExactDebtError("Settlement exceeds remaining obligation", "CONFLICT");
+      return this.append(account, { entryType: amount.compare(zero()) < 0 ? "SETTLEMENT" : "ADJUSTMENT", signedAmountDzd: amount.toWire(), targetEntryId: target.id, entryDate: this.dependencies.now() }, audit);
+    });
+  }
+
   /** Trusted producers may settle part of one original without recording cash. */
   recordSettlement(raw: Omit<PayExactDebtEntry, "paymentMethod"> & ExactDebtAudit): ExactDebtEntry {
     if (!this.producer) throw new ExactDebtError("Original settlement requires a producer", "CONFLICT");
@@ -334,6 +346,7 @@ export class ExactFinanceService {
     return this.command("void", { ...input, ...audit }, input, () => {
       const target = this.liveEntry(input.entryId);
       this.assertOwner(target);
+      if (this.repository.isManualSettlementVoidBlocked?.(target.id)) throw new ExactDebtError("Reverse the linked settlement first; linked postings cannot be voided independently", "CONFLICT");
       const account = this.getAccount(target.debtAccountId);
       this.assertCurrency(account, input.currency);
       const rows = this.listEntries(account.id);
