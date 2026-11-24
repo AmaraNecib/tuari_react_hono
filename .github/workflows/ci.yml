@@ -303,16 +303,22 @@ jobs:
             read -r -a selected_specs <<< "$E2E_SPECS"
           fi
           generic_specs=()
+          manual_settlement=false
           connected_exact=false
           for spec in "${selected_specs[@]}"; do
             if [ "$spec" = "tests/e2e/payroll-connected-exact.spec.ts" ]; then
               connected_exact=true
+            elif [ "$spec" = "tests/e2e/manual-settlement-connected.spec.ts" ]; then
+              manual_settlement=true
             else
               generic_specs+=("$spec")
             fi
           done
           if [ "${#generic_specs[@]}" -gt 0 ]; then
             pnpm test:e2e "${generic_specs[@]}"
+          fi
+          if [ "$manual_settlement" = true ]; then
+            pnpm exec playwright test --config=playwright.manual-settlement.config.ts tests/e2e/manual-settlement-connected.spec.ts
           fi
           if [ "$connected_exact" = true ]; then
             pnpm exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts

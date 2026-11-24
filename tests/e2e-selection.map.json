@@ -79,6 +79,10 @@
 
   "features": [
     {
+      "match": ["apps/web/src/features/debts/**", "apps/api/src/**/manual-settlement*", "apps/api/src/**/sqlite-manual-settlement*", "packages/contracts/src/manual-settlement.ts", "playwright.manual-settlement.config.ts", "tests/e2e/manual-settlement-connected.spec.ts"],
+      "specs": ["manual-settlement-connected.spec.ts"]
+    },
+    {
       "match": [
         "apps/web/src/features/auth/**",
         "apps/web/src/features/license/**",
