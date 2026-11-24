@@ -371,7 +371,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
         <div className="space-y-3">
           <div className="rounded-lg border border-bad/30 bg-bad-soft px-4 py-3">
             <p className="text-sm text-bad">
-              {t("shell.settingsAboutError")}: {status.message}
+              {status.message}
             </p>
           </div>
           <Button type="button" variant="outline" onClick={handleRetry}>

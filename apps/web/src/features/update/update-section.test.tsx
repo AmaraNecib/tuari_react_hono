@@ -65,7 +65,8 @@ describe("UpdateSection", () => {
     await act(async () => { progress({ payload: { status: "error", error: "secret-path" } }); rejectDownload(new Error("secret-path")) })
     expect(support).toHaveBeenCalledTimes(1)
     expect(screen.queryByText(/secret-path/)).toBeNull()
-    expect(screen.getByText(/TUARI-[0-9A-F]{8}/)).toBeTruthy()
+    const feedback = screen.getByText(/TUARI-[0-9A-F]{8}/)
+    expect(feedback.textContent).toBe(support.mock.results[0]?.value)
   })
 
   beforeEach(() => {
