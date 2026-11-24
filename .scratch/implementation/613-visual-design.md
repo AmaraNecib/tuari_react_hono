@@ -1,0 +1,9 @@
+# Settlement history visual correction
+
+Base 2e6c364e06f0e620577f2732d1e91debb049b849. Sole writer in D:/worktrees/tuari_react_hono/t3-82cb7302-cbc95bbc1a45a5ba. Local-only bounded correction, focused-local / CI-final-enforced supplied by parent. No publication or merge.
+
+Use the existing utilitarian Arabic app tokens. Replace UUID-first rows with a named settlement or reversal action, amount and event date. A native keyboard-operable disclosure opens original-entry details in place. Current account entries supply source note, posting sequence, original amount and date. The opposite side has an explicit manual-entry fallback because the authorized history projection supplies IDs, not source labels. Do not invent invoice sources or new routes. IDs remain inside optional technical details. Settlement and reversal remain distinct events, not a voided posting.
+
+The summary module owns presentation once for both account histories and party history. Its interface accepts the existing history record and optional already-authorized entries. Deleting it duplicates disclosures across callers. No financial, permission, query or persistence semantics move. Account history errors still fail closed; no additional source query or cross-party cache is introduced. Architecture: presentation seam only.
+
+Preserve all old evidence. Capture literal viewports with fullPage false, no CSS normalization. Native element screenshots are separate and do not claim viewport geometry. Run the existing focused connected case for both histories, reversal and denied replay, not a full browser suite. Disk inspection found D:115 MB and C:1.2 GB free; use C: temporary evidence paths and no builds. Initial source-derived tests: 65 passing in three web files before commit. Earlier valid financial evidence remains unchanged in scope. Parent owns fresh combined-delta review and visual signoff.

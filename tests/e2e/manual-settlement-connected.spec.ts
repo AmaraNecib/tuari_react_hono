@@ -43,7 +43,7 @@ test("external manual pair baseline and responsive evidence #613", async ({ page
     await expect(ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button")).toHaveCount(2)
     await ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات علينا/ }).click()
     await expect(ledger.getByRole("table")).toBeVisible()
-    if (phase === "after") {
+    if (phase === "after" || process.env.MANUAL_SETTLEMENT_VISUAL_BASELINE === "1") {
       const panel = view.getByRole("region", { name: "تسوية متبادلة بين دينين يدويين", exact: true })
       await expect(panel.getByRole("combobox", { name: "الدين المستحق علينا", exact: true })).toBeVisible()
       const pOptions = await panel.getByRole("combobox", { name: "الدين المستحق علينا", exact: true }).locator("option").evaluateAll(elements => elements.map(element => (element as HTMLOptionElement).value).filter(Boolean))
@@ -97,7 +97,19 @@ test("external manual pair baseline and responsive evidence #613", async ({ page
         const history = ledger.getByRole("tabpanel", { name: "التسوية وسجلها", exact: true })
         await expect(history.locator(`[data-manual-settlement-id="${latest.id}"]`)).toContainText("معكوسة بالكامل")
         await expect(history.locator(`[data-manual-reversal-id="${latest.reversal.id}"]`)).toContainText("إلغاء التسوية التجريبية")
-        await history.screenshot({ path: join(dir, direction.source.includes("علينا") ? "payable-history.png" : "receivable-history.png") })
+        const side = direction.source.includes("علينا") ? "payable" : "receivable"
+        if (phase === "after") {
+          const row = history.locator(`[data-manual-settlement-id="${latest.id}"]`)
+          const details = row.getByText("عرض تفاصيل القيدين الأصليين", { exact: true })
+          await details.focus()
+          await view.keyboard.press("Enter")
+          await expect(row.locator("details").first()).toHaveAttribute("open", "")
+          await expect(row).toContainText("رصيد يدوي للاختبار")
+          await expect(row).toContainText("تفاصيل المصدر غير متاحة")
+          await expect(row.locator("details").last()).not.toHaveAttribute("open", "")
+        }
+        await history.screenshot({ path: join(dir, `${side}-history.png`), animations: "disabled" })
+        await view.screenshot({ path: join(dir, `${side}-viewport.png`), fullPage: false, animations: "disabled" })
       }
       if (name === "mobile") {
         await view.getByRole("banner").getByRole("button", { name: "توسيع الشريط الجانبي", exact: true }).click()
@@ -105,30 +117,15 @@ test("external manual pair baseline and responsive evidence #613", async ({ page
         await view.screenshot({ path: join(dir, "mobile-drawer.png"), animations: "disabled" })
         await view.locator(".sb-mobile-backdrop").click({ position: { x: 5, y: 400 } })
       }
-      // Expand only the screenshot capture surface, not the functional run.
-      // Native viewport width is retained; inner scrolling and sticky occlusion
-      // are removed for a complete element/composition image.
-      await view.addStyleTag({ content: '[data-capture-root], [data-capture-host] { height:auto!important; max-height:none!important; overflow:visible!important; } [data-capture-sticky] { position:static!important; }' })
-      await view.evaluate(() => {
-        document.querySelectorAll("*").forEach(node => {
-          const el = node as HTMLElement
-          const css = getComputedStyle(el)
-          if (css.position === "sticky") el.setAttribute("data-capture-sticky", "")
-          if (el.scrollHeight > el.clientHeight && ["auto","scroll","hidden"].includes(css.overflowY)) { el.setAttribute("data-capture-host", ""); el.scrollTop = 0 }
-          if (css.height === window.innerHeight + "px") el.setAttribute("data-capture-root", "")
-        })
-        window.scrollTo(0,0)
-      })
-      const bounds = await resumed.boundingBox()
-      expect(bounds!.x).toBeGreaterThanOrEqual(0)
-      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width)
-      writeFileSync(join(dir, "capture-geometry.json"), JSON.stringify({ viewport: { width, height }, bounds, normalization: "expanded internal scroll hosts; static sticky elements; native width" },null,2))
+      await resumed.scrollIntoViewIfNeeded()
       await resumed.screenshot({ path: join(dir, "manual-settlement-element.png"), animations: "disabled" })
+      await view.screenshot({ path: join(dir, "settlement-viewport.png"), fullPage: false, animations: "disabled" })
       await ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات علينا/ }).click()
     }
     await view.evaluate(() => document.fonts.ready)
     await ledger.screenshot({ path: join(dir, "ledger-element.png"), animations: "disabled" })
-    await view.screenshot({ path: join(dir, "full-page-sidebar.png"), fullPage: true, animations: "disabled" })
+    await view.screenshot({ path: join(dir, "viewport-sidebar.png"), fullPage: false, animations: "disabled" })
+    if (name !== "mobile") await view.locator("aside").screenshot({ path: join(dir, "sidebar-element.png"), animations: "disabled" })
     await ledger.getByRole("tab", { name: "التسوية وسجلها", exact: true }).focus()
     await view.keyboard.press("Enter")
     await expect(ledger.getByRole("tabpanel", { name: "التسوية وسجلها", exact: true })).toBeVisible()
@@ -137,5 +134,5 @@ test("external manual pair baseline and responsive evidence #613", async ({ page
     await video.saveAs(join(dir, "route-clip.webm"))
     captures.push({ name, width, height, directory: dir })
   }
-  writeFileSync(join(run, `${phase}-manifest.json`), JSON.stringify({ phase, sourceSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), captures, note: "Committed actual native route. Functional flow at the named viewport. Element/composition captures expand inner scroll hosts and make sticky elements static at the same native width; functional assertions precede this capture-only normalization. Owner signoff pending." }, null, 2))
+  writeFileSync(join(run, `${phase}-manifest.json`), JSON.stringify({ phase, sourceSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), captures, note: "Committed actual native route. Functional flow at the named viewport. All viewport captures use fullPage:false with no CSS or scroll-host normalization. Element captures use locator.screenshot at native scale and may exceed viewport height. Clips are separate per actual route and viewport. Owner signoff pending." }, null, 2))
 })
