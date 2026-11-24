@@ -452,7 +452,7 @@ export function SettingsSection({
                         </span>
                       </>
                     )}
-                    {checkUpdateState.status === 'error' && settingsUpdateError}
+                    {checkUpdateState.status === 'error' && (checkUpdateState.message || settingsUpdateError)}
                     {checkUpdateState.status === 'idle' && null}
                   </p>
                 </div>

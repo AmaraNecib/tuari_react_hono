@@ -115,3 +115,41 @@ Wisdom applied: reachable preflight must precede mutation execution; a toast
 alone does not prove an operation succeeded. No wisdom files were changed.
 No dependency, native code, schema, prefix, auth protocol, recovery algorithm
 or review policy changed. No push, PR or merge was performed.
+
+## Hosted feedback correction at base 8bc3c1a
+
+Worktree: `D:/worktrees/tuari_react_hono/t3-e9b4e5cb-6561e39471f10f1b`.
+Parent supplied focused-local / CI-final-enforced. This bounded correction
+retains the existing deeper review tier: auth rejection and recovery feedback
+cross real consumers. Parent owns independent review and publication.
+
+- SettingsSection renders the update-check owner's safe message/code. The
+  activation-state license refresh no longer records an invisible incident;
+  LicenseSettings retains ownership of visible license query feedback.
+- The exact known profile phone conflict maps to a local Arabic translation.
+  Browser and native transports use the same allowlist, and SettingsSection
+  routes that safe rejection to the phone field. Unknown server text stays hidden.
+- Folder preflight now propagates optional `reason: not_directory` through
+  validation, handler and RPC output. It is user validation, not a failed
+  settings save. Absence remains compatible with older envelopes and uses the
+  operational fallback. Persistence failures never acquire this reason.
+- Backup-run failure copy covers snapshot and retention work, not saving
+  preferences. No backup algorithm or database migration changed.
+- Both stale table browser assertions now require the safe localized reason
+  and support code, reject the injected sentinel, and retain retry/focus/empty
+  state checks. The supplied seven-case table test correction is preserved.
+
+Module/interface assessment: the existing backup result seam gains one optional
+reason; no new adapter or abstraction. Deleting the typed reason would force
+clients to inspect unsafe exception strings. Folder preference persistence,
+folder validation and backup-run failure remain distinct terms. No business
+glossary or ADR change is needed. The parent owns architecture review.
+
+Proof includes red-first web failures, actual SettingsSection field/message
+consumers, browser/native auth transport cases, RPC handler output validation,
+legacy-envelope compatibility and operational-versus-validation recording.
+SQLite-backed router and two browser cases were attempted but cannot boot with
+the missing installed better-sqlite3 native binding; handler integration avoids
+that unrelated dependency without claiming auth/rate/audit execution. Full
+checks remain CI-final. Exact results and visual limits stay in ignored
+`.scratch/reviews/325-followup/`. No package install or policy change occurred.

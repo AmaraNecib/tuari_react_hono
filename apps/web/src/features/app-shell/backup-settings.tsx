@@ -126,7 +126,9 @@ export function BackupSettings() {
         })
         return
       }
-      setSaveMessage({ kind: "error", text: supportFailureMessage(t("settings.backups.saveFailed")) })
+      setSaveMessage({ kind: "error", text: result.reason === "not_directory"
+        ? t("settings.backups.notDirectory")
+        : supportFailureMessage(t("settings.backups.saveFailed")) })
     } catch {
       // A transport/RPC failure (offline, 401, output-validation) is not the
       // documented `{ success: false }` envelope, so without this the click
@@ -178,7 +180,7 @@ export function BackupSettings() {
               {t("settings.backups.failedLabel")}
             </p>
             <p className="text-sm leading-6 text-destructive [overflow-wrap:anywhere]">
-              {t("settings.backups.saveFailed")}<FailureCode error={failure} />
+              {t("settings.backups.runFailed")}<FailureCode error={failure} />
             </p>
             <p className="text-xs text-muted-foreground">
               {t("settings.backups.lastAttempt")}: {formatTimestamp(failure.at)}

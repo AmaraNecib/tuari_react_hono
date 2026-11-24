@@ -38,20 +38,17 @@ describe("license operational feedback ownership", () => {
     expect(records()).toHaveLength(2)
     expect(records()[0]?.[1]).toEqual({ id: expect.any(Number) })
   })
-  it("sanitizes status failures with a fresh correlation only on refresh", async () => {
+  it("does not record status failures whose feedback has no visible owner", async () => {
     rejectOperations()
     ;(window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {}
     const { result, rerender } = renderHook(() => useLicenseStatus())
     await waitFor(() => expect(result.current.loading).toBe(false))
-    expect(result.current.error).toMatch(/TUARI-[0-9A-F]{8}/)
+    expect(result.current.error).not.toMatch(/TUARI-/)
     expect(result.current.error).not.toContain("private-license")
-    const first = result.current.error
-    expect(records()).toHaveLength(1)
+    expect(records()).toHaveLength(0)
     rerender()
-    expect(records()).toHaveLength(1)
     await act(async () => { await result.current.refresh() })
-    expect(result.current.error).not.toBe(first)
-    expect(records()).toHaveLength(2)
+    expect(records()).toHaveLength(0)
   })
   it("does not treat browser unavailability as a failed status operation", async () => {
     const { result } = renderHook(() => useLicenseStatus())

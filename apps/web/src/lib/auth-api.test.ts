@@ -36,6 +36,15 @@ describe("changeCurrentPassword", () => {
     vi.unstubAllGlobals()
   })
 
+  it.each([true, false])("preserves only the known profile phone rejection (desktop=%s)", async (desktop) => {
+    vi.stubGlobal("isTauri", desktop)
+    const transport = desktop ? desktopApiFetchMock : fetchMock
+    transport.mockResolvedValueOnce(new Response(JSON.stringify({ message: "رقم الهاتف مستخدم بالفعل." }), { status: 409 }))
+    const { updateCurrentProfile, extractAuthErrorMessage } = await import("./auth-api")
+    await expect(updateCurrentProfile({ phone: "0666666666" })).rejects.toThrow("رقم الهاتف مستخدم بالفعل.")
+    expect(extractAuthErrorMessage(new Error("private arbitrary server text"), "safe")).toBe("safe")
+  })
+
   it("delegates desktop password changes to the native bridge", async () => {
     desktopBridgeChangePasswordMock.mockResolvedValue(undefined)
 

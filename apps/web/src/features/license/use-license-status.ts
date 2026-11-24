@@ -1,4 +1,3 @@
-import { supportFailureMessage } from "@/lib/error-correlation"
 import { i18n } from "@/i18n"
 import { useEffect, useState, useCallback } from "react"
 
@@ -65,7 +64,8 @@ export function useLicenseStatus() {
 
       return result
     } catch {
-      const message = supportFailureMessage(i18n.t("license.loadError"))
+      // This refresh supplies activation state only; LicenseSettings owns visible query failures.
+      const message = i18n.t("license.loadError")
 
       setState({
         loading: false,
