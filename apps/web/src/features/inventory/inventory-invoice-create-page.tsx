@@ -11,7 +11,7 @@ import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { showErrorToast } from "@/lib/toast"
+import { showErrorToast, showValidationToast } from "@/lib/toast"
 
 import {
   uploadInvoiceAttachments,
@@ -284,7 +284,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     const attachmentValidationMessage = validateInvoiceAttachmentFiles(files, attachmentMessages)
     if (attachmentValidationMessage) {
       setAttachmentError(attachmentValidationMessage)
-      showErrorToast(attachmentValidationMessage)
+      showValidationToast(attachmentValidationMessage)
       return
     }
 

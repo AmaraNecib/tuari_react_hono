@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { showErrorToast } from "@/lib/toast"
+import { showValidationToast } from "@/lib/toast"
 import {
   MultiSourceItemPicker,
   type SelectedItem,
@@ -103,12 +103,12 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
   const handleSubmit = async () => {
     // Validate
     if (!counterpartyId) {
-      showErrorToast(t("validation.counterpartyRequired"))
+      showValidationToast(t("validation.counterpartyRequired"))
       return
     }
 
     if (items.length === 0) {
-      showErrorToast(t("validation.itemsRequired"))
+      showValidationToast(t("validation.itemsRequired"))
       return
     }
 
