@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { NativeSelect, Textarea } from "@/components/ui/form-controls"
 import { CurrencyAmountInput } from "@/components/ui/currency-amount-input"
 import { AmountDisplay } from "@/components/ui"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { ManualSettlementSummary } from "./manual-settlement-summary"
 import { invalidateExactDebtQueries } from "./debts-exact-queries"
 import { clearPendingSettlement, isDefiniteSettlementRefusal, loadPendingSettlement, savePendingSettlement, type PendingSettlement } from "./manual-settlement-pending"
@@ -26,6 +27,7 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
   const { t } = useTranslation()
   const queries = useQueryClient()
   const prefix = ["manual-settlement", manualSettlementScope(client), owner, partyId] as const
+  const [formOpen, setFormOpen] = useState(false)
   const [payable, setPayable] = useState("")
   const [receivable, setReceivable] = useState("")
   const [amount, setAmount] = useState("")
@@ -91,6 +93,10 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
     {pending && <div role="status" className="space-y-2 rounded-lg border border-border p-3"><p>{t("manualSettlement.pending")}</p><p>{pending.kind === "confirm" ? <>{t("manualSettlement.frozenAmount")}: {money(pending.input.amountDzd)}</> : pending.input.reason}</p><Button disabled={busy || storageFailed} onClick={() => void execute(pending)}>{busy ? t("manualSettlement.saving") : t("manualSettlement.retry")}</Button></div>}
     {unavailable ? <p role="status">{t("manualSettlement.unavailable")}</p> : history.isPending ? <p role="status">{t("manualSettlement.loading")}</p> : history.isError ? <div role="alert">{t("manualSettlement.loadError")} <Button variant="outline" onClick={() => { void options.refetch(); void history.refetch() }}>{t("exactDebts.retry")}</Button></div> : <>
       {options.isError && <p role="alert">{t("manualSettlement.loadError")}</p>}
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      <DialogTrigger render={<Button />}>{t("manualSettlement.newSettlement")}</DialogTrigger>
+      <DialogContent dir="rtl" className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+      <DialogHeader><DialogTitle>{t("manualSettlement.title")}</DialogTitle><DialogDescription>{t("manualSettlement.help")}</DialogDescription></DialogHeader>
       <form aria-label={t("manualSettlement.title")} className="grid min-w-0 gap-4 md:grid-cols-2" onSubmit={event => { event.preventDefault(); void requestPreview() }}>
         {(["PAYABLE", "RECEIVABLE"] as const).map(direction => <label key={direction} className="min-w-0 space-y-2 text-sm"><span>{t(direction === "PAYABLE" ? "manualSettlement.payable" : "manualSettlement.receivable")}</span><NativeSelect aria-label={t(direction === "PAYABLE" ? "manualSettlement.payable" : "manualSettlement.receivable")} disabled={locked} value={direction === "PAYABLE" ? payable : receivable} onChange={event => change(() => direction === "PAYABLE" ? setPayable(event.target.value) : setReceivable(event.target.value))}><option value="">{t("manualSettlement.select")}</option>{options.data?.filter(entry => entry.direction === direction).map(entry => <option key={entry.id} value={entry.id}>{t("manualSettlement.original", { sequence: entry.postingSequence, amount: entry.remainingDzd })}</option>)}</NativeSelect></label>)}
         <CurrencyAmountInput exact label={t("manualSettlement.amount")} value={amount} onChange={value => change(() => setAmount(value))} disabled={locked} />
@@ -98,6 +104,11 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
         <div><Button type="submit" variant="outline" disabled={!valid || locked}>{t("manualSettlement.preview")}</Button></div>
       </form>
       {preview && <section aria-label={t("manualSettlement.preview")} className="space-y-3 rounded-lg border border-border p-4" aria-live="polite"><div className="grid gap-4 sm:grid-cols-2">{(["payable", "receivable"] as const).map(side => <div key={side}><h3 className="font-semibold">{t(`manualSettlement.${side}`)}</h3><p>{t("manualSettlement.current")}: {money(side === "payable" ? preview.payableRemainingDzd : preview.receivableRemainingDzd)}</p><p>{t("manualSettlement.after")}: {money(side === "payable" ? preview.projectedPayableRemainingDzd : preview.projectedReceivableRemainingDzd)}</p></div>)}</div><p>{t("manualSettlement.net")}: <AmountDisplay aggregate value={preview.netPositionDzd} currencyLabel={t("exactDebts.currency")} /></p><Button disabled={locked || !canConfirm} onClick={confirm}>{t("manualSettlement.confirm")}</Button></section>}
+      {pending && <p role="status">{t("manualSettlement.pending")}</p>}
+      {storageFailed && <p role="alert">{t("manualSettlement.storageError")}</p>}
+      {notice && <p role="status">{notice}</p>}
+      </DialogContent>
+      </Dialog>
       <div className="space-y-3 border-t border-border pt-6"><h3 className="font-semibold">{t("manualSettlement.history")}</h3>{!history.data?.items.length && <p className="text-sm">{t("manualSettlement.empty")}</p>}{history.data?.items.map(item => <article key={item.id} className="min-w-0 space-y-2 border-b border-border py-3" aria-label={t(item.reversal ? "manualSettlement.reversed" : "manualSettlement.live")}><ManualSettlementSummary item={item} />{!item.reversal && canReverse && <Button variant="outline" disabled={locked} onClick={() => { setReverseId(item.id); setReason("") }}>{t("manualSettlement.reverse")}</Button>}{reverseId === item.id && <form className="space-y-2" onSubmit={event => { event.preventDefault(); if (reason.trim() && !locked) void execute({ kind: "reverse", input: { requestId: crypto.randomUUID(), settlementId: item.id, reason: reason.trim() } }) }}><label className="block space-y-2 text-sm"><span>{t("manualSettlement.reason")}</span><Textarea aria-label={t("manualSettlement.reason")} maxLength={1000} required value={reason} onChange={event => setReason(event.target.value)} disabled={locked} /></label><div className="flex flex-wrap gap-2"><Button type="submit" disabled={!reason.trim() || locked}>{t("manualSettlement.confirmReverse")}</Button><Button type="button" variant="outline" disabled={locked} onClick={() => setReverseId(null)}>{t("manualSettlement.cancel")}</Button></div></form>}</article>)}<div className="flex gap-2"><Button variant="outline" disabled={offset === 0 || locked} onClick={() => setOffset(Math.max(0, offset - 5))}>{t("manualSettlement.previous")}</Button><Button variant="outline" disabled={history.data?.nextOffset == null || locked} onClick={() => setOffset(history.data!.nextOffset!)}>{t("manualSettlement.next")}</Button></div></div>
     </>}
     {notice && <p role="status" className="text-sm">{notice}</p>}

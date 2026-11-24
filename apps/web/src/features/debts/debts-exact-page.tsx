@@ -17,7 +17,7 @@ import { getCachedSessionUserId } from "@/features/app-shell/workspace-keys"
 import { Money, sumMoneyHistory } from "@tuari/contracts"
 import { useExactDebtCommand, useExactDebtDetail, useExactDebtSummary, type ExactDebtCommand } from "./debts-exact-queries"
 import { ManualSettlementLink } from "./manual-settlement-link"
-import type { ManualSettlementClient } from "./manual-settlement-panel"
+import { ManualSettlementPanel, type ManualSettlementClient } from "./manual-settlement-panel"
 import { EmployeePayrollDebtSection } from "./employee-payroll-debt-section"
 
 export type ExactDebtPartyOption = { id: string; label: string; phone?: string; partyType: ExactDebtAccount["partyType"] }
@@ -40,6 +40,7 @@ function amount(value: string, positive: boolean) {
 /** Authenticated debt ledger using the exact financial client. */
 export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees, manualSettlementClient }: { manualSettlementClient?: ManualSettlementClient; client: ExactDebtsClient; parties: ExactDebtPartyOption[]; scopedParty?: ExactDebtPartyOption; payrollEmployees?: ExactDebtPartyOption[] }) {
   const { t } = useTranslation()
+  const partySettlements = scopedParty?.partyType === "EXTERNAL_COUNTERPARTY" && manualSettlementClient
   const [selected, setSelected] = useState<string | null>(null)
   const [tab, setTab] = useState("ledger")
   const [accountPage, setAccountPage] = useState(1)
@@ -118,10 +119,10 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees,
     <DirectionProvider direction="rtl">
     <Tabs value={tab} onValueChange={value => setTab(String(value))}>
     <TabsList aria-label={t("exactDebts.workflows")} className="max-w-full overflow-x-auto">
-      <TabsTrigger value="ledger">{t("exactDebts.ledgerTab")}</TabsTrigger>
+      <TabsTrigger value="ledger">{t(partySettlements ? "manualSettlement.activityTab" : "exactDebts.ledgerTab")}</TabsTrigger>
       <TabsTrigger value="accounts">{t("exactDebts.accountsTab")}</TabsTrigger>
-      <TabsTrigger value="settlement">{t("exactDebts.settlementTab")}</TabsTrigger>
-      <TabsTrigger value="party">{t("exactDebts.partyTab")}</TabsTrigger>
+      <TabsTrigger value="settlement">{t(partySettlements ? "manualSettlement.settlementsTab" : "exactDebts.settlementTab")}</TabsTrigger>
+      {!partySettlements && <TabsTrigger value="party">{t("exactDebts.partyTab")}</TabsTrigger>}
     </TabsList>
     <TabsContent value="accounts">
     <Surface className="min-w-0 p-5" variant="card">
@@ -146,7 +147,7 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees,
     {detailAccountId && (detail.isPending ? <p role="status">{t("exactDebts.loadingEntries")}</p> : detail.isError ? <div role="alert">{t("exactDebts.entriesError")} <Button variant="outline" onClick={() => void detail.refetch()}>{t("exactDebts.retry")}</Button></div> : account && <Surface className="min-w-0 p-5" variant="card">
       <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
         <div><h2 className="text-lg font-semibold">{t("exactDebts.entriesTitle")} {account.direction === "PAYABLE" ? t("exactDebts.payable") : t("exactDebts.receivable")}</h2><p className="mt-1"><MoneyValue exact value={account.currentBalance} currencyLabel={t("exactDebts.currency")} variant="detail" /></p></div>
-        <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "post" })}>{t("exactDebts.post")}</Button></div>
+        <div className="flex flex-wrap gap-2"><Button variant="outline" disabled={mutation.isPending} onClick={() => open({ kind: "post" })}>{t("exactDebts.post")}</Button>{partySettlements && <Button variant="outline" disabled={mutation.isPending || !detail.data?.entries.some(row => row.remainingDzd !== null && row.remainingDzd !== "0.00" && !row.producerType && !row.targetEntryId && !row.correctionOfEntryId)} onClick={() => open({ kind: "settle" })}>{t("exactDebts.settle")}</Button>}</div>
       </div>
       <DataTable label={t("exactDebts.entriesTable")} pagination={pagingProps(entryPaging, t("exactDebts.entryPages"), setEntryPage)}>
         <Table><TableHeader><TableRow><TableHead>{t("exactDebts.typeDate")}</TableHead><TableHead>{t("exactDebts.amount")}</TableHead><TableHead>{t("exactDebts.balanceAfter")}</TableHead><TableHead>{t("exactDebts.remaining")}</TableHead><TableHead>{t("exactDebts.auditActions")}</TableHead></TableRow></TableHeader><TableBody>
@@ -167,13 +168,15 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees,
       </DataTable>
     </Surface>)}
     </TabsContent>
-    <TabsContent value="settlement" className="space-y-4">
+    <TabsContent value="settlement" keepMounted className="space-y-4">
+      {partySettlements ? <ManualSettlementPanel key={scopedParty.id} client={manualSettlementClient} debtClient={client} partyId={scopedParty.id} /> : <>
       <SectionHeader title={t("exactDebts.settlementTab")} description={t("exactDebts.settleHelp")} />
       {account && detailAccountId ? <>
         <Button disabled={mutation.isPending || !detail.data?.entries.some(row => row.remainingDzd !== null && row.remainingDzd !== "0.00" && !row.producerType && !row.targetEntryId && !row.correctionOfEntryId)} onClick={() => open({ kind: "settle" })}>{t("exactDebts.settle")}</Button>
         <ul className="space-y-4">{orderedEntries.filter(row => row.entryType === "SETTLEMENT").map(row => <li key={row.id} className="space-y-3 border-b border-border py-4"><AppDate value={row.entryDate} /><MoneyValue signed value={row.signedAmountDzd} currencyLabel={t("exactDebts.currency")} /><StatusBadge label={t(row.status === "VOIDED" ? "exactDebts.voidStatus" : "exactDebts.liveStatus")} tone={row.status === "VOIDED" ? "bad" : "good"} /><span>{row.note} {row.actorLabel}</span>{manualSettlementClient && account.partyType === "EXTERNAL_COUNTERPARTY" && <ManualSettlementLink client={manualSettlementClient} accountId={account.id} entryId={row.id} entries={detail.data?.entries} />}</li>)}</ul>
         {!orderedEntries.some(row => row.entryType === "SETTLEMENT") && <EmptyState title={t("exactDebts.noSettlements")} description={t("exactDebts.settleHelp")} />}
       </> : <EmptyState title={t("exactDebts.selectAccount")} description={t("exactDebts.selectHelp")} />}
+      </>}
     </TabsContent>
     <TabsContent value="party" className="space-y-4">
       <SectionHeader title={t("exactDebts.partyTab")} />

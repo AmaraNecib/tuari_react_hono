@@ -1,0 +1,13 @@
+# External account tabs
+
+Base d4ca181f7b66dcd5ac06eb8976c4b30aba22c410. Sole writer in D:/worktrees/tuari_react_hono/t3-82cb7302-cbc95bbc1a45a5ba. Mode focused-local / CI-final-enforced supplied by parent. Local-only; parent owns combined review and owner UI signoff.
+
+Use the existing RTL Base UI tabs, owned by ExactDebtsPage, rather than wrapping its four ledger subtabs in another tab bar. External scoped accounts open on Account activity. Shared identity, gross balances and account selection remain above the tabs. Account creation stays a peer tab. Party information is already shared above this page, so omit that redundant scoped tab. Settlements hosts the existing pair history only, without the generic duplicate history. Preserve the separate zero-account command in activity with its existing explicit zeroing label. Other debt callers retain their existing tabs.
+
+ManualSettlementPanel keeps command state, pending/replay storage and query interfaces. Its new-settlement action opens the existing accessible Dialog. Form and preview remain in one dialog, both sides together. Closing retains state in its owning module. Keep the settlement tab mounted so switching tabs cannot discard drafts or uncertain requests. Pending recovery stays outside the dialog. Reversal remains an explicit history action. Financial rules and storage are unchanged.
+
+The existing page and panel rendering interfaces are the agreed test seams. Add failing-first panel proof for on-demand form and retained draft/preview, plus scoped tab integration proof. Retain money/recovery and direct caller tests. Browser proof uses the real disposable native API, selected settlement flow, desktop/tablet/mobile at identical viewports to baseline, including keyboard, dismissal and replay. No full local suite/build. CI selector may retain full scope for locale changes.
+
+Review remains the deeper financial route; this correction requires parent combined-delta review rather than restarting initial lenses. Architecture: no financial seam moved. Rendering ownership stays with ExactDebtsPage; the panel still owns mutation lifecycle. Deleting that ownership would duplicate replay and persistence logic in callers, so no new adapter is introduced. Domain vocabulary remains original obligation, pair settlement, full reversal and account zeroing, distinct operations.
+
+Impeccable context ran. PRODUCT.md and the required product reference are absent in the installed skill; existing app tokens, tabs and frontend-design are the design context. No new product design, dependency or policy changes. Wisdom search found only the dev-server orphan lesson; use isolated existing dedicated ports and preserve its capture boundary. No wisdom written.

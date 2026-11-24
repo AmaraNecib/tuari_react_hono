@@ -5,6 +5,7 @@ export const ar = {
   translation: {
     manualSettlement: {
       title: "تسوية متبادلة بين دينين يدويين",
+      activityTab: "حركة الحساب", settlementsTab: "التسويات", newSettlement: "تسوية متبادلة جديدة",
       information: "معلومات التسوية المتبادلة",
       entryDetails: "عرض تفاصيل القيدين الأصليين", technicalDetails: "المعرّفات التقنية", manualEntry: "قيد يدوي", manualFallback: "قيد يدوي أصلي. تفاصيل المصدر غير متاحة في هذا العرض.", entryNumber: "القيد {{sequence}}", reversalAction: "عُكست التسوية وأُعيد المبلغ إلى الجانبين",
       help: "تخفض هذه العملية المستحقات علينا ولنا بالمبلغ نفسه، دون حركة نقدية أو مخزنية. لا تغيّر عملية تصفير الحساب أو تسجيل الدفعات.",

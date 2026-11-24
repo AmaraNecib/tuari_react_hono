@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next"
 import { RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shared/record-page-frame"
 
 import { ExactDebtsPage } from "@/features/debts/debts-exact-page"
-import { ManualSettlementPanel, type ManualSettlementClient } from "@/features/debts/manual-settlement-panel"
+import { type ManualSettlementClient } from "@/features/debts/manual-settlement-panel"
 
 /**
  * @description Component
@@ -35,7 +35,6 @@ export function ExternalCounterpartyDetailsPage({
         <RecordInfoCard label={t("externals.details.notes")} value={counterparty.note?.trim() || t("common.noNotes")} />
       </RecordInfoGrid>
 
-      {manualSettlementClient && <ManualSettlementPanel client={manualSettlementClient} debtClient={debtClient} partyId={counterparty.id} />}
       <ExactDebtsPage manualSettlementClient={manualSettlementClient} client={debtClient} scopedParty={{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }} parties={[{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }]} />
     </RecordPageFrame>
   )
