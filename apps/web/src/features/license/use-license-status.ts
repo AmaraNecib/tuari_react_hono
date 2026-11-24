@@ -1,3 +1,5 @@
+import { supportFailureMessage } from "@/lib/error-correlation"
+import { i18n } from "@/i18n"
 import { useEffect, useState, useCallback } from "react"
 
 /** Combined response from the Rust get_license_status command (M5.1 + M5.2 fields). */
@@ -62,9 +64,8 @@ export function useLicenseStatus() {
       })
 
       return result
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error)
+    } catch {
+      const message = supportFailureMessage(i18n.t("license.loadError"))
 
       setState({
         loading: false,

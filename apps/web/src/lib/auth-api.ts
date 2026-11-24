@@ -29,7 +29,7 @@ type ProfileUpdateResponse = {
  * - API (better-auth) returns English messages we can't control
  * - UI translates them using i18n for any language
  * - Easy to add new translations when building mobile apps
- * - Fallback to original message if no translation exists
+ * - Unknown failures use caller-owned fallback copy
  * 
  * To add a new language:
  * 1. Add translations in src/i18n/resources/<lang>.ts under auth.errors
@@ -43,7 +43,7 @@ const API_ERROR_TO_I18N_KEY: Record<string, string> = {
   "session expired": "auth.errors.sessionExpired",
 }
 
-function translateAuthApiErrorMessage(message: string): string {
+function translateAuthApiErrorMessage(message: string, fallbackMessage = i18n.t("toasts.actionError")): string {
   const normalized = message.trim().toLowerCase().replace(/\s+/g, " ")
   const i18nKey = API_ERROR_TO_I18N_KEY[normalized]
   
@@ -51,8 +51,8 @@ function translateAuthApiErrorMessage(message: string): string {
     return i18n.t(i18nKey)
   }
   
-  // Fallback: return original message if no translation exists
-  return message
+  const translated = Object.values(API_ERROR_TO_I18N_KEY).map(key => i18n.t(key))
+  return translated.includes(message) ? message : fallbackMessage
 }
 
 function resolveAuthUrl(path: string) {
@@ -105,11 +105,11 @@ async function postAuthenticatedJson<TResponse>(path: string, body: Record<strin
 /** Extracts a user-friendly, translated error message from auth errors. */
 export function extractAuthErrorMessage(error: unknown, fallbackMessage: string) {
   if (typeof error === "string" && error.trim().length > 0) {
-    return translateAuthApiErrorMessage(error)
+    return translateAuthApiErrorMessage(error, fallbackMessage)
   }
 
   if (error instanceof Error && error.message.trim().length > 0) {
-    return translateAuthApiErrorMessage(error.message)
+    return translateAuthApiErrorMessage(error.message, fallbackMessage)
   }
 
   if (typeof error === "object" && error !== null) {
@@ -117,20 +117,20 @@ export function extractAuthErrorMessage(error: unknown, fallbackMessage: string)
 
     const message = obj["message"]
     if (typeof message === "string" && message.trim().length > 0) {
-      return translateAuthApiErrorMessage(message)
+      return translateAuthApiErrorMessage(message, fallbackMessage)
     }
 
     const nestedError = obj["error"]
     if (typeof nestedError === "object" && nestedError !== null) {
       const nestedMessage = (nestedError as Record<string, unknown>)["message"]
       if (typeof nestedMessage === "string" && nestedMessage.trim().length > 0) {
-        return translateAuthApiErrorMessage(nestedMessage)
+        return translateAuthApiErrorMessage(nestedMessage, fallbackMessage)
       }
     }
 
     const statusText = obj["statusText"]
     if (typeof statusText === "string" && statusText.trim().length > 0) {
-      return translateAuthApiErrorMessage(statusText)
+      return translateAuthApiErrorMessage(statusText, fallbackMessage)
     }
   }
 

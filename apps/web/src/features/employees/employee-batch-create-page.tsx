@@ -289,13 +289,15 @@ export function EmployeeBatchCreatePage({
 
         if (hasServerErrors) {
           setRowErrors(serverErrors)
+          showValidationToast(t("toasts.employeeBatchValidation"))
+          return
         }
 
-        showErrorToast(error.message)
+        showErrorToast(t("toasts.addWorkerError"))
         return
       }
 
-      showErrorToast(error instanceof Error ? error.message : t("toasts.addWorkerError"))
+      showErrorToast(t("toasts.addWorkerError"))
     }
   }
 

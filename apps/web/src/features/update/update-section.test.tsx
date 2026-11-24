@@ -1,15 +1,17 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 
+import * as correlation from "@/lib/error-correlation"
 import { UpdateSection } from "./update-section"
 
 // Mock Tauri invoke
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+  isTauri: () => false,
 }))
 const mockInvoke = vi.mocked(invoke)
 
@@ -23,7 +25,8 @@ const mockListen = vi.mocked(listen)
 // Mock i18n — resolve keys against the real ar resource (resource wins,
 // fallback only when the key is missing), mirroring production i18next.
 import { ar } from "@/i18n/resources/ar"
-vi.mock("react-i18next", () => ({
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-i18next")>(),
   useTranslation: () => ({
     t: (key: string, fallback?: string) => {
       let node: unknown = ar.translation
@@ -44,6 +47,27 @@ function findButton(text: string): HTMLButtonElement | null {
 }
 
 describe("UpdateSection", () => {
+  it("uses one safe support code when the event and invocation reject the same download", async () => {
+    const support = vi.spyOn(correlation, "supportFailureMessage")
+    let rejectDownload!: (error: Error) => void
+    let progress!: (event: { payload: { status: string; error: string } }) => void
+    mockInvoke.mockImplementation(async (command: string) => {
+      if (command === "get_current_version") return "0.1.0"
+      if (command === "check_for_updates") return { updateAvailable: true, latestVersion: "2.0.0", downloadUrl: "https://example.com/update" }
+      if (command === "start_update_download") return new Promise((_resolve, reject) => { rejectDownload = reject })
+    })
+    mockListen.mockImplementation(async (_event, handler) => { progress = handler as typeof progress; return mockUnlisten })
+    render(<UpdateSection />)
+    await screen.findByText("0.1.0")
+    fireEvent.click(screen.getByRole("button", { name: "التحقق من وجود تحديثات" }))
+    fireEvent.click(await screen.findByRole("button", { name: "تنزيل التحديث" }))
+    await waitFor(() => expect(rejectDownload).toBeTypeOf("function"))
+    await act(async () => { progress({ payload: { status: "error", error: "secret-path" } }); rejectDownload(new Error("secret-path")) })
+    expect(support).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/secret-path/)).toBeNull()
+    expect(screen.getByText(/TUARI-[0-9A-F]{8}/)).toBeTruthy()
+  })
+
   beforeEach(() => {
     vi.clearAllMocks()
     // Default mock for get_current_version

@@ -35,10 +35,16 @@ import {
 import { desktopApiFetch } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { createRpcHeaders, financialClient, resolveRpcCredentials, rpcClient } from "@/lib/orpc-client"
-import { buildErrorMessage } from "@/lib/rpc-error-handling"
+import { extractRpcIssueMessage } from "@/lib/rpc-error-handling"
 import { exactCommercePrefix } from "@/features/shared/exact-commerce-queries"
 import { resolveApiUrl } from "@/lib/runtime-config"
-import { showErrorToast, showSuccessToast } from "@/lib/toast"
+import { showErrorToast, showSuccessToast, showValidationToast } from "@/lib/toast"
+
+function showInventoryFailure(error: unknown, fallback: string) {
+  const validation = extractRpcIssueMessage(error)
+  if (validation) showValidationToast(validation)
+  else showErrorToast(fallback)
+}
 
 function requireEntitySuccess<T>(result: { success: boolean; message?: string; item?: T; error?: { message: string; code?: AppError["code"]; fieldErrors?: Array<{ field: string; message: string }> } }) {
   if (!result.success || !result.item) {
@@ -306,7 +312,7 @@ export function useCreateInventoryItemDefinitionMutation() {
 /**
  * useTransferInventoryAssetMutation() component.
  */
-      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.definitionError")))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.definitionError"))
     },
   })
 }
@@ -339,7 +345,7 @@ export function useCreateInventoryInvoiceGroupMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.invoiceError")))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.invoiceError"))
     },
 /**
  * useTransferInventoryConsumableMutation() component.
@@ -375,7 +381,7 @@ export function useTransferInventoryAssetMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.assetTransferError")))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.assetTransferError"))
     },
   })
 }
@@ -435,7 +441,7 @@ export function useUpdateAssetChargeMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.chargeCorrectionError")))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.chargeCorrectionError"))
     },
   })
 }
@@ -455,7 +461,7 @@ export function useVoidAssetChargeMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.chargeVoidError")))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.chargeVoidError"))
     },
   })
 }
@@ -485,7 +491,7 @@ export function useTransferInventoryConsumableMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.quantityTransferError")))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.quantityTransferError"))
     },
   })
 }
@@ -563,7 +569,7 @@ export function useRecordInvoicePaymentMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.paymentError")))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.paymentError"))
     },
   })
 }
@@ -584,7 +590,7 @@ export function useCreateOutboundTransferMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, featureI18n.t("featureCopy.inventoryHooks.outboundError")))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.outboundError"))
     },
   })
 }

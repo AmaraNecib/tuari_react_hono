@@ -1,3 +1,5 @@
+import { showErrorToast } from "@/lib/toast"
+import { FailureCode } from "@/lib/failure-code"
 import { i18n as featureI18n } from "@/i18n"
 /**
  * Report builder component for creating custom reports.
@@ -50,12 +52,17 @@ export function ReportBuilder() {
 
   const handleDownloadCSV = () => {
     if (!data) return;
-    const csv = formatReportAsCSV(data);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `report-${reportType.toLowerCase()}-${Date.now()}.csv`;
-    link.click();
+    try {
+      const csv = formatReportAsCSV(data);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `report-${reportType.toLowerCase()}-${Date.now()}.csv`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch {
+      showErrorToast(featureI18n.t("featureCopy.reportBuilder.generateError"));
+    }
   };
 
   return (
@@ -95,7 +102,7 @@ export function ReportBuilder() {
 
         {error && (
           <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
-            {featureI18n.t("featureCopy.reportBuilder.generateError")}{error.message}
+            {featureI18n.t("featureCopy.reportBuilder.generateError")}<FailureCode error={error} attempt={currentReport.errorUpdatedAt} />
           </div>
         )}
 

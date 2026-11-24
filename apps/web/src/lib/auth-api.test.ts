@@ -179,11 +179,11 @@ describe("extractAuthErrorMessage", () => {
     )
   })
 
-  it("leaves untranslatable statusText unchanged", async () => {
+  it("suppresses unknown status text", async () => {
     const { extractAuthErrorMessage } = await import("./auth-api")
 
     expect(extractAuthErrorMessage({ status: 401, statusText: "Unauthorized" }, "fallback")).toBe(
-      "Unauthorized",
+      "fallback",
     )
   })
 
@@ -196,10 +196,10 @@ describe("extractAuthErrorMessage", () => {
     expect(extractAuthErrorMessage({ message: "" }, "fallback")).toBe("fallback")
   })
 
-  it("leaves unknown English messages unchanged", async () => {
+  it("suppresses unknown operational messages", async () => {
     const { extractAuthErrorMessage } = await import("./auth-api")
 
-    expect(extractAuthErrorMessage(new Error("Something went wrong"), "fallback")).toBe("Something went wrong")
+    expect(extractAuthErrorMessage(new Error("Something went wrong"), "fallback")).toBe("fallback")
   })
 
   it("is idempotent for already-translated Arabic messages", async () => {

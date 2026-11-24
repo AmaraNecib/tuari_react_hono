@@ -46,3 +46,72 @@ The remaining table rows for workspace/recovery/home, expense and legacy invento
 The first focused command, pnpm --filter @tuari/web exec vitest run src/lib/toast.test.tsx, exited 1 because vitest is not installed in this checkout. This is an environment failure, not red-first behavioral proof. D:/projects/tuari_react_hono also has no reusable node_modules. No install or build was attempted under the parent's disk-space constraint. Parent was asked for a reusable pinned dependency path. git diff --check passed after the initial correction.
 
 Required before readiness: affected tests, lint/typecheck, committed-head checks and three separate review lenses. Required UI evidence remains matched before/after crops, full sidebar captures, clips and owner signoff. Actual native UI/log correlation remains unproven. This partial slice cannot close #325 or claim CI acceptance. Applied the reachability lesson by checking preflight returns precede mutation execution. Read the Playwright toast-response lesson; no browser success claims are made from mocked toasts. No wisdom files changed.
+
+
+## Authorized continuation from 6828a4db
+
+The parent authorized implementation in the sole-writer worktree
+D:/worktrees/tuari_react_hono/t3-e9b4e5cb-6561e39471f10f1b.
+Base 6828a4dbeec04f97feb1d061e0af282c0283b871. Verification mode remains
+focused-local / CI-final-enforced as supplied by the parent. This is elevated
+review scope because feedback crosses financial, authentication and recovery
+callers. The parent arranges independent review and publication.
+
+The remaining feedback owners now use caller-owned fallback copy for
+operational exceptions. Explicit RPC field issues keep their existing form
+contract. Auth permits only the existing known-message map and its current
+translations, never arbitrary strings, nested messages or status text.
+Account preflight has a distinct local error type. Phone schema failures and
+employee batch field rejections are validation feedback, without incident
+recording. Business operations, stock, debt direction and recovery sequencing
+are unchanged.
+
+The existing toast and FailureCode interfaces remain the feedback seams.
+supportFailureMessage adds the same numeric logging contract to existing
+string-state owners. It is called from event handlers only, returns safe
+copy with a Unicode-isolated support code, and is not passed to showErrorToast.
+This avoids recording the same incident twice. Update download progress and
+the rejected invoke share one per-attempt message. Expected download
+cancellation and absent browser license status remain non-failures.
+
+| Remaining owner group | Implementation and focused proof |
+| --- | --- |
+| Workspace, recovery, shell and expenses | Safe operational toast copy. Account validation stays separate. Workspace regression asserts exactly one safe financial notification and zero operational notifications for account preflight. Recovery sequencing tests retained. |
+| Auth and shared RPC | Known auth feedback survives; unknown exception text is suppressed. Field validation extraction remains explicit. Five changed expectations failed before correction; 42 extraction tests passed afterward. Shared table query alerts now include FailureCode. |
+| Legacy inventory and employee batch | Inventory explicit wire issues use validation toast; operational exceptions use fallback copy. Upload failures retain saved-invoice retry ownership without exposing server text. Employee server field errors remain inline and use validation toast; unexpected failures use one operational toast. |
+| Reporting and license | Report query and CSV preparation failures are safe and correlated. License status alert uses the existing LoadErrorSurface error interface. License activation/status string states record once per failed attempt, not on rerender. Unsuccessful activation envelopes reject safely. Four license ownership tests cover retries and browser non-failure. |
+| Backup and update settings | Backup query, folder save and picker failures are correlated; raw historical backup reasons are no longer rendered. Blank-path validation and picker cancellation remain non-failures. Update check/download/apply failures have safe support hints; a regression proves one hint when progress and invoke report the same download failure. |
+
+The deletion test still favors the shared correlation module: deleting it
+would distribute numeric generation, formatting and best-effort recording
+across the string-state owners. No new business seam or persistence contract
+was introduced.
+
+Focused proof covers the changed owners and direct RPC/table/debt callers.
+The final affected run passed 240 tests in 21 files. An added test's inferred
+throw-only return type caused a TypeScript static-side diagnostic; the
+correction explicitly declares never and retains the same runtime behavior.
+Exact commands, failures and current-head follow-up remain local under
+.scratch/reviews/325-remaining/.
+
+### Honest remaining evidence boundaries
+
+Matched rendering is not complete. The attempted WebView/Vite component
+capture failed at the capture setup. An earlier attempt captured the
+up-to-date state rather than the injected failure and is invalid evidence
+for this change. Its images must not be presented as failure-state proof.
+Attempts and logs are retained. The WebView was restored to its original
+production settings route and CSP bypass was disabled.
+
+No claim is made for new native correlation execution, matched UI evidence
+for every changed owner, mobile/sidebar captures, clips or owner appearance
+approval. Earlier native numeric-lookup proof remains bounded to its
+previous purchase-list scenario. These gaps and parent-owned independent
+reviews block full issue readiness, not authorization to implement.
+The selector expands to full E2E for an unmapped report test; full browser
+acceptance remains CI-final rather than silently running a local full suite.
+
+Wisdom applied: reachable preflight must precede mutation execution; a toast
+alone does not prove an operation succeeded. No wisdom files were changed.
+No dependency, native code, schema, prefix, auth protocol, recovery algorithm
+or review policy changed. No push, PR or merge was performed.

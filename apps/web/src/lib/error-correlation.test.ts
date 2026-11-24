@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest"
-import { formatErrorCode, resolveErrorId, recordUiFailure } from "./error-correlation"
+import { formatErrorCode, resolveErrorId, recordUiFailure, supportFailureMessage } from "./error-correlation"
 
 const runtime = vi.hoisted(() => ({ desktop: vi.fn(() => true) }))
 vi.mock("./desktop-auth-session", () => ({ isDesktopRuntime: runtime.desktop }))
@@ -11,6 +11,15 @@ afterEach(() => {
 })
 
 describe("local UI failure correlation", () => {
+  it("records a fresh numeric ID once per event and isolates its visible support hint", async () => {
+    const first = supportFailureMessage("Safe fallback")
+    const second = supportFailureMessage("Safe fallback")
+    expect(first).toMatch(/^Safe fallback\n\u2066TUARI-[0-9A-F]{8}\u2069$/)
+    expect(second).not.toBe(first)
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(2))
+    const id = resolveErrorId(first.match(/TUARI-[0-9A-F]{8}/)![0])
+    expect(invoke).toHaveBeenNthCalledWith(1, "record_ui_failure", { id })
+  })
   it("does not invoke the native logger in a browser runtime", async () => {
     runtime.desktop.mockReturnValue(false)
     await expect(recordUiFailure(1)).resolves.toBeUndefined()

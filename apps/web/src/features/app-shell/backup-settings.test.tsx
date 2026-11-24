@@ -216,7 +216,7 @@ describe("BackupSettings", () => {
     const panel = screen.getByTestId("backup-status");
     expect(panel.getAttribute("data-state")).toBe("failed");
     expect(screen.queryByText("فشلت آخر محاولة نسخ احتياطي")).toBeTruthy();
-    expect(screen.queryByText("EACCES: permission denied")).toBeTruthy();
+    expect(screen.queryByText("EACCES: permission denied")).toBeNull();
   });
 
   it("saves a valid path and reports success", async () => {
@@ -257,7 +257,8 @@ describe("BackupSettings", () => {
     });
     expect(
       screen.queryByText("the path is a file, not a folder: /mnt/usb/file.txt"),
-    ).toBeTruthy();
+    ).toBeNull();
+    expect(screen.getByText(/TUARI-[0-9A-F]{8}/)).toBeTruthy();
   });
 
   it("does not call the server for an empty path", () => {
@@ -314,7 +315,8 @@ describe("BackupSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "حفظ المسار" }));
 
     await waitFor(() => {
-      expect(screen.queryByText("network down")).toBeTruthy();
+      expect(screen.queryByText("network down")).toBeNull();
+      expect(screen.getByText(/TUARI-[0-9A-F]{8}/)).toBeTruthy();
     });
   });
 
@@ -370,7 +372,7 @@ describe("BackupSettings", () => {
     fireEvent.click(screen.getByRole("button", { name: "اختيار مجلد..." }));
 
     await waitFor(() => {
-      expect(screen.queryByText("تعذر فتح منتقي المجلدات.")).toBeTruthy();
+      expect(screen.queryByText(/تعذر فتح منتقي المجلدات\./)).toBeTruthy();
     });
   });
 

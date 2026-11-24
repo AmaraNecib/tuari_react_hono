@@ -1,3 +1,4 @@
+import { i18n } from "@/i18n"
 import { useCallback, useRef, useState } from "react"
 
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
@@ -53,11 +54,11 @@ export function useHomeViewShellController({
       await restartApp()
       setRestartPending(false)
       setShowRestartModal(false)
-    } catch (error) {
+    } catch {
       // Keep the prompt and badge available so the user can retry after an IPC
       // failure instead of losing the only recovery path.
       setRestartPending(true)
-      showErrorToast(error instanceof Error ? error.message : String(error))
+      showErrorToast(i18n.t("toasts.actionError"))
     }
   }, [setRestartPending])
 

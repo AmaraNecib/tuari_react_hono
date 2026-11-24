@@ -1,3 +1,5 @@
+import { FailureCode } from "@/lib/failure-code"
+import { supportFailureMessage } from "@/lib/error-correlation"
 /**
  * Backup status + folder setting (#439, #436).
  *
@@ -90,7 +92,7 @@ export function BackupSettings() {
     return (
       <div className="p-5 border border-line rounded-xl border-destructive/40 bg-destructive/5">
         <h3 className="text-lg font-semibold text-foreground">{t("settings.backups.title")}</h3>
-        <p className="mt-2 text-sm leading-6 text-destructive">{t("settings.backups.loadError")}</p>
+        <p className="mt-2 text-sm leading-6 text-destructive">{t("settings.backups.loadError")}<FailureCode error={statusQuery.error} attempt={statusQuery.errorUpdatedAt} /></p>
       </div>
     )
   }
@@ -124,17 +126,14 @@ export function BackupSettings() {
         })
         return
       }
-      setSaveMessage({ kind: "error", text: result.error })
-    } catch (error) {
+      setSaveMessage({ kind: "error", text: supportFailureMessage(t("settings.backups.saveFailed")) })
+    } catch {
       // A transport/RPC failure (offline, 401, output-validation) is not the
       // documented `{ success: false }` envelope, so without this the click
       // would silently do nothing and the mutation would reject unhandled.
       setSaveMessage({
         kind: "error",
-        text:
-          error instanceof Error && error.message
-            ? error.message
-            : t("settings.backups.saveFailed"),
+        text: supportFailureMessage(t("settings.backups.saveFailed")),
       })
     }
   }
@@ -147,7 +146,7 @@ export function BackupSettings() {
         setSaveMessage(null)
       }
     } catch {
-      setSaveMessage({ kind: "error", text: t("settings.backups.pickerFailed") })
+      setSaveMessage({ kind: "error", text: supportFailureMessage(t("settings.backups.pickerFailed")) })
     }
   }
 
@@ -179,7 +178,7 @@ export function BackupSettings() {
               {t("settings.backups.failedLabel")}
             </p>
             <p className="text-sm leading-6 text-destructive [overflow-wrap:anywhere]">
-              {failure.reason}
+              {t("settings.backups.saveFailed")}<FailureCode error={failure} />
             </p>
             <p className="text-xs text-muted-foreground">
               {t("settings.backups.lastAttempt")}: {formatTimestamp(failure.at)}

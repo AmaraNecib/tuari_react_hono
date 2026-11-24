@@ -16,6 +16,7 @@ vi.mock("@/lib/auth-api", () => ({
 
 vi.mock("@/lib/toast", () => ({
   showErrorToast: vi.fn(),
+  showValidationToast: vi.fn(),
   showSuccessToast: vi.fn(),
 }))
 

@@ -1,3 +1,4 @@
+import { showErrorToast } from "@/lib/toast"
 // @vitest-environment jsdom
 import "@/i18n"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
@@ -8,6 +9,8 @@ import { exactReportSchema } from "@tuari/contracts"
 import { ReportBuilder } from "./report-builder"
 import { formatReportAsCSV } from "@/hooks/use-report-queries"
 import { MIDNIGHT_CROSSING, pinUtcTimeZone } from "@/test-utils/algeria-day"
+
+vi.mock("@/lib/toast", () => ({ showErrorToast: vi.fn() }))
 
 const { generate } = vi.hoisted(() => ({ generate: vi.fn() }))
 // Only the published financial leaf exists: a legacy leaf cannot satisfy these tests.
@@ -84,6 +87,16 @@ describe("CSV text escaping", () => {
 })
 
 describe("exact report consumers", () => {
+  it("owns CSV preparation failures without exposing exception text", async () => {
+    generate.mockResolvedValue(inventory)
+    vi.stubGlobal("URL", class extends URL { static createObjectURL(): never { throw new Error("private-path") } })
+    renderPage()
+    generateReport()
+    fireEvent.click(await screen.findByRole("button", { name: "تحميل CSV" }))
+    expect(showErrorToast).toHaveBeenCalledExactlyOnceWith("خطأ في إنشاء التقرير: ")
+    expect(screen.queryByText(/private-path/)).toBeNull()
+  })
+
   it("does not fetch or offer a download until generation is enabled", async () => {
     generate.mockResolvedValue(inventory)
     renderPage()
@@ -180,7 +193,9 @@ describe("exact report consumers", () => {
     expect(screen.queryByRole("button", { name: "تحميل CSV" })).toBeNull()
     await waitFor(() => expect(screen.getAllByRole("button").some(button => button.hasAttribute("disabled"))).toBe(true))
     reject(new Error("report unavailable"))
-    expect((await screen.findByRole("alert")).textContent).toContain("report unavailable")
+    const alert = await screen.findByRole("alert")
+    expect(alert.textContent).not.toContain("report unavailable")
+    await waitFor(() => expect(alert.textContent).toMatch(/TUARI-[0-9A-F]{8}/))
     expect(generate).toHaveBeenCalledTimes(2)
     expect(screen.queryByText("القيمة الإجمالية")).toBeNull()
     expect(screen.queryByRole("button", { name: "تحميل CSV" })).toBeNull()
