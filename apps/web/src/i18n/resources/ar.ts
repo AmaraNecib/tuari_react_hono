@@ -1032,6 +1032,7 @@ export const ar = {
         setupSecret: "رمز الإعداد الأول مطلوب.",
       },
       errors: {
+        profileNameLength: "يجب أن يكون الاسم بين حرف واحد و120 حرفًا.",
         phoneAlreadyUsed: "رقم الهاتف مستخدم بالفعل.",
         invalidPassword: "كلمة المرور الحالية غير صحيحة.",
         invalidCredentials: "رقم الهاتف أو كلمة المرور غير صحيحة.",

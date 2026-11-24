@@ -41,7 +41,10 @@ import { resolveApiUrl } from "@/lib/runtime-config"
 import { showErrorToast, showSuccessToast, showValidationToast } from "@/lib/toast"
 
 function showInventoryFailure(error: unknown, fallback: string) {
-  const validation = extractRpcIssueMessage(error)
+  const field = error instanceof AppMutationError && error.code === "VALIDATION"
+    ? error.fieldErrors?.find(issue => issue.message.trim())?.message
+    : undefined
+  const validation = field ?? extractRpcIssueMessage(error)
   if (validation) showValidationToast(validation)
   else showErrorToast(fallback)
 }

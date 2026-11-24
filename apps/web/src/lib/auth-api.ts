@@ -36,6 +36,7 @@ type ProfileUpdateResponse = {
  * 2. The mapping below handles the rest automatically
  */
 const API_ERROR_TO_I18N_KEY: Record<string, string> = {
+  "يجب أن يكون الاسم بين حرف واحد و120 حرفًا.": "auth.errors.profileNameLength",
   "رقم الهاتف مستخدم بالفعل.": "auth.errors.phoneAlreadyUsed",
   "invalid password": "auth.errors.invalidPassword",
   "invalid phone number or password": "auth.errors.invalidCredentials",

@@ -42,6 +42,9 @@ describe("changeCurrentPassword", () => {
     transport.mockResolvedValueOnce(new Response(JSON.stringify({ message: "رقم الهاتف مستخدم بالفعل." }), { status: 409 }))
     const { updateCurrentProfile, extractAuthErrorMessage } = await import("./auth-api")
     await expect(updateCurrentProfile({ phone: "0666666666" })).rejects.toThrow("رقم الهاتف مستخدم بالفعل.")
+    const nameRule = "يجب أن يكون الاسم بين حرف واحد و120 حرفًا."
+    transport.mockResolvedValueOnce(new Response(JSON.stringify({ message: nameRule }), { status: 400 }))
+    await expect(updateCurrentProfile({ name: "a".repeat(121) })).rejects.toThrow(nameRule)
     expect(extractAuthErrorMessage(new Error("private arbitrary server text"), "safe")).toBe("safe")
   })
 
