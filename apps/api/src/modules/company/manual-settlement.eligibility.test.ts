@@ -73,7 +73,8 @@ it.each(["PAYABLE", "RECEIVABLE"] as const)("refuses an amount exceeding only th
     f.finance.recordPayment({ requestId: randomUUID(), debtEntryId: direction === "PAYABLE" ? f.p.id : f.r.id, amountDzd: direction === "PAYABLE" ? "90.00" : "50.00" });
     const before = f.snapshot();
     const input = { ...f.input, requestId: randomUUID(), expectedPayableRemainingDzd: direction === "PAYABLE" ? "10.00" : "100.00", expectedReceivableRemainingDzd: direction === "RECEIVABLE" ? "10.00" : "60.00" };
-    expect(() => f.service.preview(input)).toThrow(/exceeds remaining/i);
+    const preview = { currency: input.currency, externalCounterpartyId: input.externalCounterpartyId, payableOriginalEntryId: input.payableOriginalEntryId, receivableOriginalEntryId: input.receivableOriginalEntryId, amountDzd: input.amountDzd };
+    expect(() => f.service.preview(preview)).toThrow(/exceeds remaining/i);
     expect(() => f.service.confirm(input)).toThrow(/exceeds remaining/i);
     expect(f.snapshot()).toEqual(before);
     expect(f.finance.remaining(f.p.id)).toBe(input.expectedPayableRemainingDzd);

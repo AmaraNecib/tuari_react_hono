@@ -13,7 +13,12 @@ spec. The upload is failure-only, retains hidden scratch files for seven days,
 and ignores missing captures when failure happens before rendering. Never upload
 the run root, databases, auth/config files, attachments, backup files or videos.
 A synthetic glob fixture exercises inclusion and refusal, including sensitive
-files nested inside artifacts. No financial interface, schema or domain term
+files nested inside artifacts. Recovery also exposed a malformed preview test:
+confirmation-only fields caused strict codec refusal before insufficient-side
+validation. Pass only the actual preview contract fields; keep both independent
+PAYABLE/RECEIVABLE refusal and atomic snapshot assertions. The D: retry also
+exposed Windows path normalization in the harness; use native-separator TEMP,
+not a production or assertion change. No financial interface, schema or domain term
 changes; architecture: no seam moved. Parent owns combined review and publication.
 
 ## Hosted finding correction at 5684f06b
