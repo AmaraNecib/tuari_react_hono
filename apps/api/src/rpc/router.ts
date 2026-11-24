@@ -176,7 +176,7 @@ export function createRouter(
       ...retired,
       ...baseHandlers,
       ...payrollHandlers,
-      financial: createFinancialRouter(dependencies.financial.services, dependencies.financial.getMetadata, m, dependencies.financial.reports),
+      financial: createFinancialRouter(dependencies.financial.services, dependencies.financial.getMetadata, m, dependencies.financial.reports, dependencies.financial.manualSettlement),
       ...createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
       salaryPaymentsList: os.salaryPaymentsList.handler(refuse),
       salaryPaymentsCreate: os.salaryPaymentsCreate.handler(refuse),

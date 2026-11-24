@@ -38,6 +38,8 @@ it("binds metadata and exact financial branches to the supplied graph and auth",
     expect((await client.debts.summary()).grossPayableDzd).toBe("90071992547409.93");
     expect((await client.invoices.listInvoices({})).items).toEqual([]);
     expect(await client.inventory.definitions()).toEqual([]);
+    await expect(client.manualSettlement.history({ externalCounterpartyId: "party" })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    await expect(client.manualSettlement.preview({ externalCounterpartyId: "party", payableOriginalEntryId: "p", receivableOriginalEntryId: "r", currency: "DZD", amountDzd: "1.00" })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
     const anonymous = createRouterClient(router, { context: { ...context, resolveCurrentUser: async () => null } }) as FinancialClient;
     await expect(anonymous.metadata()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(anonymous.debts.create({ requestId: "forbidden", partyType: "EXTERNAL_COUNTERPARTY", externalCounterpartyId: "party", direction: "PAYABLE" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });

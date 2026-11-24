@@ -3,6 +3,7 @@ import { financialContract, isFinancialContractProcedure, type WorkspaceMetadata
 import type { FinancialDependencies } from "../app/financial-dependencies";
 import type { RpcContext } from "./context";
 import type { RpcMiddleware } from "./rpc-middleware";
+import { createManualSettlementRouter, type ManualSettlementCapability } from "./manual-settlement-router";
 import { createExactDebtsRouter } from "./debts-exact-router";
 import { createExactInvoicesRouter } from "./invoice-exact-router";
 import { createExactInventoryRouter } from "./inventory-exact-router";
@@ -37,9 +38,11 @@ export function createFinancialRouter(
   getMetadata: () => Promise<WorkspaceMetadata>,
   middleware: RpcMiddleware,
   reports?: ExactReportCapability,
+  manualSettlement?: ManualSettlementCapability,
 ) {
   const os = implement(financialContract).$context<RpcContext>();
   return os.router({
+    manualSettlement: createManualSettlementRouter(manualSettlement, middleware),
     metadata: os.metadata.handler(middleware.queryAuth(async () => getMetadata())),
     debts: createExactDebtsRouter(services.finance, middleware),
     invoices: createExactInvoicesRouter(services.invoices, middleware),

@@ -27,6 +27,7 @@ export type ManualSettlementReversalRecord = {
 };
 
 export interface ManualSettlementRepository extends ExactTransactionParticipant {
+  listSettlements(partyId: string, limit: number, offset: number): ManualSettlementRecord[];
   insertSettlement(record: ManualSettlementRecord): void;
   getSettlement(id: string): ManualSettlementRecord | null;
   insertReversal(record: ManualSettlementReversalRecord): void;

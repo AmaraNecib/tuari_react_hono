@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { oc } from "@orpc/contract";
 import { Money } from "./exact-money";
 import { entityIdSchema } from "./core";
 import { exactDebtAmountSchema } from "./debts-exact";
@@ -32,6 +33,33 @@ export const manualSettlementHistoryInputSchema = z.object({
   limit: z.number().int().min(1).max(100).default(50),
   offset: z.number().int().min(0).max(100000).default(0),
 }).strict();
+const reportAmount = z.string().regex(/^-?(?:0|[1-9]\d*)\.\d{2}$/);
+export const manualSettlementPreviewSchema = z.object({
+  payableAccountId: entityIdSchema, receivableAccountId: entityIdSchema,
+  payableRemainingDzd: exactDebtAmountSchema, receivableRemainingDzd: exactDebtAmountSchema,
+  projectedPayableRemainingDzd: exactDebtAmountSchema, projectedReceivableRemainingDzd: exactDebtAmountSchema,
+  netPositionDzd: reportAmount, projectedNetPositionDzd: reportAmount,
+});
+export const manualSettlementRecordSchema = z.object({
+  id: entityIdSchema, externalCounterpartyId: entityIdSchema, currency: z.literal("DZD"),
+  payableOriginalEntryId: entityIdSchema, receivableOriginalEntryId: entityIdSchema,
+  payableSettlementEntryId: entityIdSchema, receivableSettlementEntryId: entityIdSchema,
+  amountDzd: positive, recordedAt: z.string(), actorUserId: z.string(), actorLabel: z.string(), note: z.string().nullable(),
+});
+export const manualSettlementReversalSchema = z.object({
+  id: entityIdSchema, settlementId: entityIdSchema,
+  payableReversalEntryId: entityIdSchema, receivableReversalEntryId: entityIdSchema,
+  recordedAt: z.string(), actorUserId: z.string(), actorLabel: z.string(), reason: z.string(),
+});
+export const manualSettlementConfirmOutputSchema = z.object({ settlement: manualSettlementRecordSchema, preview: manualSettlementPreviewSchema });
+export const manualSettlementReverseOutputSchema = z.object({ settlement: manualSettlementRecordSchema, reversal: manualSettlementReversalSchema });
+export const manualSettlementHistoryOutputSchema = z.object({ items: z.array(manualSettlementRecordSchema.extend({ reversal: manualSettlementReversalSchema.nullable() })), nextOffset: z.number().int().nullable() });
+export const manualSettlementContract = {
+  preview: oc.input(previewManualSettlementSchema).output(manualSettlementPreviewSchema),
+  confirm: oc.input(confirmManualSettlementSchema).output(manualSettlementConfirmOutputSchema),
+  history: oc.input(manualSettlementHistoryInputSchema).output(manualSettlementHistoryOutputSchema),
+  reverse: oc.input(reverseManualSettlementSchema).output(manualSettlementReverseOutputSchema),
+};
 export type PreviewManualSettlement = z.input<typeof previewManualSettlementSchema>;
 export type ConfirmManualSettlement = z.input<typeof confirmManualSettlementSchema>;
 export type ReverseManualSettlement = z.input<typeof reverseManualSettlementSchema>;

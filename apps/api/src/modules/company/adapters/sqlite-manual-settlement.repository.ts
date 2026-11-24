@@ -13,7 +13,7 @@ const reversalFields = {
 } as const;
 const projection = (fields: Record<string, string>) => Object.entries(fields).map(([key, column]) => `${column} AS ${key}`).join(",");
 
-/** Inert storage participant. No startup initializer or RPC selects it yet. */
+/** Append-only pairing storage on the shared connection and immediate transaction. */
 export class SqliteManualSettlementRepository implements ManualSettlementRepository {
   private readonly ledger: SqliteExactFinanceRepository;
   constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock) {
@@ -36,6 +36,12 @@ export class SqliteManualSettlementRepository implements ManualSettlementReposit
         || posting.debtAccountId !== account.id || posting.status !== "LIVE" || posting.currency !== row.currency || posting.targetEntryId !== original.id || posting.correctionOfEntryId || posting.producerType || posting.producerId || posting.invoiceId
         || posting.entryType !== (reversing ? "ADJUSTMENT" : "SETTLEMENT") || Money.parse(posting.signedAmountDzd).compare(reversing ? amount : amount.negate()) !== 0 || posting.paymentMethod !== null) throw new Error("Invalid manual settlement linkage");
     }
+  }
+  listSettlements(partyId: string, limit: number, offset: number): ManualSettlementRecord[] {
+    return this.withTransaction(() => {
+      const rows = this.db.prepare("SELECT id FROM manual_debt_settlement WHERE external_counterparty_id=? ORDER BY recorded_at DESC,id DESC LIMIT ? OFFSET ?").all(partyId, limit, offset) as { id: string }[];
+      return rows.map(row => this.getSettlement(row.id)!);
+    });
   }
   insertSettlement(row: ManualSettlementRecord): void {
     this.withTransaction(() => {

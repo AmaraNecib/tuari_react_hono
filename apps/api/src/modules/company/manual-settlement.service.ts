@@ -1,4 +1,4 @@
-import { Money, confirmManualSettlementSchema, previewManualSettlementSchema, reverseManualSettlementSchema, type ConfirmManualSettlement, type PreviewManualSettlement, type ReverseManualSettlement } from "@tuari/contracts";
+import { sumMoneyHistory, manualSettlementHistoryInputSchema, Money, confirmManualSettlementSchema, previewManualSettlementSchema, reverseManualSettlementSchema, type ConfirmManualSettlement, type PreviewManualSettlement, type ReverseManualSettlement } from "@tuari/contracts";
 import { ExactDebtError, type ExactFinanceService } from "./exact-finance.service";
 import type { ExactFinanceRepository, ExactTransactionIdentity } from "./exact-finance.repository";
 import type { ManualSettlementRecord, ManualSettlementRepository, ManualSettlementReversalRecord } from "./manual-settlement.repository";
@@ -12,7 +12,7 @@ export type ManualSettlementAuthorization = {
   readonly transactionIdentity?: ExactTransactionIdentity;
   authorize(permissions: readonly string[]): { actorUserId: string; actorLabel: string };
 };
-/** Inert internal command composition, not selected by application dependencies yet. */
+/** Paired ledger commands and history; selected only by the explicit disposable root. */
 export class ManualSettlementService {
   constructor(private readonly finance: ExactFinanceService, private readonly ledger: ExactFinanceRepository, private readonly repository: ManualSettlementRepository, private readonly authorization: ManualSettlementAuthorization, private readonly dependencies: { id(): string; now(): string }) {
     const identity = finance.transactionIdentity;
@@ -32,7 +32,8 @@ export class ManualSettlementService {
     if (entries.some(({ remaining }) => remaining.compare(amount) < 0)) throw new ExactDebtError("Settlement exceeds remaining obligation", "CONFLICT");
     const payable = entries[0]!;
     const receivable = entries[1]!;
-    return { payableAccountId: payable.entry.debtAccountId, receivableAccountId: receivable.entry.debtAccountId, payableRemainingDzd: payable.remaining.toWire(), receivableRemainingDzd: receivable.remaining.toWire(), projectedPayableRemainingDzd: payable.remaining.subtract(amount).toWire(), projectedReceivableRemainingDzd: receivable.remaining.subtract(amount).toWire() };
+    const netPositionDzd = sumMoneyHistory(this.finance.listAccounts().filter(account => account.partyType === "EXTERNAL_COUNTERPARTY" && account.externalCounterpartyId === input.externalCounterpartyId && account.currency === input.currency).map(account => account.direction === "PAYABLE" ? Money.parse(account.currentBalance) : Money.parse(account.currentBalance).negate()));
+    return { netPositionDzd, projectedNetPositionDzd: netPositionDzd, payableAccountId: payable.entry.debtAccountId, receivableAccountId: receivable.entry.debtAccountId, payableRemainingDzd: payable.remaining.toWire(), receivableRemainingDzd: receivable.remaining.toWire(), projectedPayableRemainingDzd: payable.remaining.subtract(amount).toWire(), projectedReceivableRemainingDzd: receivable.remaining.subtract(amount).toWire() };
   }
   preview(raw: PreviewManualSettlement) {
     const input = previewManualSettlementSchema.parse(raw);
@@ -55,6 +56,14 @@ export class ManualSettlementService {
         this.repository.insertSettlement(settlement);
         return { settlement, preview };
       });
+    });
+  }
+  history(raw: { externalCounterpartyId: string; limit?: number; offset?: number }) {
+    const input = manualSettlementHistoryInputSchema.parse(raw);
+    return this.repository.withTransaction(() => {
+      this.authorization.authorize(["debts:read"]);
+      const rows = this.repository.listSettlements(input.externalCounterpartyId, input.limit + 1, input.offset);
+      return { items: rows.slice(0, input.limit).map(row => ({ ...row, reversal: this.repository.getReversal(row.id) })), nextOffset: rows.length > input.limit ? input.offset + input.limit : null };
     });
   }
   reverse(raw: ReverseManualSettlement) {
