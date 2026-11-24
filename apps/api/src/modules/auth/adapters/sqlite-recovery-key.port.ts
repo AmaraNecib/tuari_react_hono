@@ -84,6 +84,10 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
     return this.serialized(() => this.findKeyByHashUnlocked(hash));
   }
 
+  findKeyById(id: string): Promise<Pick<RecoveryKeyRecord, "id" | "status"> | null> {
+    return this.serialized(() => this.findKeyByIdUnlocked(id));
+  }
+
   updateKeyStatus(id: string, status: Exclude<RecoveryKeyStatus, "AVAILABLE">): Promise<boolean> {
     return this.serialized(() => this.updateKeyStatusUnlocked(id, status));
   }
@@ -137,6 +141,16 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
     return Promise.resolve(row ? toRecord(row) : null);
   }
 
+  private findKeyByIdUnlocked(id: string): Promise<Pick<RecoveryKeyRecord, "id" | "status"> | null> {
+    const row = this.db
+      .select({ id: schema.recoveryKey.id, status: schema.recoveryKey.status })
+      .from(schema.recoveryKey)
+      .where(eq(schema.recoveryKey.id, id))
+      .limit(1)
+      .all()[0];
+    return Promise.resolve(row ? { id: row.id, status: row.status as RecoveryKeyStatus } : null);
+  }
+
   private updateKeyStatusUnlocked(
     id: string,
     status: Exclude<RecoveryKeyStatus, "AVAILABLE">,
@@ -183,6 +197,7 @@ export class SqliteRecoveryKeyPort implements RecoveryKeyPort {
         this.db.insert(schema.recoveryKey).values(input).run();
       },
       findKeyByHash: (hash) => this.findKeyByHashUnlocked(hash),
+      findKeyById: (id) => this.findKeyByIdUnlocked(id),
       updateKeyStatus: (id, status) => this.updateKeyStatusUnlocked(id, status),
       countAvailableKeys: () => this.countAvailableKeysUnlocked(),
       listAllKeys: () => this.listAllKeysUnlocked(),
