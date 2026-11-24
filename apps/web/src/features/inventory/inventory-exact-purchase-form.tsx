@@ -1,3 +1,4 @@
+import { FailureCode } from "@/lib/failure-code"
 import { PurchaseAttachmentFiles, usePurchaseAttachmentDraft } from "./inventory-exact-attachments"
 import { useId, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -100,7 +101,7 @@ export function ExactInventoryPurchaseForm({ definitions, locations, parties, pe
       {lines.length > 1 && <Button type="button" variant="outline" size="sm" onClick={() => setLines(current => current.filter(row => row.key !== line.key))}>{t("exactCommerce.removeInventoryLineNumber", { number: index + 1 })}</Button>}</fieldset> })}
     <Button type="button" variant="outline" disabled={lines.length >= 50 || !active.length} onClick={() => setLines(current => [...current, fresh(active[0])])}>{t("exactCommerce.addInventoryLine")}</Button>
     </fieldset>
-    {uploadError && <p role="alert" className="text-destructive">{uploadError}</p>}
+    {uploadError && <p role="alert" className="text-destructive">{uploadError}<FailureCode error={attachments.failure} /></p>}
     <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border pt-4"><p>{t("exactCommerce.purchaseTotal")} {total !== null ? <MoneyValue exact value={total} currencyLabel={t("common.currency")} variant="detail" /> : t("exactCommerce.completePricing")}</p><div className="flex gap-2"><Button type="submit" aria-describedby={saveReason ? saveReasonId : undefined} disabled={pending || attachments.pending || !attachments.valid || !valid}>{pending || attachments.pending ? t("common.saving") : createdId ? t("inventory.invoiceCreate.retryAttachments") : t("exactCommerce.savePurchaseAndStock")}</Button><Button type="button" variant="outline" disabled={pending || attachments.pending} onClick={close}>{t("common.back")}</Button></div></div>{saveReason && <p id={saveReasonId} role="status" className="text-sm text-muted-foreground">{saveReason}</p>}{error && <p role="alert" className="text-destructive">{error}</p>}
   </form></DialogContent></Dialog>
 }
