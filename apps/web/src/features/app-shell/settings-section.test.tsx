@@ -50,7 +50,12 @@ vi.mock("./use-update-check", () => ({
   }),
 }))
 
-vi.mock("@/lib/desktop-auth-session", () => ({ isDesktopRuntime: () => true }))
+const runtime = vi.hoisted(() => ({ desktop: true, diagnosticsMounted: vi.fn() }))
+vi.mock("@/lib/desktop-auth-session", () => ({ isDesktopRuntime: () => runtime.desktop }))
+vi.mock("./diagnostics-settings", () => ({ DiagnosticsSettings: () => {
+  runtime.diagnosticsMounted()
+  return <div>Native diagnostics panel</div>
+} }))
 vi.mock("./backup-settings", () => ({ BackupSettings: () => <div /> }))
 vi.mock("./recovery-key-settings", () => ({ RecoveryKeySettings: () => <div /> }))
 vi.mock("./update-commands", () => ({
@@ -134,6 +139,8 @@ describe("SettingsSection stored instant timezone (#473)", () => {
   let restoreTimeZone: () => void
 
   beforeEach(() => {
+    runtime.desktop = true
+    runtime.diagnosticsMounted.mockClear()
     window.history.replaceState({}, "", "/?tab=system")
     restoreTimeZone = pinUtcTimeZone()
   })
@@ -141,6 +148,22 @@ describe("SettingsSection stored instant timezone (#473)", () => {
   afterEach(() => {
     cleanup()
     restoreTimeZone()
+  })
+
+  it("does not mount native diagnostics in the browser", () => {
+    runtime.desktop = false
+    window.history.replaceState({}, "", "/?tab=diagnostics")
+    renderSettings()
+    expect(screen.getByText(ar.translation.settings.about.onlyAvailableInDesktop)).toBeTruthy()
+    expect(runtime.diagnosticsMounted).not.toHaveBeenCalled()
+    expect(screen.queryByText("Native diagnostics panel")).toBeNull()
+  })
+
+  it("mounts native diagnostics on desktop", () => {
+    window.history.replaceState({}, "", "/?tab=diagnostics")
+    renderSettings()
+    expect(screen.getByText("Native diagnostics panel")).toBeTruthy()
+    expect(runtime.diagnosticsMounted).toHaveBeenCalled()
   })
 
   it("runs under UTC so the assertions are not vacuous", () => {
