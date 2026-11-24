@@ -434,7 +434,7 @@ export const ar = {
       typeDate: "النوع والتاريخ",
       amount: "المبلغ",
       balanceAfter: "الرصيد بعد الحركة",
-      remaining: "المتبقي للحركة",
+      remaining: "غير مسدّد",
       auditActions: "التوثيق والإجراءات",
       correctionSuffix: " · تصحيح",
       voidSuffix: " · ملغاة",

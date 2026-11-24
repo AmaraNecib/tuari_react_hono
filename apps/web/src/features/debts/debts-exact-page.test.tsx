@@ -163,6 +163,7 @@ describe("injected exact debt page", () => {
   it("renders exact large cents and independent gross totals without touching numeric cache", async () => {
     const { query } = fixture()
     await openAccount()
+    expect(screen.getByRole("columnheader", { name: "غير مسدّد" })).toBeTruthy()
     expect(screen.getAllByText("90,071,992,547,409.93").length).toBeGreaterThan(2)
     expect(screen.getByText("0.3")).toBeTruthy()
     expect(query.getQueryData(workspaceQueryKeys.workspaceSnapshot("operator"))).toEqual({ marker: "numeric-unchanged" })
