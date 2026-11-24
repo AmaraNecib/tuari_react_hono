@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createDatabaseConnection } from "../../infrastructure/database/factory";
 import { createFifoLock } from "../../infrastructure/database/fifo-lock";
 import { ExactFinanceService } from "./exact-finance.service";
@@ -41,10 +41,34 @@ it("settles both manual originals once across reopen and restores both recorded 
     const r = f.finance.listEntries(receivable.id)[0]!.id;
     const input = { requestId: "confirm", currency: "DZD" as const, externalCounterpartyId: party, payableOriginalEntryId: p, receivableOriginalEntryId: r, amountDzd: "25.00", expectedPayableRemainingDzd: "100.00", expectedReceivableRemainingDzd: "60.00" };
     const previewInput = { externalCounterpartyId: party, payableOriginalEntryId: p, receivableOriginalEntryId: r, currency: "DZD" as const, amountDzd: "25.00" };
+    expect(f.service.candidates({ externalCounterpartyId: party })).toEqual(expect.arrayContaining([
+      { id: p, debtAccountId: payable.id, direction: "PAYABLE", postingSequence: 1, remainingDzd: "100.00" },
+      { id: r, debtAccountId: receivable.id, direction: "RECEIVABLE", postingSequence: 1, remainingDzd: "60.00" },
+    ]));
+    expect(() => f.service.accountHistory({ debtAccountId: "missing-account" })).toThrow(/not found/i);
+    expect(() => f.service.preview({ ...previewInput, payableOriginalEntryId: "missing-entry" })).toThrow(/not found/i);
     const snapshot = () => ({ accounts: f.finance.listAccounts(), entries: f.finance.listAccounts().flatMap(account => f.finance.listEntries(account.id)), settlements: db.prepare("SELECT * FROM manual_debt_settlement ORDER BY id").all(), reversals: db.prepare("SELECT * FROM manual_debt_settlement_reversal ORDER BY id").all(), debtReceipts: db.prepare("SELECT * FROM debt_command ORDER BY id").all(), aggregateReceipts: db.prepare("SELECT * FROM exact_finance_command ORDER BY id").all() });
     const beforePreview = snapshot();
+    for (const amountDzd of ["61.00", "101.00"]) {
+      expect(() => f.service.preview({ ...previewInput, amountDzd })).toThrow(/exceeds remaining/i);
+      expect(() => f.service.confirm({ ...input, requestId: randomUUID(), amountDzd })).toThrow(/exceeds remaining/i);
+      expect(snapshot()).toEqual(beforePreview);
+    }
+    expect(() => f.service.reverse({ requestId: "missing", settlementId: "missing", reason: "Missing operation" })).toThrow(/not found/i);
+    for (const participant of [
+      new SqliteExactFinanceRepository(db, createFifoLock()),
+      new SqliteManualSettlementRepository(db, createFifoLock()),
+    ]) {
+      expect(() => new ManualSettlementService(f.finance,
+        participant instanceof SqliteExactFinanceRepository ? participant : f.ledger,
+        participant instanceof SqliteManualSettlementRepository ? participant : f.repository,
+        { authorize: () => actor }, dependencies)).toThrow(/same connection and shared FIFO/);
+    }
     granted.delete("debts:read");
     expect(() => f.service.preview(previewInput)).toThrow(/FORBIDDEN/);
+    expect(() => f.service.candidates({ externalCounterpartyId: party })).toThrow(/FORBIDDEN/);
+    expect(() => f.service.accountHistory({ debtAccountId: payable.id })).toThrow(/FORBIDDEN/);
+    expect(() => f.service.history({ externalCounterpartyId: party })).toThrow(/FORBIDDEN/);
     expect(snapshot()).toEqual(beforePreview);
     granted.add("debts:read");
     expect(f.service.preview(previewInput)).toMatchObject({ payableRemainingDzd: "100.00", receivableRemainingDzd: "60.00", projectedPayableRemainingDzd: "75.00", projectedReceivableRemainingDzd: "35.00" });
@@ -72,6 +96,17 @@ it("settles both manual originals once across reopen and restores both recorded 
     const result = f.service.confirm(input);
     expect(f.finance.remaining(p)).toBe("75.00");
     expect(f.finance.remaining(r)).toBe("35.00");
+    const detailRead = vi.spyOn(f.finance, "detail");
+    const remainingRead = vi.spyOn(f.finance, "remaining");
+    const candidates = f.service.candidates({ externalCounterpartyId: party });
+    expect(candidates).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: p, remainingDzd: "75.00" }),
+      expect.objectContaining({ id: r, remainingDzd: "35.00" }),
+    ]));
+    expect(detailRead).toHaveBeenCalledTimes(2);
+    expect(detailRead.mock.calls).toEqual(expect.arrayContaining([[payable.id], [receivable.id]]));
+    expect(remainingRead).not.toHaveBeenCalled();
+    detailRead.mockRestore(); remainingRead.mockRestore();
     for (const entryId of [p, r, result.settlement.payableSettlementEntryId, result.settlement.receivableSettlementEntryId]) expect(() => f.finance.voidEntry({ requestId: `void-${entryId}`, entryId, voidReason: "Cannot void half" })).toThrow(/Reverse.*first/);
     expect(() => f.service.confirm({ ...input, requestId: "stale" })).toThrow(/stale/i);
     db.close(); db = createDatabaseConnection(path, ""); f = compose();

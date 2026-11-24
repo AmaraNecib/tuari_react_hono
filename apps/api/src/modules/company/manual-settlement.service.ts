@@ -27,10 +27,12 @@ export class ManualSettlementService {
   candidates(input: { externalCounterpartyId: string }) {
     return this.repository.withTransaction(() => {
       this.authorization.authorize(["debts:read"]);
-      return this.finance.listAccounts().filter(account => account.partyType === "EXTERNAL_COUNTERPARTY" && account.externalCounterpartyId === input.externalCounterpartyId && account.currency === "DZD").flatMap(account =>
-        this.finance.listEntries(account.id).filter(entry => entry.status === "LIVE" && !entry.targetEntryId && !entry.correctionOfEntryId && !entry.producerType && !entry.producerId && !entry.invoiceId && Money.parse(entry.signedAmountDzd).compare(Money.parse("0")) > 0)
-          .map(entry => ({ id: entry.id, debtAccountId: account.id, direction: account.direction, postingSequence: entry.postingSequence, remainingDzd: this.finance.remaining(entry.id) }))
-          .filter(entry => Money.parse(entry.remainingDzd).compare(Money.parse("0")) > 0));
+      return this.finance.listAccounts().filter(account => account.partyType === "EXTERNAL_COUNTERPARTY" && account.externalCounterpartyId === input.externalCounterpartyId && account.currency === "DZD").flatMap(account => {
+        const remainingByEntry = new Map(this.finance.detail(account.id).entries.map(entry => [entry.id, entry.remainingDzd]));
+        return this.finance.listEntries(account.id).filter(entry => entry.status === "LIVE" && !entry.targetEntryId && !entry.correctionOfEntryId && !entry.producerType && !entry.producerId && !entry.invoiceId && Money.parse(entry.signedAmountDzd).compare(Money.parse("0")) > 0)
+          .map(entry => ({ id: entry.id, debtAccountId: account.id, direction: account.direction, postingSequence: entry.postingSequence, remainingDzd: remainingByEntry.get(entry.id)! }))
+          .filter(entry => Money.parse(entry.remainingDzd).compare(Money.parse("0")) > 0);
+      });
     });
   }
   accountHistory(input: { debtAccountId: string }) {

@@ -9,7 +9,10 @@ export function ManualSettlementLink({ client, accountId, entryId, entries }: { 
   const { t } = useTranslation()
   const owner = useSessionQuery().data?.user?.id
   const result = useQuery({ queryKey: ["manual-settlement", manualSettlementScope(client), owner, "account", accountId], enabled: Boolean(owner), retry: false, queryFn: () => client.accountHistory({ debtAccountId: accountId }) })
-  if (result.isError) return <p role="alert">{t("manualSettlement.loadError")}</p>
+  if (result.isError) {
+    if ("code" in result.error && result.error.code === "SERVICE_UNAVAILABLE") return null
+    return <p role="alert">{t("manualSettlement.loadError")}</p>
+  }
   const rows = result.data?.items.filter(item => [item.payableOriginalEntryId, item.receivableOriginalEntryId, item.payableSettlementEntryId, item.receivableSettlementEntryId, item.reversal?.payableReversalEntryId, item.reversal?.receivableReversalEntryId].includes(entryId))
   return <>{rows?.map(item => <ManualSettlementSummary key={item.id} item={item} entries={entries} />)}</>
 }

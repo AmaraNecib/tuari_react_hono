@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, expect, it, vi } from "vitest"
 import type { ExactDebtsClient } from "@tuari/contracts"
 import { ManualSettlementPanel, type ManualSettlementClient } from "./manual-settlement-panel"
+import { useExactDebtCommand } from "./debts-exact-queries"
 import { loadPendingSettlement, savePendingSettlement, type PendingSettlement } from "./manual-settlement-pending"
 const identity = vi.hoisted(() => ({ owner: "u" }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: identity.owner } } }) }))
@@ -23,6 +24,30 @@ function fixture() {
  return { client, mount, query }
 }
 afterEach(() => { cleanup(); identity.owner = "u"; vi.restoreAllMocks(); sessionStorage.clear(); queries.splice(0).forEach(q => q.clear()) })
+it.each(["create", "post", "pay", "correct", "void", "settle"] as const)("refreshes mounted candidates after ordinary %s", async kind => {
+ const f = fixture()
+ const original = { id: "new-original", direction: "PAYABLE", postingSequence: 2, remainingDzd: "12.00" }
+ const command = vi.fn().mockImplementation(async () => {
+  f.client.candidates.mockResolvedValue([original])
+  return {}
+ })
+ const debtClient = { [kind]: command } as unknown as ExactDebtsClient
+ function OrdinaryCommand() {
+  const mutation = useExactDebtCommand(debtClient)
+  return <button onClick={() => mutation.mutate({ kind, input: {} } as Parameters<typeof mutation.mutate>[0])}>ordinary</button>
+ }
+ render(<QueryClientProvider client={f.query}>
+  <OrdinaryCommand />
+  <ManualSettlementPanel client={f.client as unknown as ManualSettlementClient} debtClient={debtClient} partyId="p" />
+ </QueryClientProvider>)
+ fireEvent.click(await screen.findByRole("button", { name: "تسوية متبادلة جديدة" }))
+ const select = await screen.findByRole("combobox", { name: "الدين المستحق علينا" })
+ await waitFor(() => expect(select.querySelector('option[value="a"]')).not.toBeNull())
+ fireEvent.click(screen.getByRole("button", { name: "ordinary", hidden: true }))
+ await waitFor(() => expect(select.querySelector('option[value="new-original"]')).not.toBeNull())
+ expect(select.querySelector('option[value="a"]')).toBeNull()
+ expect(command).toHaveBeenCalledTimes(1)
+})
 const retry = () => screen.getByRole("button", { name: "إعادة الطلب نفسه" })
 for (const command of [confirm, reverse]) {
  for (const code of ["FORBIDDEN", "UNAUTHORIZED", "UPGRADE_REQUIRED", "SERVICE_UNAVAILABLE", "CONFLICT"]) it(`${command.kind} retains committed-once intent after lost response, ${code} and remount`, async () => {

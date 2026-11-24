@@ -67,6 +67,20 @@ it("refuses wrong party, direction, worker, derived, voided, credit and producer
   } finally { f.db.close(); }
 });
 
+it.each(["PAYABLE", "RECEIVABLE"] as const)("refuses an amount exceeding only the %s original without receipts or postings", direction => {
+  const f = fixture();
+  try {
+    f.finance.recordPayment({ requestId: randomUUID(), debtEntryId: direction === "PAYABLE" ? f.p.id : f.r.id, amountDzd: direction === "PAYABLE" ? "90.00" : "50.00" });
+    const before = f.snapshot();
+    const input = { ...f.input, requestId: randomUUID(), expectedPayableRemainingDzd: direction === "PAYABLE" ? "10.00" : "100.00", expectedReceivableRemainingDzd: direction === "RECEIVABLE" ? "10.00" : "60.00" };
+    expect(() => f.service.preview(input)).toThrow(/exceeds remaining/i);
+    expect(() => f.service.confirm(input)).toThrow(/exceeds remaining/i);
+    expect(f.snapshot()).toEqual(before);
+    expect(f.finance.remaining(f.p.id)).toBe(input.expectedPayableRemainingDzd);
+    expect(f.finance.remaining(f.r.id)).toBe(input.expectedReceivableRemainingDzd);
+  } finally { f.db.close(); }
+});
+
 it("refuses reversal atomically when an intervening posting fills one account's int64 capacity", () => {
   const f = fixture();
   try {

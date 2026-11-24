@@ -1,5 +1,34 @@
 # Manual obligation settlement
 
+## Hosted finding correction at 5684f06b
+
+Sole writer: D:/worktrees/tuari_react_hono/t3-82cb7302-cbc95bbc1a45a5ba.
+Parent supplies focused-local / CI-final-enforced. High-assurance bounded correction;
+parent owns independent combined-delta review, publication and hosted gates.
+
+Preserve the approved appearance and default-off capability. Ordinary exact debt
+commands invalidate mounted manual choices. Disabled account history renders nothing;
+other failures remain alerts and never expose cached restricted history. Candidate
+balances come from one exact detail projection per account, not repeated remaining
+reads per original. Browser assertions target each selected account's activity-table
+posting row for settlement and reversal, separately from party-wide history.
+
+The vocabulary and ownership remain unchanged: manual original, attributed portion,
+paired operation and complete reversal. No interface or transaction seam moves.
+The module still owns eligibility and paired atomic commands; query invalidation
+belongs at the ordinary command boundary. Read-amplification proof deliberately spies
+on detail/remaining calls because read count is the performance contract under review;
+financial expectations remain independently asserted.
+
+A full API coverage run is authorized to resolve the observed 2413/2440 branch failure,
+not routine verification. Added reachable missing-record, FIFO composition, read denial
+and independently insufficient-side cases preserve atomic snapshots. No threshold,
+coverage exclusion or fake unreachable input changes. Windows skips are two existing
+POSIX permission tests plus the existing unsupported backup-key case; hosted Linux
+skips only the latter. Earlier failed runs and aggregate reports remain separate.
+Applied synchronous-driver transaction lessons; no wisdom writes. No dependency,
+schema, migration, default activation, UI redesign, push or merge authority.
+
 ## Integrated correction F1–F6
 
 Correction base: b644594320b66170d03281a2aa5b1f6a5e2f8b59. Isolated implementation tree:

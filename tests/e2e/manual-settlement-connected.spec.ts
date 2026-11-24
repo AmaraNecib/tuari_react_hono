@@ -107,16 +107,36 @@ test("external manual pair baseline and responsive evidence #613", async ({ page
       expect(seen).toHaveLength(3); expect(seen[1]).toEqual(seen[0]); expect(seen[2]).toEqual(seen[0])
       await expect(ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات علينا/ })).toContainText("76")
       await expect(ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات لنا/ })).toContainText("35")
+      const settled = await rpc<{items: {id:string; payableSettlementEntryId:string; receivableSettlementEntryId:string}[]}>(view, "financial/manualSettlement/history", { externalCounterpartyId: party.item.id })
+      const operation = settled.items[0]!
+      for (const [direction, postingId] of [[/مستحقات علينا/, operation.payableSettlementEntryId], [/مستحقات لنا/, operation.receivableSettlementEntryId]] as const) {
+        await ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: direction }).click()
+        await ledger.getByRole("tab", { name: "حركة الحساب", exact: true }).click()
+        const activity = ledger.getByRole("tabpanel", { name: "حركة الحساب", exact: true })
+        const row = activity.locator(`[data-entry-id="${postingId}"]`)
+        await expect(row.locator(`[data-manual-settlement-id="${operation.id}"]`)).toBeVisible()
+        await expect(row).toContainText("تسوية مسجلة")
+        await expect(row).toContainText("25")
+        // The account-local posting identity prevents a party-wide history from satisfying this proof.
+        expect((await rpc<{entries:{id:string}[]}>(view, "financial/debts/detail", { id: accounts[direction.source.includes("علينا") ? 0 : 1]!.id })).entries.some(entry => entry.id === postingId)).toBe(true)
+      }
+      await ledger.getByRole("tab", { name: "التسويات", exact: true }).click()
       await resumed.getByRole("button", { name: "عكس التسوية كاملة", exact: true }).click()
       await resumed.getByRole("textbox", { name: "سبب العكس", exact: true }).fill("إلغاء التسوية التجريبية")
       await resumed.getByRole("button", { name: "تأكيد العكس الكامل", exact: true }).click()
       await expect(resumed.getByText("معكوسة بالكامل", { exact: true })).toHaveCount(captures.length + 1)
       await expect(ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات علينا/ })).toContainText("101")
       await expect(ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات لنا/ })).toContainText("60")
-      const operations = await rpc<{items: {id:string; reversal:{id:string}}[]}>(view, "financial/manualSettlement/history", { externalCounterpartyId: party.item.id })
+      const operations = await rpc<{items: {id:string; reversal:{id:string; payableReversalEntryId:string; receivableReversalEntryId:string}}[]}>(view, "financial/manualSettlement/history", { externalCounterpartyId: party.item.id })
       const latest = operations.items.find(item => item.reversal)!
       for (const direction of [/مستحقات علينا/, /مستحقات لنا/]) {
         await ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: direction }).click()
+        await ledger.getByRole("tab", { name: "حركة الحساب", exact: true }).click()
+        const activity = ledger.getByRole("tabpanel", { name: "حركة الحساب", exact: true })
+        await expect(activity.getByRole("table").locator(`[data-manual-settlement-id="${latest.id}"]`).first()).toContainText("معكوسة بالكامل")
+        const reversalPostingId = direction.source.includes("علينا") ? latest.reversal.payableReversalEntryId : latest.reversal.receivableReversalEntryId
+        await expect(activity.locator(`[data-entry-id="${reversalPostingId}"] [data-manual-reversal-id="${latest.reversal.id}"]`)).toContainText("إلغاء التسوية التجريبية")
+        await activity.screenshot({ path: join(dir, direction.source.includes("علينا") ? "payable-activity-links.png" : "receivable-activity-links.png"), animations: "disabled" })
         await ledger.getByRole("tab", { name: "التسويات", exact: true }).click()
         const history = ledger.getByRole("tabpanel", { name: "التسويات", exact: true })
         await expect(history.locator(`[data-manual-settlement-id="${latest.id}"]`)).toContainText("معكوسة بالكامل")

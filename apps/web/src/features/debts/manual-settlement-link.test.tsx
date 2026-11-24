@@ -45,6 +45,18 @@ it("fails closed when account history access is denied", async () => {
  expect(document.body.textContent).not.toContain("Original actor")
  expect(document.querySelector("[data-manual-settlement-id]")).toBeNull()
 })
+it.each(["SERVICE_UNAVAILABLE", "FORBIDDEN", "INTERNAL_SERVER_ERROR"])("hides cached restricted history after %s", async code => {
+ const query = new QueryClient(); clients.push(query)
+ const accountHistory = vi.fn().mockResolvedValueOnce({ items: [operation], nextOffset: null })
+ const view = render(<QueryClientProvider client={query}><ManualSettlementLink client={{accountHistory} as unknown as ManualSettlementClient} accountId="pay-account" entryId="pay-portion" /></QueryClientProvider>)
+ await screen.findByText("معكوسة بالكامل")
+ accountHistory.mockRejectedValue(Object.assign(new Error(code), { code }))
+ await query.invalidateQueries({ queryKey: ["manual-settlement"] })
+ await waitFor(() => expect(view.container.textContent).not.toContain("Original actor"))
+ expect(document.querySelector("[data-manual-settlement-id]")).toBeNull()
+ if (code === "SERVICE_UNAVAILABLE") expect(view.container.textContent).toBe("")
+ else expect(screen.getByRole("alert")).toBeTruthy()
+})
 it("names a settled action separately from a reversal", async () => {
  const query = new QueryClient(); clients.push(query)
  const accountHistory = vi.fn().mockResolvedValue({items:[{...operation,reversal:null}],nextOffset:null})

@@ -46,6 +46,11 @@ export function useExactDebtCommand(client: ExactDebtsClient) {
       })()
       return { result, owner }
     },
-    onSuccess: async ({ owner }) => { await queries.invalidateQueries({ queryKey: [...prefix(client), owner] }) },
+    onSuccess: async ({ owner }) => {
+      await Promise.all([
+        queries.invalidateQueries({ queryKey: [...prefix(client), owner] }),
+        queries.invalidateQueries({ queryKey: ["manual-settlement"] }),
+      ])
+    },
   })
 }
