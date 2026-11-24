@@ -79,6 +79,17 @@ its remaining failure was the probe expecting the definite article in the
 Arabic heading, corrected by using the stable diagnostics-title locator.
 These are distinct failed-attempt boundaries, not passing UI acceptance.
 
+## Bounded review correction
+
+Three distinct initial lenses completed at d9fcfef1 in order: debate,
+test-audit, code-review. Test-audit found missing browser-runtime negative
+coverage. Add a runtime-controlled test asserting that recordUiFailure returns
+without invoking native IPC in the browser. Existing desktop emission and
+logger rejection tests remain. This changes tests only, not runtime behavior.
+One fresh combined-delta review follows the committed correction; unchanged
+initial conclusions carry forward explicitly. All known acceptance blockers
+remain open and are not waived by the local reviews.
+
 ## ZIP boundary
 
 No native ZIP dependency is declared. Existing Windows packaging uses trusted
