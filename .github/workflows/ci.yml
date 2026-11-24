@@ -34,6 +34,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo lint
+      - run: pnpm check:telemetry-viewer
       # Root-level gates turbo never runs: turbo has no root lint task, so the
       # prose gate and the issue-closing harness would silently pass CI.
       - run: pnpm check:unslop
@@ -320,6 +321,7 @@ jobs:
           if [ "$manual_settlement" = true ]; then
             pnpm exec playwright test --config=playwright.manual-settlement.config.ts tests/e2e/manual-settlement-connected.spec.ts
           fi
+          node --test tests/telemetry-viewer.browser.test.mjs
           if [ "$connected_exact" = true ]; then
             pnpm exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts
           fi

@@ -1,8 +1,11 @@
 {
   "name": "tuari_react_hono",
   "private": true,
+  "bin": { "tuari-viewer": "./scripts/tuari-viewer.mjs" },
   "packageManager": "pnpm@10.8.1",
   "scripts": {
+    "tuari-viewer": "node ./scripts/tuari-viewer.mjs",
+    "check:telemetry-viewer": "node --test ./tests/telemetry-viewer.test.mjs",
     "check:dependency-security": "node --test ./tests/dependency-security.test.mjs",
     "check:web-hygiene": "node --test ./tests/web-hygiene.test.mjs",
     "check:i18n-keys": "node --test ./tests/i18n-keys.test.mjs",
@@ -21,7 +24,7 @@
     "dev": "pnpm -r --parallel --filter @tuari/contracts --filter @tuari/api --filter @tuari/web dev",
     "build": "pnpm check:web-tracking && turbo build",
     "lint": "pnpm check:web-tracking && pnpm check:web-hygiene && pnpm check:i18n-keys && pnpm check:repo-hygiene && pnpm check:workflow-assets && pnpm check:update-metadata && pnpm check:license-signer && pnpm check:e2e-selection && pnpm check:sqlcipher-proof && pnpm check:unslop && turbo lint --concurrency=2",
-    "test": "pnpm check:web-tracking && pnpm check:web-hygiene && pnpm check:i18n-keys && pnpm check:repo-hygiene && pnpm check:workflow-assets && pnpm check:update-metadata && turbo test --concurrency=2",
+    "test": "pnpm check:telemetry-viewer && pnpm check:web-tracking && pnpm check:web-hygiene && pnpm check:i18n-keys && pnpm check:repo-hygiene && pnpm check:workflow-assets && pnpm check:update-metadata && turbo test --concurrency=2",
     "test:api": "pnpm --filter @tuari/contracts build && pnpm --filter @tuari/api test",
     "test:contracts": "pnpm --filter @tuari/contracts test",
     "test:web": "pnpm --filter @tuari/web test",

@@ -32,11 +32,13 @@ test('CI E2E shell runs full and affected scopes without silently dropping cover
   const job = workflow.slice(workflow.indexOf('  test-e2e:'), workflow.indexOf('\n  build:'));
   const script = job.slice(job.indexOf('          pnpm --filter @tuari/contracts build'), job.indexOf('\n      - name: Upload'))
     .split('\n').map(line => line.replace(/^          /, '')).join('\n');
-  const run = (mode, specs) => execFileSync('bash', ['-c', 'set -euo pipefail\npnpm() { printf "%s\\n" "$*"; }\n' + script], {
+  const run = (mode, specs) => execFileSync('bash', ['-c', 'set -euo pipefail\nnode() { printf "node %s\\n" "$*"; }\npnpm() { printf "%s\\n" "$*"; }\n' + script], {
     cwd: rootDir, encoding: 'utf8', env: { ...process.env, E2E_MODE: mode, E2E_SPECS: specs },
   }).trim().split('\n');
   const dedicated = 'exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts';
+  const viewer = 'node --test tests/telemetry-viewer.browser.test.mjs';
   const full = run('full', '');
+  assert.equal(full.filter(line => line === viewer).length, 1);
   assert.equal(full[0], '--filter @tuari/contracts build');
   const generic = full.find(line => line.startsWith('test:e2e '));
   assert.ok(generic, 'full scope must execute generic tests');
@@ -48,10 +50,10 @@ test('CI E2E shell runs full and affected scopes without silently dropping cover
   const manual = 'exec playwright test --config=playwright.manual-settlement.config.ts tests/e2e/manual-settlement-connected.spec.ts';
   assert.ok(!generic.includes('manual-settlement-connected.spec.ts'));
   assert.equal(full.filter(line => line === manual).length, 1);
-  assert.deepEqual(run('affected', 'tests/e2e/manual-settlement-connected.spec.ts').slice(2), [manual]);
+  assert.deepEqual(run('affected', 'tests/e2e/manual-settlement-connected.spec.ts').slice(2), [manual, viewer]);
   const affected = run('affected', 'tests/e2e/expenses.spec.ts tests/e2e/payroll-connected-exact.spec.ts');
-  assert.deepEqual(affected.slice(2), ['test:e2e tests/e2e/expenses.spec.ts', dedicated]);
-  assert.deepEqual(run('affected', 'tests/e2e/payroll-connected-exact.spec.ts').slice(2), [dedicated]);
+  assert.deepEqual(affected.slice(2), ['test:e2e tests/e2e/expenses.spec.ts', viewer, dedicated]);
+  assert.deepEqual(run('affected', 'tests/e2e/payroll-connected-exact.spec.ts').slice(2), [viewer, dedicated]);
 });
 
 test('globToRegExp: ** crosses directories, * does not, ? is one char', () => {
@@ -137,6 +139,18 @@ test('selectSpecs: an empty diff fails closed to a full run', () => {
   const scope = selectSpecs([]);
   assert.equal(scope.mode, 'full');
   assert.match(scope.reason, /empty diff/);
+});
+
+test('selectSpecs: telemetry viewer source and tests select browser CI', () => {
+  for (const file of [
+    'scripts/tuari-viewer.mjs',
+    'scripts/viewer/pipeline.mjs',
+    'tests/fixtures/viewer/2026-01-02/app.1.log',
+    'tests/telemetry-viewer.test.mjs',
+    'tests/telemetry-viewer.browser.test.mjs',
+  ]) {
+    assert.equal(selectSpecs([file], loadMap()).mode, 'full', file);
+  }
 });
 
 test('selectSpecs: docs-only diff is a skip', () => {
