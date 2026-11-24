@@ -99,6 +99,12 @@ test("external manual pair baseline and responsive evidence #613", async ({ page
         await expect(history.locator(`[data-manual-reversal-id="${latest.reversal.id}"]`)).toContainText("إلغاء التسوية التجريبية")
         await history.screenshot({ path: join(dir, direction.source.includes("علينا") ? "payable-history.png" : "receivable-history.png") })
       }
+      if (name === "mobile") {
+        await view.getByRole("button", { name: "توسيع الشريط الجانبي", exact: true }).click()
+        await expect(view.locator('.tauri-shell')).toHaveAttribute('data-sidebar-open', 'true')
+        await view.screenshot({ path: join(dir, "mobile-drawer.png"), animations: "disabled" })
+        await view.locator(".sb-mobile-backdrop").click({ position: { x: 5, y: 400 } })
+      }
       // Expand only the screenshot capture surface, not the functional run.
       // Native viewport width is retained; inner scrolling and sticky occlusion
       // are removed for a complete element/composition image.
@@ -107,7 +113,7 @@ test("external manual pair baseline and responsive evidence #613", async ({ page
         document.querySelectorAll("*").forEach(node => {
           const el = node as HTMLElement
           const css = getComputedStyle(el)
-          if (css.position === "sticky" || css.position === "fixed") el.setAttribute("data-capture-sticky", "")
+          if (css.position === "sticky") el.setAttribute("data-capture-sticky", "")
           if (el.scrollHeight > el.clientHeight && ["auto","scroll","hidden"].includes(css.overflowY)) { el.setAttribute("data-capture-host", ""); el.scrollTop = 0 }
           if (css.height === window.innerHeight + "px") el.setAttribute("data-capture-root", "")
         })
