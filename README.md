@@ -1,90 +1,30 @@
-# Tuari Starter Monorepo
+# Tuari
 
-Starter stack:
-- `apps/web`: React + Vite + TanStack Router + TanStack Query + shadcn/ui
-- `apps/api`: Hono + oRPC + Better Auth + Prisma + SQLite
-- `apps/desktop`: Tauri desktop shell that starts the local API and hosts the web UI
-- `packages/contracts`: shared oRPC contracts
+Tuari is a local-first desktop application with a React frontend, a Hono API, and a Tauri shell.
 
-Architecture guide:
-- `docs/ARCHITECTURE.md`
-- `docs/branch-workflow.md`
+## Start here
 
-Delivery planning:
-- `plans/tuari-multi-agent-delivery-plan.md`
-- `plans/templates/branch-verification-checklist.md`
+- [Architecture guide](docs/ARCHITECTURE.md) explains runtime ownership and persistence.
+- [Architecture document index](docs/README.md) links current architecture docs, requirements, and decisions.
+- [Engineering workflow](docs/engineering-workflow.md) defines implementation, local verification, review, and CI acceptance.
 
-API architecture:
-- `src/app`: composition and app assembly
-- `src/infrastructure`: env, auth, prisma, schema bootstrap
-- `src/modules`: feature services and repositories
-- `src/rpc`: transport boundary only
+## Runtime layout
 
-## What this starter does
-- Runs fully local through Tauri. No internet deployment step is required.
-- Ships a local bundled API runtime inside the desktop app.
-- Uses one SQLite file for both auth and app data.
-- Keeps the desktop auth token in the Tauri app process memory instead of browser `localStorage`.
-- Supports English and Arabic with LTR and RTL layout switching.
+- `apps/desktop` owns desktop process startup, shutdown, native commands, and runtime paths.
+- `apps/api` owns HTTP transport, authentication setup, application composition, persistence, and feature behavior.
+- `apps/web` owns React routes, UI, and API clients.
+- `packages/contracts` owns shared RPC contracts and is built by the workspace contract scripts.
 
-## Prerequisites
-- Node.js 22+
-- pnpm 10+
-- Rust toolchain with Windows desktop build support
+The API process entry point is `apps/api/src/index.ts`. It loads configuration, creates dependencies through `apps/api/src/app/fresh-exact-dependencies.ts`, builds the Hono app, and starts the HTTP server. The desktop shell launches this API as a local sidecar.
 
-## Install
-```bash
-pnpm install
-```
+The API composition root opens SQLite. Better Auth and account persistence use Drizzle; feature repositories can also use SQL directly. See the [persistence guide](docs/ARCHITECTURE.md#persistence) for concrete adapters and the difference between current source and ADR-001. Feature services and repositories live under `apps/api/src/modules`; `apps/api/src/rpc` maps transport requests to application behavior.
 
-## Local development
-Run the web app and API in the browser:
-```bash
-pnpm dev
-```
+## Development
 
-Run the desktop app locally:
-```bash
-pnpm dev:desktop
-```
+Use Node.js 22 or later and pnpm 10.8.1. Desktop development also requires a Rust toolchain with Windows desktop build support.
 
-## Build the local Tauri app
-```bash
-pnpm --filter @tuari/desktop build
-```
+For phased delivery, see the [branch workflow](docs/branch-workflow.md) and [multi-agent delivery plan](plans/tuari-multi-agent-delivery-plan.md).
 
-This build:
-1. Generates the Prisma client
-2. Bundles the API into a local Node sidecar runtime
-3. Copies the Prisma runtime files
-4. Builds the Tauri desktop installer
+Install dependencies with `pnpm install`. Run the web and API development processes with `pnpm dev`; run the desktop app with `pnpm dev:desktop`. See the package scripts for current build commands. The desktop build does not generate a Prisma client.
 
-## Runtime data
-Release builds store project data next to the installed app folder:
-- `projects/default/tuari.sqlite`
-- `logs/api-server.log`
-
-The UI exposes the exact active paths and can open the project folder or log folder directly.
-
-## Portable usage
-After building, a portable folder and zip are available under:
-- `apps/desktop/src-tauri/target/release/bundle/portable/Tuari-portable`
-- `apps/desktop/src-tauri/target/release/bundle/portable/Tuari-portable.zip`
-
-Keep the whole portable folder together. You can copy that folder to a USB drive and run `Tuari.exe`.
-
-## Desktop outputs
-- Installer:
-  - `apps/desktop/src-tauri/target/release/bundle/nsis/Tuari_0.1.0_x64-setup.exe`
-- Portable executable folder:
-  - `apps/desktop/src-tauri/target/release/bundle/portable/Tuari-portable`
-
-## Auth model
-- Better Auth creates real server-side users and sessions in SQLite.
-- The desktop client stores the bearer token in Tauri memory, not in persistent browser storage.
-- Closing the desktop app clears that in-memory token.
-
-## Starter notes
-- oRPC endpoints are restricted by origin and client key.
-- The server status badge in the top corner expands into diagnostics and log output.
-- Full shadcn/ui components are scaffolded in `apps/web/src/components/ui`.
+For changes, follow [the engineering workflow](docs/engineering-workflow.md); it defines the affected local checks and CI-final gates. The app stores local data in SQLite; exact runtime paths are resolved by the desktop runtime and exposed in its diagnostics.
