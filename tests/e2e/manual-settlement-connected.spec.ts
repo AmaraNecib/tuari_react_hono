@@ -104,7 +104,8 @@ test("external manual pair baseline and responsive evidence #613", async ({ page
           await details.focus()
           await view.keyboard.press("Enter")
           await expect(row.locator("details").first()).toHaveAttribute("open", "")
-          await expect(row).toContainText("رصيد يدوي للاختبار")
+          await expect(row.locator("dl")).toContainText("قيد يدوي · القيد 1")
+          await expect(row.locator("dl")).toContainText(side === "payable" ? "100" : "60")
           await expect(row).toContainText("تفاصيل المصدر غير متاحة")
           await expect(row.locator("details").last()).not.toHaveAttribute("open", "")
         }
