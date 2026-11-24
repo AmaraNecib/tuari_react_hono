@@ -401,7 +401,7 @@ describe("injected exact debt page", () => {
   it("sends explicit correction, void reason, signed adjustment and attributed settlement commands", async () => {
     const { client } = fixture()
     await openAccount()
-    for (const [button, method, value] of [["تصحيح المبلغ", "correct", "90071992547409.92"], ["إلغاء الحركة", "void", null], ["إضافة حركة", "post", "-0.01"], ["تسوية الحساب بالكامل", "settle", null]] as const) {
+    for (const [button, method, value] of [["تصحيح المبلغ", "correct", "90071992547409.92"], ["إلغاء الحركة", "void", null], ["تسجيل قيد", "post", "-0.01"], ["تسوية الحساب بالكامل", "settle", null]] as const) {
       if (method === "settle") fireEvent.click(screen.getByRole("tab", { name: "التسوية وسجلها" }))
       fireEvent.click(screen.getByRole("button", { name: button }))
       const dialog = await screen.findByRole("dialog")
