@@ -163,6 +163,7 @@ impl EventSink {
             self.recent.push_back(DiagnosticEvent {
                 occurred_at: now.to_rfc3339_opts(SecondsFormat::Millis, false),
                 level: severity.to_owned(),
+                source: "desktop".into(),
                 category: category.to_owned(),
                 error_id,
             });
@@ -185,7 +186,107 @@ impl EventSink {
         self.cleanup(now)
     }
     pub fn diagnostic_snapshot(&self) -> Vec<DiagnosticEvent> {
-        self.recent.iter().cloned().collect()
+        self.persisted_diagnostics()
+            .unwrap_or_else(|_| self.recent.iter().cloned().collect())
+    }
+    /// Read bounded metadata projections, never messages, attributes or raw errors.
+    pub fn persisted_diagnostics(&self) -> std::io::Result<Vec<DiagnosticEvent>> {
+        let mut events = Vec::new();
+        if !self.root.exists() {
+            return Ok(events);
+        }
+        if fs::symlink_metadata(&self.root)?.file_type().is_symlink() {
+            return Err(std::io::Error::other("log root is a link"));
+        }
+        let mut days = Vec::new();
+        for entry in fs::read_dir(&self.root)?.take(1024) {
+            let entry = entry?;
+            let name = entry.file_name().to_string_lossy().to_string();
+            if entry.file_type()?.is_dir()
+                && name.len() == 10
+                && chrono::NaiveDate::parse_from_str(&name, "%Y-%m-%d").is_ok()
+            {
+                days.push(entry.path());
+            }
+        }
+        days.sort();
+        let mut budget = 8 * 1024 * 1024;
+        for day in days.into_iter().rev().take(30) {
+            for entry in fs::read_dir(day)?.take(256) {
+                let entry = entry?;
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !entry.file_type()?.is_file()
+                    || !(owned_log(&entry.path())
+                        || name == "app.log"
+                        || name == "api.log"
+                        || name
+                            .strip_prefix("api.")
+                            .or_else(|| name.strip_prefix("app."))
+                            .and_then(|n| n.strip_suffix(".log"))
+                            .is_some_and(|n| {
+                                !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())
+                            }))
+                {
+                    continue;
+                }
+                let mut bytes = Vec::new();
+                std::fs::File::open(entry.path())?
+                    .take(budget as u64)
+                    .read_to_end(&mut bytes)?;
+                budget -= bytes.len();
+                for line in bytes.split(|b| *b == b'\n') {
+                    let Ok(value) = serde_json::from_slice::<serde_json::Value>(line) else {
+                        continue;
+                    };
+                    let Some(timestamp) = value["timestamp"]
+                        .as_str()
+                        .and_then(|v| DateTime::parse_from_rfc3339(v).ok())
+                    else {
+                        continue;
+                    };
+                    let Some(level @ ("error" | "warn" | "info")) = value["severity"].as_str()
+                    else {
+                        continue;
+                    };
+                    let error_id = value["attributes"]["errorId"]
+                        .as_u64()
+                        .and_then(|v| u32::try_from(v).ok());
+                    events.push(DiagnosticEvent {
+                        occurred_at: timestamp.to_rfc3339_opts(SecondsFormat::Millis, false),
+                        level: level.into(),
+                        source: if name.starts_with("desktop") {
+                            "desktop"
+                        } else {
+                            "api"
+                        }
+                        .into(),
+                        category: match value["message"].as_str() {
+                            Some("UI failure") => "ui",
+                            Some("desktop panic") => "crash",
+                            _ if level == "error" => "error",
+                            _ => "lifecycle",
+                        }
+                        .into(),
+                        error_id,
+                    });
+                }
+                if budget == 0 {
+                    break;
+                }
+            }
+            if budget == 0 {
+                break;
+            }
+        }
+        events.sort_by_key(|e| {
+            DateTime::parse_from_rfc3339(&e.occurred_at)
+                .map(|d| d.timestamp_millis())
+                .unwrap_or(0)
+        });
+        if events.len() > 100 {
+            events.drain(..events.len() - 100);
+        }
+        Ok(events)
     }
     pub fn cleanup(&mut self, now: DateTime<FixedOffset>) -> std::io::Result<()> {
         self.cleanup_reserved(now, 0)
@@ -373,6 +474,7 @@ pub fn degraded() -> bool {
 pub struct DiagnosticEvent {
     pub occurred_at: String,
     pub level: String,
+    pub source: String,
     pub category: String,
     pub error_id: Option<u32>,
 }
@@ -409,6 +511,28 @@ pub fn recent_diagnostics() -> (Vec<DiagnosticEvent>, DiagnosticStatus) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reopened_sink_projects_history_and_excludes_business_data() {
+        let root = std::env::temp_dir().join(format!("tuari-history-{}", rand::random::<u64>()));
+        fs::create_dir_all(root.join("2026-01-02")).unwrap();
+        fs::write(root.join("2026-01-02/desktop.log"), concat!(
+            "{\"timestamp\":\"2026-01-02T12:00:00Z\",\"severity\":\"error\",\"message\":\"UI failure\",\"attributes\":{\"errorId\":42,\"token\":\"SECRET_TOKEN\"},\"customer\":\"PRIVATE_CUSTOMER\"}\n",
+            "{\"timestamp\":\"SECRET_TIMESTAMP\",\"severity\":\"error\"}\n"
+        )).unwrap();
+        fs::write(root.join("2026-01-02/database.sqlite"), "SECRET_DATABASE").unwrap();
+        fs::write(root.join("config.json"), "SECRET_CONFIG").unwrap();
+        let events = EventSink::new(root.clone())
+            .persisted_diagnostics()
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].error_id, Some(42));
+        assert_eq!(events[0].category, "ui");
+        assert_eq!(events[0].occurred_at, "2026-01-02T12:00:00.000+00:00");
+        let text = serde_json::to_string(&events).unwrap();
+        assert!(!text.contains("SECRET"));
+        assert!(!text.contains("PRIVATE"));
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn diagnostics_are_bounded_redacted_and_keep_distinct_failure_codes() {
         let root = std::env::temp_dir().join(format!("tuari-snapshot-{}", rand::random::<u64>()));
