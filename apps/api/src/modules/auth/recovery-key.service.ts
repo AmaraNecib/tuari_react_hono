@@ -145,7 +145,7 @@ export class RecoveryKeyService {
    * Returns true if the key was found and revoked, false otherwise.
    */
   async revokeKey(keyId: string): Promise<boolean> {
-    const record = (await this.port.listAllKeys()).find((k) => k.id === keyId);
+    const record = await this.port.findKeyById(keyId);
 
     if (!record || record.status !== "AVAILABLE") {
       return false;

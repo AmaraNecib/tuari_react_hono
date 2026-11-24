@@ -39,6 +39,8 @@ export type RecoveryKeyInsert = RecoveryKeyRecord;
 export interface RecoveryKeyPort {
   insertKey(input: RecoveryKeyInsert): Promise<void>;
   findKeyByHash(hash: string): Promise<RecoveryKeyRecord | null>;
+  /** Locate a key for revocation without reading stored hashes. */
+  findKeyById(id: string): Promise<Pick<RecoveryKeyRecord, "id" | "status"> | null>;
   /** Flip a key to CONSUMED/REVOKED. Returns false if it was no longer AVAILABLE. */
   updateKeyStatus(
     id: string,

@@ -4,6 +4,13 @@ import { render, screen } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { ErrorBoundary } from "./error-boundary"
 
+const correlation = vi.hoisted(() => ({ record: vi.fn() }))
+vi.mock("@/lib/error-correlation", () => ({
+  createErrorId: () => 42,
+  formatErrorCode: () => "TUARI-0000002A",
+  recordUiFailure: correlation.record,
+}))
+
 const ThrowError = ({ message }: { message: string }) => {
   throw new Error(message)
 }
@@ -11,6 +18,13 @@ const ThrowError = ({ message }: { message: string }) => {
 describe("ErrorBoundary", () => {
   beforeEach(() => {
     vi.spyOn(console, "error").mockImplementation(() => {})
+  })
+
+  it("displays the same numeric correlation ID sent to the local log", () => {
+    render(<ErrorBoundary><ThrowError message="secret customer" /></ErrorBoundary>)
+    expect(screen.getByText("TUARI-0000002A").getAttribute("dir")).toBe("ltr")
+    expect(correlation.record).toHaveBeenCalledWith(42)
+    expect(screen.queryByText("secret customer")).toBeNull()
   })
 
   it("renders children when there is no error", () => {

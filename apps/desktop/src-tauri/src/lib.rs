@@ -264,6 +264,8 @@ pub mod error;
 pub mod crypto;
 pub mod clock;
 pub mod event_sink;
+mod support_zip;
+mod support_bundle;
 pub mod license;
 pub mod recovery;
 pub mod update;
@@ -1037,6 +1039,37 @@ struct UpdateCheckResult {
 struct UpdateApplyResult {
     success: bool,
     message: String,
+}
+
+#[derive(serde::Serialize)]
+struct RecentDiagnosticEvents {
+    events: Vec<crate::event_sink::DiagnosticEvent>,
+    status: crate::event_sink::DiagnosticStatus,
+}
+
+#[tauri::command]
+fn get_recent_diagnostic_events() -> RecentDiagnosticEvents {
+    let (events, status) = crate::event_sink::recent_diagnostics();
+    RecentDiagnosticEvents { events, status }
+}
+
+#[tauri::command]
+async fn export_support_bundle(window: tauri::Window, app: AppHandle) -> Result<serde_json::Value, String> {
+    assert_sensitive_command_window(&window)?;
+    use tauri_plugin_dialog::DialogExt;
+    let destination = app.dialog().file().set_file_name("tuari-support.zip").add_filter("ZIP", &["zip"]).blocking_save_file();
+    let Some(destination) = destination else { return Ok(serde_json::json!({"status":"cancelled"})); };
+    let path = destination.into_path().map_err(|_| "Invalid destination".to_string())?;
+    let root = resolve_logs_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::support_bundle::save(&root, Some(&path)).map_err(|_| "Unable to save complete support bundle; choose a new filename and check retained logs")?;
+        Ok(serde_json::json!({"status":"saved","savedPath":path.to_string_lossy()}))
+    }).await.map_err(|_| "Support export failed".to_string())?.map_err(str::to_string)
+}
+
+#[tauri::command]
+fn record_ui_failure(id: u32) {
+    crate::event_sink::record_ui_failure(id);
 }
 
 #[tauri::command]
@@ -1991,6 +2024,9 @@ pub fn run() {
             check_for_updates,
             apply_update,
             get_current_version,
+            get_recent_diagnostic_events,
+            export_support_bundle,
+            record_ui_failure,
             start_update_download,
             cancel_update_download,
             restart_app,
