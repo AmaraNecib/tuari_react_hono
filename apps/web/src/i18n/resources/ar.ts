@@ -1081,6 +1081,11 @@ export const ar = {
         dropped: "الأحداث التي تم إسقاطها",
         recentEvents: "الأحداث الأخيرة",
         empty: "لا توجد أحداث حديثة.",
+        columns: { time: "الوقت", severity: "الخطورة", type: "النوع", code: "الرمز" },
+        values: {
+          level: { error: "خطأ", warn: "تحذير", info: "معلومات" },
+          category: { ui: "واجهة المستخدم", crash: "تعطّل التطبيق", error: "خطأ", lifecycle: "تشغيل التطبيق" },
+        },
         saveBundle: "حفظ حزمة الدعم",
         saving: "جارٍ حفظ الحزمة...",
         saved: "تم حفظ حزمة الدعم.",

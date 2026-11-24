@@ -9,6 +9,8 @@ export const en = {
         enabled: "Logging enabled", initialized: "Logging ready",
         buffered: "Buffered events", dropped: "Dropped events",
         recentEvents: "Recent events", empty: "No recent events.",
+        columns: { time: "Time", severity: "Severity", type: "Type", code: "Code" },
+        values: { level: { error: "Error", warn: "Warning", info: "Info" }, category: { ui: "User interface", crash: "Application crash", error: "Error", lifecycle: "Application lifecycle" } },
         saveBundle: "Save support bundle", saving: "Saving bundle...",
         saved: "Support bundle saved.", saveError: "Unable to save support bundle.",
         loadError: "Unable to load diagnostics.",

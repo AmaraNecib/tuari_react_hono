@@ -47,6 +47,11 @@ export function DiagnosticsSettings() {
   }
 
   const rtl = i18n.language.startsWith("ar");
+  const localizedValue = (group: "level" | "category", value: string) => {
+    const key = `settings.diagnostics.values.${group}.${value}`;
+    const translated = t(key);
+    return translated === key ? value : translated;
+  };
   return (
     <section className="space-y-4" dir={rtl ? "rtl" : "ltr"} aria-labelledby="diagnostics-title">
       <div className="rounded-xl border border-line p-5">
@@ -62,16 +67,27 @@ export function DiagnosticsSettings() {
       <div className="rounded-xl border border-line p-5">
         <h3 className="font-semibold">{t("settings.diagnostics.recentEvents")}</h3>
         {loading ? <p className="mt-3 text-sm">{t("common.loading")}</p> : (
-          <ul className="mt-3 divide-y divide-line">
-            {data?.events.length === 0 && <li className="py-3 text-sm">{t("settings.diagnostics.empty")}</li>}
-            {(data?.events ?? []).map((event, index) => (
-              <li key={`${event.occurredAt}-${index}`} className="flex flex-wrap justify-between gap-2 py-3 text-sm">
-                <time dateTime={event.occurredAt}>{event.occurredAt}</time>
-                <span>{event.level}</span><span>{event.category}</span>
-                <bdi dir="ltr" className="font-mono">{event.errorId === null ? "—" : formatErrorCode(event.errorId)}</bdi>
-              </li>
-            ))}
-          </ul>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[36rem] text-start text-sm">
+              <thead><tr className="border-b border-line text-muted-foreground">
+                <th scope="col" className="px-2 py-2">{t("settings.diagnostics.columns.time")}</th>
+                <th scope="col" className="px-2 py-2">{t("settings.diagnostics.columns.severity")}</th>
+                <th scope="col" className="px-2 py-2">{t("settings.diagnostics.columns.type")}</th>
+                <th scope="col" className="px-2 py-2">{t("settings.diagnostics.columns.code")}</th>
+              </tr></thead>
+              <tbody className="divide-y divide-line">
+                {data?.events.length === 0 && <tr><td colSpan={4} className="px-2 py-3">{t("settings.diagnostics.empty")}</td></tr>}
+                {(data?.events ?? []).map((event, index) => (
+                  <tr key={`${event.occurredAt}-${index}`}>
+                    <td className="px-2 py-3"><time dir="ltr" dateTime={event.occurredAt}>{event.occurredAt}</time></td>
+                    <td className="px-2 py-3">{localizedValue("level", event.level)}</td>
+                    <td className="px-2 py-3">{localizedValue("category", event.category)}</td>
+                    <td className="px-2 py-3"><bdi dir="ltr" className="font-mono">{event.errorId === null ? "—" : formatErrorCode(event.errorId)}</bdi></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
         <Button type="button" className="mt-4" disabled={saving} onClick={() => void saveBundle()}>
           {saving ? t("settings.diagnostics.saving") : t("settings.diagnostics.saveBundle")}
