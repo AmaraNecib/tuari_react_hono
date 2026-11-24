@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react"
+import { DirectionProvider } from "@base-ui/react/direction-provider"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
 import type { ExactDebtsClient, ExactDebtDetail, ExactDebtAccount } from "@tuari/contracts"
@@ -108,6 +109,7 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
       </nav>
       <Pagination {...pagingProps(accountPaging, t("exactDebts.accountPages"), setAccountPage)} />
     </>}
+    <DirectionProvider direction="rtl">
     <Tabs value={tab} onValueChange={value => setTab(String(value))}>
     <TabsList aria-label={t("exactDebts.workflows")} className="max-w-full overflow-x-auto">
       <TabsTrigger value="ledger">{t("exactDebts.ledgerTab")}</TabsTrigger>
@@ -173,6 +175,7 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
       {(!scopedParty || scopedParty.partyType === "INTERNAL_WORKER") && <EmployeePayrollDebtSection employees={payrollEmployees ?? scopedParties.filter(row => row.partyType === "INTERNAL_WORKER")} scopedParty={scopedParty} />}
     </TabsContent>
     </Tabs>
+    </DirectionProvider>
     {notice && <p role="status" className="text-sm text-foreground">{notice}</p>}
     {mutation.isError && !action && <p role="alert" className="text-sm text-destructive">{mutation.error.message}</p>}
     {action && detailAccountId && <DebtActionDialog key={`${detailAccountId}-${action.kind}-${"entry" in action ? action.entry.id : "account"}`} action={action} accountId={detailAccountId} canOpen={!detail.data?.entries.length} canAdvance={account?.partyType === "INTERNAL_WORKER" && account.direction === "RECEIVABLE"} pending={mutation.isPending} error={mutation.isError ? mutation.error.message : null} onClose={() => { if (!mutation.isPending) setAction(null) }} onSubmit={execute} />}

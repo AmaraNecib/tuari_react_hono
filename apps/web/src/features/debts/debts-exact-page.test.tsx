@@ -37,7 +37,11 @@ describe("injected exact debt page", () => {
   it("preserves account and creation drafts across tabs", async () => {
     const { client } = fixture()
     await openAccount()
-    expect(screen.getByRole("tab", { name: "القيود والمدفوعات" }).getAttribute("aria-selected")).toBe("true")
+    const ledgerTab = screen.getByRole("tab", { name: "القيود والمدفوعات" })
+    expect(ledgerTab.getAttribute("aria-selected")).toBe("true")
+    act(() => { ledgerTab.focus() })
+    fireEvent.keyDown(ledgerTab, { key: "ArrowLeft" })
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("tab", { name: "اختيار أو إنشاء حساب" })))
     fireEvent.click(screen.getByRole("tab", { name: "اختيار أو إنشاء حساب" }))
     fireEvent.change(screen.getByRole("textbox", { name: "سبب الدين" }), { target: { value: "draft" } })
     fireEvent.click(screen.getByRole("tab", { name: "التسوية وسجلها" }))
