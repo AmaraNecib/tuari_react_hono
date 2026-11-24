@@ -24,7 +24,8 @@ import { OperationsService } from "../modules/company/operations.service";
 import { AuditService } from "../modules/company/audit.service";
 import { WorkspaceMutationContext } from "../modules/company/workspace-mutation-context";
 import { CatalogService } from "../modules/inventory/catalog.service";
-import { InventoryAttachmentService } from "../modules/inventory/inventory-attachment.service";
+import { AttachmentService } from "../modules/attachments/attachment.service";
+import { SqliteAttachmentRepository } from "../modules/attachments/sqlite-attachment.repository";
 import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { ProjectCostService } from "../modules/project-cost/project-cost.service";
@@ -54,7 +55,7 @@ export type FreshExactAppDependencies = Omit<AppDependencies,
 > & {
   mode: "fresh-exact-selected";
   companyService: CompanyMetadataService;
-  inventoryAttachmentService: InventoryAttachmentService;
+  inventoryAttachmentService: AttachmentService;
   catalogService: CatalogService;
   financial: { services: FinancialDependencies; getMetadata(): Promise<WorkspaceMetadata>; reports: ExactReportCapability };
   listSystemLog: ExactSystemLogReader["listSystemLog"];
@@ -99,7 +100,7 @@ export async function createFreshExactAppDependencies(
     const authBootstrapService = new AuthBootstrapService(new SqliteBootstrapPort(db, connection, lock), auth, appConfig.bootstrapSetupKey);
     const inventoryRepository = createInventoryRepository(connection, lock);
     const catalog = new CatalogService(inventoryRepository, company);
-    const attachments = new InventoryAttachmentService(inventoryRepository, new InventoryAttachmentStorage(appConfig.attachmentsRootPath), company);
+    const attachments = new AttachmentService(new SqliteAttachmentRepository(connection, lock), new InventoryAttachmentStorage(appConfig.attachmentsRootPath), company);
     return {
       mode: "fresh-exact-selected",
       financial: { services: financial, getMetadata: async () => ({ ...companyService.getWorkspaceMetadata(), roles: await roleModule.list() }), reports },
