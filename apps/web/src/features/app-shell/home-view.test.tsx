@@ -92,6 +92,7 @@ describe("HomeView workspace shell", () => {
     const manager = data.employees[0]!
     const warehouseManager = { ...manager, id: "warehouse-manager-debt", firstName: "مدير", lastName: "المستودع", roleId: "role-warehouse-manager" }
     renderWorkspace(page, { sessionUser: demoUser, workspaceData: { ...data, employees: [...data.employees, warehouseManager] } })
+    fireEvent.click(await screen.findByRole("tab", { name: i18n.t("exactDebts.accountsTab") }))
     const select = await screen.findByRole("combobox", { name: "الطرف" })
     expect(within(select).getAllByRole("option").map(option => (option as HTMLOptionElement).value)).toEqual(expect.arrayContaining(["employee-worker-1", manager.id, warehouseManager.id]))
     for (const id of [manager.id, warehouseManager.id]) {

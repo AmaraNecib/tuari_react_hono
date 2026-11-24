@@ -18,7 +18,7 @@ import { Money, sumMoneyHistory } from "@tuari/contracts"
 import { useExactDebtCommand, useExactDebtDetail, useExactDebtSummary, type ExactDebtCommand } from "./debts-exact-queries"
 import { EmployeePayrollDebtSection } from "./employee-payroll-debt-section"
 
-export type ExactDebtPartyOption = { id: string; label: string; partyType: ExactDebtAccount["partyType"] }
+export type ExactDebtPartyOption = { id: string; label: string; phone?: string; partyType: ExactDebtAccount["partyType"] }
 type Entry = ExactDebtDetail["entries"][number]
 type Action = { kind: "pay" | "correct" | "void"; entry: Entry } | { kind: "post" | "settle" }
 const actionLabel = { pay: "exactDebts.pay", correct: "exactDebts.correct", void: "exactDebts.void", post: "exactDebts.post", settle: "exactDebts.settle" }
@@ -74,7 +74,10 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees 
   const canCreate = chosenParty && reason.trim() && (openingValue === undefined || (openingValue !== null && !openingValue.startsWith("-")))
   const account = detail.data?.account
   const scopedAccounts = summary.data?.accounts.filter(row => !scopedParty || (row.partyType === scopedParty.partyType && (row.workerId ?? row.externalCounterpartyId) === scopedParty.id)) ?? []
-  const matchingAccounts = scopedAccounts.filter(row => (partyNames.get(row.workerId ?? row.externalCounterpartyId ?? "") ?? "").includes(search.trim()))
+  const matchingAccounts = scopedAccounts.filter(row => {
+    const party = scopedParties.find(party => party.id === (row.workerId ?? row.externalCounterpartyId) && party.partyType === row.partyType)
+    return [party?.label ?? "", party?.phone ?? ""].some(value => value.includes(search.trim()))
+  })
   const scopedGross = (direction: ExactDebtAccount["direction"]) => sumMoneyHistory(scopedAccounts.flatMap(row => {
     const balance = Money.parse(row.currentBalance)
     const sameDirection = row.direction === direction

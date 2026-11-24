@@ -10,7 +10,7 @@ import { ExactDebtsPage, type ExactDebtPartyOption } from "./debts-exact-page"
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: "operator" } } }) }))
 vi.mock("@tanstack/react-router", () => ({ Link: ({ children }: { children: React.ReactNode }) => <a>{children}</a> }))
 vi.mock("@/features/employees/employee-earnings-queries", () => ({ useEmployeePayrollQuery: () => ({ isPending: true }) }))
-const party = { id: "00000000-0000-4000-8000-000000000999", label: "المورد أحمد", partyType: "EXTERNAL_COUNTERPARTY" as const }
+const party = { id: "00000000-0000-4000-8000-000000000999", label: "المورد أحمد", phone: "0555000176", partyType: "EXTERNAL_COUNTERPARTY" as const }
 const date = "2026-11-10T10:00:00.000Z"
 const account: ExactDebtAccount = { id: "00000000-0000-4000-8000-000000000001", partyType: party.partyType, externalCounterpartyId: party.id, workerId: null, direction: "PAYABLE", currency: "DZD", status: "OPEN", currentBalance: "90071992547409.93", settledAt: null, note: null, actorUserId: "operator", actorLabel: "Operator", transactionId: "txn", createdAt: date, updatedAt: date }
 const entry: ExactDebtDetail["entries"][number] = { id: "00000000-0000-4000-8000-000000000002", debtAccountId: account.id, currency: "DZD", postingSequence: 1, entryType: "OPENING", signedAmountDzd: account.currentBalance, balanceAfterDzd: account.currentBalance, entryDate: date, note: "اتفاق المورد", reasonCategory: "OTHER", reasonDetail: "Agreement", paymentMethod: null, status: "LIVE", voidedAt: null, voidedBy: null, voidReason: null, invoiceId: null, producerType: null, producerId: null, targetEntryId: null, correctionOfEntryId: null, actorUserId: "operator", actorLabel: "Operator", transactionId: "txn", createdAt: date, updatedAt: date, remainingDzd: "0.30" }
@@ -34,6 +34,18 @@ async function openAccount() {
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(query => query.clear()); setMoneyGrouping(true) })
 describe("injected exact debt page", () => {
+  it("finds accounts by the actual supplied party phone as well as name", async () => {
+    fixture()
+    await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ })
+    const search = screen.getByRole("textbox", { name: "بحث عن حساب" })
+    fireEvent.change(search, { target: { value: "000176" } })
+    expect(screen.getByRole("button", { name: /المورد أحمد · مستحقات علينا/ })).toBeTruthy()
+    fireEvent.change(search, { target: { value: "no-match" } })
+    expect(screen.queryByRole("button", { name: /المورد أحمد · مستحقات علينا/ })).toBeNull()
+    fireEvent.change(search, { target: { value: "أحمد" } })
+    expect(screen.getByRole("button", { name: /المورد أحمد · مستحقات علينا/ })).toBeTruthy()
+  })
+
   it("preserves account and creation drafts across tabs", async () => {
     const { client } = fixture()
     await openAccount()
