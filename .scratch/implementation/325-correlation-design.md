@@ -45,6 +45,30 @@ not justification for a full production build or suite. Preserve the failed log.
 Current develop protection inspection returned HTTP 404 Branch not protected;
 local proof does not establish hosted CI acceptance or protection enforcement.
 
+## Diagnostics UI integration
+
+Recovered the stopped UI worker draft from t3-ab917421-91129994b2ebb7a9 into
+this source-owning tree without changing the original draft. Settings now
+wires a Diagnostics tab to typed native commands. The viewer shows only
+allowlisted metadata and numeric correlation IDs through the shared formatter.
+Load/save errors use correlated toast notifications without exposing native
+exception strings. Missing logger state is unknown, not disabled. Empty event
+lists and cancelled exports have explicit behavior.
+
+Native contract: get_recent_diagnostic_events returns events and status.
+Events carry occurredAt, level, category and errorId. Status carries enabled,
+initialized, bufferedEventCount and droppedEventCount. export_support_bundle
+returns saved with savedPath, or cancelled. The native side owns its save
+dialog and path. This draft is not accepted as native integration proof.
+
+Focused viewer tests cover RTL-isolated hexadecimal IDs, empty/cancelled
+behavior and redacted failure notifications. Browser clips, element and
+sidebar screenshots and owner signoff remain missing. Do not claim UI-ready.
+The repository currently configures Arabic as its only supported language;
+there is no English resource file. EN acceptance requires resolving that
+existing product-language boundary, not silently changing global language
+policy as part of a diagnostics screen.
+
 ## ZIP boundary
 
 No native ZIP dependency is declared. Existing Windows packaging uses trusted
