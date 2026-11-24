@@ -3,23 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 
 import { DashboardSection } from "./dashboard-section"
-
-// Mock react-i18next to return Arabic strings for the keys the component
-// uses (same pattern as roles-section.test.tsx).
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const map: Record<string, string> = {
-        "detailPages.shell.itemsGuide": "دليل العناصر",
-        "dashboard.quickActions.addProject": "إضافة مشروع",
-        "dashboard.quickActions.addWarehouse": "إضافة مستودع",
-        "dashboard.quickActions.addInvoice": "إضافة فاتورة",
-        "dashboard.quickActions.newTransfer": "تحويل جديد",
-      }
-      return map[key] ?? key
-    },
-  }),
-}))
+import "@/i18n"
 
 // Mock the exact financial reads used by the production dashboard.
 const mocks = vi.hoisted(() => ({

@@ -3,6 +3,25 @@
  */
 export const ar = {
   translation: {
+    shellCopy: {
+      catalog: "دليل العناصر",
+      invoices: "الفواتير",
+      outbound: "التحويلات الخارجية",
+      createExternal: "إضافة جهة خارجية",
+      allInvoices: "كل الفواتير",
+      createInvoice: "إضافة فاتورة",
+      invoiceDetails: "تفاصيل الفاتورة",
+      transfers: "قائمة التحويلات",
+      createTransfer: "إنشاء تحويل خارجي",
+      externalParties: "الجهات الخارجية",
+      manageExternals: "إدارة الجهات الخارجية",
+      externalProfile: "ملف الطرف الخارجي",
+      updateFiles: "ملفات التحديث",
+      desktopOnly: "هذه الميزة متاحة فقط في تطبيق سطح المكتب.",
+      currency: "د.ج",
+      brandInitial: "ط",
+      brandName: "نظام",
+    },
     featureCopy: {
       "auditLogPage": {
         date: "التاريخ",

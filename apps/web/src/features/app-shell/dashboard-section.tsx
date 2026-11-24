@@ -80,7 +80,7 @@ export function DashboardSection({ metrics, labels }: DashboardSectionProps) {
       ? "—"
       : debtsSummaryQuery.isPending
         ? "…"
-        : <CurrencyRun amount={formatDashboardMoney(outstandingDebtsDzd)} currencyLabel="د.ج" />
+        : <CurrencyRun amount={formatDashboardMoney(outstandingDebtsDzd)} currencyLabel={t("shellCopy.currency")} />
 
   return (
     <div className="space-y-6">

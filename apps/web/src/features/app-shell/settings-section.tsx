@@ -247,7 +247,7 @@ export function SettingsSection({
       setFieldErrors({})
     } catch (error) {
       const message = error instanceof Error ? error.message : t("toasts.actionError")
-      if (message.includes(t("auth.errors.invalidPassword", "كلمة المرور الحالية غير صحيحة")) || message.toLowerCase().includes("invalid password")) {
+      if (message.includes(t("auth.errors.invalidPassword")) || message.toLowerCase().includes("invalid password")) {
         setFieldErrors({ currentPassword: t("toasts.accountPasswordCurrentInvalid") })
         return
       }
@@ -398,12 +398,12 @@ export function SettingsSection({
             <ActivationPage
               activateLabel={t('license.activate')}
               activatingLabel={t('license.activating')}
-              description={t('license.description', 'أدخل مفتاح الترخيص لتفعيل النسخة الكاملة من توارتي.')}
+              description={t('license.description')}
               errorMessage={licenseActivation.error}
               keyLabel={t('license.keyLabel')}
               keyPlaceholder={t('license.keyPlaceholder')}
               successMessage={licenseActivation.result?.message ?? null}
-              title={t('license.title', 'تفعيل الترخيص')}
+              title={t('license.title')}
               onActivate={async (key) => {
                 await licenseActivation.activateLicense(key)
                 await licenseStatus.refresh()

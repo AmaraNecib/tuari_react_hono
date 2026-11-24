@@ -193,7 +193,7 @@ export function HomeViewPageDetailContent({
               description={detailCopy.shared.missingRecordDescription}
               navigation={navigation}
               target={workspaceRoutes.externals()}
-              title="ملف الطرف الخارجي"
+              title={t("shellCopy.externalProfile")}
             />
           )
 

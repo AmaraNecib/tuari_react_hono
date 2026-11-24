@@ -38,6 +38,9 @@ const { navigateMock, AppMutationError } = vi.hoisted(() => {
   return { navigateMock: vi.fn(), AppMutationError }
 })
 
+const { exactDebtCommandMock } = vi.hoisted(() => ({ exactDebtCommandMock: vi.fn().mockResolvedValue(undefined) }))
+export { exactDebtCommandMock }
+
 // ─── Default system log data ───────────────────────────────────────
 const defaultSystemLogData: { items: Array<Record<string, unknown>> } = {
   items: [
@@ -581,7 +584,7 @@ vi.mock("@/features/debts/debts-exact-queries", () => ({
     }
   },
   useExactDebtDetail: () => ({ data: undefined, isPending: false, isError: false, refetch: vi.fn() }),
-  useExactDebtCommand: () => ({ isPending: false, isError: false, mutateAsync: vi.fn(), reset: vi.fn() }),
+  useExactDebtCommand: () => ({ isPending: false, isError: false, mutateAsync: exactDebtCommandMock, reset: vi.fn() }),
 }))
 
 vi.mock("@/features/debts/debts-queries", () => ({
