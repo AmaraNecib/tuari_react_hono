@@ -18,7 +18,7 @@ const fixture = {
 test('selecting an early timeline error moves focus into view and close restores the trigger', async () => {
   const root = await mkdtemp(join(tmpdir(), 'dashboard-context-'));
   const events = Array.from({ length: 500 }, (_, i) => ({
-    ...fixture.events[2], timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
+    ...fixture.events[2], errorCode: i < 250 ? 42 : 1000 + i, timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
   }));
   await emitReport({ ...fixture, events }, join(root, 'report.html'));
   const browser = await chromium.launch({ ...(process.env.VIEWER_BROWSER_EXECUTABLE ? { executablePath: process.env.VIEWER_BROWSER_EXECUTABLE } : {}) });
@@ -33,6 +33,24 @@ test('selecting an early timeline error moves focus into view and close restores
     await expect(panel.getByRole('heading')).toBeInViewport();
     await panel.getByRole('button', { name: 'Close context' }).click();
     await expect(trigger).toBeFocused();
+    await trigger.press('Enter');
+    await page.getByLabel('level', { exact: true }).selectOption('info');
+    await panel.getByRole('button', { name: 'Close context' }).click();
+    await expect(page.getByLabel('day', { exact: true })).toBeFocused();
+
+    await page.getByRole('button', { name: /Error signatures/ }).click();
+    await expect(page.locator('.signature')).toHaveCount(50);
+    await page.getByRole('button', { name: 'Next page' }).click();
+    await expect(page.locator('.rank').first()).toHaveText('51');
+    await page.getByRole('button', { name: /Error-code lookup/ }).click();
+    await page.getByLabel('Error code', { exact: true }).fill('OTHER-0000002A');
+    await page.getByRole('button', { name: 'Find event' }).click();
+    await expect(page.getByRole('heading', { name: '250 matching records' })).toBeVisible();
+    await expect(page.locator('.events li')).toHaveCount(50);
+    await page.getByRole('button', { name: 'Next page' }).click();
+    await expect(page.locator('.events time').first()).toHaveText(events[50].timestamp);
+    await page.getByRole('button', { name: 'Previous page' }).click();
+    await expect(page.locator('.events time').first()).toHaveText(events[0].timestamp);
   } finally { await browser.close(); }
 });
 

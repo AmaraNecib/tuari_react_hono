@@ -7,6 +7,15 @@ const summary = overview(data);
 const groups = signatures(data);
 const signatureOptions = [...new Set(data.events.map(event => event.signature))];
 const code = event => event.errorCode === null ? 'No error code' : `${data.productPrefix}-${event.errorCode.toString(16).toUpperCase().padStart(8, '0')}`;
+const pageSize = 50;
+function PageControls({ total, page, setPage }) {
+  if (total <= pageSize) return null;
+  return <div aria-label="Result pages" role="group">
+    <button disabled={page === 0} onClick={() => setPage(page - 1)}>Previous page</button>
+    <span role="status"> Page {page + 1} of {Math.ceil(total / pageSize)} </span>
+    <button disabled={(page + 1) * pageSize >= total} onClick={() => setPage(page + 1)}>Next page</button>
+  </div>;
+}
 function App() {
   const [view, setView] = useState('Overview');
   const [filters, setFilters] = useState({});
@@ -14,6 +23,9 @@ function App() {
   const selected = selection?.id ?? null;
   const panel = useRef(null);
   const opener = useRef(null);
+  const fallback = useRef(null);
+  const [groupPage, setGroupPage] = useState(0);
+  const [matchPage, setMatchPage] = useState(0);
   useLayoutEffect(() => {
     if (selection) panel.current?.focus();
   }, [selection]);
@@ -25,7 +37,10 @@ function App() {
     if (!panel.current?.contains(trigger)) opener.current = trigger;
     setSelection({ id });
   }
-  function closeContext() { setSelection(null); opener.current?.focus(); }
+  function closeContext() {
+    setSelection(null);
+    (opener.current?.isConnected ? opener.current : fallback.current)?.focus();
+  }
   function rows(items) {
     return <ol className="events">{items.map(event => <li key={event.id} className={event.id === selected ? 'selected' : ''}>
       <time>{event.timestamp}</time><span className={`level ${event.level}`}>{event.level}</span>
@@ -46,9 +61,9 @@ function App() {
         <section className="panel"><h2>Where to start</h2><p>{groups.length ? `${groups[0].signature} is the most frequent error signature, with ${groups[0].count} occurrences.` : 'No error or fatal events were recorded.'}</p><button className="primary" onClick={() => setView('Error signatures')}>Inspect error signatures →</button></section>
       </>}
       {view === 'Error signatures' && <><p className="intro">Most frequent first. Counts include repeated occurrences.</p><p className="note">Version and OS describe the bundle manifest, not individual events. Raw messages remain redacted.</p>
-        {groups.length ? <div className="signature-list">{groups.map((group, i) => <article className="panel signature" key={group.signature}><div className="rank">{String(i + 1).padStart(2, '0')}</div><div className="signature-body"><h2>{group.signature}</h2><p>{group.versions.join(', ')} · {group.oses.join(', ')}</p><dl><div><dt>First seen</dt><dd>{group.first}</dd></div><div><dt>Last seen</dt><dd>{group.last}</dd></div></dl><button onClick={() => { setFilters({ signature: group.signature }); setView('Timeline'); }}>View matching events →</button></div><div className="frequency"><strong>{group.count}</strong><span>occurrences</span></div></article>)}</div> : <p className="empty">No error signatures in this report.</p>}</>}
-      {view === 'Timeline' && <><p className="intro">Follow the event stream. All dates are filtered in UTC.</p><div className="filters">{[['day', summary.days], ['level', ['trace', 'debug', 'info', 'warn', 'error', 'fatal']], ['signature', signatureOptions]].map(([key, options]) => <label key={key}>{key}<select aria-label={key} value={filters[key] ?? ''} onChange={event => setFilters({ ...filters, [key]: event.target.value })}><option value="">All {key === 'day' ? 'days' : key === 'level' ? 'levels' : 'signatures'}</option>{options.map(option => <option key={option}>{option}</option>)}</select></label>)}<button onClick={() => setFilters({})}>Reset filters</button></div><p className="note" role="status">{events.length} matching records</p>{events.length ? rows(events.slice(0, limit)) : <p className="empty">No events match these filters.</p>}{events.length > limit && <button onClick={() => setLimit(limit + 500)}>Show next 500 records</button>}</>}
-      {view === 'Error-code lookup' && <><p className="intro">One code. The event and what led to it.</p><form className="panel lookup" onSubmit={event => { event.preventDefault(); const found = lookup(data, input); setMatches(found); if (found.length === 1) select(found[0].id, event.currentTarget.querySelector('button')); else setSelection(null); }}><label htmlFor="error-code">Error code</label><div><input id="error-code" value={input} onChange={event => setInput(event.target.value)} placeholder={`${data.productPrefix}-0000002A`} spellCheck="false" autoComplete="off"/><button className="primary">Find event →</button></div><p className="note">Any product prefix is accepted. Use eight hexadecimal digits after the final hyphen.</p></form>{matches !== null && <section aria-live="polite"><h2>{matches.length} matching record{matches.length === 1 ? '' : 's'}</h2>{matches.length ? <><p className="note">Codes may repeat. Select a timestamp to inspect its context.</p>{rows(matches)}</> : <p className="empty">No match. Check the code or try another report.</p>}</section>}</>}
+        {groups.length ? <div className="signature-list">{groups.slice(groupPage * pageSize, (groupPage + 1) * pageSize).map((group, i) => <article className="panel signature" key={group.signature}><div className="rank">{String(groupPage * pageSize + i + 1).padStart(2, '0')}</div><div className="signature-body"><h2>{group.signature}</h2><p>{group.versions.join(', ')} · {group.oses.join(', ')}</p><dl><div><dt>First seen</dt><dd>{group.first}</dd></div><div><dt>Last seen</dt><dd>{group.last}</dd></div></dl><button onClick={() => { setFilters({ signature: group.signature }); setView('Timeline'); }}>View matching events →</button></div><div className="frequency"><strong>{group.count}</strong><span>occurrences</span></div></article>)}<PageControls total={groups.length} page={groupPage} setPage={setGroupPage}/></div> : <p className="empty">No error signatures in this report.</p>}</>}
+      {view === 'Timeline' && <><p className="intro">Follow the event stream. All dates are filtered in UTC.</p><div className="filters">{[['day', summary.days], ['level', ['trace', 'debug', 'info', 'warn', 'error', 'fatal']], ['signature', signatureOptions]].map(([key, options]) => <label key={key}>{key}<select ref={key === 'day' ? fallback : undefined} aria-label={key} value={filters[key] ?? ''} onChange={event => setFilters({ ...filters, [key]: event.target.value })}><option value="">All {key === 'day' ? 'days' : key === 'level' ? 'levels' : 'signatures'}</option>{options.map(option => <option key={option}>{option}</option>)}</select></label>)}<button onClick={() => setFilters({})}>Reset filters</button></div><p className="note" role="status">{events.length} matching records</p>{events.length ? rows(events.slice(0, limit)) : <p className="empty">No events match these filters.</p>}{events.length > limit && <button onClick={() => setLimit(limit + 500)}>Show next 500 records</button>}</>}
+      {view === 'Error-code lookup' && <><p className="intro">One code. The event and what led to it.</p><form className="panel lookup" onSubmit={event => { event.preventDefault(); const found = lookup(data, input); setMatches(found); setMatchPage(0); if (found.length === 1) select(found[0].id, event.currentTarget.querySelector('button')); else setSelection(null); }}><label htmlFor="error-code">Error code</label><div><input ref={fallback} id="error-code" value={input} onChange={event => setInput(event.target.value)} placeholder={`${data.productPrefix}-0000002A`} spellCheck="false" autoComplete="off"/><button className="primary">Find event →</button></div><p className="note">Any product prefix is accepted. Use eight hexadecimal digits after the final hyphen.</p></form>{matches !== null && <section aria-live="polite"><h2>{matches.length} matching record{matches.length === 1 ? '' : 's'}</h2>{matches.length ? <><p className="note">Codes may repeat. Select a timestamp to inspect its context.</p>{rows(matches.slice(matchPage * pageSize, (matchPage + 1) * pageSize))}<PageControls total={matches.length} page={matchPage} setPage={setMatchPage}/></> : <p className="empty">No match. Check the code or try another report.</p>}</section>}</>}
       {selected !== null && <section className="panel context" ref={panel} tabIndex={-1} aria-label="Event context"><div className="context-title"><h2>Surrounding context</h2><button onClick={closeContext}>Close context</button></div><p className="note">Up to three records before and after, across all filters. The selected event is highlighted.</p>{rows(context(data, selected))}</section>}
       {!!data.warnings?.length && <section className="warnings"><h2>Incomplete input</h2>{data.warnings.map((warning, i) => <p key={i}>{warning}</p>)}</section>}
       <footer>Sanitized diagnostics · Missing metadata is shown as unavailable · No network required</footer>
