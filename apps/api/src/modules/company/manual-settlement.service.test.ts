@@ -34,6 +34,7 @@ it("settles both manual originals once across reopen and restores both recorded 
     db.prepare("INSERT INTO external_counterparty VALUES (?)").run(party);
     for (const sql of [...exactDebtSchemaStatements, ...manualSettlementSchemaStatements]) db.exec(sql);
     let f = compose();
+    expect(() => new ManualSettlementService(f.finance, f.ledger, f.repository, { transactionIdentity: { connection: db, lock: createFifoLock() }, authorize: () => actor }, dependencies)).toThrow(/same connection and shared FIFO/);
     const payable = f.finance.createAccount({ requestId: "payable", partyType: "EXTERNAL_COUNTERPARTY", externalCounterpartyId: party, direction: "PAYABLE", openingBalanceDzd: "100.00" });
     const receivable = f.finance.createAccount({ requestId: "receivable", partyType: "EXTERNAL_COUNTERPARTY", externalCounterpartyId: party, direction: "RECEIVABLE", openingBalanceDzd: "60.00" });
     const p = f.finance.listEntries(payable.id)[0]!.id;

@@ -1,15 +1,22 @@
 import { Money, confirmManualSettlementSchema, previewManualSettlementSchema, reverseManualSettlementSchema, type ConfirmManualSettlement, type PreviewManualSettlement, type ReverseManualSettlement } from "@tuari/contracts";
 import { ExactDebtError, type ExactFinanceService } from "./exact-finance.service";
-import type { ExactFinanceRepository } from "./exact-finance.repository";
+import type { ExactFinanceRepository, ExactTransactionIdentity } from "./exact-finance.repository";
 import type { ManualSettlementRecord, ManualSettlementRepository, ManualSettlementReversalRecord } from "./manual-settlement.repository";
 
+export class ManualSettlementAuthorizationError extends Error {
+  readonly code = "FORBIDDEN";
+  constructor() { super("Required settlement permissions are unavailable"); }
+}
+
 export type ManualSettlementAuthorization = {
+  readonly transactionIdentity?: ExactTransactionIdentity;
   authorize(permissions: readonly string[]): { actorUserId: string; actorLabel: string };
 };
 /** Inert internal command composition, not selected by application dependencies yet. */
 export class ManualSettlementService {
   constructor(private readonly finance: ExactFinanceService, private readonly ledger: ExactFinanceRepository, private readonly repository: ManualSettlementRepository, private readonly authorization: ManualSettlementAuthorization, private readonly dependencies: { id(): string; now(): string }) {
     const identity = finance.transactionIdentity;
+    if (authorization.transactionIdentity && (identity.connection !== authorization.transactionIdentity.connection || identity.lock !== authorization.transactionIdentity.lock)) throw new ExactDebtError("Settlement authorization requires the same connection and shared FIFO");
     for (const participant of [ledger, repository]) if (identity.connection !== participant.transactionIdentity.connection || identity.lock !== participant.transactionIdentity.lock) throw new ExactDebtError("Manual settlement requires the same connection and shared FIFO");
   }
   private pair(input: PreviewManualSettlement) {
