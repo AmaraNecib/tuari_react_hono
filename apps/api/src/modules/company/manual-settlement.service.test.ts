@@ -18,13 +18,14 @@ it("settles both manual originals once across reopen and restores both recorded 
   const party = randomUUID();
   let actor = { actorUserId: randomUUID(), actorLabel: "Operator" };
   let permitted = true;
+  const granted = new Set(["debts:read", "debts:settle", "debts:update"]);
   const dependencies = { id: randomUUID, now: () => "2026-11-10T00:00:00.000Z" };
   const compose = () => {
     const lock = createFifoLock();
     const ledger = new SqliteExactFinanceRepository(db, lock);
     const finance = new ExactFinanceService(ledger, dependencies);
     const repository = new SqliteManualSettlementRepository(db, lock);
-    const service = new ManualSettlementService(finance, ledger, repository, { authorize: () => { if (!permitted) throw new Error("FORBIDDEN"); return actor; } }, dependencies);
+    const service = new ManualSettlementService(finance, ledger, repository, { authorize: required => { if (!permitted || !required.every(permission => granted.has(permission))) throw new Error("FORBIDDEN"); return actor; } }, dependencies);
     return { finance, ledger, repository, service };
   };
   try {
@@ -39,6 +40,13 @@ it("settles both manual originals once across reopen and restores both recorded 
     const r = f.finance.listEntries(receivable.id)[0]!.id;
     const input = { requestId: "confirm", currency: "DZD" as const, externalCounterpartyId: party, payableOriginalEntryId: p, receivableOriginalEntryId: r, amountDzd: "25.00", expectedPayableRemainingDzd: "100.00", expectedReceivableRemainingDzd: "60.00" };
     expect(f.service.preview({ externalCounterpartyId: party, payableOriginalEntryId: p, receivableOriginalEntryId: r, currency: "DZD", amountDzd: "25.00" })).toMatchObject({ payableRemainingDzd: "100.00", receivableRemainingDzd: "60.00", projectedPayableRemainingDzd: "75.00", projectedReceivableRemainingDzd: "35.00" });
+    for (const permission of ["debts:read", "debts:settle"]) {
+      granted.delete(permission);
+      expect(() => f.service.confirm(input)).toThrow(/FORBIDDEN/);
+      expect(f.finance.remaining(p)).toBe("100.00");
+      expect(f.finance.remaining(r)).toBe("60.00");
+      granted.add(permission);
+    }
     const save = f.ledger.saveAggregateCommand.bind(f.ledger);
     f.ledger.saveAggregateCommand = () => { throw new Error("Receipt failure"); };
     expect(() => f.service.confirm(input)).toThrow(/Receipt failure/);
@@ -59,6 +67,11 @@ it("settles both manual originals once across reopen and restores both recorded 
     expect(() => f.service.confirm({ ...input, requestId: "stale" })).toThrow(/stale/i);
     db.close(); db = createDatabaseConnection(path, ""); f = compose();
     expect(f.service.confirm(input)).toEqual(result);
+    for (const permission of ["debts:read", "debts:settle"]) {
+      granted.delete(permission);
+      expect(() => f.service.confirm(input)).toThrow(/FORBIDDEN/);
+      granted.add(permission);
+    }
     expect(() => f.service.confirm({ ...input, amountDzd: "24.00" })).toThrow(/conflict/i);
     const beforeActor = actor;
     actor = { ...actor, actorUserId: randomUUID() };
@@ -68,6 +81,13 @@ it("settles both manual originals once across reopen and restores both recorded 
     expect(() => f.service.confirm(input)).toThrow(/FORBIDDEN/);
     permitted = true;
     const reverse = { requestId: "reverse", settlementId: result.settlement.id, reason: "Wrong pair" };
+    for (const permission of ["debts:read", "debts:settle", "debts:update"]) {
+      granted.delete(permission);
+      expect(() => f.service.reverse(reverse)).toThrow(/FORBIDDEN/);
+      expect(f.finance.remaining(p)).toBe("75.00");
+      expect(f.finance.remaining(r)).toBe("35.00");
+      granted.add(permission);
+    }
     const saveReverseReceipt = f.ledger.saveAggregateCommand.bind(f.ledger);
     f.ledger.saveAggregateCommand = () => { throw new Error("Reversal receipt failure"); };
     expect(() => f.service.reverse(reverse)).toThrow(/Reversal receipt failure/);
@@ -79,6 +99,11 @@ it("settles both manual originals once across reopen and restores both recorded 
     expect(f.finance.remaining(p)).toBe("100.00");
     expect(f.finance.remaining(r)).toBe("60.00");
     expect(f.service.reverse(reverse)).toEqual(reversed);
+    for (const permission of ["debts:read", "debts:settle", "debts:update"]) {
+      granted.delete(permission);
+      expect(() => f.service.reverse(reverse)).toThrow(/FORBIDDEN/);
+      granted.add(permission);
+    }
     expect(() => f.service.reverse({ ...reverse, requestId: "reverse-again" })).toThrow(/reversed/i);
     expect(db.prepare("SELECT amount FROM cash_probe").all()).toEqual([{ amount: 12345 }]);
   } finally { db.close(); }
