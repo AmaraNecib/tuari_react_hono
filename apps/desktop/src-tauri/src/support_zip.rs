@@ -95,7 +95,9 @@ pub fn encode(entries: &[(String, Vec<u8>)]) -> io::Result<Vec<u8>> {
     u32le(&mut out, size);
     u32le(&mut out, offset);
     u16le(&mut out, 0);
-    if out.len() > MAX_BYTES { return Err(invalid()); }
+    if out.len() > MAX_BYTES {
+        return Err(invalid());
+    }
     Ok(out)
 }
 
@@ -129,9 +131,8 @@ mod tests {
     }
     #[test]
     fn independent_reader_fixture() {
-        let Some(path) = std::env::var_os("TUARI_ZIP_FIXTURE") else {
-            return;
-        };
+        let path =
+            std::env::temp_dir().join(format!("tuari-zip-reader-{}.zip", rand::random::<u128>()));
         let bytes = encode(&[
             ("manifest.json".into(), b"{\"product\":\"Tuari\"}".to_vec()),
             (
@@ -140,6 +141,30 @@ mod tests {
             ),
         ])
         .unwrap();
-        std::fs::write(path, bytes).unwrap();
+        std::fs::write(&path, bytes).unwrap();
+        // Python's standard-library reader independently validates the central
+        // directory, local headers, payloads and CRCs. No third-party package.
+        let reader = if cfg!(windows) { "python" } else { "python3" };
+        let output = std::process::Command::new(reader)
+            .args([
+                "-c",
+                r#"
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as archive:
+    assert archive.namelist() == ['manifest.json', '2026-01-02/desktop.log']
+    assert archive.read('manifest.json') == b'{"product":"Tuari"}'
+    assert archive.read('2026-01-02/desktop.log') == b'{"errorId":42}\n'
+    assert archive.testzip() is None
+"#,
+            ])
+            .arg(&path)
+            .output()
+            .expect("Python 3 is required for independent ZIP compatibility proof");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        std::fs::remove_file(path).unwrap();
     }
 }

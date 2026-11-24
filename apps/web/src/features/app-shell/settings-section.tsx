@@ -533,7 +533,15 @@ export function SettingsSection({
       )}
 
       {/* Security Tab — recovery keys + DB encryption key */}
-      {activeTab === 'diagnostics' && <DiagnosticsSettings />}
+      {activeTab === 'diagnostics' && (
+        isDesktopRuntime() ? <DiagnosticsSettings /> : (
+          <div className="p-5 border border-line rounded-xl">
+            <p className="text-sm text-muted-foreground">
+              {t('settings.about.onlyAvailableInDesktop')}
+            </p>
+          </div>
+        )
+      )}
 
       {activeTab === 'security' && <RecoveryKeySettings />}
 

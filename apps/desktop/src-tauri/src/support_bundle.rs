@@ -25,7 +25,8 @@ pub fn chunk_name(name: &str) -> bool {
     })
 }
 
-// Windows denies rename/delete while these handles are alive and opens reparse points themselves.
+// Windows pins directories against rename/delete and opens reparse points themselves.
+// Chunk handles allow deletion so retention can proceed during a support export.
 fn trusted_open(path: &Path, directory: bool) -> io::Result<File> {
     let metadata = fs::symlink_metadata(path)?;
     if metadata.file_type().is_symlink()
@@ -62,7 +63,7 @@ fn trusted_open(path: &Path, directory: bool) -> io::Result<File> {
             return Err(invalid());
         }
         options
-            .share_mode(3)
+            .share_mode(if directory { 3 } else { 7 })
             .custom_flags(0x00200000 | if directory { 0x02000000 } else { 0 });
     }
     let file = options.open(path)?;
@@ -337,6 +338,35 @@ mod tests {
         symlink(root.join("outside/api.log"), anchored.join("desktop.log")).unwrap();
         assert!(trusted_open(&anchored.join("desktop.log"), false).is_err());
     }
+    #[cfg(windows)]
+    #[test]
+    fn chunk_reader_allows_retention_but_directory_remains_pinned() {
+        let root = std::env::temp_dir().join(format!("tuari-share-{}", rand::random::<u128>()));
+        let day = root.join("2026-01-01");
+        fs::create_dir_all(&day).unwrap();
+        let path = day.join("desktop.log");
+        fs::write(&path, b"retained record").unwrap();
+        let directory = trusted_open(&day, true).unwrap();
+        let mut reader = trusted_open(&path, false).unwrap();
+        assert!(fs::rename(&day, root.join("moved")).is_err());
+        fs::remove_file(&path).unwrap();
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"retained record");
+        let mut sink = crate::event_sink::EventSink::new(root.clone());
+        sink.emit(
+            "error",
+            "new event",
+            None,
+            chrono::DateTime::parse_from_rfc3339("2026-02-15T12:00:00Z").unwrap(),
+        )
+        .unwrap();
+        assert!(root.join("2026-02-15/desktop.log").exists());
+        drop(reader);
+        drop(directory);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[cfg(windows)]
     #[test]
     fn rejects_junction_day() {

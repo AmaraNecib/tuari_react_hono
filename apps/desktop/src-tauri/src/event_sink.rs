@@ -186,8 +186,21 @@ impl EventSink {
         self.cleanup(now)
     }
     pub fn diagnostic_snapshot(&self) -> Vec<DiagnosticEvent> {
-        self.persisted_diagnostics()
-            .unwrap_or_else(|_| self.recent.iter().cloned().collect())
+        let mut events = self.persisted_diagnostics().unwrap_or_default();
+        // Reconcile multiplicities, not just unique metadata. Distinct failures can
+        // have identical timestamps and projections, including absent error IDs.
+        let mut counts = HashMap::new();
+        for event in &events {
+            *counts.entry(event.clone()).or_insert(0usize) += 1;
+        }
+        for event in &self.recent {
+            match counts.get_mut(event) {
+                Some(count) if *count > 0 => *count -= 1,
+                _ => events.push(event.clone()),
+            }
+        }
+        bound_diagnostics(&mut events);
+        events
     }
     /// Read bounded metadata projections, never messages, attributes or raw errors.
     pub fn persisted_diagnostics(&self) -> std::io::Result<Vec<DiagnosticEvent>> {
@@ -212,6 +225,7 @@ impl EventSink {
         days.sort();
         let mut budget = 8 * 1024 * 1024;
         for day in days.into_iter().rev().take(30) {
+            let mut files = Vec::new();
             for entry in fs::read_dir(day)?.take(256) {
                 let entry = entry?;
                 let name = entry.file_name().to_string_lossy().to_string();
@@ -229,11 +243,31 @@ impl EventSink {
                 {
                     continue;
                 }
+                files.push((entry.path(), name));
+            }
+            files.sort();
+            let mut remaining = files.len();
+            for (path, name) in files {
+                // Give every chunk a tail allowance so directory enumeration order
+                // and an older large chunk cannot hide the latest records.
+                let allowance = budget / remaining;
+                remaining -= 1;
+                let mut file = std::fs::File::open(path)?;
+                let size = file.metadata()?.len();
+                let start = size.saturating_sub(allowance as u64);
+                file.seek(SeekFrom::Start(start))?;
                 let mut bytes = Vec::new();
-                std::fs::File::open(entry.path())?
-                    .take(budget as u64)
-                    .read_to_end(&mut bytes)?;
+                file.take(allowance as u64).read_to_end(&mut bytes)?;
                 budget -= bytes.len();
+                let bytes = if start > 0 {
+                    // The first fragment may be half a JSON record.
+                    bytes
+                        .iter()
+                        .position(|b| *b == b'\n')
+                        .map_or(&[][..], |end| &bytes[end + 1..])
+                } else {
+                    &bytes[..]
+                };
                 for line in bytes.split(|b| *b == b'\n') {
                     let Ok(value) = serde_json::from_slice::<serde_json::Value>(line) else {
                         continue;
@@ -278,14 +312,7 @@ impl EventSink {
                 break;
             }
         }
-        events.sort_by_key(|e| {
-            DateTime::parse_from_rfc3339(&e.occurred_at)
-                .map(|d| d.timestamp_millis())
-                .unwrap_or(0)
-        });
-        if events.len() > 100 {
-            events.drain(..events.len() - 100);
-        }
+        bound_diagnostics(&mut events);
         Ok(events)
     }
     pub fn cleanup(&mut self, now: DateTime<FixedOffset>) -> std::io::Result<()> {
@@ -469,7 +496,7 @@ pub fn degraded() -> bool {
     DEGRADED.load(Ordering::Relaxed)
 }
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagnosticEvent {
     pub occurred_at: String,
@@ -488,13 +515,38 @@ pub struct DiagnosticStatus {
     pub dropped_event_count: usize,
 }
 
-/// Return sanitized events from this process only. No persisted log text is read.
+fn bound_diagnostics(events: &mut Vec<DiagnosticEvent>) {
+    events.sort_by_key(|e| {
+        DateTime::parse_from_rfc3339(&e.occurred_at)
+            .map(|d| d.timestamp_millis())
+            .unwrap_or(0)
+    });
+    if events.len() > 100 {
+        events.drain(..events.len() - 100);
+    }
+}
+
+fn read_diagnostics(
+    lock: &Mutex<EventSink>,
+    scan: impl FnOnce(EventSink) -> Vec<DiagnosticEvent>,
+) -> Vec<DiagnosticEvent> {
+    let snapshot = {
+        let Ok(sink) = lock.lock() else {
+            return Vec::new();
+        };
+        let mut snapshot = EventSink::new(sink.root.clone());
+        snapshot.recent = sink.recent.clone();
+        snapshot
+    };
+    scan(snapshot)
+}
+
+/// Copy process state under the writer lock; scan retained files without it.
 pub fn recent_diagnostics() -> (Vec<DiagnosticEvent>, DiagnosticStatus) {
     let initialized = SINK.get().is_some();
     let events = SINK
         .get()
-        .and_then(|lock| lock.lock().ok())
-        .map(|sink| sink.diagnostic_snapshot())
+        .map(|lock| read_diagnostics(lock, |sink| sink.diagnostic_snapshot()))
         .unwrap_or_default();
     (
         events,
@@ -511,6 +563,71 @@ pub fn recent_diagnostics() -> (Vec<DiagnosticEvent>, DiagnosticStatus) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn retained_scan_releases_writer_lock_and_keeps_snapshot() {
+        let root = std::env::temp_dir().join(format!("tuari-read-lock-{}", rand::random::<u64>()));
+        let lock = Mutex::new(EventSink::new(root.clone()));
+        let now = DateTime::parse_from_rfc3339("2026-01-02T12:00:00Z").unwrap();
+        lock.lock()
+            .unwrap()
+            .emit("info", "startup", None, now)
+            .unwrap();
+        let events = read_diagnostics(&lock, |snapshot| {
+            let mut writer = lock
+                .try_lock()
+                .expect("scan must not hold the logging lock");
+            writer
+                .emit("error", "concurrent failure", None, now)
+                .unwrap();
+            drop(writer);
+            snapshot.diagnostic_snapshot()
+        });
+        assert_eq!(events.len(), 2);
+        assert_eq!(events.last().unwrap().level, "error");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn oversized_single_chunk_reads_tail_not_partial_prefix() {
+        let root = std::env::temp_dir().join(format!("tuari-large-tail-{}", rand::random::<u64>()));
+        fs::create_dir_all(root.join("2026-01-02")).unwrap();
+        let mut bytes = vec![b' '; 9 * 1024 * 1024];
+        bytes.extend_from_slice(b"\n{\"timestamp\":\"2026-01-02T12:00:00Z\",\"severity\":\"error\",\"attributes\":{\"errorId\":99}}\n");
+        fs::write(root.join("2026-01-02/desktop.log"), bytes).unwrap();
+        let events = EventSink::new(root.clone())
+            .persisted_diagnostics()
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].error_id, Some(99));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn bounded_history_keeps_newest_chunk_tail_and_memory_events() {
+        let root = std::env::temp_dir().join(format!("tuari-tail-{}", rand::random::<u64>()));
+        let day = root.join("2026-01-02");
+        fs::create_dir_all(&day).unwrap();
+        let padding = vec![b' '; 5 * 1024 * 1024];
+        fs::write(day.join("desktop.log"), &padding).unwrap();
+        let mut newer = padding;
+        newer.extend_from_slice(b"\n{\"timestamp\":\"2026-01-02T12:00:00Z\",\"severity\":\"error\",\"attributes\":{\"errorId\":42}}\n");
+        fs::write(day.join("desktop.1.log"), newer).unwrap();
+        let mut sink = EventSink::new(root.clone());
+        sink.recent.push_back(DiagnosticEvent {
+            occurred_at: "2026-01-02T13:00:00.000+00:00".into(),
+            level: "error".into(),
+            source: "desktop".into(),
+            category: "ui".into(),
+            error_id: Some(43),
+        });
+        let events = sink.diagnostic_snapshot();
+        assert_eq!(
+            events.iter().map(|e| e.error_id).collect::<Vec<_>>(),
+            vec![Some(42), Some(43)]
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn reopened_sink_projects_history_and_excludes_business_data() {
         let root = std::env::temp_dir().join(format!("tuari-history-{}", rand::random::<u64>()));
