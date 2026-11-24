@@ -101,20 +101,20 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees,
   const shownEntries = entryPaging.rows
   const pagingProps = (paging: typeof accountPaging | typeof entryPaging, label: string, onPageChange: (page: number) => void) => ({ ...paging, label, onPageChange, previousLabel: t("exactDebts.previous"), nextLabel: t("exactDebts.next"), countLabel: t("exactDebts.pageCount", { start: paging.start, end: paging.end, total: paging.total, page: paging.page, pages: paging.pages }) })
   return <main dir="rtl" className="min-w-0 space-y-6" aria-label={t("exactDebts.ledgerLabel")}>
-    <PageHeader title={t("exactDebts.title")} description={t("exactDebts.description")} />
+    {!partySettlements && <PageHeader title={t("exactDebts.title")} description={t("exactDebts.description")} />}
     {summary.isPending ? <p role="status">{t("exactDebts.loadingAccounts")}</p> : summary.isError ? <div role="alert">{t("exactDebts.accountsError")} <Button variant="outline" onClick={() => void summary.refetch()}>{t("exactDebts.retry")}</Button></div> : <>
       <div className="flex flex-wrap gap-x-10 gap-y-4 border-y border-border py-4">
         <StatCard label={t("exactDebts.payable")} value={<MoneyValue aggregate value={scopedParty ? scopedPayableDzd : summary.data.grossPayableDzd} currencyLabel={t("exactDebts.currency")} variant="detail" />} />
         <StatCard label={t("exactDebts.receivable")} value={<MoneyValue aggregate value={scopedParty ? scopedReceivableDzd : summary.data.grossReceivableDzd} currencyLabel={t("exactDebts.currency")} variant="detail" />} />
       </div>
-      <label className="block text-sm">{t("exactDebts.search")}<input aria-label={t("exactDebts.search")} className="mt-2 h-10 w-full rounded-xl border border-border bg-background px-3" value={search} onChange={event => { setSearch(event.target.value); setAccountPage(1) }} /></label>
+      {!partySettlements && <label className="block text-sm">{t("exactDebts.search")}<input aria-label={t("exactDebts.search")} className="mt-2 h-10 w-full rounded-xl border border-border bg-background px-3" value={search} onChange={event => { setSearch(event.target.value); setAccountPage(1) }} /></label>}
       <nav aria-label={t("exactDebts.accounts")} className="flex max-h-48 flex-wrap gap-2 overflow-y-auto border-b border-border pb-3">
         {shownAccounts.map(row => <Button key={row.id} aria-pressed={row.id === selected} disabled={mutation.isPending} variant={row.id === selected ? "default" : "outline"} className="h-auto min-h-11 max-w-full flex-wrap py-2" onClick={() => { setSelected(row.id); setEntryPage(1); setTab("ledger"); setAction(null); mutation.reset() }}>
           {partyNames.get(row.workerId ?? row.externalCounterpartyId ?? "") ?? t("exactDebts.unknownParty")} · {row.direction === "PAYABLE" ? t("exactDebts.payable") : t("exactDebts.receivable")} <MoneyValue exact value={row.currentBalance} currencyLabel={t("exactDebts.currency")} />
         </Button>)}
         {!matchingAccounts.length && <EmptyState title={t("exactDebts.emptyAccounts")} description={t("exactDebts.selectHelp")} action={{ label: t("exactDebts.accountsTab"), onClick: () => setTab("accounts") }} />}
       </nav>
-      <Pagination {...pagingProps(accountPaging, t("exactDebts.accountPages"), setAccountPage)} />
+      {(!partySettlements || accountPaging.pages > 1) && <Pagination {...pagingProps(accountPaging, t("exactDebts.accountPages"), setAccountPage)} />}
     </>}
     <DirectionProvider direction="rtl">
     <Tabs value={tab} onValueChange={value => setTab(String(value))}>

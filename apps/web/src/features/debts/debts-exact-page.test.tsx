@@ -40,6 +40,8 @@ describe("injected exact debt page", () => {
     render(<QueryClientProvider client={f.query}><ExactDebtsPage client={f.client as ExactDebtsClient} parties={[party]} scopedParty={party} manualSettlementClient={manual as never} /></QueryClientProvider>)
     await screen.findByRole("button", {name:/المورد أحمد · مستحقات علينا/})
     expect(screen.getAllByRole("tablist")).toHaveLength(1)
+    expect(screen.queryByRole("textbox", {name:"بحث عن حساب"})).toBeNull()
+    expect(screen.queryByRole("navigation", {name:"صفحات الحسابات"})).toBeNull()
     expect(screen.getByRole("tab", {name:"حركة الحساب"}).getAttribute("aria-selected")).toBe("true")
     expect(screen.queryByRole("button", {name:"تسوية متبادلة جديدة"})).toBeNull()
     fireEvent.click(screen.getByRole("tab", {name:"التسويات"}))
