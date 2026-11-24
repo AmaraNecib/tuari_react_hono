@@ -45,7 +45,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       assert.deepEqual(JSON.parse(await page.locator('#report-data').textContent()), JSON.parse(await readFile(join(root, 'report-data.json'), 'utf8')));
       assert.ok(!(await page.locator('body').textContent()).includes('NEVER_RENDER'));
       await page.locator('main').screenshot({ path: join(evidence, 'overview.png') });
-      await page.getByRole('button', { name: /^02.*Error signatures/ }).click();
+      await page.getByRole('button', { name: /Error signatures/ }).click();
       await expect(page.locator('.signature').first()).toContainText('error:42');
       await expect(page.locator('.frequency').first()).toContainText('6');
       await page.locator('main').screenshot({ path: join(evidence, 'signatures.png') });
@@ -57,7 +57,7 @@ for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844
       await page.getByRole('button', { name: /Show context/ }).first().click();
       await expect(page.getByRole('region', { name: 'Event context' })).toContainText('warn');
       await page.locator('main').screenshot({ path: join(evidence, 'timeline.png') });
-      await page.getByRole('button', { name: /^04.*Error-code lookup/ }).click();
+      await page.getByRole('button', { name: /Error-code lookup/ }).click();
       await page.getByLabel('Error code', { exact: true }).fill('Other-0000002a');
       await page.getByRole('button', { name: 'Find event' }).click();
       await expect(page.getByRole('heading', { name: '2 matching records' })).toBeVisible();
