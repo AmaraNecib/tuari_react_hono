@@ -1,0 +1,48 @@
+// @vitest-environment jsdom
+import "@/i18n"
+import { act, cleanup, render, renderHook, screen } from "@testing-library/react"
+import { afterEach, expect, it, vi } from "vitest"
+const calls = vi.hoisted(() => ({ upload: vi.fn(), record: vi.fn() }))
+vi.mock("./inventory-hooks", () => ({ uploadInvoiceAttachments: calls.upload }))
+vi.mock("@/lib/error-correlation", async original => ({ ...await original<typeof import("@/lib/error-correlation")>(), recordUiFailure: calls.record }))
+import { PurchaseAttachmentFiles, usePurchaseAttachmentDraft } from "./inventory-exact-attachments"
+afterEach(() => { cleanup(); vi.clearAllMocks() })
+it("keeps extension preflight out of operational diagnostics", async () => {
+  const draft = renderHook(usePurchaseAttachmentDraft)
+  act(() => draft.result.current.setFiles([new File(["x"], "bad.exe")]))
+  render(<PurchaseAttachmentFiles draft={draft.result.current} />)
+  await expect(draft.result.current.upload("invoice")).rejects.toThrow()
+  expect(screen.getByRole("alert").textContent).toContain("bad.exe")
+  expect(calls.upload).not.toHaveBeenCalled()
+  expect(calls.record).not.toHaveBeenCalled()
+})
+it("sanitizes upload errors and shares one correlation across duplicate feedback", async () => {
+  calls.upload.mockRejectedValueOnce(new Error("SECRET token=/private/path"))
+  const draft = renderHook(usePurchaseAttachmentDraft)
+  act(() => draft.result.current.setFiles([new File(["x"], "scan.pdf", { type: "application/pdf" })]))
+  await act(async () => { await draft.result.current.upload("invoice").catch(() => {}) })
+  render(<><PurchaseAttachmentFiles draft={draft.result.current} /><PurchaseAttachmentFiles draft={draft.result.current} /></>)
+  expect(screen.getAllByRole("alert")).toHaveLength(2)
+  expect(document.body.textContent).not.toContain("SECRET")
+  const codes = screen.getAllByText(/^TUARI-[0-9A-F]{8}$/)
+  expect(codes[0]?.textContent).toBe(codes[1]?.textContent)
+  expect(calls.record).toHaveBeenCalledTimes(1)
+  expect(calls.record.mock.calls[0]).toEqual([Number.parseInt(codes[0]!.textContent!.slice(6), 16)])
+})
+it("retries a failed refresh without uploading committed files twice", async () => {
+  calls.upload.mockResolvedValue(undefined)
+  const reload = vi.fn().mockRejectedValueOnce(new Error("SECRET refresh")).mockResolvedValueOnce(undefined)
+  const draft = renderHook(usePurchaseAttachmentDraft)
+  act(() => draft.result.current.setFiles([new File(["x"], "scan.pdf", { type: "application/pdf" })]))
+  await act(async () => { await draft.result.current.upload("invoice", reload).catch(() => {}) })
+  expect(draft.result.current.needsReload).toBe(true)
+  const view = render(<PurchaseAttachmentFiles draft={draft.result.current} />)
+  expect(screen.getByText(/^TUARI-/)).toBeTruthy()
+  expect(document.body.textContent).not.toContain("SECRET")
+  await act(async () => { await draft.result.current.upload("invoice", reload) })
+  view.rerender(<PurchaseAttachmentFiles draft={draft.result.current} />)
+  expect(screen.queryByRole("alert")).toBeNull()
+  expect(calls.upload).toHaveBeenCalledTimes(1)
+  expect(reload).toHaveBeenCalledTimes(2)
+  expect(calls.record).toHaveBeenCalledTimes(1)
+})

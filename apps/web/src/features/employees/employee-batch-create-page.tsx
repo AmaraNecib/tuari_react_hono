@@ -8,7 +8,7 @@ import {
   AppMutationError,
   useCreateEmployeesBatchMutation,
 } from "@/features/app-shell/mock-dashboard"
-import { showErrorToast, showSuccessToast } from "@/lib/toast"
+import { showErrorToast, showSuccessToast, showValidationToast } from "@/lib/toast"
 
 import {
   createEmptyEmployeeDraft,
@@ -264,7 +264,7 @@ export function EmployeeBatchCreatePage({
     setRowErrors(localizedErrors)
 
     if (!validation.isValid) {
-      showErrorToast(t("toasts.employeeBatchValidation"))
+      showValidationToast(t("toasts.employeeBatchValidation"))
       return
     }
 
@@ -289,13 +289,15 @@ export function EmployeeBatchCreatePage({
 
         if (hasServerErrors) {
           setRowErrors(serverErrors)
+          showValidationToast(t("toasts.employeeBatchValidation"))
+          return
         }
 
-        showErrorToast(error.message)
+        showErrorToast(t("toasts.addWorkerError"))
         return
       }
 
-      showErrorToast(error instanceof Error ? error.message : t("toasts.addWorkerError"))
+      showErrorToast(t("toasts.addWorkerError"))
     }
   }
 

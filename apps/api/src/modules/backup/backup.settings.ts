@@ -20,7 +20,7 @@ import { join, resolve } from "node:path";
 
 export type BackupsRootValidation =
   | { success: true; path: string }
-  | { success: false; error: string };
+  | { success: false; error: string; reason?: "not_directory" };
 
 const reasonFor = (error: unknown): string =>
   error instanceof Error && error.message.length > 0
@@ -83,6 +83,7 @@ export function validateBackupsRootPath(
       return {
         success: false,
         error: `the path is a file, not a folder: ${path}`,
+        reason: "not_directory",
       };
     }
     if (existing === undefined) {

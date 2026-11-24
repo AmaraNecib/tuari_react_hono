@@ -30,6 +30,7 @@ vi.mock("@/lib/auth-api", async (importOriginal) => {
 
 vi.mock("@/lib/toast", () => ({
   showErrorToast: vi.fn(),
+  showValidationToast: vi.fn(),
 }))
 
 describe("usePhoneSignInMutation", () => {

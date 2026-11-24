@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -45,12 +45,12 @@ vi.mock("react-i18next", async (importOriginal) => {
 
 vi.mock("./use-update-check", () => ({
   useUpdateCheck: () => ({
-    state: { status: "up-to-date", checkedAt: "2026-09-30T23:00:00.000Z" },
+    state: runtime.updateState,
     checkUpdate: vi.fn(),
   }),
 }))
 
-const runtime = vi.hoisted(() => ({ desktop: true, diagnosticsMounted: vi.fn() }))
+const runtime = vi.hoisted(() => ({ desktop: true, diagnosticsMounted: vi.fn(), updateState: { status: "up-to-date", checkedAt: "2026-09-30T23:00:00.000Z", message: "" } }))
 vi.mock("@/lib/desktop-auth-session", () => ({ isDesktopRuntime: () => runtime.desktop }))
 vi.mock("./diagnostics-settings", () => ({ DiagnosticsSettings: () => {
   runtime.diagnosticsMounted()
@@ -139,6 +139,7 @@ describe("SettingsSection stored instant timezone (#473)", () => {
   let restoreTimeZone: () => void
 
   beforeEach(() => {
+    runtime.updateState = { status: "up-to-date", checkedAt: "2026-09-30T23:00:00.000Z", message: "" }
     runtime.desktop = true
     runtime.diagnosticsMounted.mockClear()
     window.history.replaceState({}, "", "/?tab=system")
@@ -148,6 +149,25 @@ describe("SettingsSection stored instant timezone (#473)", () => {
   afterEach(() => {
     cleanup()
     restoreTimeZone()
+  })
+
+  it("displays the update-check owner message including its support code", () => {
+    runtime.updateState = { status: "error", checkedAt: "", message: "تعذر التحقق. TUARI-1234ABCD" }
+    renderSettings()
+    expect(screen.getByText("تعذر التحقق. TUARI-1234ABCD")).toBeTruthy()
+  })
+
+  it("routes the known profile conflict to the phone field", async () => {
+    window.history.replaceState({}, "", "/?tab=account")
+    PROPS.onSaveAccount.mockRejectedValueOnce(new Error("رقم الهاتف مستخدم بالفعل."))
+    renderSettings()
+    fireEvent.change(screen.getByPlaceholderText("الهاتف"), { target: { value: "0666666666" } })
+    fireEvent.change(screen.getByPlaceholderText("كلمة المرور الحالية"), { target: { value: "password123" } })
+    fireEvent.change(screen.getByPlaceholderText("كلمة المرور الجديدة"), { target: { value: "newpassword123" } })
+    fireEvent.click(screen.getByRole("button", { name: "حفظ" }))
+    await waitFor(() => expect(screen.getByText("رقم الهاتف مستخدم بالفعل.")).toBeTruthy())
+    expect(screen.getByPlaceholderText("الهاتف").closest("label")?.textContent).toContain("رقم الهاتف مستخدم بالفعل.")
+    expect(screen.getByPlaceholderText("الاسم").closest("label")?.textContent).not.toContain("رقم الهاتف مستخدم بالفعل.")
   })
 
   it("does not mount native diagnostics in the browser", () => {

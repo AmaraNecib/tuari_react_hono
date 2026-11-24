@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/toast", () => ({
   showErrorToast: vi.fn(),
+  showValidationToast: vi.fn(),
   showSuccessToast: vi.fn(),
 }))
 

@@ -21,7 +21,14 @@ export function showSuccessToast(message: ReactNode) {
   return id
 }
 
-/** Shows an error toast notification. */
+/** Correctable input feedback is not an operational failure. */
+export function showValidationToast(message: ReactNode) {
+  const id = `toast-${crypto.randomUUID()}`
+  toast.error(<ToastMessage id={id} message={message} />, { id })
+  return id
+}
+
+/** Shows an operational failure with a local correlation code. */
 export function showErrorToast(message: ReactNode) {
   const id = `toast-${crypto.randomUUID()}`
   const errorId = createErrorId()

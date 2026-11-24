@@ -36,7 +36,7 @@ export function createBackupHandlers(
           const { path } = input as { path: string };
           const validation = validateBackupsRootPath(path);
           if (!validation.success) {
-            return { success: false as const, error: validation.error };
+            return { success: false as const, error: validation.error, ...(validation.reason ? { reason: validation.reason } : {}) };
           }
 
           const persisted =
