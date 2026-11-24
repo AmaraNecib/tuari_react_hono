@@ -14,7 +14,7 @@ export type ExactFinancialRoute = "debts" | "expenses" | "inventory" | "invoices
 export function ExactFinancialRoutePage({ route, parties, locations, expenses, invoiceId, createInvoice, initialInventoryMovement = false, payrollEmployees }: {
   route: ExactFinancialRoute
   payrollEmployees?: { id: string; label: string }[]
-  parties: ExactInvoiceParty[]
+  parties: (ExactInvoiceParty & { phone?: string })[]
   locations: ExactInventoryLocation[]
   expenses: ExpensesPageProps
   invoiceId?: string
@@ -27,6 +27,7 @@ export function ExactFinancialRoutePage({ route, parties, locations, expenses, i
       return <ExactDebtsPage client={clients.debts} payrollEmployees={payrollEmployees?.map(employee => ({ ...employee, partyType: "INTERNAL_WORKER" as const }))} parties={parties.map(party => ({
         id: party.id,
         label: party.label,
+        ...(party.phone ? { phone: party.phone } : {}),
         partyType: party.type === "WORKER" ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY",
       }))} />
     case "expenses":

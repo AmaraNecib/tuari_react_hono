@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { AppDate } from "@/components/app-date"
 /**
  * Void entry dialog for reversing/cancelling debt entries.
@@ -97,7 +98,7 @@ export function VoidEntryDialog({
                 {entry.entryType === "OPENING" ? t("debts.voidEntry.openingBalance") : t("debts.voidEntry.payment")}
               </span>
               <span className={cn("font-mono text-lg font-semibold", openingDisplay.textClassName)} dir="ltr">
-                <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel="دج" />
+                <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel={featureI18n.t("featureCopy.voidEntryDialog.currency")} />
               </span>
             </div>
             {isOpeningBalance ? (
@@ -113,12 +114,12 @@ export function VoidEntryDialog({
 
           {/* Cascade warning for OPENING void */}
           {hasLivePayments && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/20">
-              <p className="text-sm font-medium text-amber-900 dark:text-amber-300">
+            <div className="rounded-xl border border-warn/30 bg-warn-soft p-4">
+              <p className="text-sm font-medium text-warn">
                 {t("debts.voidEntry.cascadeWarning")}
               </p>
-              <p className="mt-2 text-sm text-amber-800 dark:text-amber-400">
-                <CurrencyProse text={t("debts.voidEntry.cascadeDescription", "سيتم إلغاء {{count}} دفعة مرتبطة تلقائياً بقيمة إجمالية {{amount}} دج.", { count: livePaymentEntries.length, amount: formatDebtAmount(totalCascadeAmount) })} />
+              <p className="mt-2 text-sm text-warn">
+                <CurrencyProse text={t("debts.voidEntry.cascadeDescription", { count: livePaymentEntries.length, amount: formatDebtAmount(totalCascadeAmount) })} />
               </p>
               <label className="mt-3 flex items-start gap-2">
                 <input
@@ -127,7 +128,7 @@ export function VoidEntryDialog({
                   onChange={(e) => setCascadeConfirmed(e.target.checked)}
                   className="mt-1 h-4 w-4 rounded border-border/80"
                 />
-                <span className="text-sm text-amber-800 dark:text-amber-400">
+                <span className="text-sm text-warn">
                   {t("debts.voidEntry.cascadeConfirm")}
                 </span>
               </label>
@@ -137,7 +138,7 @@ export function VoidEntryDialog({
           {/* Void reason */}
           <label className="flex flex-col gap-2">
             <span className="text-sm font-medium text-foreground">
-              {t("debts.voidEntry.reasonLabel")} <span className="text-rose-500">*</span>
+              {t("debts.voidEntry.reasonLabel")} <span className="text-bad">*</span>
             </span>
             <Textarea
               placeholder={t("debts.voidEntry.reasonPlaceholder")}
@@ -145,7 +146,7 @@ export function VoidEntryDialog({
               onChange={(e) => setVoidReason(e.target.value)}
             />
             {!reasonIsValid && voidReason.trim().length === 0 && voidReason.length > 0 && (
-              <p className="text-xs text-rose-600">{t("debts.voidEntry.reasonRequired")}</p>
+              <p className="text-xs text-bad">{t("debts.voidEntry.reasonRequired")}</p>
             )}
           </label>
         </div>

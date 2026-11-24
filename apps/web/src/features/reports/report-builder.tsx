@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Report builder component for creating custom reports.
  */
@@ -61,24 +62,24 @@ export function ReportBuilder() {
     <Surface variant="panel">
       <PageSurfaceContent>
         <PageHeader
-          title="تقارير مالية"
-          description="تقارير إدخالات الشراء والديون والحركات، وليست رصيد المخزون الحالي"
+          title={featureI18n.t("featureCopy.reportBuilder.title")}
+          description={featureI18n.t("featureCopy.reportBuilder.description")}
         />
 
         {/* Report Generator Controls */}
         <div className="flex flex-wrap items-end gap-x-4 gap-y-3 rounded-lg border border-border/60 bg-surface p-4">
           <label className="flex flex-col gap-2 min-w-[10rem]">
-            <span className="text-sm font-medium text-foreground">نوع التقرير</span>
+            <span className="text-sm font-medium text-foreground">{featureI18n.t("featureCopy.reportBuilder.reportType")}</span>
             <NativeSelect value={reportType} onChange={(e) => setReportType(e.target.value as ReportType)}>
-              <option value="INVENTORY">تقرير المخزون</option>
-              <option value="DEBT">تقرير الديون</option>
-              <option value="MOVEMENT">تقرير الحركات</option>
+              <option value="INVENTORY">{featureI18n.t("featureCopy.reportBuilder.inventoryReport")}</option>
+              <option value="DEBT">{featureI18n.t("featureCopy.reportBuilder.debtReport")}</option>
+              <option value="MOVEMENT">{featureI18n.t("featureCopy.reportBuilder.movementReport")}</option>
             </NativeSelect>
           </label>
 
           <DateRangeFilter
-            fromLabel="من التاريخ"
-            toLabel="إلى التاريخ"
+            fromLabel={featureI18n.t("featureCopy.reportBuilder.dateFrom")}
+            toLabel={featureI18n.t("featureCopy.reportBuilder.dateTo")}
             fromDate={startDate}
             toDate={endDate}
             onFromDateChange={setStartDate}
@@ -87,14 +88,14 @@ export function ReportBuilder() {
 
           <div className="flex items-end">
             <Button onClick={handleGenerateReport} disabled={isLoading}>
-              {isLoading ? t("common.loading", "جاري التحميل...") : t("reports.generate")}
+              {isLoading ? t("common.loading") : t("reports.generate")}
             </Button>
           </div>
         </div>
 
         {error && (
           <div role="alert" className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
-            خطأ في إنشاء التقرير: {error.message}
+            {featureI18n.t("featureCopy.reportBuilder.generateError")}{error.message}
           </div>
         )}
 
@@ -104,31 +105,30 @@ export function ReportBuilder() {
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold">
-                  {reportType === "INVENTORY" ? "تقرير المخزون" : reportType === "DEBT" ? "تقرير الديون" : "تقرير الحركات"}
+                  {reportType === "INVENTORY" ? featureI18n.t("featureCopy.reportBuilder.inventoryReport") : reportType === "DEBT" ? featureI18n.t("featureCopy.reportBuilder.debtReport") : featureI18n.t("featureCopy.reportBuilder.movementReport")}
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   {t("reports.generatedAt")} {<AppDate value={data.generatedAt} includeTime timeStyle="medium" />}
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={handleDownloadCSV}>
-                تحميل CSV
-              </Button>
+                {featureI18n.t("featureCopy.reportBuilder.downloadCsv")}</Button>
             </div>
 
             {/* Summary Cards */}
             {reportType === "INVENTORY" && data.type === "INVENTORY" && (
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">الأصول المسجلة حسب إدخالات الشراء</p>
-                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalAssetsDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
+                  <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.reportBuilder.assets")}</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalAssetsDzd, { aggregate: true }).text} currencyLabel={featureI18n.t("featureCopy.reportBuilder.currency")} /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">المستهلكات حسب إدخالات الشراء</p>
-                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalConsumablesDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
+                  <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.reportBuilder.consumables")}</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalConsumablesDzd, { aggregate: true }).text} currencyLabel={featureI18n.t("featureCopy.reportBuilder.currency")} /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">القيمة الإجمالية</p>
-                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalValueDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
+                  <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.reportBuilder.totalValue")}</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalValueDzd, { aggregate: true }).text} currencyLabel={featureI18n.t("featureCopy.reportBuilder.currency")} /></p>
                 </div>
               </div>
             )}
@@ -136,20 +136,20 @@ export function ReportBuilder() {
             {reportType === "DEBT" && data.type === "DEBT" && (
               <div className="grid gap-4 md:grid-cols-4">
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">الديون المتبقية</p>
-                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalOutstandingDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
+                  <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.reportBuilder.outstanding")}</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalOutstandingDzd, { aggregate: true }).text} currencyLabel={featureI18n.t("featureCopy.reportBuilder.currency")} /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">الديون المسددة</p>
-                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalSettledDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
+                  <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.reportBuilder.settled")}</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.totalSettledDzd, { aggregate: true }).text} currencyLabel={featureI18n.t("featureCopy.reportBuilder.currency")} /></p>
                   <p className="text-xs font-medium text-muted-foreground">{DEBT_BALANCE_STATE_PHRASE.settled}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">الديون المتأخرة</p>
-                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.overdueDzd, { aggregate: true }).text} currencyLabel="د.ج" /></p>
+                  <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.reportBuilder.overdue")}</p>
+                  <p className="text-2xl font-bold"><CurrencyRun amount={formatExactMoney(data.summary.overdueDzd, { aggregate: true }).text} currencyLabel={featureI18n.t("featureCopy.reportBuilder.currency")} /></p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">عدد الأطراف</p>
+                  <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.reportBuilder.partyCount")}</p>
                   <p className="text-2xl font-bold">{data.summary.partyCount}</p>
                 </div>
               </div>
@@ -158,7 +158,7 @@ export function ReportBuilder() {
             {reportType === "MOVEMENT" && data.type === "MOVEMENT" && (
               <div className="grid gap-4 md:grid-cols-4">
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">إجمالي الحركات</p>
+                  <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.reportBuilder.totalMovements")}</p>
                   <p className="text-2xl font-bold">{data.summary.totalMovements}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
@@ -170,14 +170,14 @@ export function ReportBuilder() {
                   <p className="text-2xl font-bold">{data.summary.consumableTransfers}</p>
                 </div>
                 <div className="rounded-lg border border-border/60 bg-surface p-4">
-                  <p className="text-sm text-muted-foreground">عدد الحركات ذات النوع OUTBOUND_SALE (يشمل البيع والإرجاع والهدايا)</p>
+                  <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.reportBuilder.outboundCount")}</p>
                   <p className="text-2xl font-bold">{data.summary.outboundSales}</p>
                 </div>
               </div>
             )}
             {data.type === "MOVEMENT" && (
-              <section aria-label="مستندات الصادر حسب النوع" className="space-y-2">
-                <h4 className="font-semibold">مستندات الصادر حسب النوع</h4>
+              <section aria-label={featureI18n.t("featureCopy.reportBuilder.outboundDocuments")} className="space-y-2">
+                <h4 className="font-semibold">{featureI18n.t("featureCopy.reportBuilder.outboundDocuments")}</h4>
                 <dl className="flex flex-wrap gap-4">
                   {data.outboundDocuments.map((row) => (
                     <div key={row.transferType}>

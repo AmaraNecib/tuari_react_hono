@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { useId, useState, type ReactNode } from "react"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -18,7 +19,7 @@ function History({ title, rows }: { title: string; rows: { id: string; content: 
   </div>
 }
 
-const money = (value: string) => <MoneyValue exact value={value} currencyLabel="دج" />
+const money = (value: string) => <MoneyValue exact value={value} currencyLabel={featureI18n.t("featureCopy.employeePayrollDebtSection.currency")} />
 const ref = (value: string) => <bdi dir="ltr">{value}</bdi>
 
 /** Payroll is a separate authoritative read, never an addition to the ledger aggregate. */
@@ -40,8 +41,8 @@ export function EmployeePayrollDebtSection({ employees, scopedParty }: { employe
       {payroll.isPending ? <p role="status">{t("debtPayroll.loading")}</p> : payroll.isError ? <div role="alert">{t("debtPayroll.error")} <Button variant="outline" onClick={() => void payroll.refetch()}>{t("debtPayroll.retry")}</Button></div> : data && <div key={employee.id} className="space-y-3">
         {data.opening.reminder && <p role="note">{t("employeeOpening.unknown")}</p>}
         <div className="flex flex-wrap gap-8 border-y border-border py-3">
-          <div><p>{t("debtPayroll.wagesOwed")}</p><MoneyValue exact aggregate value={data.summary.wagesOwed} currencyLabel="دج" variant="detail" /></div>
-          <div><p>{t("debtPayroll.advancesOwed")}</p><MoneyValue exact aggregate value={data.summary.advancesOwed} currencyLabel="دج" variant="detail" /></div>
+          <div><p>{t("debtPayroll.wagesOwed")}</p><MoneyValue exact aggregate value={data.summary.wagesOwed} currencyLabel={featureI18n.t("featureCopy.employeePayrollDebtSection.currency")} variant="detail" /></div>
+          <div><p>{t("debtPayroll.advancesOwed")}</p><MoneyValue exact aggregate value={data.summary.advancesOwed} currencyLabel={featureI18n.t("featureCopy.employeePayrollDebtSection.currency")} variant="detail" /></div>
         </div>
         <History title={t("debtPayroll.earnings")} rows={data.earnings.map(item => ({ id: item.earning.id, content: <><AppDate value={item.earning.periodStart} /> · <AppDate value={item.earning.periodEnd} /> · {t("debtPayroll.earning")} {money(item.earning.totalAmount)} · {t("debtPayroll.remaining")} {money(item.remaining)} · {ref(item.earning.id)} · {t(item.registration === "POSTED" ? "debtPayroll.posted" : "debtPayroll.pending")}</> }))} />
         <History title={t("debtPayroll.advances")} rows={data.advances.map(item => ({ id: item.advance.id, content: <>{money(item.advance.amount)} · {t("debtPayroll.remaining")} {money(item.remaining)} · {ref(item.advance.id)}</> }))} />

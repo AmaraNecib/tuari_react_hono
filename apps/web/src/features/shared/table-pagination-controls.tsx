@@ -4,9 +4,9 @@
  */
 import { useTranslation } from "react-i18next"
 
-import { Button } from "@/components/ui/button"
 import { NativeSelect } from "@/components/ui/form-controls"
 import { Surface } from "@/features/shared/page-primitives"
+import { Pagination } from "@/components/ui/data-table"
 
 const presetPageSizes = [10, 25, 50, 100]
 
@@ -51,17 +51,9 @@ export function TablePaginationControls({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button disabled={page <= 1} size="xs" variant="outline" onClick={() => onPageChange(page - 1)}>
-            {t("tables.previous")}
-          </Button>
-          <span className="min-w-[4rem] text-center text-sm text-muted-foreground">
-            {page} / {totalPages}
-          </span>
-          <Button disabled={page >= totalPages} size="xs" variant="outline" onClick={() => onPageChange(page + 1)}>
-            {t("tables.next")}
-          </Button>
-        </div>
+        <Pagination page={page} pages={totalPages} total={totalCount} start={start} end={end}
+          label={t("tables.rowsPerPage")} previousLabel={t("tables.previous")} nextLabel={t("tables.next")}
+          countLabel={`${page} / ${totalPages}`} onPageChange={onPageChange} />
       </div>
     </Surface>
   )

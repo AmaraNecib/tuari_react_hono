@@ -3,7 +3,10 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 const { mutateAsync } = vi.hoisted(() => ({ mutateAsync: vi.fn() }))
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "rtl" } }) }))
+vi.mock("react-i18next", async (importOriginal) => ({
+  ...await importOriginal<typeof import("react-i18next")>(),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { dir: () => "rtl" } }),
+}))
 vi.mock("@/features/app-shell/mock-dashboard", () => ({
   AppMutationError: class AppMutationError extends Error { fieldErrors = [] },
   useCreateEmployeesBatchMutation: () => ({ mutateAsync, isPending: false }),

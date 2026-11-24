@@ -376,8 +376,8 @@ export function buildHomeViewCopy(t: TFunction): HomeViewCopy {
         description: t("debts.description"),
       },
       externals: {
-        label: "الجهات الخارجية",
-        description: "إدارة الجهات الخارجية",
+        label: t("shellCopy.externalParties"),
+        description: t("shellCopy.manageExternals"),
       },
       projects: {
         label: t("sections.projects.label"),

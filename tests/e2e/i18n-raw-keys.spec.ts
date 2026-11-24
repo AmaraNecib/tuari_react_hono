@@ -13,7 +13,7 @@ test.describe.configure({ mode: "serial" })
  * Issue #271: ~69 call sites rendered raw keys in reachable routes.
  */
 const RAW_KEY_PATTERN =
-  /(?:^|[\s(“„])(?:common|shell|debts|detailPages|systemLog|inventory|inventoryPage|auth|workspace|appShell|sections|search|license|dashboardPage|dashboard|validation|reports|externals|externalsPage|auditLog|toasts|shortcuts|columns|status|tables|historyEvent|systemRoles|employeeForm|salaries|metrics|mockData|batchOperations|exportImport|debtsHub|debtLedger|debtCases|tour|update)\.[a-zA-Z]+(?:\.[a-zA-Z]+)*(?![\w.])/
+  /(?:^|[\s(“„])(?:exactDebts|featureCopy|shellCopy|common|shell|debts|detailPages|systemLog|inventory|inventoryPage|auth|workspace|appShell|sections|search|license|dashboardPage|dashboard|validation|reports|externals|externalsPage|auditLog|toasts|shortcuts|columns|status|tables|historyEvent|systemRoles|employeeForm|salaries|metrics|mockData|batchOperations|exportImport|debtsHub|debtLedger|debtCases|tour|update)\.[a-zA-Z]+(?:\.[a-zA-Z]+)*(?![\w.])/
 
 async function expectNoRawKeys(page: Page) {
   const bodyText = await page.locator("body").innerText()
@@ -49,10 +49,15 @@ test("debts hub record-payment dialog renders Arabic, no raw keys", async ({ pag
   await page.getByLabel("رقم الهاتف").first().fill(`07${String(Date.now()).slice(-8)}`)
   await page.getByRole("button", { name: /حفظ الطرف الخارجي/ }).first().click()
   await expect(page.getByRole("heading", { name: counterpartyName })).toBeVisible({ timeout: 10_000 })
+  const accountsTab = page.getByRole("tab", { name: "اختيار أو إنشاء حساب", exact: true })
+  await accountsTab.click()
+  await expect(accountsTab).toHaveAttribute("aria-selected", "true")
+  await expect(page.getByRole("tabpanel", { name: "اختيار أو إنشاء حساب", exact: true })).toBeVisible()
+  await expectNoRawKeys(page)
   await page.getByLabel("الرصيد الافتتاحي، اختياري", { exact: true }).fill("5000.00")
   await page.getByLabel("سبب الدين", { exact: true }).fill("رصيد افتتاحي لاختبار ترجمة الدفعة")
   await page.getByRole("button", { name: "حفظ الحساب", exact: true }).click()
-  await expect(page.getByRole("status")).toContainText("تم حفظ الحركة وتحديث الرصيد.")
+  await expect(page.getByRole("status").filter({ hasText: "تم حفظ الحركة وتحديث الرصيد." })).toBeVisible()
 
   // The debts hub renders translated panel copy — no raw keys.
   await page.getByRole("link", { name: "الديون" }).first().click()

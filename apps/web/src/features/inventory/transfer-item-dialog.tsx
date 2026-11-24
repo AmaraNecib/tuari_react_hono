@@ -404,7 +404,7 @@ export function TransferItemDialog({
 
               {chargeDefaultUnavailable ? (
                 <p
-                  className="text-xs text-amber-600"
+                  className="text-xs text-warn"
                   role="alert"
                   data-testid="charge-default-error"
                 >
@@ -427,7 +427,7 @@ export function TransferItemDialog({
               ) : null}
 
               {warnsAbovePurchase ? (
-                <p className="text-xs text-amber-600" data-testid="charge-warning">
+                <p className="text-xs text-warn" data-testid="charge-warning">
                   {t("inventory.transfer.chargeAboveWarning")}
                 </p>
               ) : null}

@@ -1,0 +1,5 @@
+# Issue176 zero-balance action label
+
+Base5d76b7ab. Owner explicitly clarified naming only, not redesign, after approving تصفير رصيد الحساب as clearer than تسوية الحساب بالكامل. Change exactDebts.settle value only; existing action button/dialog title automatically share it. Keep settlement command, confirmation description, notes, eligibility, dates, balances and receipt behavior unchanged. Do not add cross-account settlement or tooltip redesign in this copy-only correction. M4/M10 remain outside delivered scope.
+
+Two independent mounted-test literal selectors now use approved name, protecting producer-owned disabled state and same settle command payload. Focused combined command test failed before resource change, full exactpage39tests pass after. Relevant ESLint/diffcheck pass. Logs zero-label-red/green/lint remain ignored. Obtain one narrow combined-delta review and current-head hosted verdict/CI; carry prior unchanged conclusions forward. Owner conditional merge authority retained; no merge before current gates. No seam moved.

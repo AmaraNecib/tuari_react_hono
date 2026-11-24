@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Dedicated login page for the application.
  */
@@ -55,7 +56,7 @@ export function LoginPage({ onSignIn, isLoading, error }: LoginPageProps) {
     try {
       await onSignIn(trimmedPhone, trimmedPassword)
     } catch (err) {
-      const message = err instanceof Error ? err.message : t("auth.errors.invalidCredentials", "بيانات الدخول غير صحيحة")
+      const message = err instanceof Error ? err.message : t("auth.errors.invalidCredentials")
       if (message.includes("phone") || message.includes("الهاتف")) {
         setFieldErrors({ phone: message })
       } else {
@@ -70,8 +71,7 @@ export function LoginPage({ onSignIn, isLoading, error }: LoginPageProps) {
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-ink text-bg text-2xl font-display italic mb-4">
-            ط
-          </div>
+            {featureI18n.t("featureCopy.loginPage.brandMark")}</div>
           <h1 className="text-3xl font-semibold text-foreground">
             {t("auth.loginTitle")}
           </h1>

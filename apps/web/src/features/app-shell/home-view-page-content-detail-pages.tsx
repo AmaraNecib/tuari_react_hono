@@ -100,8 +100,8 @@ export function HomeViewPageDetailContent({
         route="debts"
         payrollEmployees={derived.employeeRows.map(employee => ({ id: employee.id, label: employee.name }))}
         parties={[
-          ...derived.employeeRows.filter(employee => employee.isWorker).map(employee => ({ id: employee.id, label: employee.name, type: "WORKER" as const })),
-          ...derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName, type: "EXTERNAL_COUNTERPARTY" as const })),
+          ...derived.employeeRows.map(employee => ({ id: employee.id, label: employee.name, phone: employee.phone, type: "WORKER" as const })),
+          ...derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName, phone: party.phoneNumber, type: "EXTERNAL_COUNTERPARTY" as const })),
         ]}
         locations={[]}
         expenses={{ projects: [], employees: [], sellers: [] }}
@@ -193,7 +193,7 @@ export function HomeViewPageDetailContent({
               description={detailCopy.shared.missingRecordDescription}
               navigation={navigation}
               target={workspaceRoutes.externals()}
-              title="ملف الطرف الخارجي"
+              title={t("shellCopy.externalProfile")}
             />
           )
 

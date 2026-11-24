@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Debts feature queries.
  *
@@ -66,7 +67,7 @@ function requireEntitySuccess<T>(result: {
 }) {
   if (!result.success || !result.item) {
     throw new AppMutationError({
-      message: result.error?.message ?? "تعذر تحميل بيانات الديون.",
+      message: result.error?.message ?? featureI18n.t("featureCopy.debtsQueries.loadError"),
       code: result.error?.code,
       fieldErrors: result.error?.fieldErrors,
     })

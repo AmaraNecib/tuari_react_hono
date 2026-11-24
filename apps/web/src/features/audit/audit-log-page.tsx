@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { useState, useMemo } from "react";
 import { getAlgeriaTimeZone } from "@/lib/algeria-time"
 import { AppDate } from "@/components/app-date";
@@ -83,7 +84,7 @@ export function AuditLogPage() {
   });
 
   const handleExportCSV = () => {
-    const headers = ["التاريخ", "المستخدم", "النطاق", "الإجراء", "معرف المورد", "التغييرات"];
+    const headers = [featureI18n.t("featureCopy.auditLogPage.date"), featureI18n.t("featureCopy.auditLogPage.user"), featureI18n.t("featureCopy.auditLogPage.scope"), featureI18n.t("featureCopy.auditLogPage.action"), featureI18n.t("featureCopy.auditLogPage.resourceId"), featureI18n.t("featureCopy.auditLogPage.changes")];
     const rows = filteredLogs.map((log: AuditLog) => [
       new Date(log.timestamp).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() }),
       log.actor,
@@ -105,7 +106,7 @@ export function AuditLogPage() {
     <Surface variant="panel">
       <PageSurfaceContent>
         <PageHeader
-          title="سجل التدقيق"
+          title={featureI18n.t("featureCopy.auditLogPage.title")}
           description={t("auditLog.description")}
           action={
             filteredLogs.length > 0 && (
@@ -143,8 +144,8 @@ export function AuditLogPage() {
           </label>
 
           <DateRangeFilter
-            fromLabel={t("common.dateFrom", "من التاريخ")}
-            toLabel={t("common.dateTo", "إلى التاريخ")}
+            fromLabel={t("common.dateFrom")}
+            toLabel={t("common.dateTo")}
             fromDate={startDate}
             toDate={endDate}
             onFromDateChange={setStartDate}

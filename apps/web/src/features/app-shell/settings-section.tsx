@@ -247,7 +247,7 @@ export function SettingsSection({
       setFieldErrors({})
     } catch (error) {
       const message = error instanceof Error ? error.message : t("toasts.actionError")
-      if (message.includes(t("auth.errors.invalidPassword", "كلمة المرور الحالية غير صحيحة")) || message.toLowerCase().includes("invalid password")) {
+      if (message.includes(t("auth.errors.invalidPassword")) || message.toLowerCase().includes("invalid password")) {
         setFieldErrors({ currentPassword: t("toasts.accountPasswordCurrentInvalid") })
         return
       }
@@ -398,12 +398,12 @@ export function SettingsSection({
             <ActivationPage
               activateLabel={t('license.activate')}
               activatingLabel={t('license.activating')}
-              description={t('license.description', 'أدخل مفتاح الترخيص لتفعيل النسخة الكاملة من توارتي.')}
+              description={t('license.description')}
               errorMessage={licenseActivation.error}
               keyLabel={t('license.keyLabel')}
               keyPlaceholder={t('license.keyPlaceholder')}
               successMessage={licenseActivation.result?.message ?? null}
-              title={t('license.title', 'تفعيل الترخيص')}
+              title={t('license.title')}
               onActivate={async (key) => {
                 await licenseActivation.activateLicense(key)
                 await licenseStatus.refresh()
@@ -586,13 +586,13 @@ export function SettingsSection({
                 )}
 
                 {updateState.status === "success" && (
-                  <div className="mt-4 rounded-md bg-green-50 dark:bg-green-950 p-3 text-sm text-green-800 dark:text-green-200">
+                  <div className="mt-4 rounded-md bg-good-soft p-3 text-sm text-good">
                     {updateState.message || settingsUpdateSuccess}
                   </div>
                 )}
 
                 {updateState.status === "error" && (
-                  <div className="mt-4 rounded-md bg-red-50 dark:bg-red-950 p-3 text-sm text-red-800 dark:text-red-200">
+                  <div className="mt-4 rounded-md bg-bad-soft p-3 text-sm text-bad">
                     {updateState.message || settingsUpdateError}
                   </div>
                 )}

@@ -475,7 +475,7 @@ export function HomeViewSignedInShell({
         </header>
 
         {/* Scrollable page content */}
-        <MainContent className="flex-1 overflow-auto overscroll-contain px-10 py-8">
+        <MainContent className="flex-1 overflow-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 lg:px-10 lg:py-8">
           {children}
         </MainContent>
       </div>

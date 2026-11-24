@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import type { ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -78,8 +79,8 @@ export function ProjectDetailsPage({
           { id: "overview", label: t("detailPages.project.overviewTab") },
           { id: "history", label: t("detailPages.project.historyTab") },
           { id: "workers", label: t("detailPages.project.workersTab") },
-          { id: "items", label: "العناصر" },
-          { id: "transfers", label: "سجل التحويلات" },
+          { id: "items", label: featureI18n.t("featureCopy.projectDetailsPage.items") },
+          { id: "transfers", label: featureI18n.t("featureCopy.projectDetailsPage.transfers") },
           { id: "cost", label: t("detailPages.project.cost.tab") },
         ]}
         onChange={onTabChange}

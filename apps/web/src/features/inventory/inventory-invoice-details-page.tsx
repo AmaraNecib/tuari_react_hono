@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { AppDate } from "@/components/app-date"
 import { CurrencyRun } from "@/features/shared/money-value"
 import { useState } from "react"
@@ -72,29 +73,29 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
 
       <Surface variant="panel">
         <PageSurfaceContent>
-          <PageHeader title={detail?.group.invoiceNumber || "تفاصيل الفاتورة"} description={detail?.group.supplierName || "بدون مورد محدد"} action={<PageActionGroup><Button variant="outline" onClick={onBack}>العودة إلى الفواتير</Button>{detail && detail.group.remainingDebtDzd > 0 && <Button onClick={() => setPaymentDialogOpen(true)}>تسجيل دفعة</Button>}</PageActionGroup>} />
+          <PageHeader title={detail?.group.invoiceNumber || featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.title")} description={detail?.group.supplierName || featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.noSupplier")} action={<PageActionGroup><Button variant="outline" onClick={onBack}>{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.back")}</Button>{detail && detail.group.remainingDebtDzd > 0 && <Button onClick={() => setPaymentDialogOpen(true)}>{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.recordPayment")}</Button>}</PageActionGroup>} />
           {detail ? (
             <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl border border-border/70 p-4">تاريخ الفاتورة: {detail.group.invoiceDate ? <AppDate value={detail.group.invoiceDate} /> : "غير محدد"}</div>
-              <div className="rounded-xl border border-border/70 p-4">الإجمالي: <CurrencyRun amount={detail.group.grossTotalDzd.toFixed(2)} currencyLabel="دج" /></div>
-              <div className="rounded-xl border border-border/70 p-4">المدفوع: <CurrencyRun amount={detail.group.paidAmountDzd.toFixed(2)} currencyLabel="دج" /></div>
-              <div className="rounded-xl border border-border/70 p-4">الدين المتبقي: <CurrencyRun amount={detail.group.remainingDebtDzd.toFixed(2)} currencyLabel="دج" /></div>
+              <div className="rounded-xl border border-border/70 p-4">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.invoiceDate")}{detail.group.invoiceDate ? <AppDate value={detail.group.invoiceDate} /> : featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.unspecified")}</div>
+              <div className="rounded-xl border border-border/70 p-4">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.total")}<CurrencyRun amount={detail.group.grossTotalDzd.toFixed(2)} currencyLabel={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.currency")} /></div>
+              <div className="rounded-xl border border-border/70 p-4">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.paid")}<CurrencyRun amount={detail.group.paidAmountDzd.toFixed(2)} currencyLabel={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.currency")} /></div>
+              <div className="rounded-xl border border-border/70 p-4">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.remainingDebt")}<CurrencyRun amount={detail.group.remainingDebtDzd.toFixed(2)} currencyLabel={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.currency")} /></div>
             </div>
-          ) : <p className="text-sm text-muted-foreground">جارٍ تحميل بيانات الفاتورة...</p>}
+          ) : <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.loading")}</p>}
         </PageSurfaceContent>
       </Surface>
 
       <Surface variant="panel">
         <PageSurfaceContent>
-          <SurfaceHeader title="العناصر" description="يمكنك متابعة مكان كل أصل وتحويله، وكذلك تحويل كميات المواد بين المواقع." />
+          <SurfaceHeader title={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.items")} description={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.itemsDescription")} />
           <div className="grid gap-4">
             {detail?.entries.map((entry) => (
               <div key={entry.id} className="rounded-xl border border-border/70 p-4 text-sm">
                 <div className="flex items-center justify-between gap-4">
                   <div className="font-medium text-foreground">{entry.itemName}</div>
-                  <div className="text-muted-foreground">{entry.itemType === "CONSUMABLE" ? `كمية: ${entry.quantity} ${entry.unit ?? ""}` : `عدد الأصول: ${entry.assets.length}`}</div>
+                  <div className="text-muted-foreground">{entry.itemType === "CONSUMABLE" ? featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.quantity", { value1: entry.quantity, value2: entry.unit ?? "" }) : featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.assetCount", { value1: entry.assets.length })}</div>
                 </div>
-                <div className="mt-2 text-muted-foreground">الإجمالي: <CurrencyRun amount={entry.totalPriceDzd.toFixed(2)} currencyLabel="دج" /></div>
+                <div className="mt-2 text-muted-foreground">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.total")}<CurrencyRun amount={entry.totalPriceDzd.toFixed(2)} currencyLabel={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.currency")} /></div>
 
                 {entry.assets.length > 0 ? (
                   <div className="mt-4 space-y-3">
@@ -106,21 +107,21 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
                           <div className="flex items-center justify-between gap-3">
                             <div>
                               <div className="font-medium text-foreground">{asset.assetName}</div>
-                              <div className="text-xs text-muted-foreground">المكان الحالي: {asset.currentLocationLabel ?? "غير محدد"}</div>
+                              <div className="text-xs text-muted-foreground">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.currentLocation")}{asset.currentLocationLabel ?? featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.unspecified")}</div>
                               {/* The unit stays reachable here after a sale, a
                                   gift or a return clears its location, so its
                                   charge history and correction stay available
                                   (#422 round 6). */}
                               <AssetChargeHistory assetUnitId={asset.id} />
                             </div>
-                            {href ? <a className="text-xs text-primary underline-offset-4 hover:underline" href={href}>فتح الموقع الحالي</a> : null}
+                            {href ? <a className="text-xs text-primary underline-offset-4 hover:underline" href={href}>{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.openLocation")}</a> : null}
                           </div>
 
                           <div className="mt-3">
                             {/* The transfer dialog asks for the placement charge when
                                 the destination is a project (#413); a warehouse
                                 transfer writes none. */}
-                            <Button variant="outline" onClick={() => setTransferTarget({ type: "ASSET", assetUnitId: asset.id, assetName: asset.assetName })}>تحويل الأصل</Button>
+                            <Button variant="outline" onClick={() => setTransferTarget({ type: "ASSET", assetUnitId: asset.id, assetName: asset.assetName })}>{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.transferAsset")}</Button>
                           </div>
                         </div>
                       )
@@ -135,7 +136,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
 
       <Surface variant="panel">
         <PageSurfaceContent>
-          <SurfaceHeader title="الأرصدة الحالية للمواد" description="هذه الكميات تمثل ما بقي الآن في كل موقع بعد الشراء والتحويلات." />
+          <SurfaceHeader title={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.balances")} description={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.balancesDescription")} />
           <div className="grid gap-3">
             {detail?.consumableBalances.map((balance) => {
               const href = buildLocationHref({ warehouseId: balance.warehouseId, projectId: balance.projectId })
@@ -145,9 +146,9 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
                     <div>
                       <div className="font-medium text-foreground">{balance.itemName}</div>
                       <div className="text-muted-foreground">{balance.locationLabel}</div>
-                      <div className="text-muted-foreground">الكمية المتاحة: {balance.quantity}</div>
+                      <div className="text-muted-foreground">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.availableQuantity")}{balance.quantity}</div>
                     </div>
-                    {href ? <a className="text-xs text-primary underline-offset-4 hover:underline" href={href}>فتح الموقع الحالي</a> : null}
+                    {href ? <a className="text-xs text-primary underline-offset-4 hover:underline" href={href}>{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.openLocation")}</a> : null}
                   </div>
                   {/* One transfer entry point: the shared dialog enables the
                       destination lists only while it is open (#422 round 6). */}
@@ -163,35 +164,34 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
                         sourceProjectId: balance.projectId,
                       })}
                     >
-                      تحويل الكمية
-                    </Button>
+                      {featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.transferQuantity")}</Button>
                   </div>
                 </div>
               )
             })}
-            {detail && detail.consumableBalances.length === 0 ? <p className="text-sm text-muted-foreground">لا توجد أرصدة مواد حالية لهذه الفاتورة.</p> : null}
+            {detail && detail.consumableBalances.length === 0 ? <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.emptyBalances")}</p> : null}
           </div>
         </PageSurfaceContent>
       </Surface>
 
       <Surface variant="panel">
         <PageSurfaceContent>
-          <SurfaceHeader title="سجل الحركات" description="كل المشتريات والتحويلات تبقى محفوظة هنا كسجل تاريخي." />
+          <SurfaceHeader title={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.history")} description={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.historyDescription")} />
           <div className="grid gap-2">
             {detail?.movements.map((movement) => (
               <div key={movement.id} className="rounded-xl border border-border/70 px-4 py-3 text-sm">
-                <div className="font-medium text-foreground">{movement.movementType === "PURCHASE" ? "شراء" : "تحويل"} - {movement.itemType === "ASSET" ? "أصل" : "مادة"}</div>
+                <div className="font-medium text-foreground">{movement.movementType === "PURCHASE" ? featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.purchase") : featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.transfer")} - {movement.itemType === "ASSET" ? featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.asset") : featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.consumable")}</div>
                 <div className="text-muted-foreground">{<AppDate value={movement.occurredAt} includeTime timeStyle="medium" />}</div>
               </div>
             ))}
-            {detail && detail.movements.length === 0 ? <p className="text-sm text-muted-foreground">لا توجد حركات مسجلة بعد.</p> : null}
+            {detail && detail.movements.length === 0 ? <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.emptyHistory")}</p> : null}
           </div>
         </PageSurfaceContent>
       </Surface>
 
       <Surface variant="panel">
         <PageSurfaceContent>
-          <SurfaceHeader title="ملفات الفاتورة" description="الملفات المرفوعة والمرتبطة بهذه الفاتورة." />
+          <SurfaceHeader title={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.files")} description={featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.filesDescription")} />
           <div className="grid gap-3">
             {detail?.attachments.map((attachment) => (
               isDesktop ? (
@@ -209,7 +209,7 @@ export function InventoryInvoiceDetailsPage({ invoiceId, onBack }: { invoiceId: 
                 </a>
               )
             ))}
-            {detail && detail.attachments.length === 0 ? <p className="text-sm text-muted-foreground">لا توجد ملفات مرفوعة لهذه الفاتورة.</p> : null}
+            {detail && detail.attachments.length === 0 ? <p className="text-sm text-muted-foreground">{featureI18n.t("featureCopy.inventoryInvoiceDetailsPage.emptyFiles")}</p> : null}
           </div>
         </PageSurfaceContent>
       </Surface>

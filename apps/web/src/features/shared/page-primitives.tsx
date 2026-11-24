@@ -161,6 +161,16 @@ function StaggerContainer({
   )
 }
 
+export function StatCard({ label, value, meta, tone = "neutral" }: {
+  label: string; value: ReactNode; meta?: string; tone?: "good" | "warn" | "bad" | "neutral"
+}) {
+  return <div className="max-w-full overflow-x-auto px-5 py-4">
+    <p className="mb-1 text-sm text-muted-foreground">{label}</p>
+    <div className={cn("font-mono tabular-nums", { good: "text-good", warn: "text-warn", bad: "text-bad", neutral: "text-ink" }[tone])}>{value}</div>
+    {meta && <p className="mt-1 text-xs text-muted-foreground">{meta}</p>}
+  </div>
+}
+
 /* Flat 4-col stat band */
 function StatBand({
   stats,

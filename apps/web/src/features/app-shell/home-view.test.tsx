@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import {
   demoUser,
+  exactDebtCommandMock,
   getInvoiceGroupQueryState,
   getSearchQueryState,
   makeWorkspaceData,
@@ -85,6 +86,25 @@ afterEach(() => {
 })
 
 describe("HomeView workspace shell", () => {
+  it.each(["debts", "debt-create"] as const)("offers every employee role and submits manager IDs on %s", async page => {
+    exactDebtCommandMock.mockClear()
+    const data = makeWorkspaceData()
+    const manager = data.employees[0]!
+    const warehouseManager = { ...manager, id: "warehouse-manager-debt", firstName: "مدير", lastName: "المستودع", roleId: "role-warehouse-manager" }
+    renderWorkspace(page, { sessionUser: demoUser, workspaceData: { ...data, employees: [...data.employees, warehouseManager] } })
+    fireEvent.click(await screen.findByRole("tab", { name: i18n.t("exactDebts.accountsTab") }))
+    const select = await screen.findByRole("combobox", { name: "الطرف" })
+    expect(within(select).getAllByRole("option").map(option => (option as HTMLOptionElement).value)).toEqual(expect.arrayContaining(["employee-worker-1", manager.id, warehouseManager.id]))
+    for (const id of [manager.id, warehouseManager.id]) {
+      fireEvent.change(select, { target: { value: id } })
+      fireEvent.change(screen.getByRole("textbox", { name: "سبب الدين" }), { target: { value: "Manager debt" } })
+      fireEvent.click(screen.getByRole("button", { name: "حفظ الحساب" }))
+      await waitFor(() => expect(exactDebtCommandMock).toHaveBeenLastCalledWith(expect.objectContaining({
+        kind: "create", input: expect.objectContaining({ partyType: "INTERNAL_WORKER", workerId: id, direction: "PAYABLE" }),
+      })))
+    }
+  })
+
   it.each([
     ["transfer-history", "transfer-history-page", "exact-purchases"],
     ["inventory", "exact-purchases", "transfer-history-page"],

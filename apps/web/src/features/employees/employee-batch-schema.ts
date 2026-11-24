@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /** Employee batch creation schema validation. */
 import {
   employeeBatchCreateInputSchema,
@@ -9,7 +10,7 @@ import {
 
 import { parseLocalizedMoneyInput, parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
 
-export const duplicatePhoneInBatchMessage = "تم تكرار رقم الهاتف داخل نفس الدفعة."
+export const duplicatePhoneInBatchMessage = featureI18n.t("featureCopy.employeeBatchSchema.duplicatePhone")
 
 type SalaryPeriod = NonNullable<Employee["salaryReference"]>["period"]
 export type EmployeeDraft = {

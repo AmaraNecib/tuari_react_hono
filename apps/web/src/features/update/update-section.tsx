@@ -270,7 +270,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
 
       {/* Up-to-date */}
       {status.type === "uptodate" && (
-        <p className="text-sm text-green-600 dark:text-green-400">
+        <p className="text-sm text-good">
           {t("shell.settingsAboutUpToDate")}
         </p>
       )}
@@ -344,8 +344,8 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
       {/* Completed */}
       {status.type === "completed" && (
         <div className="space-y-3">
-          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 dark:border-green-800 dark:bg-green-950">
-            <p className="text-sm font-medium text-green-700 dark:text-green-300">
+          <div className="rounded-lg border border-good/30 bg-good-soft px-4 py-3">
+            <p className="text-sm font-medium text-good">
               {t("shell.settingsAboutDownloadComplete")}
             </p>
           </div>
@@ -367,8 +367,8 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
       {/* Error */}
       {status.type === "error" && (
         <div className="space-y-3">
-          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 dark:border-red-800 dark:bg-red-950">
-            <p className="text-sm text-red-600 dark:text-red-400">
+          <div className="rounded-lg border border-bad/30 bg-bad-soft px-4 py-3">
+            <p className="text-sm text-bad">
               {t("shell.settingsAboutError")}: {status.message}
             </p>
           </div>

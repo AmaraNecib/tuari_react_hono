@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { useState, useCallback } from "react"
 
 export type LicenseActivationResult = {
@@ -48,7 +49,7 @@ export function useLicenseActivation() {
           ? error.message
           : typeof error === "string"
             ? error
-            : "فشل تفعيل الترخيص."
+            : featureI18n.t("featureCopy.useLicenseActivation.activationError")
 
       // Store error in state — parent reads from errorMessage prop
       setState({

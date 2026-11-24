@@ -64,6 +64,52 @@ afterEach(() => {
 })
 
 describe("DebtCreatePage — category direction", () => {
+  it("renders every category name and description from the Arabic resources", () => {
+    renderPage()
+
+    const categories = [
+      ["سلفة راتب", "صرفنا للعامل مال قبل استحقاقه"],
+      ["تعويض مصاريف", "العامل دفع شيء نيابة عنا (ماء، مواد، نقل)"],
+      ["أخذ كاش", "العامل أخذ كاش من الصندوق"],
+      ["تلف معدات", "العامل مدين لنا بسبب تلف معدات"],
+      ["قرض شخصي", "أعطينا العامل قرض نقدي ليرجعه"],
+      ["قرض مباشر (أعطينا)", "أعطينا الطرف الخارجي قرض"],
+      ["قرض مباشر (أخذنا)", "طرف خارجي أقرضنا مال"],
+      ["أخرى", "سبب آخر — يرجى تقديم تفصيل"],
+    ] as const
+    const categoryButtons = screen.getAllByRole("button").filter((button) =>
+      categories.some(([label]) => button.textContent?.includes(label)),
+    )
+
+    expect(categoryButtons).toHaveLength(categories.length)
+    for (const [label, description] of categories) {
+      const button = screen.getByRole("button", { name: `${label} ${description}` })
+      expect(button.textContent).toContain(description)
+    }
+  })
+
+  it("reads every category label and description from its translation key", () => {
+    const names = ["salaryAdvance", "reimbursement", "cashTake", "equipmentDamage", "personalLoan", "directLoanGiven", "directLoanTaken", "other"]
+    const originals = names.flatMap((name) => ["label", "description"].map((field) => {
+      const key = `detailPages.debt.categories.${name}.${field}`
+      return { key, value: i18n.getResource("ar", "translation", key), replacement: `${name} ${field}` }
+    }))
+    try {
+      for (const { key, replacement } of originals) {
+        i18n.addResource("ar", "translation", key, replacement)
+      }
+      renderPage()
+      for (const name of names) {
+        expect(screen.getByRole("button", { name: `${name} label ${name} description` })).toBeTruthy()
+      }
+    } finally {
+      cleanup()
+      for (const { key, value } of originals) {
+        i18n.addResource("ar", "translation", key, value)
+      }
+    }
+  })
+
   it("derives the owed-to-us direction for a salary advance (D1a)", () => {
     // SALARY_ADVANCE is the default category. The client must derive RECEIVABLE
     // for it so the direction it sends matches the server's locked direction;

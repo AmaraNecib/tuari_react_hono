@@ -48,11 +48,11 @@ export function buildHomeViewBreadcrumbItems({
               : page === "roles"
                 ? [{ label: copy.sections.roles.label, to: workspaceRoutes.roles() }]
               : page === "inventory"
-                ? [{ label: "دليل العناصر", to: workspaceRoutes.inventory() }]
+                ? [{ label: t("shellCopy.catalog"), to: workspaceRoutes.inventory() }]
                 : page === "invoices" || page === "invoice-create" || page === "invoice-details"
-                  ? [{ label: "الفواتير", to: workspaceRoutes.invoices() }]
+                  ? [{ label: t("shellCopy.invoices"), to: workspaceRoutes.invoices() }]
                   : page === "outbound-transfers" || page === "outbound-transfer-create"
-                    ? [{ label: "التحويلات الخارجية", to: workspaceRoutes.outboundTransfers() }]
+                    ? [{ label: t("shellCopy.outbound"), to: workspaceRoutes.outboundTransfers() }]
                     : page === "settings"
                      ? [{ label: copy.sections.settings.label, to: workspaceRoutes.settings() }]
                      : []),
@@ -67,7 +67,7 @@ export function buildHomeViewBreadcrumbItems({
             : page === "external-create"
               ? [
                   { label: copy.sections.externals.label, to: workspaceRoutes.externals() },
-                  { label: "إضافة جهة خارجية" },
+                  { label: t("shellCopy.createExternal") },
                 ]
               : page === "external-details" && selectedCounterparty
                 ? [
@@ -87,17 +87,17 @@ export function buildHomeViewBreadcrumbItems({
                  : page === "warehouse-edit" && selectedWarehouse
                    ? [{ label: selectedWarehouse.name, to: workspaceRoutes.warehouseDetails(selectedWarehouse.id) }, { label: t("detailPages.warehouse.editBreadcrumb") }]
                    : page === "inventory"
-                     ? [{ label: "دليل العناصر" }]
+                     ? [{ label: t("shellCopy.catalog") }]
                      : page === "invoices"
-                       ? [{ label: "كل الفواتير" }]
+                       ? [{ label: t("shellCopy.allInvoices") }]
                        : page === "invoice-create"
-                         ? [{ label: "إضافة فاتورة" }]
+                         ? [{ label: t("shellCopy.createInvoice") }]
                          : page === "invoice-details"
-                           ? [{ label: "تفاصيل الفاتورة" }]
+                           ? [{ label: t("shellCopy.invoiceDetails") }]
                            : page === "outbound-transfers"
-                             ? [{ label: "قائمة التحويلات" }]
+                             ? [{ label: t("shellCopy.transfers") }]
                              : page === "outbound-transfer-create"
-                               ? [{ label: "إنشاء تحويل خارجي" }]
+                               ? [{ label: t("shellCopy.createTransfer") }]
                    : []),
   ]
 }

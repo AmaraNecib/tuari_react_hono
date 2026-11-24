@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import type { ExactDebtsClient, ExternalCounterparty } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 
@@ -17,7 +18,7 @@ export function ExternalCounterpartiesRoute({ client, counterparties, onCreate, 
   const summary = useExactDebtSummary(client)
 
   if (summary.isPending) {
-    return <LoadErrorSurface isLoading message={t("debts.loadError")} loadingLabel="جار تحميل الأطراف…" retryLabel={t("common.retry")} onRetry={() => void summary.refetch()} />
+    return <LoadErrorSurface isLoading message={t("debts.loadError")} loadingLabel={featureI18n.t("featureCopy.externalCounterpartiesRoute.loading")} retryLabel={t("common.retry")} onRetry={() => void summary.refetch()} />
   }
   if (summary.isError) {
     return <LoadErrorSurface message={t("debts.loadError")} retryLabel={t("common.retry")} onRetry={() => void summary.refetch()} />

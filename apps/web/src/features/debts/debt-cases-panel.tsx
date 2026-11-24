@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { CurrencyRun } from "@/features/shared/money-value"
 import { useTranslation } from "react-i18next"
 import { useMemo, useState } from "react"
@@ -142,7 +143,7 @@ export function DebtCasesPanel({
         <CasesStatCard
           label={`${t("debts.cases.currentBalance")} — ${getDebtDirectionLabel(accountDirection)}`}
           phrase={balance.phrase}
-          value={<CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel="دج" />}
+          value={<CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel={featureI18n.t("featureCopy.debtCasesPanel.currency")} />}
           valueClassName={balance.textClassName}
         />
         <CasesStatCard label={t("debts.cases.accountCount")} value={String(sortedAccounts.length)} />
@@ -159,9 +160,9 @@ export function DebtCasesPanel({
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <div className="space-y-0.5">
               <p className="text-sm text-muted-foreground">
-                {getDebtDirectionLabel(payableAccount!.direction)} · {payableBalance!.phrase} <CurrencyRun amount={formatDebtAmount(payableBalance!.amount)} currencyLabel="دج" />
+                {getDebtDirectionLabel(payableAccount!.direction)} · {payableBalance!.phrase} <CurrencyRun amount={formatDebtAmount(payableBalance!.amount)} currencyLabel={featureI18n.t("featureCopy.debtCasesPanel.currency")} />
                 {` — `}
-                {getDebtDirectionLabel(receivableAccount!.direction)} · {receivableBalance!.phrase} <CurrencyRun amount={formatDebtAmount(receivableBalance!.amount)} currencyLabel="دج" />
+                {getDebtDirectionLabel(receivableAccount!.direction)} · {receivableBalance!.phrase} <CurrencyRun amount={formatDebtAmount(receivableBalance!.amount)} currencyLabel={featureI18n.t("featureCopy.debtCasesPanel.currency")} />
               </p>
               <p className="text-xs text-muted-foreground">
                 {hasConsolidatableOpenings
@@ -193,13 +194,13 @@ export function DebtCasesPanel({
               className={cn(
                 "rounded-xl border p-3 transition-all",
                 direction === "owed-to-us"
-                  ? "border-emerald-500/30 bg-primary/8"
+                  ? "border-good/30 bg-primary/8"
                   : "border-border/60 hover:bg-muted/40",
               )}
               type="button"
               onClick={() => setDirection("owed-to-us")}
             >
-              <p className="font-semibold text-emerald-700 dark:text-emerald-300">
+              <p className="font-semibold text-good">
                 {t("detailPages.debt.direction.owedToUs")}
               </p>
             </button>
@@ -207,13 +208,13 @@ export function DebtCasesPanel({
               className={cn(
                 "rounded-xl border p-3 transition-all",
                 direction === "owed-by-us"
-                  ? "border-rose-500/30 bg-primary/8"
+                  ? "border-bad/30 bg-primary/8"
                   : "border-border/60 hover:bg-muted/40",
               )}
               type="button"
               onClick={() => setDirection("owed-by-us")}
             >
-              <p className="font-semibold text-rose-700 dark:text-rose-300">
+              <p className="font-semibold text-bad">
                 {t("detailPages.debt.direction.owedByUs")}
               </p>
             </button>
@@ -221,7 +222,7 @@ export function DebtCasesPanel({
         </div>
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Field label={t("common.createDate", "التاريخ")}>
+          <Field label={t("common.createDate")}>
             <DatePicker value={createDate} onChange={(value) => { setDirection(direction); setCreateDate(value) }} />
           </Field>
           <Field label={t("debts.cases.amount")}>

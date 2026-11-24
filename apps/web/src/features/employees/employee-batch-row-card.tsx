@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Employee batch row card for displaying individual employee data in batch creation.
  */
@@ -153,7 +154,7 @@ export function EmployeeBatchRowCard({
         <label className="flex flex-col gap-2.5">
           <span className="text-sm font-medium text-foreground">{copy.salaryReferenceAmountLabel}</span>
           <CurrencyInput
-            currencyLabel="دج"
+            currencyLabel={featureI18n.t("featureCopy.employeeBatchRowCard.currency")}
             name={`employee-salary-reference-amount-${index}`}
             placeholder={copy.salaryReferenceAmountPlaceholder}
             value={draft.salaryReferenceAmount}

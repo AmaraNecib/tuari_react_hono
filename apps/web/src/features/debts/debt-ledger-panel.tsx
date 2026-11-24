@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { AppDate } from "@/components/app-date"
 /**
  * Debt ledger panel for viewing transaction history.
@@ -78,13 +79,13 @@ export function DebtLedgerPanel({
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <DebtStatCard
-          label={`الرصيد الحالي — ${getDebtDirectionLabel(debtAccount.direction)}`}
+          label={featureI18n.t("featureCopy.debtLedgerPanel.currentBalance", { value1: getDebtDirectionLabel(debtAccount.direction) })}
           phrase={balance.phrase}
-          value={<CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel="دج" />}
+          value={<CurrencyRun amount={formatDebtAmount(balance.amount)} currencyLabel={featureI18n.t("featureCopy.debtLedgerPanel.currency")} />}
           valueClassName={balance.textClassName}
         />
-        <DebtStatCard label="الحالة" value={balance.phrase} valueClassName={balance.textClassName} />
-        <DebtStatCard label="عدد القيود" value={String(sortedEntries.length)} />
+        <DebtStatCard label={featureI18n.t("featureCopy.debtLedgerPanel.status")} value={balance.phrase} valueClassName={balance.textClassName} />
+        <DebtStatCard label={featureI18n.t("featureCopy.debtLedgerPanel.entryCount")} value={String(sortedEntries.length)} />
       </div>
 
       <Surface className="p-5" variant="card">
@@ -95,7 +96,7 @@ export function DebtLedgerPanel({
 
         <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <label className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-foreground">التاريخ</span>
+            <span className="text-sm font-medium text-foreground">{featureI18n.t("featureCopy.debtLedgerPanel.date")}</span>
             <DatePicker value={entryDate} onChange={setEntryDate} />
           </label>
           <label className="flex flex-col gap-2">
@@ -103,7 +104,7 @@ export function DebtLedgerPanel({
             <CurrencyInput placeholder={t("debts.payment.groupedAmountPlaceholder")} value={signedAmount} onChange={(event) => setSignedAmount(event.target.value)} />
           </label>
           <label className="flex flex-col gap-2 md:col-span-2 xl:col-span-2">
-            <span className="text-sm font-medium text-foreground">ملاحظة</span>
+            <span className="text-sm font-medium text-foreground">{featureI18n.t("featureCopy.debtLedgerPanel.note")}</span>
             <Textarea placeholder={t("debts.payment.ledgerNotePlaceholder")} value={note} onChange={(event) => setNote(event.target.value)} />
           </label>
         </div>
@@ -134,10 +135,10 @@ export function DebtLedgerPanel({
         <SurfaceHeader
           description={
             balanceDzd === 0
-              ? "الرصيد مغلق بالفعل."
-              : <CurrencyProse text={`سيتم إنشاء حركة تسوية بقيمة ${formatDebtAmount(balanceDzd)} دج لإرجاع الرصيد إلى صفر.`} />
+              ? featureI18n.t("featureCopy.debtLedgerPanel.alreadyClosed")
+              : <CurrencyProse text={featureI18n.t("featureCopy.debtLedgerPanel.settlementDescription", { value1: formatDebtAmount(balanceDzd) })} />
           }
-          title="تسوية الرصيد"
+          title={featureI18n.t("featureCopy.debtLedgerPanel.settleBalance")}
         />
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -155,8 +156,7 @@ export function DebtLedgerPanel({
               })
             }
           >
-            تسوية إلى صفر
-          </Button>
+            {featureI18n.t("featureCopy.debtLedgerPanel.settleToZero")}</Button>
         </div>
       </Surface>
 
@@ -165,13 +165,13 @@ export function DebtLedgerPanel({
           <table className="min-w-full text-sm">
             <thead className="bg-muted/40 text-muted-foreground">
                               <tr>
-                  <th className="px-4 py-3 text-start font-medium">التاريخ</th>
-                  <th className="px-4 py-3 text-start font-medium">النوع</th>
-                  <th className="px-4 py-3 text-start font-medium">المبلغ</th>
-                  <th className="px-4 py-3 text-start font-medium">الرصيد بعد الحركة</th>
-                  <th className="px-4 py-3 text-start font-medium">الحالة</th>
-                  <th className="px-4 py-3 text-start font-medium">ملاحظة</th>
-                  <th className="px-4 py-3 text-start font-medium">الإجراءات</th>
+                  <th className="px-4 py-3 text-start font-medium">{featureI18n.t("featureCopy.debtLedgerPanel.date")}</th>
+                  <th className="px-4 py-3 text-start font-medium">{featureI18n.t("featureCopy.debtLedgerPanel.type")}</th>
+                  <th className="px-4 py-3 text-start font-medium">{featureI18n.t("featureCopy.debtLedgerPanel.amount")}</th>
+                  <th className="px-4 py-3 text-start font-medium">{featureI18n.t("featureCopy.debtLedgerPanel.balanceAfter")}</th>
+                  <th className="px-4 py-3 text-start font-medium">{featureI18n.t("featureCopy.debtLedgerPanel.status")}</th>
+                  <th className="px-4 py-3 text-start font-medium">{featureI18n.t("featureCopy.debtLedgerPanel.note")}</th>
+                  <th className="px-4 py-3 text-start font-medium">{featureI18n.t("featureCopy.debtLedgerPanel.actions")}</th>
                 </tr>
             </thead>
             <tbody>
@@ -201,21 +201,19 @@ export function DebtLedgerPanel({
                         {getDebtEntryTypeLabel(entry.entryType)}
                       </td>
                       <td className={cn("px-4 py-4 text-start font-mono", amountDisplay.textClassName)} dir="ltr">
-                        <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel="دج" />
+                        <CurrencyRun amount={formatDebtMoney(entry.signedAmountDzd)} currencyLabel={featureI18n.t("featureCopy.debtLedgerPanel.currency")} />
                       </td>
                       <td className={cn("px-4 py-4 text-start font-mono", balanceAfter.textClassName)}>
                         <span className="block text-xs font-medium">{balanceAfter.phrase}</span>
-                        <span dir="ltr"><CurrencyRun amount={formatDebtAmount(balanceAfter.amount)} currencyLabel="دج" /></span>
+                        <span dir="ltr"><CurrencyRun amount={formatDebtAmount(balanceAfter.amount)} currencyLabel={featureI18n.t("featureCopy.debtLedgerPanel.currency")} /></span>
                       </td>
                       <td className="px-4 py-4 text-start">
                         {isLive ? (
-                          <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                            نشط
-                          </span>
+                          <span className="inline-flex items-center rounded-full bg-good/10 px-2.5 py-0.5 text-xs font-medium text-good">
+                            {featureI18n.t("featureCopy.debtLedgerPanel.active")}</span>
                         ) : (
-                          <span className="inline-flex items-center rounded-full bg-rose-500/10 px-2.5 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300">
-                            ملغية
-                          </span>
+                          <span className="inline-flex items-center rounded-full bg-bad/10 px-2.5 py-0.5 text-xs font-medium text-bad">
+                            {featureI18n.t("featureCopy.debtLedgerPanel.voided")}</span>
                         )}
                       </td>
                       <td className="px-4 py-4 text-start text-muted-foreground">
@@ -229,18 +227,16 @@ export function DebtLedgerPanel({
                               variant="outline"
                               onClick={() => setPaymentTargetEntry(entry)}
                             >
-                              دفعة
-                            </Button>
+                              {featureI18n.t("featureCopy.debtLedgerPanel.payment")}</Button>
                           )}
                           {isLive && (
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="text-rose-600 hover:text-rose-700"
+                              className="text-bad hover:text-bad"
                               onClick={() => setVoidTargetEntry(entry)}
                             >
-                              إلغاء
-                            </Button>
+                              {featureI18n.t("featureCopy.debtLedgerPanel.void")}</Button>
                           )}
                         </div>
                       </td>
@@ -250,8 +246,7 @@ export function DebtLedgerPanel({
               ) : (
                 <tr>
                   <td className="px-4 py-6 text-center text-muted-foreground" colSpan={7}>
-                    لا توجد حركات دين بعد.
-                  </td>
+                    {featureI18n.t("featureCopy.debtLedgerPanel.empty")}</td>
                 </tr>
               )}
             </tbody>
