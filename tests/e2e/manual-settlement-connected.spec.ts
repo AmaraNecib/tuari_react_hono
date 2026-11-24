@@ -100,7 +100,7 @@ test("external manual pair baseline and responsive evidence #613", async ({ page
         await history.screenshot({ path: join(dir, direction.source.includes("علينا") ? "payable-history.png" : "receivable-history.png") })
       }
       if (name === "mobile") {
-        await view.getByRole("button", { name: "توسيع الشريط الجانبي", exact: true }).click()
+        await view.getByRole("banner").getByRole("button", { name: "توسيع الشريط الجانبي", exact: true }).click()
         await expect(view.locator('.tauri-shell')).toHaveAttribute('data-sidebar-open', 'true')
         await view.screenshot({ path: join(dir, "mobile-drawer.png"), animations: "disabled" })
         await view.locator(".sb-mobile-backdrop").click({ position: { x: 5, y: 400 } })
