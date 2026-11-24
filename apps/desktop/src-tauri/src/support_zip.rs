@@ -95,6 +95,7 @@ pub fn encode(entries: &[(String, Vec<u8>)]) -> io::Result<Vec<u8>> {
     u32le(&mut out, size);
     u32le(&mut out, offset);
     u16le(&mut out, 0);
+    if out.len() > MAX_BYTES { return Err(invalid()); }
     Ok(out)
 }
 

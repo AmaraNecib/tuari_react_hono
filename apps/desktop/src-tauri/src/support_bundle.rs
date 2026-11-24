@@ -36,6 +36,25 @@ fn trusted_open(path: &Path, directory: bool) -> io::Result<File> {
     }
     let mut options = OpenOptions::new();
     options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // O_NOFOLLOW values from the platform ABI. No new native dependency.
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        options.custom_flags(0x20000);
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        options.custom_flags(0x100);
+        #[cfg(not(any(
+            target_os = "linux",
+            target_os = "android",
+            target_os = "macos",
+            target_os = "ios"
+        )))]
+        return Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "Unsupported trusted log traversal",
+        ));
+    }
     #[cfg(windows)]
     {
         use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
@@ -59,6 +78,25 @@ fn trusted_open(path: &Path, directory: bool) -> io::Result<File> {
         return Err(invalid());
     }
     Ok(file)
+}
+
+// Directory enumeration stays anchored to the held handle on Unix, even after rename.
+fn held_directory_path(file: &File, original: &Path) -> std::path::PathBuf {
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        let _ = original;
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        let prefix = "/proc/self/fd";
+        #[cfg(not(any(target_os = "linux", target_os = "android")))]
+        let prefix = "/dev/fd";
+        std::path::PathBuf::from(prefix).join(file.as_raw_fd().to_string())
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = file;
+        original.to_path_buf()
+    }
 }
 
 /// Save/cancel seam shared with the native command. Existing files are never overwritten.
@@ -86,9 +124,14 @@ pub fn encode(root: &Path) -> io::Result<Vec<u8>> {
     let mut first: Option<chrono::DateTime<chrono::FixedOffset>> = None;
     let mut last = first;
     let mut scanned = 0usize;
-    if root.try_exists()? {
-        let _root_handle = trusted_open(root, true)?;
-        for day in fs::read_dir(root)? {
+    let exists = match fs::symlink_metadata(root) {
+        Ok(_) => true,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => false,
+        Err(e) => return Err(e),
+    };
+    if exists {
+        let root_handle = trusted_open(root, true)?;
+        for day in fs::read_dir(held_directory_path(&root_handle, root))? {
             scanned += 1;
             if scanned > 4096 {
                 return Err(invalid());
@@ -98,9 +141,9 @@ pub fn encode(root: &Path) -> io::Result<Vec<u8>> {
             if name.len() != 10 || chrono::NaiveDate::parse_from_str(&name, "%Y-%m-%d").is_err() {
                 continue;
             }
-            let _day_handle = trusted_open(&day.path(), true)?;
+            let day_handle = trusted_open(&day.path(), true)?;
             let mut chunks = 0;
-            for chunk in fs::read_dir(day.path())? {
+            for chunk in fs::read_dir(held_directory_path(&day_handle, &day.path()))? {
                 chunks += 1;
                 if chunks > 4096 {
                     return Err(invalid());
@@ -142,6 +185,8 @@ pub fn encode(root: &Path) -> io::Result<Vec<u8>> {
                         .ok_or_else(invalid)?;
                     let source = if filename.starts_with("desktop") {
                         "desktop"
+                    } else if filename.starts_with("app") {
+                        "app"
                     } else {
                         "api"
                     };
@@ -220,6 +265,77 @@ mod tests {
         )
         .unwrap();
         assert!(encode(&root).is_err());
+    }
+    #[test]
+    fn app_chunks_keep_their_source() {
+        let root =
+            std::env::temp_dir().join(format!("tuari-support-app-{}", rand::random::<u128>()));
+        fs::create_dir_all(root.join("2026-01-01")).unwrap();
+        fs::write(root.join("2026-01-01/app.log"), b"{\"timestamp\":\"2026-01-01T12:00:00Z\",\"severity\":\"warn\",\"source\":\"untrusted\"}\n").unwrap();
+        let zip = encode(&root).unwrap();
+        assert!(zip
+            .windows(b"\"source\":\"app\"".len())
+            .any(|w| w == b"\"source\":\"app\""));
+        assert!(!zip.windows(b"untrusted".len()).any(|w| w == b"untrusted"));
+    }
+    #[test]
+    fn explicit_chunk_input_and_output_budgets() {
+        let root =
+            std::env::temp_dir().join(format!("tuari-support-budgets-{}", rand::random::<u128>()));
+        let day = root.join("2026-01-01");
+        fs::create_dir_all(&day).unwrap();
+        for i in 0..MAX_FILES {
+            fs::write(day.join(format!("api.{i}.log")), b"").unwrap();
+        }
+        assert!(encode(&root).is_ok());
+        fs::write(day.join("desktop.log"), b"").unwrap();
+        let dest = root.join("over-count.zip");
+        assert!(save(&root, Some(&dest)).is_err());
+        assert!(!dest.exists());
+
+        let root = root.join("bytes");
+        fs::create_dir_all(root.join("2026-01-01")).unwrap();
+        let path = root.join("2026-01-01/api.log");
+        let line = b"{\"timestamp\":\"2026-01-01T12:00:00Z\",\"severity\":\"error\",\"message\":\"secret\"}\n";
+        fs::write(&path, line.repeat(60_000)).unwrap();
+        let dest = root.join("over-output.zip");
+        assert!(save(&root, Some(&dest)).is_err());
+        assert!(!dest.exists());
+        use std::io::Write;
+        let mut file = File::create(&path).unwrap();
+        let padding = "x".repeat(900_000);
+        let line = format!("{{\"timestamp\":\"2026-01-01T12:00:00Z\",\"severity\":\"info\",\"ignored\":\"{padding}\"}}\n");
+        for _ in 0..(MAX_INPUT / line.len() as u64 + 1) {
+            file.write_all(line.as_bytes()).unwrap();
+        }
+        drop(file);
+        let dest = root.join("over-input.zip");
+        assert!(save(&root, Some(&dest)).is_err());
+        assert!(!dest.exists());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn held_directory_survives_replacement_and_rejects_links() {
+        use std::os::unix::fs::symlink;
+        let root =
+            std::env::temp_dir().join(format!("tuari-support-race-{}", rand::random::<u128>()));
+        fs::create_dir_all(root.join("2026-01-01")).unwrap();
+        let held = trusted_open(&root.join("2026-01-01"), true).unwrap();
+        fs::write(root.join("2026-01-01/api.log"), b"original").unwrap();
+        fs::rename(root.join("2026-01-01"), root.join("moved")).unwrap();
+        fs::create_dir(root.join("outside")).unwrap();
+        fs::write(root.join("outside/api.log"), b"outside").unwrap();
+        symlink(root.join("outside"), root.join("2026-01-01")).unwrap();
+        let anchored = held_directory_path(&held, &root.join("2026-01-01"));
+        let mut bytes = Vec::new();
+        trusted_open(&anchored.join("api.log"), false)
+            .unwrap()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        assert_eq!(bytes, b"original");
+        assert!(encode(&root).is_err());
+        symlink(root.join("outside/api.log"), anchored.join("desktop.log")).unwrap();
+        assert!(trusted_open(&anchored.join("desktop.log"), false).is_err());
     }
     #[cfg(windows)]
     #[test]
