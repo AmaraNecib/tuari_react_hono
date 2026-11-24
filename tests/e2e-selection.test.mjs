@@ -135,6 +135,16 @@ test('selectSpecs: an empty diff fails closed to a full run', () => {
   assert.match(scope.reason, /empty diff/);
 });
 
+test('selectSpecs: telemetry viewer source and tests select browser CI', () => {
+  for (const file of [
+    'scripts/tuari-viewer.mjs',
+    'tests/telemetry-viewer.test.mjs',
+    'tests/telemetry-viewer.browser.test.mjs',
+  ]) {
+    assert.equal(selectSpecs([file], loadMap()).mode, 'full', file);
+  }
+});
+
 test('selectSpecs: docs-only diff is a skip', () => {
   const scope = selectSpecs(['docs/lessons/x.md', '.agents/wisdom/testing/README.md', 'README.md']);
   assert.equal(scope.mode, 'skip');

@@ -11,6 +11,9 @@
     "scripts/ci/ci-acceptance.mjs",
     "tests/ci-final.test.mjs",
     "tests/e2e-selection.test.mjs",
+    "tests/telemetry-viewer.browser.test.mjs",
+    "tests/telemetry-viewer.test.mjs",
+    "scripts/tuari-viewer.mjs",
     ".husky/**",
     ".github/workflows/ci.yml",
 
