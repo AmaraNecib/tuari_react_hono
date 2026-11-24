@@ -6,6 +6,7 @@ import { CurrencyRun } from "@/features/shared/money-value"
 import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { useState } from "react";
 import { AppDate } from "@/components/app-date";
+import { useDateFormat } from "@/features/preferences/date-format-preference";
 import { useTranslation } from "react-i18next";
 import { DEBT_BALANCE_STATE_PHRASE } from "@tuari/contracts";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ type ReportType = "INVENTORY" | "DEBT" | "MOVEMENT";
  */
 export function ReportBuilder() {
   const { t } = useTranslation()
+  const dateFormat = useDateFormat()
   const [reportType, setReportType] = useState<ReportType>("INVENTORY");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -50,7 +52,7 @@ export function ReportBuilder() {
 
   const handleDownloadCSV = () => {
     if (!data) return;
-    const csv = formatReportAsCSV(data);
+    const csv = formatReportAsCSV(data, dateFormat);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);

@@ -165,7 +165,8 @@ describe("exact report consumers", () => {
       expect(screen.getByText("12:00:00 ص")).toBeTruthy()
       expect(screen.queryByText("30/09/2026")).toBeNull()
       for (const report of [inventory, debt, movement]) {
-        expect(formatReportAsCSV(report).split("\n")[1]).toBe("Generated: 1‏/10‏/2026، 12:00:00 ص")
+        expect(formatReportAsCSV(report).split("\n")[1]).toBe("Generated: 01/10/2026 12:00:00 ص")
+        expect(formatReportAsCSV(report, "MM/DD/YYYY").split("\n")[1]).toBe("Generated: 10/01/2026 12:00:00 ص")
       }
     } finally { restore() }
   })

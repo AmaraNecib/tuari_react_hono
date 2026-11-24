@@ -1,6 +1,7 @@
 import { i18n as featureI18n } from "@/i18n"
 import { useState, useMemo } from "react";
-import { getAlgeriaTimeZone } from "@/lib/algeria-time"
+import { formatDateTimeInAlgeria } from "@/lib/algeria-time"
+import { useDateFormat } from "@/features/preferences/date-format-preference"
 import { AppDate } from "@/components/app-date";
 import { useTranslation } from "react-i18next";
 import { systemLogActionTypeSchema, systemLogEntityTypeSchema } from "@tuari/contracts";
@@ -30,7 +31,8 @@ interface AuditLog {
  * @description Component
  */
 export function AuditLogPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const dateFormat = useDateFormat()
   const [searchQuery, setSearchQuery] = useState("");
   const [domain, setDomain] = useState<SystemLogEntry["entityType"] | "ALL">("ALL");
   const [action, setAction] = useState<SystemLogEntry["actionType"] | "ALL">("ALL");
@@ -86,7 +88,7 @@ export function AuditLogPage() {
   const handleExportCSV = () => {
     const headers = [featureI18n.t("featureCopy.auditLogPage.date"), featureI18n.t("featureCopy.auditLogPage.user"), featureI18n.t("featureCopy.auditLogPage.scope"), featureI18n.t("featureCopy.auditLogPage.action"), featureI18n.t("featureCopy.auditLogPage.resourceId"), featureI18n.t("featureCopy.auditLogPage.changes")];
     const rows = filteredLogs.map((log: AuditLog) => [
-      new Date(log.timestamp).toLocaleString("ar-DZ", { timeZone: getAlgeriaTimeZone() }),
+      formatDateTimeInAlgeria(new Date(log.timestamp), i18n.language || "ar-DZ", dateFormat),
       log.actor,
       getEntityTypeLabel(t, log.domain),
       getActionTypeLabel(t, log.action),
