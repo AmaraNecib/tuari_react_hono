@@ -15,6 +15,27 @@ const fixture = {
     ['2026-03-03T09:00:00Z', 'error', 42, 2], ['2026-03-03T09:01:00Z', 'fatal', 99, 1],
   ].map(([timestamp, level, errorCode, count]) => ({ timestamp, level, errorCode, count, signature: 'NEVER_RENDER', operation: 'NEVER_RENDER', source: 'app', duration: null })),
 };
+test('selecting an early timeline error moves focus into view and close restores the trigger', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'dashboard-context-'));
+  const events = Array.from({ length: 500 }, (_, i) => ({
+    ...fixture.events[2], timestamp: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
+  }));
+  await emitReport({ ...fixture, events }, join(root, 'report.html'));
+  const browser = await chromium.launch({ ...(process.env.VIEWER_BROWSER_EXECUTABLE ? { executablePath: process.env.VIEWER_BROWSER_EXECUTABLE } : {}) });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
+    await page.goto(pathToFileURL(join(root, 'report.html')).href);
+    await page.getByRole('button', { name: /Timeline/ }).click();
+    const trigger = page.getByRole('button', { name: /Show context/ }).first();
+    await trigger.press('Enter');
+    const panel = page.getByRole('region', { name: 'Event context' });
+    await expect(panel).toBeFocused();
+    await expect(panel.getByRole('heading')).toBeInViewport();
+    await panel.getByRole('button', { name: 'Close context' }).click();
+    await expect(trigger).toBeFocused();
+  } finally { await browser.close(); }
+});
+
 for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
   test(`all dashboard views work offline at ${viewport.width}px with no network`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'dashboard-browser-'));

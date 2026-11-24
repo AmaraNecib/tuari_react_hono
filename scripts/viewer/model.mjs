@@ -1,9 +1,15 @@
 // Event IDs are original row positions, never signature or error-code IDs.
 const unavailable = 'Unavailable';
-export function timeline(data, filters = {}) {
-  return (data.events ?? []).map((event, id) => ({ ...event, id }))
-    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp) || a.id - b.id)
-    .filter(event => (!filters.day || day(event.timestamp) === filters.day) && (!filters.level || event.level === filters.level) && (!filters.signature || event.signature === filters.signature));
+// Each report is an immutable JSON snapshot. Share its chronology across views.
+const chronologies = new WeakMap();
+export function timeline(data, filters) {
+  let records = chronologies.get(data);
+  if (!records) {
+    records = (data.events ?? []).map((event, id) => ({ ...event, id }))
+      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp) || a.id - b.id);
+    chronologies.set(data, records);
+  }
+  return !filters ? records : records.filter(event => (!filters.day || day(event.timestamp) === filters.day) && (!filters.level || event.level === filters.level) && (!filters.signature || event.signature === filters.signature));
 }
 function day(timestamp) { return new Date(timestamp).toISOString().slice(0, 10); }
 export function overview(data) {

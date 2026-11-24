@@ -23,6 +23,14 @@ test('timeline intersects day, level and signature filters, preserving stable ev
   assert.deepEqual(timeline(data).map(e => e.id), [2, 1, 0]);
   assert.equal(timeline(data, { level: 'fatal' }).length, 0);
 });
+test('filtering, lookup and context reuse the ordered records of one report', () => {
+  const report = { ...data };
+  const first = timeline(report)[0];
+  assert.strictEqual(timeline(report, { level: 'info' })[0], first);
+  assert.strictEqual(context(report, first.id, 0)[0], first);
+  assert.strictEqual(lookup(report, 'ANY-0000002A')[0], timeline(report)[1]);
+});
+
 test('lookup ignores prefix and case, returns all collisions, and context uses unfiltered chronology', () => {
   assert.deepEqual(lookup(data, '  OTHER-PRODUCT-0000002a ').map(e => e.id), [1, 0]);
   for (const invalid of ['42', 'TUARI-2A', 'TUARI-0000002G', '<img>-0000002A']) assert.deepEqual(lookup(data, invalid), []);
