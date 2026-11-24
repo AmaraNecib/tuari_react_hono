@@ -50,7 +50,14 @@ export function DiagnosticsSettings() {
   const localizedValue = (group: "level" | "category", value: string) => {
     const key = `settings.diagnostics.values.${group}.${value}`;
     const translated = t(key);
-    return translated === key ? value : translated;
+    if (translated !== key) return translated;
+    return "—";
+  };
+  const eventDescription = (category: string) => {
+    if (!["ui", "crash", "error", "lifecycle"].includes(category)) return t("settings.diagnostics.unknownEvent");
+    const key = `settings.diagnostics.descriptions.${category}`;
+    const translated = t(key);
+    return translated === key ? t("settings.diagnostics.unknownEvent") : translated;
   };
   return (
     <section className="space-y-4" dir={rtl ? "rtl" : "ltr"} aria-labelledby="diagnostics-title">
@@ -81,7 +88,7 @@ export function DiagnosticsSettings() {
                   <tr key={`${event.occurredAt}-${index}`}>
                     <td className="px-2 py-3"><time dir="ltr" dateTime={event.occurredAt}>{event.occurredAt}</time></td>
                     <td className="px-2 py-3">{localizedValue("level", event.level)}</td>
-                    <td className="px-2 py-3">{localizedValue("category", event.category)}</td>
+                    <td className="px-2 py-3">{eventDescription(event.category)}</td>
                     <td className="px-2 py-3"><bdi dir="ltr" className="font-mono">{event.errorId === null ? "—" : formatErrorCode(event.errorId)}</bdi></td>
                   </tr>
                 ))}
