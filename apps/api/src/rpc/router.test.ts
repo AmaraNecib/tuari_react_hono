@@ -339,6 +339,7 @@ describe("RPC router", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("not a folder");
+    expect(result).toHaveProperty("reason", "not_directory");
   });
 
   it("rejects the backup folder without a session", async () => {

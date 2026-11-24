@@ -28,3 +28,10 @@ export async function recordUiFailure(id: number): Promise<void> {
     // A failed logger must not trigger another error notification.
   }
 }
+
+/** Call once in the feedback-owning event handler, never during render. */
+export function supportFailureMessage(safeMessage: string): string {
+  const id = createErrorId()
+  void recordUiFailure(id)
+  return `${safeMessage}\n\u2066${formatErrorCode(id)}\u2069`
+}

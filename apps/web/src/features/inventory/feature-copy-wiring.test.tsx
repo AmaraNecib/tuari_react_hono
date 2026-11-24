@@ -22,7 +22,7 @@ describe("production feature copy wiring", () => {
     let selected: File[] = []
     render(<PurchaseAttachmentFiles draft={{
       files: [], setFiles: files => { selected = files }, batchVersion: 0,
-      needsReload: false, error: null, pending: false, upload: async () => {}, valid: true,
+      needsReload: false, error: null, failure: null, pending: false, upload: async () => {}, valid: true,
     }} />)
     const input = screen.getByLabelText("Attachment label probe")
     const file = new File(["invoice"], "invoice.pdf", { type: "application/pdf" })

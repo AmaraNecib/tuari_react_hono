@@ -1,3 +1,4 @@
+import { extractAuthErrorMessage } from "@/lib/auth-api"
 import { i18n as featureI18n } from "@/i18n"
 /**
  * Dedicated login page for the application.
@@ -56,7 +57,7 @@ export function LoginPage({ onSignIn, isLoading, error }: LoginPageProps) {
     try {
       await onSignIn(trimmedPhone, trimmedPassword)
     } catch (err) {
-      const message = err instanceof Error ? err.message : t("auth.errors.invalidCredentials")
+      const message = extractAuthErrorMessage(err, t("toasts.signInError"))
       if (message.includes("phone") || message.includes("الهاتف")) {
         setFieldErrors({ phone: message })
       } else {
@@ -85,7 +86,7 @@ export function LoginPage({ onSignIn, isLoading, error }: LoginPageProps) {
           <form onSubmit={(e) => void handleSubmit(e)} className="space-y-5">
             {error && (
               <div className="p-3 rounded-lg bg-bad-soft text-bad text-sm">
-                {error}
+                {extractAuthErrorMessage(error, t("toasts.signInError"))}
               </div>
             )}
 

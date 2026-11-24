@@ -1,5 +1,6 @@
 export const en = {
   translation: {
+    auth: { errors: { profileNameLength: "Enter a name between 1 and 120 characters." } },
     common: { yes: "Yes", no: "No", loading: "Loading..." },
     settings: {
       tabs: { diagnostics: "Diagnostics" },

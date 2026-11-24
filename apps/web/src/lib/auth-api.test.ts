@@ -36,6 +36,18 @@ describe("changeCurrentPassword", () => {
     vi.unstubAllGlobals()
   })
 
+  it.each([true, false])("preserves only the known profile phone rejection (desktop=%s)", async (desktop) => {
+    vi.stubGlobal("isTauri", desktop)
+    const transport = desktop ? desktopApiFetchMock : fetchMock
+    transport.mockResolvedValueOnce(new Response(JSON.stringify({ message: "رقم الهاتف مستخدم بالفعل." }), { status: 409 }))
+    const { updateCurrentProfile, extractAuthErrorMessage } = await import("./auth-api")
+    await expect(updateCurrentProfile({ phone: "0666666666" })).rejects.toThrow("رقم الهاتف مستخدم بالفعل.")
+    const nameRule = "يجب أن يكون الاسم بين حرف واحد و120 حرفًا."
+    transport.mockResolvedValueOnce(new Response(JSON.stringify({ message: nameRule }), { status: 400 }))
+    await expect(updateCurrentProfile({ name: "a".repeat(121) })).rejects.toThrow(nameRule)
+    expect(extractAuthErrorMessage(new Error("private arbitrary server text"), "safe")).toBe("safe")
+  })
+
   it("delegates desktop password changes to the native bridge", async () => {
     desktopBridgeChangePasswordMock.mockResolvedValue(undefined)
 
@@ -179,11 +191,11 @@ describe("extractAuthErrorMessage", () => {
     )
   })
 
-  it("leaves untranslatable statusText unchanged", async () => {
+  it("suppresses unknown status text", async () => {
     const { extractAuthErrorMessage } = await import("./auth-api")
 
     expect(extractAuthErrorMessage({ status: 401, statusText: "Unauthorized" }, "fallback")).toBe(
-      "Unauthorized",
+      "fallback",
     )
   })
 
@@ -196,10 +208,10 @@ describe("extractAuthErrorMessage", () => {
     expect(extractAuthErrorMessage({ message: "" }, "fallback")).toBe("fallback")
   })
 
-  it("leaves unknown English messages unchanged", async () => {
+  it("suppresses unknown operational messages", async () => {
     const { extractAuthErrorMessage } = await import("./auth-api")
 
-    expect(extractAuthErrorMessage(new Error("Something went wrong"), "fallback")).toBe("Something went wrong")
+    expect(extractAuthErrorMessage(new Error("Something went wrong"), "fallback")).toBe("fallback")
   })
 
   it("is idempotent for already-translated Arabic messages", async () => {

@@ -73,6 +73,7 @@ describe("validateBackupsRootPath", () => {
     expect(result.success).toBe(false);
     expect(result.success === false && result.error).toContain("not a folder");
     expect(result.success === false && result.error).toContain(filePath);
+    expect(result).toHaveProperty("reason", "not_directory");
   });
 
   it("rejects a path whose parent cannot be created, naming the problem", () => {

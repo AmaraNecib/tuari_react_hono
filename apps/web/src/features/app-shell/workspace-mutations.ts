@@ -23,7 +23,7 @@ import { isDesktopRuntime } from "@/lib/desktop-auth-session"
 import { getAuthClient } from "@/lib/auth-client"
 import { rpcClient } from "@/lib/orpc-client"
 import { getStartupQueryRetryDelay, shouldRetryStartupQuery } from "@/lib/startup-query-retry"
-import { showErrorToast, showSuccessToast } from "@/lib/toast"
+import { showErrorToast, showSuccessToast, showValidationToast } from "@/lib/toast"
 import { translateRpcValidationIssues } from "@/lib/rpc-error-handling"
 import { workspaceQueryPrefix } from "./workspace-queries"
 import {
@@ -45,6 +45,8 @@ type EntityResult<T> =
 type DeleteResult =
   | { success: true; message: string }
   | { success: false; error: { message: string } }
+
+class AccountValidationError extends Error {}
 
 export class AppMutationError extends Error {
   code: AppError["code"]
@@ -176,8 +178,8 @@ export function useBootstrapFirstUserMutation() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: authSetupStatusQueryKey })
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.bootstrapError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.bootstrapError"))
     },
   })
 }
@@ -233,27 +235,27 @@ export function useUpdateAccountSettingsMutation() {
       const newPassword = input.newPassword?.trim() || undefined
 
       if (!name && !phone && !currentPassword && !newPassword) {
-        throw new Error(i18n.t("toasts.accountNoChanges"))
+        throw new AccountValidationError(i18n.t("toasts.accountNoChanges"))
       }
 
       if (phone) {
         const phoneResult = algerianPhoneSchema.safeParse(phone)
         if (!phoneResult.success) {
-          throw new Error(i18n.t("auth.validation.phoneFormat"))
+          throw new AccountValidationError(i18n.t("auth.validation.phoneFormat"))
         }
       }
 
       if (currentPassword || newPassword) {
         if (!currentPassword) {
-          throw new Error(i18n.t("toasts.accountPasswordCurrentRequired"))
+          throw new AccountValidationError(i18n.t("toasts.accountPasswordCurrentRequired"))
         }
 
         if (!newPassword) {
-          throw new Error(i18n.t("toasts.accountPasswordNewRequired"))
+          throw new AccountValidationError(i18n.t("toasts.accountPasswordNewRequired"))
         }
 
         if (newPassword.length < 8 || newPassword.length > 128) {
-          throw new Error(i18n.t("auth.validation.passwordShort"))
+          throw new AccountValidationError(i18n.t("auth.validation.passwordShort"))
         }
       }
 
@@ -279,7 +281,8 @@ export function useUpdateAccountSettingsMutation() {
       showSuccessToast(i18n.t("toasts.accountUpdated"))
     },
     onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+      if (error instanceof AccountValidationError) { showValidationToast(error.message); return }
+      showErrorToast(i18n.t("toasts.actionError"))
     },
 /**
  * useUpdateEmployeeMutation() component.
@@ -338,8 +341,8 @@ export function useUpdateEmployeeMutation() {
  * useDeleteEmployeeMutation() component.
  */
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -361,8 +364,8 @@ export function useSaveEmployeeMutation() {
       })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -387,8 +390,8 @@ export function useLeaveEmployeeMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { employees: true, projects: true, warehouses: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -409,8 +412,8 @@ export function useDeleteEmployeeMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { employees: true, projects: true, warehouses: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -438,8 +441,8 @@ export function useUpdateProjectMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { projects: true, employees: true, warehouses: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -466,8 +469,8 @@ export function useCreateProjectMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { projects: true, employees: true, warehouses: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -495,8 +498,8 @@ export function useUpdateWarehouseMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { warehouses: true, employees: true, projects: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -523,8 +526,8 @@ export function useCreateWarehouseMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { warehouses: true, employees: true, projects: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -561,8 +564,8 @@ export function useUpdateEmployeeWorkplaceMutation() {
  */
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -587,8 +590,8 @@ export function useSyncManagedProjectsMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { projects: true, employees: true, warehouses: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -610,8 +613,8 @@ export function useSyncManagedWarehousesMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { warehouses: true, employees: true, projects: true, externalCounterparties: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -640,8 +643,8 @@ export function useCreateSalaryPaymentMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { employees: true, debtsSummary: true, debtsDetail: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -663,8 +666,8 @@ export function useCreateExternalCounterpartyMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true, externalCounterparties: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -709,8 +712,8 @@ export function useCreateDebtAccountMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true, externalCounterparties: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -742,8 +745,8 @@ export function useCreateDebtEntryMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -772,8 +775,8 @@ export function useRecordDebtPaymentMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -798,8 +801,8 @@ export function useVoidDebtEntryMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -824,8 +827,8 @@ export function useDebtEntriesConsolidateMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -848,8 +851,8 @@ export function useSettleDebtAccountMutation() {
       await invalidateWorkspaceDomains(queryClient, getCachedSessionUserId(queryClient), { debtsSummary: true, debtsDetail: true, employees: true })
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }
@@ -922,8 +925,8 @@ export function useAddWorkspaceRecordMutation() {
       }
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.addError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.addError"))
     },
   })
 }
@@ -974,8 +977,8 @@ export function useRemoveWorkspaceRecordMutation() {
       }
       showSuccessToast(message)
     },
-    onError: (error) => {
-      showErrorToast(error instanceof Error ? error.message : i18n.t("toasts.actionError"))
+    onError: () => {
+      showErrorToast(i18n.t("toasts.actionError"))
     },
   })
 }

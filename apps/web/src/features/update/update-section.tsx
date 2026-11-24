@@ -1,3 +1,4 @@
+import { supportFailureMessage } from "@/lib/error-correlation"
 /**
  * Update section component for Settings → About.
  * Handles check for updates, download progress, apply, and error states.
@@ -133,9 +134,9 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
         setStatus({ type: "unavailable" })
         return
       }
-      setStatus({ type: "error", message })
+      setStatus({ type: "error", message: supportFailureMessage(t("shell.settingsAboutError")) })
     }
-  }, [])
+  }, [t])
 
   const handleDownload = useCallback(async () => {
     if (status.type !== "available") return
@@ -144,6 +145,8 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
     if (downloadInFlightRef.current) return
     downloadInFlightRef.current = true
 
+    let failureMessage: string | undefined
+    const downloadFailure = () => failureMessage ??= supportFailureMessage(t("shell.settingsAboutError"))
     const downloadUrl = status.downloadUrl
 
     // Tear down any stale listener from a previous download attempt
@@ -170,7 +173,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
           // Do not transition to completed here — the invoke return will do it with the real path
         } else if (payload.status === "error") {
           teardownListener()
-          setStatus({ type: "error", message: payload.error ?? "Download failed" })
+          setStatus({ type: "error", message: downloadFailure() })
         } else if (payload.status === "cancelled") {
           teardownListener()
           setStatus({ type: "idle" })
@@ -204,12 +207,12 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
         return
       }
       teardownListener()
-      setStatus({ type: "error", message })
+      setStatus({ type: "error", message: downloadFailure() })
     } finally {
       // Always release the lock so retry / new download attempts can proceed.
       downloadInFlightRef.current = false
     }
-  }, [status, teardownListener])
+  }, [status, teardownListener, t])
 
   const handleApplyUpdate = useCallback(async () => {
     if (status.type !== "completed") return
@@ -221,18 +224,17 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
       const result = await invoke<{ success: boolean; message: string }>("apply_update", {
         path: status.filePath,
       })
-      setApplyResult(result.message)
+      setApplyResult(result.success ? null : supportFailureMessage(t("shell.settingsAboutError")))
       if (result.success) {
         setStatus({ type: "idle" })
         onUpdateApplied?.()
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      setApplyResult(message)
+    } catch {
+      setApplyResult(supportFailureMessage(t("shell.settingsAboutError")))
     } finally {
       setApplying(false)
     }
-  }, [onUpdateApplied, status])
+  }, [onUpdateApplied, status, t])
 
   const handleRetry = useCallback(() => {
     setApplyResult(null)
@@ -369,7 +371,7 @@ export function UpdateSection({ onUpdateApplied }: UpdateSectionProps = {}) {
         <div className="space-y-3">
           <div className="rounded-lg border border-bad/30 bg-bad-soft px-4 py-3">
             <p className="text-sm text-bad">
-              {t("shell.settingsAboutError")}: {status.message}
+              {status.message}
             </p>
           </div>
           <Button type="button" variant="outline" onClick={handleRetry}>

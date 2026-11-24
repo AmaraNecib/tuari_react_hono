@@ -1,3 +1,4 @@
+import { ZodError } from "zod"
 /**
  * Phone sign-in mutation hook.
  * Handles authentication with phone number and password.
@@ -10,7 +11,7 @@ import { sessionQueryKey } from "@/features/app-shell/workspace-keys"
 import { getAuthClient } from "@/lib/auth-client"
 import { extractAuthErrorMessage, signInDesktopWithPhoneNumber } from "@/lib/auth-api"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
-import { showErrorToast } from "@/lib/toast"
+import { showErrorToast, showValidationToast } from "@/lib/toast"
 
 /**
  * usePhoneSignInMutation() component.
@@ -48,6 +49,7 @@ export function usePhoneSignInMutation() {
       await queryClient.invalidateQueries({ queryKey: sessionQueryKey })
     },
     onError: (error) => {
+      if (error instanceof ZodError) { showValidationToast(i18n.t("auth.errors.invalidCredentials")); return }
       showErrorToast(extractAuthErrorMessage(error, i18n.t("toasts.signInError")))
     },
   })
