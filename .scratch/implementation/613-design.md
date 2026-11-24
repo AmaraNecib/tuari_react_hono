@@ -1,0 +1,74 @@
+# Manual obligation settlement, approval proposal
+
+## State and authority
+
+Issue #613 live acceptance was read on 2026-10-21. This is a proposal, not approved schema or writer activation. No inventory, invoice or payroll settlement is authorized. No financial implementation, RPC registration, schema initializer change or UI change is included in this checkpoint.
+
+Worktree: `D:/worktrees/tuari_react_hono/t3-82cb7302-cbc95bbc1a45a5ba`.
+Branch: `feat/613-manual-settlement-design`.
+Base: `3e79ae5b4b424d6e2180b5efed7cad3c4f9ae7eb`, explicitly selected before edits from a clean checkout. The allocated branch originally pointed to `581cefacd2645fd8cd4059992d0489e9a6e6ff7b`; no work from that stale branch is carried forward.
+
+Verification mode is focused-local / CI-final-pending. Read-only `gh api repos/AmaraNecib/tuari_react_hono/branches/develop/protection` returned HTTP 404, Branch not protected. That is separate from future current-head CI acceptance. Tier is High-assurance because this changes money, schema, authorization and durable replay. The issue has no assignee or comments. The supervisor was notified of lane ownership and asked to flag competing ownership. Other worktrees are not authority to edit this checkout.
+
+## Current implementation and risk
+
+`ExactFinanceService.runAggregate` composes a participant on the same connection and shared FIFO with an aggregate receipt. Its owner enum currently has no manual settlement owner. `recordSettlement` is trusted-producer-only, so it must not simply be opened to arbitrary clients. `settleAccount` zeroes one account and is not this operation. `voidEntry` currently cascades voids to attributed children, which would destroy one side of a linked settlement unless guarded.
+
+`ExactFinanceRepository.withTransaction` uses an immediate SQLite transaction. Preserve that reservation and synchronous callbacks. Both the database identity and FIFO identity must match. The in-memory adapter must implement rollback equivalently; native database proof remains mandatory.
+
+## Proposed domain and module
+
+A manual bilateral settlement records one positive portion against each of two original obligations, without moving cash. One belongs to the external party's PAYABLE account and one to its RECEIVABLE account, both DZD. Both originals and their remaining portions must be positive. An original must be LIVE with neither targetEntryId nor correctionOfEntryId and with producerType, producerId and invoiceId all null. This intentionally excludes negative credit originals and every producer-owned source.
+
+The settlement module owns eligibility, exact preview, paired recording, durable history and complete reversal behind four operations: preview, confirm, history and reverse. It composes the existing exact ledger and receipt mechanism rather than duplicating money arithmetic or adding another command journal. Deleting this module would force all pairing, retry and reverse-first rules into callers; keeping them together earns its depth. UI callers supply identities and exact decimal strings, never signed postings, actor identities, timestamps or calculated balances.
+
+## Schema decision requested
+
+Add an exact-only `manual_debt_settlement` table with these columns:
+
+- `id TEXT PRIMARY KEY`, `external_counterparty_id TEXT NOT NULL` referencing the existing counterparty table, and `currency TEXT NOT NULL CHECK(currency='DZD')`.
+- `payable_original_entry_id`, `receivable_original_entry_id`, `payable_settlement_entry_id`, `receivable_settlement_entry_id`, all nonnull TEXT foreign keys to debt_entry. Original IDs must differ; posting IDs must differ and each settlement posting ID is unique.
+- `amount_minor INTEGER NOT NULL` with SQLite typeof integer and positive signed-int64 bounds; `recorded_at TEXT NOT NULL`; authenticated `actor_user_id TEXT NOT NULL`, `actor_label TEXT NOT NULL`; optional `note TEXT` with a 1000-character limit.
+
+Add an append-only `manual_debt_settlement_reversal` table with `id TEXT PRIMARY KEY`, `settlement_id TEXT NOT NULL UNIQUE` referencing the original settlement, two distinct unique nonnull reversal posting IDs referencing debt_entry, recording time, authenticated actor ID/label and a nonblank reason capped at 1000 characters. Retain the settlement row unchanged. Use RESTRICT rather than cascading deletion. Exact initializer and physical-schema refusal checks must recognize both tables and their version marker. Do not migrate a live database or alter the legacy numeric schema without separate explicit authorization.
+
+Validate account party/direction, original eligibility, currency, posting linkage and amount under the same transaction. Add insert validation and immutable-row protection at storage where practical; do not imply a foreign key alone proves those cross-row rules. Extend neither debt producer enum nor generic producer capability. Add `MANUAL_SETTLEMENT` only to the aggregate-owner enum, scoped by external party ID. Distinguish confirm and reverse in the canonical intent.
+
+Confirm creates two existing SETTLEMENT postings, each negative amount targeted to its corresponding original. Reversal appends two positive ADJUSTMENT postings targeted to the same originals for exactly the recorded amount. Reversal does not void original rows or overwrite the first postings. Linked posting IDs in the two tables identify both histories without adding nullable linkage columns to every debt entry.
+
+Block generic void of either linked posting, reversal posting or original while a settlement is live, with a reverse-first conflict. After reversal, generic original void may follow existing rules. Test correction and account-settlement interactions so they cannot invalidate recorded portions. No writer may mutate a linked half independently.
+
+## Permission decision requested
+
+Reuse existing permissions, with no implicit role grants. Preview and history require `debts:read`. Confirm requires both `debts:read` and `debts:settle`. Complete reversal requires `debts:read`, `debts:settle` and `debts:update`. Authorization is checked before returning any stored replay result, including retries. Re-resolve effective authorization for confirmation and reversal in the transaction rather than treating preview or client data as authorization. Actor identity comes only from the authenticated session; request bodies cannot override it. This is a proposed permission policy requiring owner acceptance.
+
+## Contract decision requested
+
+Expose a distinct manual settlement namespace in the exact financial contract, without changing the existing settle/pay operations.
+
+1. `preview` accepts externalCounterpartyId, payableOriginalEntryId, receivableOriginalEntryId, currency DZD and positive amountDzd. Return original/account identities, current exact remainder on each side, exact projected remainders and unchanged net position. It writes nothing and creates no receipt.
+2. `confirm` accepts those fields plus requestId, expectedPayableRemainingDzd, expectedReceivableRemainingDzd and optional note. Revalidate both expected remainders for exact equality inside the immediate transaction, then record both postings, linked row and aggregate receipt together. Return the durable operation and recorded before/after amounts. Store those before/after amounts in the receipt result, not as competing balance authority.
+3. `history` accepts externalCounterpartyId with bounded pagination. Return original settlement, both original IDs, both posting IDs, exact amount, time, actor, note and optional complete reversal. Account detail renders linked metadata on both sides from these records. History after reload is current even though a replay returns its original command result.
+4. `reverse` accepts requestId, settlementId and nonblank reason. Restore exactly the two recorded portions atomically, retain linked reversal history and reject a second distinct reversal attempt. A same-intent retry returns its existing result.
+
+Request IDs use the existing 1 to 128 character alphabet. Fingerprints include operation kind, party, original IDs, currency, normalized amount, expected remaining values, normalized note/reason and authenticated actor identity. Exclude attempt-specific transaction IDs. Changed intent or identity under the same aggregate request key conflicts. The UI persists the entire pending intent and request ID across reload until a definite result, and reuses them after an uncertain transport failure. Editing any intent field after a definite refusal requires a new request ID. Missing resources return NOT_FOUND, malformed input BAD_REQUEST, stale state or replay mismatch CONFLICT, and missing authorization FORBIDDEN without disclosing protected history.
+
+## Failing-first proof and approval seam
+
+The proposed public test seams are the exact authenticated RPC route, settlement module interface and real native SQLite reopen, not private methods or call sequences. The task authorizes native and actual-route browser proof, but these newly proposed interfaces still require approval under tdd. No speculative failing test is committed against an unapproved contract. After owner confirmation, the first red test will confirm a manual pair through the authenticated route: PAYABLE 100.00 and RECEIVABLE 60.00, settle 25.00, expect remainders 75.00 and 35.00, gross decreases 25.00 each and net remains 40.00. Then implement only that slice.
+
+Follow with independent refusal and recovery slices:
+
+- Reject same original, wrong party/direction/currency, worker accounts, non-originals, voided originals, producer-owned sources, zero/negative/excess amounts and either stale expected remainder. Preserve both ledgers and journals.
+- Inject failure at receipt persistence after both postings and linked record were attempted; prove all state rolls back using public reads. Repeat with the second posting failure.
+- Use independent native connections/processes for competing confirmations; prove only an eligible portion commits. Reopen the database and replay identical intent once, then changed intent and wrong identity conflict.
+- Reverse the recorded 25.00 on both sides, prove history retention and 100.00/60.00 restored amounts. Duplicate reversal and generic half-void fail; reverse-first blocks original void while live. Cash and stock snapshots remain identical.
+- Prove permissions, uncertain-retry identity preservation and refresh on both actual financial views. Arabic desktop/tablet keyboard flow and mobile fallback need actual-route browser assertions. Capture before/after trimmed videos, element crops and full-page sidebar screenshots at matching viewports for mandatory owner signoff.
+
+Use focused contracts/API/integration tests, relevant lint/typecheck and selected browser cases. Heavy native/browser work goes through heavy_run only after scope selection. Save native exit codes, counts, durations and exact-SHA logs locally. Do not claim this design checkpoint is behavioral proof or issue completion.
+
+## Approval and remaining gates
+
+Owner must accept the table design and exact-only storage rollout, existing-permission intersection, public contract and test seams before writers activate. Then implement the full manual path, commit named scope, obtain separate debate, test-audit and code-review sessions on the committed head, resolve findings and run Guard Phase 2. The supervisor owns architecture review, publication and hosted gates. Local-only authority remains in force. CI protection, current-head CI acceptance, hosted review and owner visual signoff are outstanding; no claim of #613 or #176 closure is made.
+
+Applied wisdom: immediate write reservation and synchronous transaction composition. Excluded wisdom: recovery-key FIFO redesign and filesystem atomic rename do not describe this synchronous ledger path. No repeated lesson is proposed from a design-only checkpoint.
