@@ -315,7 +315,7 @@ jobs:
           if [ "${#generic_specs[@]}" -gt 0 ]; then
             pnpm test:e2e "${generic_specs[@]}"
           fi
-          node --test tests/telemetry-viewer.browser.test.mjs
+          node --test tests/telemetry-viewer.browser.test.mjs tests/viewer-dashboard.browser.test.mjs
           if [ "$connected_exact" = true ]; then
             pnpm exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts
           fi
