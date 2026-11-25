@@ -23,20 +23,6 @@ async function fillSetupSecretIfVisible(page: Page) {
 }
 
 /**
- * Dismiss the first-run user-journey tour before the app boots: it overlays
- * the sidebar with a z-50 backdrop and intercepts clicks until skipped.
- * JourneyStateManager keys: `journey-<key>-<type>`.
- *
- * Must run via addInitScript so the dismissal lands before the app reads
- * localStorage on first navigation.
- */
-export async function dismissUserJourneyTour(page: Page) {
-  await page.addInitScript(() => {
-    localStorage.setItem("journey-home-tour-status", "skipped")
-  })
-}
-
-/**
  * Fills the auth screen and submits a phone + password sign-in.
  * Assumes the sign-in (not bootstrap) screen is already shown.
  */
@@ -46,13 +32,7 @@ export async function signIn(page: Page, input: { phone: string; password: strin
   await page.getByRole("button", { name: "دخول إلى مساحة العمل" }).click()
 }
 
-/**
- * Bootstraps (first run) or signs in, WITHOUT waiting for the workspace
- * shell to render. The tour test needs this variant: once the shell mounts
- * the first-run tour is a real modal (issue #275) that marks the rest of
- * the page aria-hidden, so the dashboard link is not queryable until the
- * tour is skipped.
- */
+/** Bootstraps (first run) or signs in, then waits for the workspace shell. */
 async function signInCore(page: Page) {
   await page.goto("/")
 
@@ -73,21 +53,11 @@ async function signInCore(page: Page) {
   }
 }
 
-export async function bootstrapOrSignIn(page: Page, options?: { dismissTour?: boolean }) {
-  const dismissTour = options?.dismissTour ?? true
-  if (dismissTour) await dismissUserJourneyTour(page)
-
+export async function bootstrapOrSignIn(page: Page) {
   await signInCore(page)
-
-  // The signed-in shell renders the sidebar with the dashboard entry. When
-  // the tour is intentionally left active (dismissTour: false) it is a real
-  // modal that marks the rest of the page aria-hidden, so the link is NOT
-  // queryable — the caller waits for the tour dialog itself instead.
-  if (dismissTour) {
-    await expect(page.getByRole("link", { name: "لوحة التحكم" }).first()).toBeVisible({
-      timeout: 15_000,
-    })
-  }
+  await expect(page.getByRole("link", { name: "لوحة التحكم" }).first()).toBeVisible({
+    timeout: 15_000,
+  })
 }
 
 export function uniqueSuffix() {
