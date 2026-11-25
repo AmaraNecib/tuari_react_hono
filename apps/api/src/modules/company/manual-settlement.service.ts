@@ -96,6 +96,15 @@ export class ManualSettlementService {
     if (entry?.invoiceId && this.invoice) return this.invoice.appendConfirmation(originalId, Money.parse(signedAmountDzd).compare(Money.parse("0")) < 0 ? Money.parse(signedAmountDzd).negate().toWire() : signedAmountDzd, requestId, actor);
     return this.financeForOriginal(originalId).appendManualSettlementPortion(originalId, signedAmountDzd, actor);
   }
+  private appendReversalPortion(originalId: string, settlementPostingId: string, amountDzd: string, actor: { actorUserId: string; actorLabel: string }) {
+    const entry = this.ledger.getEntry(originalId);
+    if (entry?.invoiceId && this.invoice) {
+      const posting = this.ledger.getEntry(settlementPostingId);
+      if (!posting || Money.parse(posting.signedAmountDzd).compare(Money.parse(amountDzd).negate()) !== 0) throw new ExactDebtError("Linked invoice settlement amount does not match its recorded portion", "CONFLICT");
+      return this.invoice.appendReversal(originalId, settlementPostingId, actor);
+    }
+    return this.financeForOriginal(originalId).appendManualSettlementPortion(originalId, amountDzd, actor);
+  }
   private financeForOriginal(originalId: string) {
     const entry = this.ledger.getEntry(originalId);
     if (entry?.producerType === "INVOICE" && entry.invoiceId && this.invoice?.lookupOriginal(originalId)) return this.finance.forProducer({ type: "INVOICE", id: entry.invoiceId });
@@ -170,12 +179,14 @@ export class ManualSettlementService {
       if (!settlement) throw new ExactDebtError("Settlement not found", "NOT_FOUND");
       return this.finance.runAggregate({ requestId: input.requestId, producer: { type: "MANUAL_SETTLEMENT", id: settlement.externalCounterpartyId }, intent: { kind: "reverse", ...input }, actorUserId: actor.actorUserId, actorLabel: null }, this.repository, () => {
         if (this.repository.getReversal(settlement.id)) throw new ExactDebtError("Settlement is already reversed", "CONFLICT");
-        const payable = this.financeForOriginal(settlement.payableOriginalEntryId).appendManualSettlementPortion(settlement.payableOriginalEntryId, settlement.amountDzd, actor);
-        const receivable = this.financeForOriginal(settlement.receivableOriginalEntryId).appendManualSettlementPortion(settlement.receivableOriginalEntryId, settlement.amountDzd, actor);
-        this.refreshSourceBalance(settlement.payableOriginalEntryId);
-        this.refreshSourceBalance(settlement.receivableOriginalEntryId);
+        const payable = this.appendReversalPortion(settlement.payableOriginalEntryId, settlement.payableSettlementEntryId, settlement.amountDzd, actor);
+        const receivable = this.appendReversalPortion(settlement.receivableOriginalEntryId, settlement.receivableSettlementEntryId, settlement.amountDzd, actor);
         const reversal: ManualSettlementReversalRecord = { id: this.dependencies.id(), settlementId: settlement.id, payableReversalEntryId: payable.id, receivableReversalEntryId: receivable.id, recordedAt: this.dependencies.now(), ...actor, reason: input.reason };
         this.repository.insertReversal(reversal);
+        for (const originalId of [settlement.payableOriginalEntryId, settlement.receivableOriginalEntryId]) {
+          if (this.ledger.getEntry(originalId)?.invoiceId && this.invoice) this.invoice.reconcileProjection(originalId, this.repository);
+          else this.refreshSourceBalance(originalId);
+        }
         return { settlement, reversal };
       }, rolledBack);
     });

@@ -46,8 +46,6 @@ export class ExperimentalExactInvoiceService {
   allocatePayment(input: Parameters<ExactInvoiceService["allocatePayment"]>[0]) { return this.delegate.allocatePayment(input); }
   voidPayment(input: Parameters<ExactInvoiceService["voidPayment"]>[0]) { return this.delegate.voidPayment(input); }
   voidInvoice(input: Parameters<ExactInvoiceService["voidInvoice"]>[0]) {
-    const invoice = this.repository.getInvoice(input.id);
-    if (invoice && invoice.settledAmount !== "0.00") throw new Error("Reverse the linked settlement before voiding this invoice");
     return this.invoice(this.delegate.voidInvoice(input));
   }
   deleteUnallocatedPayment(input: Parameters<ExactInvoiceService["deleteUnallocatedPayment"]>[0]) { return this.delegate.deleteUnallocatedPayment(input); }

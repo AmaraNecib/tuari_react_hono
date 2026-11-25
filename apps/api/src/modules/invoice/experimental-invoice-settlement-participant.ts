@@ -46,6 +46,12 @@ export class ExperimentalInvoiceSettlementParticipant {
     return this.finance.forProducer({ type: "INVOICE", id: source.invoice.id }).recordSettlement({ requestId: childRequest, debtEntryId: originalEntryId, amountDzd, currency: "DZD", ...audit });
   }
 
+  appendReversal(originalEntryId: string, settlementPostingId: string, audit: ExactDebtAudit) {
+    const source = this.lookupOriginal(originalEntryId);
+    if (!source) throw new ExactDebtError("Invoice original linkage is invalid", "CONFLICT");
+    return this.finance.forProducer({ type: "INVOICE", id: source.invoice.id }).appendInvoiceSettlementReversal(originalEntryId, settlementPostingId, audit);
+  }
+
   reconcileProjection(originalEntryId: string, settlements: ManualSettlementRepository): void {
     const source = this.lookupOriginal(originalEntryId);
     if (!source) throw new ExactDebtError("Invoice original linkage is invalid", "CONFLICT");
