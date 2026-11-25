@@ -577,11 +577,28 @@ fn matches_inventory_attachment_download_path(path: &str) -> bool {
     !remaining_path.is_empty() && !remaining_path.contains('/')
 }
 
+#[test]
+fn expense_attachment_bridge_paths_are_scoped() {
+    assert!(matches_expense_attachment_path("/api/expenses/one/attachments"));
+    assert!(matches_expense_attachment_path("/api/expenses/one/attachments/file"));
+    assert!(!matches_expense_attachment_path("/api/expenses/one/attachments/file/extra"));
+    assert!(!matches_expense_attachment_path("/api/expenses//attachments"));
+}
+
+fn matches_expense_attachment_path(path: &str) -> bool {
+    let path = path.split('?').next().unwrap_or(path);
+    let Some(rest) = path.strip_prefix("/api/expenses/") else { return false; };
+    let parts: Vec<_> = rest.split('/').collect();
+    matches!(parts.as_slice(), [expense, "attachments"] if !expense.is_empty())
+        || matches!(parts.as_slice(), [expense, "attachments", file] if !expense.is_empty() && !file.is_empty())
+}
+
 fn is_allowed_desktop_bridge_path(path: &str) -> bool {
     matches!(path, "/rpc" | "/api/auth/profile")
         || path.starts_with("/rpc/")
         || path.starts_with("/rpc?")
         || path.starts_with("/api/auth/profile?")
+        || matches_expense_attachment_path(path)
         || matches_inventory_attachment_upload_path(path)
         || matches_inventory_attachment_download_path(path)
 }

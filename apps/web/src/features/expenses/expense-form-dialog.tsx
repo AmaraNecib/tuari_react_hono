@@ -1,3 +1,4 @@
+import { ExpenseAttachments } from "./expense-attachments"
 import { i18n as featureI18n } from "@/i18n"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -299,6 +300,8 @@ function ExpenseFormView<Amount extends string | number>({
               placeholder={t("common.noNotes")}
             />
           </label>
+
+          {open && expense && <ExpenseAttachments key={expense.id} expenseId={expense.id} />}
 
           {isEdit ? (
             <label className="flex flex-col gap-2">

@@ -33,6 +33,8 @@ vi.mock("@/features/inventory/inventory-hooks", () => ({
   useInventoryItemDefinitionQuery: () => ({ data: undefined }),
 }))
 
+vi.mock("./expense-attachments", () => ({ ExpenseAttachments: ({ expenseId, readOnly }: { expenseId: string; readOnly?: boolean }) => <div data-testid="history-receipts" data-expense={expenseId} data-read-only={String(readOnly)} /> }))
+
 const ITEMS = [
   {
     id: "e-1",
@@ -115,6 +117,32 @@ describe("ExpensesPage", () => {
     useExpensesListQuery.mockReset()
     voidMutateAsync.mockClear()
     vi.useRealTimers()
+  })
+
+  it("opens voided receipts from history without edit, upload or void actions", () => {
+    useExpensesListQuery.mockReturnValue({ data: { ...DATA, items: [{ ...ITEMS[0], status: "VOIDED" }] }, isPending: false, isError: false, refetch: vi.fn() })
+    renderPage()
+    const row = screen.getByRole("row", { name: /هاتف للورشة/ })
+    expect(within(row).queryByRole("button", { name: "تعديل" })).toBeNull()
+    expect(within(row).queryByRole("button", { name: "إلغاء" })).toBeNull()
+    fireEvent.click(within(row).getByRole("button", { name: "المرفقات" }))
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByTestId("history-receipts").getAttribute("data-expense")).toBe("e-1")
+    expect(within(dialog).getByTestId("history-receipts").getAttribute("data-read-only")).toBe("true")
+    expect(within(dialog).queryByRole("button", { name: "حفظ" })).toBeNull()
+    expect(voidMutateAsync).not.toHaveBeenCalled()
+  })
+
+  it("retains a legacy history-only project group with zero totals and read-only receipt access", () => {
+    useExpensesListQuery.mockReturnValue({data:{...DATA,items:[{...ITEMS[0],status:"VOIDED"}],groupsByProject:[],totals:{total:0,count:0,taggedToProject:0,notTaggedToProject:0,heldByWorkers:0,workerCount:0}},isPending:false,isError:false})
+    renderPage()
+    fireEvent.click(screen.getByRole("button",{name:"تجميع حسب المشروع"}))
+    const row=screen.getByRole("listitem")
+    expect(row.textContent).toContain("هاتف للورشة")
+    fireEvent.click(within(row).getByRole("button",{name:"المرفقات"}))
+    expect(screen.getByTestId("history-receipts").getAttribute("data-read-only")).toBe("true")
+    expect(voidMutateAsync).not.toHaveBeenCalled()
+    expect(screen.getByText("مجموع المعروض · 0 مصروفات")).toBeTruthy()
   })
 
   it("renders the KPI totals, the total strip and the dense table", () => {

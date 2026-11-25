@@ -31,6 +31,7 @@ import { Surface } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { AppDate } from "@/components/app-date"
 
+import { ExpenseAttachments } from "./expense-attachments"
 import { ExpenseFormDialog, ExactExpenseFormDialog, type ExpenseFormDialogProps, type ExpenseLookupOption } from "./expense-form-dialog"
 import { buildExpenseFilters, getCurrentMonthExpenseDates } from "./expenses-filters"
 import { useExpensesListQuery, useVoidExpenseMutation } from "./expenses-queries"
@@ -94,6 +95,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
   const [toDate, setToDate] = useState("")
   const [groupByProject, setGroupByProject] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
+  const [receiptExpenseId, setReceiptExpenseId] = useState<string | null>(null)
   const [editingExpense, setEditingExpense] = useState<Record | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [voidingExpense, setVoidingExpense] = useState<Record | null>(null)
@@ -152,9 +154,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
   }, [items])
 
   const groups = data?.groupsByProject ?? []
-  const displayedGroups = renderDetail
-    ? [...groups, ...[...itemsByGroup.keys()].filter(id => !groups.some(group => group.projectId === id)).map(projectId => ({ projectId, total: zero, count: 0 }))]
-    : groups
+  const displayedGroups = [...groups, ...[...itemsByGroup.keys()].filter(id => !groups.some(group => group.projectId === id)).map(projectId => ({ projectId, total: zero, count: 0 }))]
 
   const openCreate = () => {
     setEditingExpense(null)
@@ -343,6 +343,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
                             </span>
                           ) : null}
                           <span className="font-medium text-ink">{money(item.amount)}</span>
+                          <Button size="sm" variant="outline" onClick={() => setReceiptExpenseId(item.id)}>{t("inventory.transfer.attachments")}</Button>
                           {renderDetail && <Button size="sm" variant="outline" className="ms-2" onClick={() => setDetailId(item.id)}>{featureI18n.t("featureCopy.expensesPage.details")}</Button>}
                           {renderDetail && item.status === "VOIDED" && <span className="ms-2">{t("expenses.status.voided")}</span>}
                         </span>
@@ -401,6 +402,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => setReceiptExpenseId(item.id)}>{t("inventory.transfer.attachments")}</Button>
                         {renderDetail && <Button size="sm" variant="outline" onClick={() => setDetailId(item.id)}>{featureI18n.t("featureCopy.expensesPage.details")}</Button>}
                         {item.status === "LIVE" ? (
                           <>
@@ -423,6 +425,14 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
           )}
         </>
       </TableQueryState>
+
+      <Dialog open={receiptExpenseId !== null} onOpenChange={open => { if (!open) setReceiptExpenseId(null) }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>{t("inventory.transfer.attachments")}</DialogTitle></DialogHeader>
+          {receiptExpenseId && <ExpenseAttachments key={receiptExpenseId} expenseId={receiptExpenseId} readOnly />}
+          <DialogFooter><Button variant="outline" onClick={() => setReceiptExpenseId(null)}>{t("common.close")}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {renderForm({ open: formOpen, onOpenChange: setFormOpen, expense: editingExpense, projects, employees, sellers })}
       {renderDetail?.(detailId, () => setDetailId(null), expense => { setDetailId(null); openEdit(expense) }, expense => { setDetailId(null); openVoid(expense) })}
