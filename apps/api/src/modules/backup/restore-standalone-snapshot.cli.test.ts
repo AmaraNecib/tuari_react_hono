@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
+import { resolve } from "node:path";
 
 const originalArgv = process.argv;
 const originalKey = process.env.APP_DB_KEY;
@@ -35,7 +36,7 @@ it.each([undefined, "secret-key"])("restores with resolved paths and the configu
   const restore = vi.fn(async () => ({ verified: 3, databasePath: "/restored/tuari.sqlite" }));
   const log = vi.spyOn(console, "log").mockImplementation(() => {});
   await run(["relative-snapshot", "relative-destination"], restore);
-  expect(restore).toHaveBeenCalledWith(expect.stringMatching(/relative-snapshot$/), expect.stringMatching(/relative-destination$/), key ?? "");
+  expect(restore).toHaveBeenCalledWith(resolve("relative-snapshot"), resolve("relative-destination"), key ?? "");
   expect(log).toHaveBeenCalledWith(expect.stringContaining("3 referenced files"));
   expect(process.exitCode).toBe(originalExitCode);
 });
