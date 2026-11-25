@@ -21,6 +21,7 @@ for(const [accountId,entryId] of [["pay-account","pay-portion"],["receive-accoun
  disclosure.click()
  expect(disclosure.closest("details")?.open).toBe(true)
  expect(screen.getAllByText(/تفاصيل المصدر غير متاحة/)).toHaveLength(2)
+ expect(disclosure.closest("details")?.textContent).not.toContain("قيد يدوي")
  expect(screen.getByText(/shared-operation/).closest("details")?.open).toBe(false)
 })
 it("renders restricted account history without inventory links or fake manual provenance", async () => {
@@ -52,6 +53,27 @@ it("preserves genuine manual provenance when original entry details are missing"
  disclosure.click();
  expect(disclosure.closest("details")?.open).toBe(true);
  expect(disclosure.closest("details")?.textContent?.match(/قيد يدوي أصلي/g)).toHaveLength(2);
+});
+it.each(["MANUAL", "PURCHASE", "SALE", "RESTRICTED"] as const)("uses truthful provenance for note-free %s entry details", async kind => {
+ const query = new QueryClient(); clients.push(query);
+ const source = kind === "RESTRICTED" ? { kind } : { kind, id: "source-record", label: "Source record" };
+ const item = { ...operation, payableSource: source, receivableSource: source };
+ const entries: NonNullable<Parameters<typeof ManualSettlementLink>[0]["entries"]> = ["pay-original", "receive-original"].map((id, index) => ({
+  id, debtAccountId: index === 0 ? "pay-account" : "receive-account", entryType: "ADJUSTMENT", signedAmountDzd: "100.00", balanceAfterDzd: "100.00", remainingDzd: "90.00", postingSequence: 1, currency: "DZD",
+  producerType: null, producerId: null, invoiceId: null, targetEntryId: null, correctionOfEntryId: null, note: null, reasonCategory: "INVOICE_DRIVEN", reasonDetail: null, paymentMethod: null,
+  status: "LIVE", voidedAt: null, voidedBy: null, voidReason: null, actorUserId: "u", actorLabel: "Owner", transactionId: "tx", entryDate: operation.recordedAt, createdAt: operation.recordedAt, updatedAt: operation.recordedAt,
+ }));
+ const accountHistory = vi.fn().mockResolvedValue({ items: [item], nextOffset: null });
+ render(<QueryClientProvider client={query}><ManualSettlementLink client={{accountHistory} as unknown as ManualSettlementClient} accountId="pay-account" entryId="pay-portion" entries={entries} /></QueryClientProvider>);
+ await screen.findByText("معكوسة بالكامل");
+ const disclosure = screen.getByText("عرض تفاصيل القيدين الأصليين"); disclosure.click();
+ expect(disclosure.closest("details")?.open).toBe(true);
+ const text = disclosure.closest("details")?.textContent;
+ if (kind === "MANUAL") expect(text?.match(/قيد يدوي/g)).toHaveLength(2);
+ else {
+  expect(text).not.toContain("قيد يدوي");
+  expect(text?.match(kind === "RESTRICTED" ? /مصدر مقيّد العرض/g : /قيد أصلي/g)).toHaveLength(2);
+ }
 });
 it("does not relabel a generic account-zeroing posting as bilateral",async()=>{
  const query=new QueryClient(); clients.push(query); const accountHistory=vi.fn().mockResolvedValue({items:[operation],nextOffset:null})

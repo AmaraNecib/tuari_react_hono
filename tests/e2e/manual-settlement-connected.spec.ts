@@ -66,6 +66,12 @@ test("inventory purchase and SALE settlement picker identifies and navigates to 
   expect((await rpc<{entries:{entryType:string;signedAmountDzd:string;paymentMethod:string|null}[]}>(page,"financial/debts/detail",{id:sale.associatedDebtAccountId})).entries.filter(entry=>entry.entryType === "PAYMENT")).toEqual(paymentsBefore)
   const history=await rpc<{items:{id:string;reversal:unknown}[]}>(page,"financial/manualSettlement/history",{externalCounterpartyId:party.item.id})
   const settlement=history.items[0]!
+  const originalDetails = settlementPanel.locator(`[data-manual-settlement-id="${settlement.id}"]`).locator("details").first()
+  await originalDetails.getByText("عرض تفاصيل القيدين الأصليين", { exact: true }).click()
+  await expect(originalDetails).not.toContainText("قيد يدوي")
+  await expect(originalDetails.getByText("تفاصيل المصدر غير متاحة في هذا العرض.", { exact: true })).toHaveCount(2)
+  await expect(originalDetails.getByText("تفاصيل المصدر غير متاحة في هذا العرض.", { exact: true }).first()).toBeVisible()
+  await originalDetails.getByText("عرض تفاصيل القيدين الأصليين", { exact: true }).click()
   await settlementPanel.getByRole("link",{name:purchase.group.invoiceNumber}).click()
   await expect(page).toHaveURL(new RegExp(`/invoices/${purchase.group.id}`))
   await expect(page.getByRole("heading",{name:new RegExp(purchase.group.invoiceNumber)})).toBeVisible()

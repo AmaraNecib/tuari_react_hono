@@ -21,7 +21,9 @@ export function ManualSettlementSummary({ item, entries = [] }: { item: Record; 
           const id = side === "payable" ? item.payableOriginalEntryId : item.receivableOriginalEntryId
           const entry = entries.find(row => row.id === id)
           const source = side === "payable" ? item.payableSource : item.receivableSource
-          return <div key={side}><dt className="font-semibold">{t(`manualSettlement.${side}`)}</dt><dd className="mt-1 space-y-1">{entry ? <><p>{entry.note || t("manualSettlement.manualEntry")} · {t("manualSettlement.entryNumber", { sequence: entry.postingSequence })}</p><p>{money(entry.signedAmountDzd)} · <AppDate value={entry.entryDate} /></p></> : <p>{t(source.kind === "RESTRICTED" ? "manualSettlement.restrictedSource" : "manualSettlement.manualFallback")}</p>}</dd></div>
+          const entryLabel = t(source.kind === "MANUAL" ? "manualSettlement.manualEntry" : source.kind === "RESTRICTED" ? "manualSettlement.restrictedSource" : "manualSettlement.originalEntry")
+          const missingLabel = t(source.kind === "MANUAL" ? "manualSettlement.manualFallback" : source.kind === "RESTRICTED" ? "manualSettlement.restrictedSource" : "manualSettlement.sourceUnavailable")
+          return <div key={side}><dt className="font-semibold">{t(`manualSettlement.${side}`)}</dt><dd className="mt-1 space-y-1">{entry ? <><p>{entry.note || entryLabel} · {t("manualSettlement.entryNumber", { sequence: entry.postingSequence })}</p><p>{money(entry.signedAmountDzd)} · <AppDate value={entry.entryDate} /></p></> : <p>{missingLabel}</p>}</dd></div>
         })}
       </dl>
     </details>

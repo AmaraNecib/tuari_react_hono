@@ -7,7 +7,7 @@ export const ar = {
       title: "تسوية متبادلة بين دينين يدويين",
       activityTab: "حركة الحساب", settlementsTab: "التسويات", newSettlement: "تسوية متبادلة جديدة",
       information: "معلومات التسوية المتبادلة",
-      entryDetails: "عرض تفاصيل القيدين الأصليين", technicalDetails: "المعرّفات التقنية", manualEntry: "قيد يدوي", manualFallback: "قيد يدوي أصلي. تفاصيل المصدر غير متاحة في هذا العرض.", restrictedSource: "مصدر مقيّد العرض", entryNumber: "القيد {{sequence}}", reversalAction: "عُكست التسوية وأُعيد المبلغ إلى الجانبين",
+      entryDetails: "عرض تفاصيل القيدين الأصليين", technicalDetails: "المعرّفات التقنية", manualEntry: "قيد يدوي", originalEntry: "قيد أصلي", sourceUnavailable: "تفاصيل المصدر غير متاحة في هذا العرض.", manualFallback: "قيد يدوي أصلي. تفاصيل المصدر غير متاحة في هذا العرض.", restrictedSource: "مصدر مقيّد العرض", entryNumber: "القيد {{sequence}}", reversalAction: "عُكست التسوية وأُعيد المبلغ إلى الجانبين",
       help: "تخفض هذه العملية المستحقات علينا ولنا بالمبلغ نفسه، دون حركة نقدية أو مخزنية. لا تغيّر عملية تصفير الحساب أو تسجيل الدفعات.",
       payable: "الدين المستحق علينا", receivable: "الدين المستحق لنا", select: "اختر الدين الأصلي",
       original: "القيد {{sequence}} · المتبقي {{amount}} د.ج", sourceOption: "{{source}} · المتبقي {{amount}} د.ج", openSource: "فتح المصدر: {{source}}",  amount: "مبلغ التسوية المتبادلة", note: "ملاحظة التسوية، اختيارية",

@@ -67,6 +67,12 @@ The initial three runtime review sessions found two issues. Restricted history w
 
 The authenticated candidate test now independently checks the original entry sequence and remaining amount for both obligations. Each direction's first obligation has sequence 1. After settling 10.00 against the fixture's 100.00 purchase and 30.00 sale, remaining amounts must be 90.00 and 20.00. These expectations are literals from the fixture scenario, not copied from owner or employee candidate responses.
 
+## Hosted history-label correction
+
+Hosted review at `7212a8a3bc01cea88ddf89532d7d6becd842f5b6` returned 5/5 and a clean security verdict, but found that the prior restricted-only correction left the same false manual claim for owner-visible PURCHASE and SALE sources. That finding remains actionable despite its non-blocking label.
+
+Manual copy now depends on actual MANUAL provenance. Missing purchase/SALE entry details use neutral unavailable text; note-free purchase/SALE entries use a neutral original-entry label. Restricted copy remains neutral for both missing and present note-free entries. Existing notes, amounts, dates, source links and manual copy remain intact. Expanded owner purchase/SALE controls now reject manual text, and a four-kind note-free entry test checks MANUAL, PURCHASE, SALE and RESTRICTED independently. The earlier restricted-only test did not establish correctness of the owner branch.
+
 ## Decision boundary
 
 The owner has approved the restricted candidate and history source unions and current UI handling. Inventory source visibility continues to follow the existing bootstrap-owner read authority; debt access, settlement permissions, eligibility and financial history are unchanged.
