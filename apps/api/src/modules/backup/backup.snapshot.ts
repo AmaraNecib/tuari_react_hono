@@ -71,8 +71,11 @@ try {
     };
     const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
     attachments = { linked: 0, copied: 0, fallbackReasons: [] };
-    const exists = copy.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='inventory_invoice_attachment'").get();
-    const rows = exists ? copy.prepare("SELECT relative_path, sha256 FROM inventory_invoice_attachment").all() : [];
+    const rows = [];
+    for (const table of ["inventory_invoice_attachment", "expense_attachment"]) {
+      const exists = copy.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
+      if (exists) rows.push(...copy.prepare("SELECT relative_path, sha256 FROM " + table).all());
+    }
     const included = new Map();
     for (const row of rows) {
       const live = within(root, row.relative_path);

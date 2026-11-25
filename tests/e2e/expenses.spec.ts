@@ -2,7 +2,7 @@ import { installManagedApiLifecycle } from "./helpers/test"
 import { expect, test, type Page } from "./helpers/test"
 
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
-import { seedEmployeeByRole, seedProjectWithManager } from "./helpers/db-seed"
+import { findE2eDatabase, loadDatabaseConstructor, seedEmployeeByRole, seedProjectWithManager } from "./helpers/db-seed"
 import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 installManagedApiLifecycle()
@@ -38,7 +38,7 @@ test.beforeAll(async () => {
   await resetE2eDatabase()
 })
 
-test("record an expense against a project, group it, then void it out of the totals", async ({ page }) => {
+test("record an expense against a project, group it, then void it out of the totals", async ({ page, playwright }) => {
   const suffix = uniqueSuffix()
   const managerId = seedEmployeeByRole({
     firstName: "مدير",
@@ -103,6 +103,21 @@ test("record an expense against a project, group it, then void it out of the tot
   await page.getByRole("button", { name: "تجميع حسب المشروع" }).click()
   const row = page.getByRole("row", { name: new RegExp(whatFor) })
   await expect(row).toBeVisible({ timeout: 10_000 })
+  await row.getByRole("button", { name: "تعديل" }).click()
+  const edit = page.getByRole("dialog")
+  await edit.locator('input[type="file"]').setInputFiles([
+    { name: "receipt-one.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-one") },
+    { name: "receipt-two.png", mimeType: "image/png", buffer: Buffer.from([137,80,78,71]) },
+  ])
+  const filesSection = edit.locator("section").filter({ has: page.locator('input[type="file"]') })
+  await filesSection.getByRole("button", { name: "حفظ", exact: true }).click()
+  await expect(edit.getByRole("link", { name: "receipt-two.png" })).toBeVisible()
+  await edit.getByRole("button", { name: "إلغاء", exact: true }).click()
+  await row.getByRole("button", { name: "تعديل" }).click()
+  await expect(page.getByRole("dialog").getByRole("link", { name: "receipt-one.pdf" })).toBeVisible()
+  await expect(page.getByRole("dialog").getByRole("link", { name: "receipt-two.png" })).toBeVisible()
+  await page.getByRole("dialog").locator("section").filter({ has: page.locator('input[type="file"]') }).screenshot({ path: `.scratch/reviews/625/laptop-expense-files-${Date.now()}.png` })
+  await page.getByRole("dialog").getByRole("button", { name: "إلغاء", exact: true }).click()
   await row.getByRole("button", { name: "إلغاء" }).click()
 
   const voidDialog = page.getByRole("dialog")
@@ -119,6 +134,45 @@ test("record an expense against a project, group it, then void it out of the tot
   // the user fill a dialog whose Save fails.
   await expect(row.getByRole("button", { name: "إلغاء" })).toHaveCount(0)
   await expect(row.getByRole("button", { name: "تعديل" })).toHaveCount(0)
+
+  const db = loadDatabaseConstructor()(findE2eDatabase())
+  try {
+    const receipts = db.prepare("SELECT id, expense_id AS expenseId FROM expense_attachment ORDER BY original_name").all() as {id:string;expenseId:string}[]
+    expect(receipts).toHaveLength(2)
+    const historyState = () => JSON.stringify({
+      expense: db.prepare("SELECT * FROM expense ORDER BY id").all(),
+      revisions: db.prepare("SELECT * FROM expense_revision ORDER BY id").all(),
+      files: db.prepare("SELECT * FROM expense_attachment ORDER BY id").all(),
+      debt: db.prepare("SELECT * FROM debt_entry ORDER BY id").all(),
+      movements: db.prepare("SELECT * FROM inventory_movement ORDER BY id").all(),
+    })
+    const before = historyState()
+    await row.getByRole("button", {name:"المرفقات",exact:true}).click()
+    const history = page.getByRole("dialog")
+    await expect(history.getByRole("link",{name:"receipt-one.pdf"})).toBeVisible()
+    await expect(history.getByRole("link",{name:"receipt-two.png"})).toBeVisible()
+    await expect(history.locator('input[type="file"]')).toHaveCount(0)
+    await expect(history.getByRole("button",{name:"حفظ",exact:true})).toHaveCount(0)
+    await expect(history.getByRole("button",{name:"تعديل",exact:true})).toHaveCount(0)
+    const href = await history.getByRole("link",{name:"receipt-one.pdf"}).getAttribute("href")
+    expect(href).toBeTruthy()
+    const downloaded = await page.request.get(href!)
+    expect(downloaded.status()).toBe(200)
+    expect(await downloaded.body()).toEqual(Buffer.from("%PDF-one"))
+    const anonymous = await playwright.request.newContext()
+    try {
+      expect((await anonymous.get(href!,{headers:{origin:page.url().split("/").slice(0,3).join("/")}})).status()).toBe(401)
+    } finally { await anonymous.dispose() }
+    const origin = new URL(page.url()).origin
+    const upload = await page.request.post(new URL(`/api/expenses/${receipts[0]!.expenseId}/attachments`,href!).href,{headers:{origin},multipart:{files:{name:"forbidden.pdf",mimeType:"application/pdf",buffer:Buffer.from("forbidden")}}})
+    expect(upload.status()).toBe(409)
+    expect(historyState()).toBe(before)
+    await history.locator("section").screenshot({path:`.scratch/reviews/625/laptop-voided-receipts-${Date.now()}.png`})
+    await history.locator('[data-slot="dialog-close"]').click()
+    await row.getByRole("button",{name:"المرفقات",exact:true}).click()
+    await expect(page.getByRole("dialog").getByRole("link",{name:"receipt-one.pdf"})).toBeVisible()
+    expect(historyState()).toBe(before)
+  } finally { db.close() }
 })
 
 /** Derive a unique valid Algerian mobile number from the per-attempt suffix. */

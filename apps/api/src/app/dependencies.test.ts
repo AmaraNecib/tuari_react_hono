@@ -89,6 +89,18 @@ afterEach(() => {
 // the pre-push hook chain) the cold transform can exceed 20s, so keep the
 // describe-level timeout generous.
 describe("createAppDependencies self-contained wiring", { timeout: 60000 }, () => {
+  it("creates the receipt owner-order index in the legacy root", async () => {
+    const {createAppDependencies}=await import("./dependencies");
+    const {createDatabaseConnection}=await import("../infrastructure/database/factory");
+    const path=join(mkdtempSync(join(tmpdir(),"625-legacy-index-")),"application.sqlite");
+    const deps=await createAppDependencies({databasePath:path,authInstance:fakeAuth});
+    lastDeps=deps;
+    const reader=createDatabaseConnection(path,"");
+    try {
+      const columns=reader.prepare("PRAGMA index_info(expense_attachment_owner_order_idx)").all() as {name:string}[];
+      expect(columns.map(column=>column.name)).toEqual(["expense_id","created_at","id"]);
+    } finally {reader.close();}
+  });
   it("uses the injected config for repository selection (inmemory adapter)", async () => {
     const { createAppDependencies } = await import("./dependencies");
     const config = createAppConfig({
