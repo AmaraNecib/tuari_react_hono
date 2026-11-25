@@ -35,13 +35,25 @@ release workflows, or close issue 393.
 Read-only GitHub metadata queries and PR #628 metadata are recorded in
 `.scratch/reviews/393/evidence.md`; no downloads or installs occurred. The
 metadata inspection did not capture command durations or raw response files.
-Before committing this update, run `git diff --check` and `pnpm check:unslop`.
+The manager preserved a separate metadata recapture under ignored
+`.scratch/reviews/393/manager-metadata/`, including raw API responses, native
+exit codes, timestamps and durations. This does not retroactively complete the
+worker's original logs. Queries returned release IDs, asset IDs/digests and
+run metadata; no exact-asset provenance or runtime claim follows from them.
+Run `git diff --check` and `pnpm check:unslop` for the documentation delta.
 Do not run a full build or repeat the restore rehearsal. Record exact-head
 results in `.scratch/reviews/393/`.
 
 ## Review and wisdom
 
-The manager owns the three initial review lenses after this scope is committed.
+Three distinct initial lenses reviewed `156005abb2e154fc05a311ce3d4ee4aa6b03a0d7`.
+Their actionable findings required removal of the beta customer recommendation,
+gating the existing installer execution instructions, an explicit data-specific
+backup/recovery stop gate, and durable references instead of an ignored report
+link. The bounded correction addresses those findings. It does not turn the
+historical restore rehearsal into customer-upgrade proof. A fresh combined-delta
+review is required before local readiness. Release selection, signing posture,
+exact shipped-binary behavior and customer distribution remain pending.
 Applied: desktop packaging lesson index consulted; no lesson changes source
 claims or authorizes bypassing OS warnings. Excluded: restore-rehearsal
 execution, because the supplied instruction identifies merged PR #628 evidence

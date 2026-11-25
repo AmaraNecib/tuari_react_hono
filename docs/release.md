@@ -170,8 +170,10 @@ which read failed.
    gh release download beta --repo AmaraNecib/tuari_react_hono --pattern '*-setup.exe'
    ```
 
-The `beta` channel is the fastest way to get a customer an installer, because it
-needs no tag and no stable promotion.
+The `beta` channel is an internal prerelease channel, not an approved customer
+installer. Neither channel availability nor a successful publish authorizes
+customer distribution. Apply the [manual-update gates](manual-update-runbook.md)
+before any installation; release selection remains the owner's decision.
 
 ## Publishing the stable channel
 
@@ -225,7 +227,14 @@ being downloaded, but a customer may notice them.
 
 ## Verifying a published installer
 
-Download every asset the release published:
+This section describes internal artifact checks, not installation approval.
+Before downloading or executing a customer candidate, satisfy the
+[manual-update runbook](manual-update-runbook.md), including exact-artifact
+approval, provenance and a data-specific backup/recovery plan. Those gates are
+not met by this document. The commands below use beta as an internal example,
+not as a customer recommendation.
+
+For an approved internal inspection, download the selected release's assets:
 
 ```bash
 gh release download beta --repo AmaraNecib/tuari_react_hono --dir ./verify
@@ -239,9 +248,12 @@ The installer asset is named `tuari-<version>-<channel>-setup.exe`. For the
 certutil -hashfile ./verify/tuari-0.1.0-beta.1-beta-setup.exe SHA256
 ```
 
-Run the installer. It uses `installMode: currentUser`, so it installs under the
-user profile without an admin prompt. Launch Tuari, complete first-run setup,
-and confirm the version in the app matches the release.
+Do not run the installer against customer data on the strength of these checks.
+Only after all manual-update gates pass may an authorized operator test the
+selected installer in a disposable environment. The configured installation
+mode is `currentUser`; that configuration alone is not shipped-runtime proof.
+Record the installed version and startup result. Stop on any security warning
+or unexpected data location; do not overwrite an existing customer project.
 
 To verify the portable zip and update package the way CI does, run the script
 from the repository root (it resolves `scripts/` against the current directory)
