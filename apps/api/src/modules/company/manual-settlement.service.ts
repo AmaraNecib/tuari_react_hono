@@ -45,11 +45,24 @@ export class ManualSettlementService {
       });
     });
   }
+  private sourceForOriginal(id: string, direction: "PAYABLE" | "RECEIVABLE") {
+    const entry = this.ledger.getEntry(id);
+    if (entry && this.trustedInventoryOriginal(entry, this.finance.getAccount(entry.debtAccountId).externalCounterpartyId ?? "", direction)) {
+      const group = entry.producerType === "INVENTORY_PURCHASE" && entry.producerId ? this.inventory?.getGroup(entry.producerId) : null;
+      const outbound = entry.producerType === "INVENTORY_OUTBOUND" && entry.producerId ? this.inventory?.getOutbound(entry.producerId) : null;
+      return group ? { kind: "PURCHASE" as const, id: group.id, label: group.invoiceNumber || group.id }
+        : { kind: "SALE" as const, id: outbound!.id, label: `SALE · ${outbound!.id}` };
+    }
+    return { kind: "MANUAL" as const, id, label: `#${entry?.postingSequence ?? "?"}` };
+  }
+  private withSources(row: ManualSettlementRecord) {
+    return { ...row, payableSource: this.sourceForOriginal(row.payableOriginalEntryId, "PAYABLE"), receivableSource: this.sourceForOriginal(row.receivableOriginalEntryId, "RECEIVABLE") };
+  }
   accountHistory(input: { debtAccountId: string }) {
     return this.repository.withTransaction(() => {
       this.authorization.authorize(["debts:read"]);
       this.finance.getAccount(input.debtAccountId);
-      return { items: this.repository.listAccountSettlements(input.debtAccountId).map(row => ({ ...row, reversal: this.repository.getReversal(row.id) })), nextOffset: null };
+      return { items: this.repository.listAccountSettlements(input.debtAccountId).map(row => ({ ...this.withSources(row), reversal: this.repository.getReversal(row.id) })), nextOffset: null };
     });
   }
   private trustedInventoryOriginal(entry: NonNullable<ReturnType<ExactFinanceRepository["getEntry"]>>, externalCounterpartyId: string, direction: "PAYABLE" | "RECEIVABLE") {
@@ -127,7 +140,7 @@ export class ManualSettlementService {
     return this.repository.withTransaction(() => {
       this.authorization.authorize(["debts:read"]);
       const rows = this.repository.listSettlements(input.externalCounterpartyId, input.limit + 1, input.offset);
-      return { items: rows.slice(0, input.limit).map(row => ({ ...row, reversal: this.repository.getReversal(row.id) })), nextOffset: rows.length > input.limit ? input.offset + input.limit : null };
+      return { items: rows.slice(0, input.limit).map(row => ({ ...this.withSources(row), reversal: this.repository.getReversal(row.id) })), nextOffset: rows.length > input.limit ? input.offset + input.limit : null };
     });
   }
   reverse(raw: ReverseManualSettlement) {

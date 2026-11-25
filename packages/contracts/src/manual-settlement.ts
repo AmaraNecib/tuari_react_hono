@@ -40,6 +40,7 @@ export const manualSettlementPreviewSchema = z.object({
   projectedPayableRemainingDzd: exactDebtAmountSchema, projectedReceivableRemainingDzd: exactDebtAmountSchema,
   netPositionDzd: reportAmount, projectedNetPositionDzd: reportAmount,
 });
+export const manualSettlementSourceSchema = z.object({ kind: z.enum(["MANUAL", "PURCHASE", "SALE"]), id: entityIdSchema, label: z.string().min(1).max(200) });
 export const manualSettlementRecordSchema = z.object({
   id: entityIdSchema, externalCounterpartyId: entityIdSchema, currency: z.literal("DZD"),
   payableOriginalEntryId: entityIdSchema, receivableOriginalEntryId: entityIdSchema,
@@ -53,7 +54,7 @@ export const manualSettlementReversalSchema = z.object({
 });
 export const manualSettlementConfirmOutputSchema = z.object({ settlement: manualSettlementRecordSchema, preview: manualSettlementPreviewSchema });
 export const manualSettlementReverseOutputSchema = z.object({ settlement: manualSettlementRecordSchema, reversal: manualSettlementReversalSchema });
-export const manualSettlementHistoryOutputSchema = z.object({ items: z.array(manualSettlementRecordSchema.extend({ reversal: manualSettlementReversalSchema.nullable() })), nextOffset: z.number().int().nullable() });
+export const manualSettlementHistoryOutputSchema = z.object({ items: z.array(manualSettlementRecordSchema.extend({ payableSource: manualSettlementSourceSchema, receivableSource: manualSettlementSourceSchema, reversal: manualSettlementReversalSchema.nullable() })), nextOffset: z.number().int().nullable() });
 export const manualSettlementCandidateSchema = z.object({
   id: entityIdSchema, debtAccountId: entityIdSchema, direction: z.enum(["PAYABLE", "RECEIVABLE"]),
   postingSequence: z.number().int(), remainingDzd: positive,

@@ -42,8 +42,8 @@ it("settles both manual originals once across reopen and restores both recorded 
     const input = { requestId: "confirm", currency: "DZD" as const, externalCounterpartyId: party, payableOriginalEntryId: p, receivableOriginalEntryId: r, amountDzd: "25.00", expectedPayableRemainingDzd: "100.00", expectedReceivableRemainingDzd: "60.00" };
     const previewInput = { externalCounterpartyId: party, payableOriginalEntryId: p, receivableOriginalEntryId: r, currency: "DZD" as const, amountDzd: "25.00" };
     expect(f.service.candidates({ externalCounterpartyId: party })).toEqual(expect.arrayContaining([
-      { id: p, debtAccountId: payable.id, direction: "PAYABLE", postingSequence: 1, remainingDzd: "100.00" },
-      { id: r, debtAccountId: receivable.id, direction: "RECEIVABLE", postingSequence: 1, remainingDzd: "60.00" },
+      expect.objectContaining({ id: p, debtAccountId: payable.id, direction: "PAYABLE", postingSequence: 1, remainingDzd: "100.00", sourceKind: "MANUAL" }),
+      expect.objectContaining({ id: r, debtAccountId: receivable.id, direction: "RECEIVABLE", postingSequence: 1, remainingDzd: "60.00", sourceKind: "MANUAL" }),
     ]));
     expect(() => f.service.accountHistory({ debtAccountId: "missing-account" })).toThrow(/not found/i);
     expect(() => f.service.preview({ ...previewInput, payableOriginalEntryId: "missing-entry" })).toThrow(/not found/i);

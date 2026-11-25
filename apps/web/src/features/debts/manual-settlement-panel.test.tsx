@@ -127,6 +127,6 @@ it("opens on demand and retains a draft after closing", async () => {
  expect(f.client.confirm).not.toHaveBeenCalled()
 })
 it("history and reversal remain available when candidate read fails", async () => {
- const f=fixture(); f.client.candidates.mockRejectedValue({code:"FORBIDDEN"}); f.client.history.mockResolvedValue({items:[{id:"s",amountDzd:"25.00",recordedAt:"2026-11-10T10:00:00.000Z",actorLabel:"Operator",payableOriginalEntryId:"a",receivableOriginalEntryId:"b",reversal:null}],nextOffset:null})
+ const f=fixture(); f.client.candidates.mockRejectedValue({code:"FORBIDDEN"}); f.client.history.mockResolvedValue({items:[{id:"s",externalCounterpartyId:"p",amountDzd:"25.00",recordedAt:"2026-11-10T10:00:00.000Z",actorLabel:"Operator",payableOriginalEntryId:"a",receivableOriginalEntryId:"b",payableSource:{kind:"MANUAL",id:"a",label:"#1"},receivableSource:{kind:"MANUAL",id:"b",label:"#2"},reversal:null}],nextOffset:null})
  f.mount(); expect(await screen.findByRole("button",{name:"عكس التسوية كاملة"})).toBeTruthy()
 })

@@ -139,6 +139,17 @@ it.each(["memory", "plain", "keyed"] as const)("%s: purchase destinations follow
   expect(inventory.transferHistory({ projectId: "warehouse" }).items.find(row => row.id === mixed.group.id)!.items.map(row => row.quantity)).toEqual([4]);
 });
 
+it("reports cash from live source payments, not settlement or historical corrections", () => {
+  const { inventory, finance } = setup("memory");
+  inventory.createInvoiceGroup({ requestId: "cash-history-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 2, unitPriceDzd: "1.0000" }] });
+  const sale = inventory.createOutboundTransfer({ requestId: "cash-history-sale", fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType: "SALE", debtAmountDzd: "30.00", firstPaymentAmountDzd: "5.00", items: [{ itemId: "material", quantity: 1 }] });
+  const original = finance.listEntries(sale.associatedDebtAccountId!).find(row => row.id === sale.debtEntryId)!;
+  const record = () => inventory.transferHistory({ transferType: "SALE" }).items.find(row => row.id === sale.id)!;
+  expect(record()).toMatchObject({ paidAmountDzd: "5.00", remainingDebtDzd: "25.00" });
+  const paid = inventory.recordOutboundPayment({ requestId: "cash-history-payment", transferId: sale.id, amountDzd: "2.00" });
+  expect(record()).toMatchObject({ paidAmountDzd: "7.00", remainingDebtDzd: "23.00" });
+});
+
 it("returns exact purchase, internal, and outbound history with bounded filters and pagination", () => {
   const { inventory } = setup("memory");
   inventory.createInvoiceGroup({ requestId: "history-purchase", warehouseId: "warehouse", createDebt: true, externalCounterpartyId: partyId,

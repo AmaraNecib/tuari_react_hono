@@ -19,6 +19,7 @@ import { useExactDebtCommand, useExactDebtDetail, useExactDebtSummary, type Exac
 import { ManualSettlementLink } from "./manual-settlement-link"
 import { ManualSettlementPanel, type ManualSettlementClient } from "./manual-settlement-panel"
 import { EmployeePayrollDebtSection } from "./employee-payroll-debt-section"
+import { useUrlParam, useUrlTab } from "@/hooks/use-url-state"
 
 export type ExactDebtPartyOption = { id: string; label: string; phone?: string; partyType: ExactDebtAccount["partyType"] }
 type Entry = ExactDebtDetail["entries"][number]
@@ -42,8 +43,8 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees,
   const { t } = useTranslation()
   const manualSettlementClient = manualSettlementSupported ? suppliedManualClient : undefined
   const partySettlements = scopedParty?.partyType === "EXTERNAL_COUNTERPARTY" && manualSettlementClient
-  const [selected, setSelected] = useState<string | null>(null)
-  const [tab, setTab] = useState("ledger")
+  const [selected, setSelected] = useUrlParam<string>("debtAccount", "")
+  const [tab, setTab] = useUrlTab(["ledger", "accounts", "settlement", "party"], "ledger")
   const [accountPage, setAccountPage] = useState(1)
   const [entryPage, setEntryPage] = useState(1)
   const [search, setSearch] = useState("")
@@ -56,7 +57,7 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees,
   const [reason, setReason] = useState("")
   const [notice, setNotice] = useState("")
   const summary = useExactDebtSummary(client)
-  const detailAccountId = scopedParty && summary.data?.accounts.some(row => row.id === selected && row.partyType === scopedParty.partyType && (row.workerId ?? row.externalCounterpartyId) === scopedParty.id) ? selected : scopedParty ? null : selected
+  const detailAccountId = scopedParty && summary.data?.accounts.some(row => row.id === selected && row.partyType === scopedParty.partyType && (row.workerId ?? row.externalCounterpartyId) === scopedParty.id) ? selected : scopedParty ? null : selected || null
   const detail = useExactDebtDetail(client, detailAccountId)
   const mutation = useExactDebtCommand(client)
   const queries = useQueryClient()
