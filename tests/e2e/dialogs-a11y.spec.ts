@@ -61,6 +61,8 @@ test("keyboard shortcuts help is a labelled modal dialog and closes on Escape", 
 test("signed-in workspace does not auto-open the optional tour", async ({ page }) => {
   await bootstrapOrSignIn(page)
 
+  // Observe beyond the former 500 ms auto-start delay before asserting no tour.
+  await page.waitForTimeout(600)
   await expect(page.getByRole("link", { name: "لوحة التحكم" }).first()).toBeVisible()
   await expect(page.getByRole("dialog")).toHaveCount(0)
   expect(await page.evaluate(() => localStorage.getItem("journey-home-tour-status"))).toBeNull()
