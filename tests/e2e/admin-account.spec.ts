@@ -121,6 +121,9 @@ test("first-run bootstrap creates the admin account", async ({ page }) => {
 
   // The signed-in shell reflects the bootstrapped account.
   await expect(page.getByRole("link", { name: "لوحة التحكم" }).first()).toBeVisible({ timeout: 15_000 })
+  await page.waitForTimeout(600)
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem("journey-home-tour-status"))).toBeNull()
   await expect(page.locator("aside").getByText(TEST_NAME, { exact: true })).toBeVisible()
   await expect(page.locator("aside").getByText(TEST_PHONE, { exact: true })).toBeVisible()
 })
