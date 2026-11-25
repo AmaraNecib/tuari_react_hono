@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { createEmptyEmployeeDraft } from "./employee-batch-schema"
@@ -43,6 +43,39 @@ const copy = {
 }
 
 afterEach(cleanup)
+
+describe("EmployeeBatchRowCard selectors", () => {
+  it("exposes labeled native selectors and associates manager/project hints per row", () => {
+    render(
+      <>
+        {[0, 1].map((index) => (
+          <EmployeeBatchRowCard
+            key={index}
+            canRemove={false}
+            copy={copy}
+            draft={createEmptyEmployeeDraft("worker-role")}
+            errors={{}}
+            index={index}
+            managerOptions={[{ id: "manager-1", label: "مدير", projectOptions: [{ id: "project-1", label: "مشروع" }] }]}
+            roles={[{ id: "worker-role", key: "worker", name: "عامل" } as never]}
+            workerRoleId="worker-role"
+            onChange={vi.fn()}
+            onRemove={vi.fn()}
+          />
+        ))}
+      </>,
+    )
+
+    for (const index of [0, 1]) {
+      const row = within(screen.getAllByRole("article")[index]!)
+      expect(row.getByRole("combobox", { name: "الصلاحية" })).toBeTruthy()
+      const manager = row.getByLabelText("المسؤول")
+      const project = row.getByLabelText("المشروع")
+      expect(manager.getAttribute("aria-describedby")).toContain(`employee-manager-hint-${index}`)
+      expect(project.getAttribute("aria-describedby")).toContain(`employee-project-hint-${index}`)
+    }
+  })
+})
 
 describe("EmployeeBatchRowCard dark-mode placeholder", () => {
   it("bumps the bespoke notes placeholder to the full-opacity muted token in dark mode", () => {
