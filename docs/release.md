@@ -201,9 +201,10 @@ being downloaded, but a customer may notice them.
 
 - **No code-signing certificate.** `tauri.conf.json` sets
   `bundle.targets: "nsis"` and has no Windows signing configuration, so the
-  installer is unsigned. Windows SmartScreen shows "Windows protected your PC";
-  the customer clicks **More info** then **Run anyway**. An EV or OV
-  code-signing certificate is required to remove that warning.
+  installer is unsigned. Windows may show a SmartScreen or other security
+  warning. Stop the installation and escalate to the release owner. Never
+  bypass an operating-system warning. The owner must approve the release and
+  signing posture before customer installation.
 - **No production update signing key.** Repository secrets
   `UPDATE_SIGNING_KEY`, `UPDATE_PUBLIC_KEY`, and `UPDATE_KEY_ID` are unset
   (`gh secret list` returns nothing). Both workflows fall back to generating an
@@ -270,7 +271,15 @@ the signature check fails.
 | A run shows `"jobs": []` and fails instantly | The workflow file is not valid YAML, or it is not on the default branch | Reproduce the parse locally with PyYAML; check the workflow `name` in the Actions API |
 | `release.yml` aborts at "Verify tag is on main branch" | The tag is not an ancestor of `main` | Promote the commit to `main`, then re-tag |
 | `gh run view --log` says "log not found" | GitHub has no logs for startup failures | Read the workflow file and reproduce the build locally |
-| SmartScreen blocks the installer | The binary is unsigned | Click **More info** then **Run anyway**; get a signing certificate to remove it |
+| Windows displays SmartScreen or another security warning | The installer is unsigned or its reputation is unknown | Stop. Do not bypass the warning. Escalate to the release owner. |
+
+## Manual update readiness
+
+The in-app update flow is not an installation path for customers. Its apply
+strategy currently reports failure without replacing application files. Use
+only an owner-approved manual installer source and verify the artifact as
+described in [the manual-update runbook](manual-update-runbook.md). This
+readiness note does not select a release or authorize distribution.
 
 ## Related documents
 
