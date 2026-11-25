@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { access, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { constants } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const rootDir = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
@@ -24,6 +25,23 @@ test('no stray `nul` file at the repo root and gitignore blocks it', async () =>
 
   const gitignore = await readRepoFile('.gitignore');
   assert.match(gitignore, /^\/nul$/m);
+});
+
+test('runtime API backup paths are ignored without accessing backup data', () => {
+  const backupPath = 'apps/api/backups/example/snapshot.json';
+  const result = spawnSync('git', ['check-ignore', '--no-index', backupPath], {
+    cwd: rootDir,
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), backupPath);
+
+  const siblingPath = 'apps/api/backup-example/snapshot.json';
+  const sibling = spawnSync('git', ['check-ignore', '--no-index', siblingPath], {
+    cwd: rootDir,
+    encoding: 'utf8',
+  });
+  assert.equal(sibling.status, 1, sibling.stderr);
 });
 
 test('api tsconfig does not include the removed prisma.config.ts', async () => {
