@@ -64,11 +64,6 @@ beforeEach(() => {
   approveEmployeeEarningMutate.mockReset()
   useNotifyAppReadyMock.mockClear()
   window.localStorage.clear()
-  // The first-run tour auto-starts 500ms after the shell mounts (autoStart).
-  // Now that the tour is a real modal (Base UI — issue #275) it marks the
-  // rest of the page aria-hidden, which hides the form controls these tests
-  // drive. Dismiss it like the E2E helper does (tests/e2e/helpers/session.ts).
-  window.localStorage.setItem("journey-home-tour-status", "skipped")
   document.documentElement.className = ""
   document.documentElement.lang = "ar"
   document.documentElement.dir = "rtl"
@@ -134,6 +129,21 @@ describe("HomeView workspace shell", () => {
     expect(document.documentElement.dir).toBe("rtl")
     expect(screen.getByLabelText("رقم الهاتف")).toBeTruthy()
     expect(screen.getByRole("button", { name: "دخول إلى مساحة العمل" })).toBeTruthy()
+  })
+
+  it("opens the signed-in workspace without a first-run tour, including after remount", async () => {
+    const first = renderWorkspace("dashboard", { sessionUser: demoUser })
+    expect(await screen.findByRole("navigation")).toBeTruthy()
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 600)) })
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(window.localStorage.getItem("journey-home-tour-status")).toBeNull()
+    first.unmount()
+
+    renderWorkspace("dashboard", { sessionUser: demoUser })
+    expect(await screen.findByRole("navigation")).toBeTruthy()
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 600)) })
+    expect(screen.queryByRole("dialog")).toBeNull()
+    expect(window.localStorage.getItem("journey-home-tour-status")).toBeNull()
   })
 
   it("signals app readiness once the initial auth state has settled", () => {
