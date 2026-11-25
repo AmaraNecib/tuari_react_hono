@@ -23,6 +23,20 @@ for(const [accountId,entryId] of [["pay-account","pay-portion"],["receive-accoun
  expect(screen.getAllByText(/تفاصيل المصدر غير متاحة/)).toHaveLength(2)
  expect(screen.getByText(/shared-operation/).closest("details")?.open).toBe(false)
 })
+it("renders restricted account history without inventory links or fake manual provenance", async () => {
+ const query = new QueryClient(); clients.push(query);
+ const restricted = { ...operation, payableSource: { kind: "RESTRICTED" }, receivableSource: { kind: "RESTRICTED" } };
+ const accountHistory = vi.fn().mockResolvedValue({ items: [restricted], nextOffset: null });
+ render(<QueryClientProvider client={query}><ManualSettlementLink client={{accountHistory} as unknown as ManualSettlementClient} accountId="pay-account" entryId="pay-portion" /></QueryClientProvider>);
+ await screen.findByText("معكوسة بالكامل");
+ expect(document.body.textContent).toContain("Original optional note");
+ expect(document.body.textContent).toContain("pay-original");
+ expect(document.body.textContent).toContain("receive-original");
+ expect(document.body.textContent).toContain("مصدر مقيّد العرض");
+ expect(screen.queryByRole("link", { name: "IN-00001" })).toBeNull();
+ expect(screen.queryByRole("link", { name: "SALE · sale-1" })).toBeNull();
+ expect(document.body.textContent).toContain("shared-operation");
+});
 it("does not relabel a generic account-zeroing posting as bilateral",async()=>{
  const query=new QueryClient(); clients.push(query); const accountHistory=vi.fn().mockResolvedValue({items:[operation],nextOffset:null})
  const view=render(<QueryClientProvider client={query}><ManualSettlementLink client={{accountHistory} as unknown as ManualSettlementClient} accountId="pay-account" entryId="generic-zero-posting"/></QueryClientProvider>)

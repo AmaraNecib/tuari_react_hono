@@ -7,6 +7,14 @@ import { ManualSettlementAuthorizationError, type ManualSettlementAuthorization 
 export class SqliteManualSettlementAuthorization implements ManualSettlementAuthorization {
   constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock, private readonly userId: string) {}
   get transactionIdentity() { return { connection: this.db, lock: this.lock }; }
+  canReadInventorySources(): boolean {
+    return this.lock.runSync(() => {
+      if (!this.db.inTransaction) throw new Error("Settlement source visibility requires the command transaction");
+      const state = this.db.prepare("SELECT user_id AS userId FROM app_bootstrap_state WHERE singleton=1 LIMIT 1").get() as { userId: string | null } | undefined;
+      const first = state?.userId ? null : this.db.prepare("SELECT id FROM user ORDER BY created_at LIMIT 1").get() as { id: string } | undefined;
+      return (state?.userId || first?.id) === this.userId;
+    });
+  }
   authorize(required: readonly string[]): { actorUserId: string; actorLabel: string } {
     return this.lock.runSync(() => {
       if (!this.db.inTransaction) throw new Error("Settlement authorization requires the command transaction");

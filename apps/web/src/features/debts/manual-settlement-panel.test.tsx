@@ -171,6 +171,25 @@ it("opens on demand and retains a draft after closing", async () => {
  expect(screen.getByRole("button", {name:"تأكيد التسوية المتبادلة"})).toBeTruthy()
  expect(f.client.confirm).not.toHaveBeenCalled()
 })
+it("shows restricted candidates neutrally while keeping debt entries selectable and unlinked", async () => {
+ const f = fixture();
+ f.client.candidates.mockResolvedValue([
+  { id: "debt-p", debtAccountId: "account-p", direction: "PAYABLE", postingSequence: 2, remainingDzd: "100.00", sourceKind: "RESTRICTED" },
+  { id: "debt-r", debtAccountId: "account-r", direction: "RECEIVABLE", postingSequence: 3, remainingDzd: "60.00", sourceKind: "RESTRICTED" },
+ ]);
+ f.mount();
+ fireEvent.click(await screen.findByRole("button", { name: "تسوية متبادلة جديدة" }));
+ const payable = await screen.findByRole("combobox", { name: "الدين المستحق علينا" });
+ const receivable = screen.getByRole("combobox", { name: "الدين المستحق لنا" });
+ expect(payable.querySelector('option[value="debt-p"]')?.textContent).toContain("مصدر مقيّد العرض");
+ expect(receivable.querySelector('option[value="debt-r"]')?.textContent).toContain("مصدر مقيّد العرض");
+ fireEvent.change(payable, { target: { value: "debt-p" } });
+ fireEvent.change(receivable, { target: { value: "debt-r" } });
+ expect(screen.queryByRole("link", { name: /فتح المصدر/ })).toBeNull();
+ expect(document.body.textContent).not.toContain("قيد يدوي أصلي");
+ expect(document.body.textContent).toContain("100.00");
+ expect(document.body.textContent).toContain("60.00");
+});
 it("history and reversal remain available when candidate read fails", async () => {
  const f=fixture(); f.client.candidates.mockRejectedValue({code:"FORBIDDEN"}); f.client.history.mockResolvedValue({items:[{id:"s",externalCounterpartyId:"p",amountDzd:"25.00",recordedAt:"2026-11-10T10:00:00.000Z",actorLabel:"Operator",payableOriginalEntryId:"a",receivableOriginalEntryId:"b",payableSource:{kind:"MANUAL",id:"a",label:"#1"},receivableSource:{kind:"MANUAL",id:"b",label:"#2"},reversal:null}],nextOffset:null})
  f.mount(); expect(await screen.findByRole("button",{name:"عكس التسوية كاملة"})).toBeTruthy()
