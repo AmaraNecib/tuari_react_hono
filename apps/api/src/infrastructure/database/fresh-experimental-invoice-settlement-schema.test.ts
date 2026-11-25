@@ -1,5 +1,8 @@
 import { expect, it } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { createFifoLock } from "./fifo-lock";
+import { createExactCommerceServices } from "../../rpc/exact-commerce-composition";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDatabaseConnection } from "./factory";
@@ -42,6 +45,47 @@ it.each(["trigger", "invoice-marker", "app-marker", "foreign-key"] as const)("re
     expect(snapshot(db)).toEqual(before);
   } finally { db.close(); }
 });
+it.each(["exact", "manual"] as const)("preserves populated %s database bytes and financial records across refusal and normal reopen", async kind => {
+  const path = join(mkdtempSync(join(tmpdir(), `tuari-615-preserve-${kind}-`)), "application.sqlite");
+  const initialize = kind === "exact" ? ensureFreshExactApplicationSchema : ensureFreshManualSettlementApplicationSchema;
+  const open = () => createDatabaseConnection(path, "", { journalMode: "preserve" });
+  const hash = () => createHash("sha256").update(readFileSync(path)).digest("hex");
+  const now = "2026-11-25T12:00:00.000Z";
+  let db = open();
+  try {
+    await initialize(db);
+    db.prepare("INSERT INTO external_counterparty(id,full_name,phone_number,note,created_at,updated_at) VALUES (?,?,?,?,?,?)").run("preserved-party", "Preserved supplier", "+213000000000", "Existing supported data", now, now);
+    const services = createExactCommerceServices(db, createFifoLock(), { id: randomUUID, now: () => now });
+    const draft = services.invoices.createInvoice({ requestId: "preserved-draft", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: "preserved-party", supplierName: "Preserved supplier", currency: "DZD", direction: "PURCHASE", lineItems: [{ description: "Existing purchase", source: { mode: "agreed-total", quantity: "1", total: "100.00" } }] });
+    const invoice = services.invoices.receiveInvoice({ requestId: "preserved-receive", id: draft.id });
+    const payment = services.invoices.createPayment({ requestId: "preserved-payment", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: "preserved-party", direction: "PURCHASE", paymentDate: now, paymentMethod: "BANK_TRANSFER", totalAmount: "20.00", allocations: [{ invoiceId: invoice.id, amount: "20.00" }] });
+    const readRecords = () => {
+      const current = createExactCommerceServices(db, createFifoLock(), { id: randomUUID, now: () => now });
+      return { invoice: current.invoices.getInvoice(invoice.id), payment: current.invoices.getPayment(payment.id), account: current.finance.detail(invoice.debtAccountId!), party: db.prepare("SELECT * FROM external_counterparty WHERE id=?").get("preserved-party") };
+    };
+    const original = readRecords();
+    expect(original.invoice).toMatchObject({ totalAmount: "100.00", paidAmount: "20.00", remainingAmount: "80.00", status: "RECEIVED" });
+    expect(original.payment).toMatchObject({ totalAmount: "20.00", unallocatedAmount: "0.00", status: "LIVE" });
+    db.close();
+    const originalHash = hash();
+    db = open();
+    const beforeRefusal = snapshot(db);
+    await expect(ensureFreshExperimentalInvoiceSettlementSchema(db)).rejects.toThrow(/experimental invoice settlement schema/i);
+    expect(snapshot(db)).toEqual(beforeRefusal);
+    expect(readRecords()).toEqual(original);
+    db.close();
+    expect(hash()).toBe(originalHash);
+    db = open();
+    const beforeNormal = snapshot(db);
+    await initialize(db);
+    expect(snapshot(db)).toEqual(beforeNormal);
+    expect(readRecords()).toEqual(original);
+    db.close();
+    expect(hash()).toBe(originalHash);
+    db = open();
+  } finally { db.close(); }
+});
+
 it.each(["exact", "manual"] as const)("refuses %s schema without writes and leaves its initializer working", async kind => {
   const db = createDatabaseConnection(":memory:", "", { journalMode: "preserve" });
   try {
