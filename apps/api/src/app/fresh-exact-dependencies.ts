@@ -32,6 +32,7 @@ import { CatalogService } from "../modules/inventory/catalog.service";
 import { AttachmentService } from "../modules/attachments/attachment.service";
 import { SqliteAttachmentRepository } from "../modules/attachments/sqlite-attachment.repository";
 import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
+import { ExpenseAttachments } from "../modules/expenses/expense-attachments";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { ProjectCostService } from "../modules/project-cost/project-cost.service";
 import { createExactProjectCostRepository } from "../modules/project-cost/adapters/sqlite-exact-project-cost.repository";
@@ -130,6 +131,7 @@ export async function createFreshExactAppDependencies(
       operationsService,
       catalogService: catalog,
       inventoryAttachmentService: attachments,
+      expenseAttachments: new ExpenseAttachments(connection, lock, new InventoryAttachmentStorage(appConfig.attachmentsRootPath)),
       sessionService: new SessionService(auth, new SqlitePermissionResolver(db, authBootstrapService)),
       recoveryKeyService: new RecoveryKeyService(new SqliteRecoveryKeyPort(db, connection, lock)),
       updateService: new UpdateService(),

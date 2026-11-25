@@ -51,6 +51,41 @@ const createDependencies = () => ({
   },
 });
 
+describe("expense file authorization", () => {
+  it("guards reads and mutations before resolving any file", async () => {
+    const deps = { ...createDependencies(), expenseAttachments: { list: vi.fn(()=>[]), add: vi.fn(async()=>[]), download: vi.fn() } };
+    const app = createApp(deps as never, transportSecurity);
+    for (const method of ["GET", "POST"]) {
+      const request = () => app.request("http://localhost/api/expenses/one/attachments", { method, headers: { origin: "http://localhost:3000" } });
+      deps.sessionService.getCurrentUser.mockResolvedValue(null);
+      expect((await request()).status).toBe(401);
+      deps.sessionService.getCurrentUser.mockResolvedValue({ id:"other", permissions:[] });
+      expect((await request()).status).toBe(403);
+    }
+    deps.sessionService.getCurrentUser.mockResolvedValue({ id:"other", permissions:[] });
+    expect((await app.request("http://localhost/api/expenses/one/attachments/file", { headers:{ origin:"http://localhost:3000" } })).status).toBe(403);
+    expect(deps.expenseAttachments.download).not.toHaveBeenCalled();
+    expect(deps.expenseAttachments.list).not.toHaveBeenCalled();
+    expect(deps.expenseAttachments.add).not.toHaveBeenCalled();
+    deps.sessionService.getCurrentUser.mockResolvedValue({ id:"reader", permissions:["expenses:read"] });
+    const allowed = await app.request("http://localhost/api/expenses/one/attachments", { headers:{origin:"http://localhost:3000"} });
+    expect(allowed.status).toBe(200);
+    expect(await allowed.json()).toEqual({items:[]});
+    expect(allowed.headers.get("cache-control")).toBe("no-store, private");
+    expect((await app.request("http://localhost/api/expenses/one/attachments", {headers:{origin:"https://evil.test"}})).status).toBe(403);
+    const priorLicense = process.env.TUARI_LICENSE_STATUS;
+    try {
+      process.env.TUARI_LICENSE_STATUS = "expired";
+      deps.sessionService.getCurrentUser.mockResolvedValue({ id:"writer", permissions:["expenses:update"] });
+      expect((await app.request("http://localhost/api/expenses/one/attachments", {method:"POST",headers:{origin:"http://localhost:3000"}})).status).toBe(403);
+      expect(deps.expenseAttachments.add).not.toHaveBeenCalled();
+    } finally {
+      if (priorLicense === undefined) delete process.env.TUARI_LICENSE_STATUS;
+      else process.env.TUARI_LICENSE_STATUS = priorLicense;
+    }
+  });
+});
+
 describe("createApp RPC wiring", () => {
   it("skips session resolution for public RPC procedures that do not need auth", async () => {
     const dependencies = createDependencies();

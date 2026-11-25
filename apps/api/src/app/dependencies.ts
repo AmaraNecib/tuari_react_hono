@@ -1,3 +1,4 @@
+import { ExpenseAttachments, expenseAttachmentSchema } from "../modules/expenses/expense-attachments";
 import { createAuth } from "../infrastructure/auth/auth";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
@@ -123,6 +124,7 @@ export type AppDependencies = {
   projectCostService: ProjectCostService;
   roleModule: RoleModule;
   /** Close the shared database connection (idempotent; composition-root lifecycle). */
+  expenseAttachments?: ExpenseAttachments;
   close: () => void;
 };
 
@@ -171,6 +173,7 @@ export async function createAppDependencies(
     // caller no longer has (or needs) a handle to migrate beforehand.
     await ensureDatabaseSchema(new BetterSqlite3Executor(sharedDatabase));
 
+    sharedDatabase.exec(expenseAttachmentSchema);
     const db = createDrizzleFromSqlite(sharedDatabase);
     const auth = config.authInstance ?? createAuth(db, appConfig);
 
@@ -255,6 +258,7 @@ export async function createAppDependencies(
 
     return {
       auth,
+      expenseAttachments: new ExpenseAttachments(sharedDatabase, connectionLock, new InventoryAttachmentStorage(appConfig.attachmentsRootPath)),
       accountService: new AccountService(accountRepository, auth),
       authBootstrapService,
       companyService,

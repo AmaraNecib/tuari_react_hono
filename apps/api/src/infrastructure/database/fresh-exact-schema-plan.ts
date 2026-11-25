@@ -1,3 +1,4 @@
+import { expenseAttachmentSchema } from "../../modules/expenses/expense-attachments";
 import { exactDebtSchemaStatements } from "../../modules/company/adapters/exact-finance-schema";
 import { exactInvoiceSchemaStatements } from "../../modules/invoice/adapters/exact-invoice-schema";
 import { exactInventorySchemaStatements } from "../../modules/inventory/adapters/exact-inventory-schema";
@@ -75,8 +76,11 @@ export const freshExactSchemaPlanV1: readonly string[] = Object.freeze([
 ]);
 
 /** Additive opening provenance does not rewrite accepted #558 financial history. */
-export const freshExactSchemaPlan: readonly string[] = Object.freeze([
+export const freshExactSchemaPlanBeforeReceipts: readonly string[] = Object.freeze([
   ...freshExactSchemaPlanV1, ...payrollOpeningSchemaStatements,
+]);
+export const freshExactSchemaPlan: readonly string[] = Object.freeze([
+  ...freshExactSchemaPlanBeforeReceipts, expenseAttachmentSchema,
 ]);
 
 /** Ownership record for plan consumers and focused composition tests. */

@@ -25,6 +25,17 @@ it("initializes opt-in disposable settlement schema and reattests without writes
     expect(reopened.markers).toEqual(before.markers);
   } finally { db.close(); }
 });
+it("adds receipt links to an already attested settlement snapshot", async () => {
+  const db = createDatabaseConnection(":memory:", "");
+  try {
+    await ensureFreshManualSettlementApplicationSchema(db);
+    db.exec("DROP TABLE expense_attachment");
+    const markers = db.prepare("SELECT * FROM exact_money_schema ORDER BY slice").all();
+    await ensureFreshManualSettlementApplicationSchema(db);
+    expect(db.prepare("SELECT * FROM expense_attachment").all()).toEqual([]);
+    expect(db.prepare("SELECT * FROM exact_money_schema ORDER BY slice").all()).toEqual(markers);
+  } finally { db.close(); }
+});
 it("refuses the old application graph without adding tables or upgrading data", async () => {
   const db = createDatabaseConnection(":memory:", "");
   try {

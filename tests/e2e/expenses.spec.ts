@@ -103,6 +103,21 @@ test("record an expense against a project, group it, then void it out of the tot
   await page.getByRole("button", { name: "تجميع حسب المشروع" }).click()
   const row = page.getByRole("row", { name: new RegExp(whatFor) })
   await expect(row).toBeVisible({ timeout: 10_000 })
+  await row.getByRole("button", { name: "تعديل" }).click()
+  const edit = page.getByRole("dialog")
+  await edit.locator('input[type="file"]').setInputFiles([
+    { name: "receipt-one.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-one") },
+    { name: "receipt-two.png", mimeType: "image/png", buffer: Buffer.from([137,80,78,71]) },
+  ])
+  const filesSection = edit.locator("section").filter({ has: page.locator('input[type="file"]') })
+  await filesSection.getByRole("button", { name: "حفظ", exact: true }).click()
+  await expect(edit.getByRole("link", { name: "receipt-two.png" })).toBeVisible()
+  await edit.getByRole("button", { name: "إلغاء", exact: true }).click()
+  await row.getByRole("button", { name: "تعديل" }).click()
+  await expect(page.getByRole("dialog").getByRole("link", { name: "receipt-one.pdf" })).toBeVisible()
+  await expect(page.getByRole("dialog").getByRole("link", { name: "receipt-two.png" })).toBeVisible()
+  await page.getByRole("dialog").locator("section").filter({ has: page.locator('input[type="file"]') }).screenshot({ path: `.scratch/reviews/625/laptop-expense-files-${Date.now()}.png` })
+  await page.getByRole("dialog").getByRole("button", { name: "إلغاء", exact: true }).click()
   await row.getByRole("button", { name: "إلغاء" }).click()
 
   const voidDialog = page.getByRole("dialog")

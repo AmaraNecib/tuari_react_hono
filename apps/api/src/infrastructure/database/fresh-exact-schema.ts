@@ -1,5 +1,6 @@
 import { createDatabaseConnection } from "./factory";
-import { freshExactSchemaPlan, freshExactSchemaPlanV1 } from "./fresh-exact-schema-plan";
+import { expenseAttachmentSchema } from "../../modules/expenses/expense-attachments";
+import { freshExactSchemaPlan, freshExactSchemaPlanV1, freshExactSchemaPlanBeforeReceipts } from "./fresh-exact-schema-plan";
 import { payrollOpeningSchemaStatements } from "../../modules/workforce/adapters/sqlite-payroll-opening.repository";
 import { ensureFreshApplicationIdentity } from "./schema";
 import { BetterSqlite3Executor } from "./sqlite-executor";
@@ -15,18 +16,18 @@ function physicalSchema(db: BetterSqliteDatabase): SchemaRow[] {
 }
 
 const openingKey = "payroll_opening_v1";
-async function construct(db: BetterSqliteDatabase, opening = true) {
-  for (const statement of opening ? freshExactSchemaPlan : freshExactSchemaPlanV1) db.exec(statement);
+async function construct(db: BetterSqliteDatabase, opening = true, receipts = true) {
+  for (const statement of opening ? receipts ? freshExactSchemaPlan : freshExactSchemaPlanBeforeReceipts : freshExactSchemaPlanV1) db.exec(statement);
   await ensureFreshApplicationIdentity(new BetterSqlite3Executor(db));
   db.prepare("INSERT INTO app_schema_state(key,executed_at) VALUES (?,?)").run(startupKey, new Date().toISOString());
   if (opening) db.prepare("INSERT INTO app_schema_state(key,executed_at) VALUES (?,?)").run(openingKey, new Date().toISOString());
 }
 
 /** A disposable schema oracle holds no application data or financial services. */
-async function expectedSchema(opening = true): Promise<SchemaRow[]> {
+async function expectedSchema(opening = true, receipts = true): Promise<SchemaRow[]> {
   const reference = createDatabaseConnection(":memory:", "");
   try {
-    await construct(reference, opening);
+    await construct(reference, opening, receipts);
     return physicalSchema(reference);
   } finally { reference.close(); }
 }
@@ -44,6 +45,7 @@ export async function ensureFreshExactApplicationSchema(db: BetterSqliteDatabase
   if (db.inTransaction) throw new Error("Financial schema startup requires its own transaction");
   const expected = await expectedSchema();
   const previous = await expectedSchema(false);
+  const beforeReceipts = await expectedSchema(true, false);
   db.exec("PRAGMA foreign_keys=ON");
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -53,6 +55,10 @@ export async function ensureFreshExactApplicationSchema(db: BetterSqliteDatabase
       if (db.prepare("SELECT key FROM app_schema_state WHERE key=?").get(openingKey)) throw unsupported();
       for (const statement of payrollOpeningSchemaStatements) db.exec(statement);
       db.prepare("INSERT INTO app_schema_state(key,executed_at) VALUES (?,?)").run(openingKey, new Date().toISOString());
+    }
+    if (JSON.stringify(physicalSchema(db)) === JSON.stringify(beforeReceipts)) {
+      attest(db, beforeReceipts);
+      db.exec(expenseAttachmentSchema);
     }
     attest(db, expected);
     if (!db.prepare("SELECT key FROM app_schema_state WHERE key=?").get(openingKey)) throw unsupported();

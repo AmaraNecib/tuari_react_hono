@@ -90,7 +90,7 @@ function isLocalhostHostname(url: string) {
 }
 
 function shouldDisableCaching(path: string) {
-  return path.startsWith("/api/auth/") || path.startsWith("/api/inventory/") || path === "/rpc/session";
+  return path.startsWith("/api/expenses/") || path.startsWith("/api/auth/") || path.startsWith("/api/inventory/") || path === "/rpc/session";
 }
 
 function getRemoteAddress(env: unknown) {
@@ -357,6 +357,56 @@ export function createApp(
       ? attachmentNavigationOriginGuard
       : inventoryOriginGuard;
     return guard(c, next);
+  });
+
+  app.use("/api/expenses/*", (c, next) => {
+    const download = /^\/api\/expenses\/[^/]+\/attachments\/[^/]+$/.test(c.req.path);
+    return (download ? attachmentNavigationOriginGuard : inventoryOriginGuard)(c, next);
+  });
+  app.use("/api/expenses/*", async (c, next) => {
+    const user = await dependencies.sessionService.getCurrentUser(c.req.raw.headers);
+    if (!user) return c.json({ message: "Authentication required" }, 401);
+    const permission = c.req.method === "POST" ? "expenses:update" : "expenses:read";
+    if (!user.permissions.includes(permission)) return c.json({ message: "Permission denied" }, 403);
+    if (c.req.method === "POST") {
+      const refusal = mutationLicenseRefusalMessage(getLicenseInfo().status);
+      if (refusal) return c.json({ message: refusal }, 403);
+    }
+    await next();
+  });
+  app.on(["GET", "POST"], "/api/expenses/:expenseId/attachments", async c => {
+    try {
+      const service = dependencies.expenseAttachments;
+      if (!service) return c.json({ message: "Expense files unavailable" }, 503);
+      const id = c.req.param("expenseId");
+      if (c.req.method === "GET") return c.json({ items: service.list(id) });
+      const form = await c.req.formData();
+      const files = form.getAll("files");
+      if (files.some(file => !(file instanceof File))) return c.json({ message: "Invalid files" }, 400);
+      const items = await service.add(id, (files as File[]).map(file => ({
+        name: file.name, type: file.type, size: file.size,
+        bytes: async () => new Uint8Array(await file.arrayBuffer()),
+      })));
+      return c.json({ items });
+    } catch (error) {
+      if (error instanceof InventoryError) return c.json({ error: error.appError }, getAppErrorStatus(error.appError.code));
+      throw error;
+    }
+  });
+  app.get("/api/expenses/:expenseId/attachments/:fileId", async c => {
+    try {
+      const service = dependencies.expenseAttachments;
+      if (!service) return c.json({ message: "Expense files unavailable" }, 503);
+      const { attachment, body } = await service.download(c.req.param("expenseId"), c.req.param("fileId"));
+      c.header("Content-Type", attachment.mimeType);
+      c.header("Content-Length", String(attachment.byteSize));
+      c.header("Content-Disposition", `inline; filename="${encodeURIComponent(attachment.originalName)}"`);
+      c.header("X-Content-Type-Options", "nosniff");
+      return c.body(body);
+    } catch (error) {
+      if (error instanceof InventoryError) return c.json({ error: error.appError }, getAppErrorStatus(error.appError.code));
+      throw error;
+    }
   });
 
   app.get("/health", (c) => c.json({ status: "ok" }));

@@ -45,6 +45,17 @@ describe("selected fresh exact application schema", () => {
     expect(reopened.prepare("SELECT COUNT(*) AS count FROM role").get()).toEqual({ count: 4 });
   });
 
+  it("adds optional receipt links to an attested older exact snapshot without changing expenses", async () => {
+    const db = database();
+    await ensureFreshExactApplicationSchema(db);
+    db.exec("DROP TABLE expense_attachment");
+    const before = db.prepare("SELECT * FROM expense").all();
+    await ensureFreshExactApplicationSchema(db);
+    expect(db.prepare("SELECT * FROM expense").all()).toEqual(before);
+    expect(db.prepare("SELECT * FROM expense_attachment").all()).toEqual([]);
+    await ensureFreshExactApplicationSchema(db);
+  });
+
   it("refuses an existing unsupported database without modifying it", async () => {
     const db = database();
     db.exec("CREATE TABLE debt_account(id TEXT PRIMARY KEY,current_balance REAL); INSERT INTO debt_account VALUES ('preserved',1.25)");
