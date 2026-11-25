@@ -20,7 +20,8 @@ export function ManualSettlementSummary({ item, entries = [] }: { item: Record; 
         {(["payable", "receivable"] as const).map(side => {
           const id = side === "payable" ? item.payableOriginalEntryId : item.receivableOriginalEntryId
           const entry = entries.find(row => row.id === id)
-          return <div key={side}><dt className="font-semibold">{t(`manualSettlement.${side}`)}</dt><dd className="mt-1 space-y-1">{entry ? <><p>{entry.note || t("manualSettlement.manualEntry")} · {t("manualSettlement.entryNumber", { sequence: entry.postingSequence })}</p><p>{money(entry.signedAmountDzd)} · <AppDate value={entry.entryDate} /></p></> : <p>{t("manualSettlement.manualFallback")}</p>}</dd></div>
+          const source = side === "payable" ? item.payableSource : item.receivableSource
+          return <div key={side}><dt className="font-semibold">{t(`manualSettlement.${side}`)}</dt><dd className="mt-1 space-y-1">{entry ? <><p>{entry.note || t("manualSettlement.manualEntry")} · {t("manualSettlement.entryNumber", { sequence: entry.postingSequence })}</p><p>{money(entry.signedAmountDzd)} · <AppDate value={entry.entryDate} /></p></> : <p>{t(source.kind === "RESTRICTED" ? "manualSettlement.restrictedSource" : "manualSettlement.manualFallback")}</p>}</dd></div>
         })}
       </dl>
     </details>

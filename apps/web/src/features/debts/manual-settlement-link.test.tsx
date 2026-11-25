@@ -36,6 +36,22 @@ it("renders restricted account history without inventory links or fake manual pr
  expect(screen.queryByRole("link", { name: "IN-00001" })).toBeNull();
  expect(screen.queryByRole("link", { name: "SALE · sale-1" })).toBeNull();
  expect(document.body.textContent).toContain("shared-operation");
+ const disclosure = screen.getByText("عرض تفاصيل القيدين الأصليين");
+ disclosure.click();
+ expect(disclosure.closest("details")?.open).toBe(true);
+ expect(disclosure.closest("details")?.textContent).not.toContain("قيد يدوي");
+ expect(disclosure.closest("details")?.textContent?.match(/مصدر مقيّد العرض/g)).toHaveLength(2);
+});
+it("preserves genuine manual provenance when original entry details are missing", async () => {
+ const query = new QueryClient(); clients.push(query);
+ const manual = { ...operation, payableSource: { kind: "MANUAL", id: "pay-original", label: "#1" }, receivableSource: { kind: "MANUAL", id: "receive-original", label: "#2" } };
+ const accountHistory = vi.fn().mockResolvedValue({ items: [manual], nextOffset: null });
+ render(<QueryClientProvider client={query}><ManualSettlementLink client={{accountHistory} as unknown as ManualSettlementClient} accountId="pay-account" entryId="pay-portion" /></QueryClientProvider>);
+ await screen.findByText("معكوسة بالكامل");
+ const disclosure = screen.getByText("عرض تفاصيل القيدين الأصليين");
+ disclosure.click();
+ expect(disclosure.closest("details")?.open).toBe(true);
+ expect(disclosure.closest("details")?.textContent?.match(/قيد يدوي أصلي/g)).toHaveLength(2);
 });
 it("does not relabel a generic account-zeroing posting as bilateral",async()=>{
  const query=new QueryClient(); clients.push(query); const accountHistory=vi.fn().mockResolvedValue({items:[operation],nextOffset:null})

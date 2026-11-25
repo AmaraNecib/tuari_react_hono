@@ -61,6 +61,12 @@ The employee keeps `debts:read` and existing settlement permissions. They contin
 
 Historical preparation used expected-red probes against the earlier runtime. Their logs remain donor provenance and are not current green evidence. The current authenticated integration file has three green probes covering candidates, history and both account-history directions; owner metadata and inventory-read denials remain positive controls. The dedicated owner browser case `#614` passed after the contract/UI change. These local results do not establish independent review, hosted acceptance, publication or merge readiness.
 
+## Bounded review corrections
+
+The initial three runtime review sessions found two issues. Restricted history with missing original-entry details still said "original manual entry" when expanded. The summary now uses the matching source descriptor to show neutral restricted text on both sides; a component regression opens the disclosure and rejects manual provenance. A separate positive control preserves the genuine manual fallback. This correction does not change source links, authorization, selection or financial records.
+
+The authenticated candidate test now independently checks the original entry sequence and remaining amount for both obligations. Each direction's first obligation has sequence 1. After settling 10.00 against the fixture's 100.00 purchase and 30.00 sale, remaining amounts must be 90.00 and 20.00. These expectations are literals from the fixture scenario, not copied from owner or employee candidate responses.
+
 ## Decision boundary
 
 The owner has approved the restricted candidate and history source unions and current UI handling. Inventory source visibility continues to follow the existing bootstrap-owner read authority; debt access, settlement permissions, eligibility and financial history are unchanged.

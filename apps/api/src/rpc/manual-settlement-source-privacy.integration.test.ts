@@ -75,8 +75,8 @@ it("debt-only candidates retain debt entries but do not disclose inventory sourc
   ]));
   const candidates = await f.employeeClient.financial.manualSettlement.candidates({ externalCounterpartyId: f.partyId });
   expect(candidates).toEqual(expect.arrayContaining([
-    expect.objectContaining({ id: f.pair.payableOriginalEntryId, debtAccountId: f.purchase.group.debtAccountId, direction: "PAYABLE" }),
-    expect.objectContaining({ id: f.pair.receivableOriginalEntryId, debtAccountId: f.sale.associatedDebtAccountId, direction: "RECEIVABLE" }),
+    expect.objectContaining({ id: f.pair.payableOriginalEntryId, debtAccountId: f.purchase.group.debtAccountId, direction: "PAYABLE", postingSequence: 1, remainingDzd: "90.00" }),
+    expect.objectContaining({ id: f.pair.receivableOriginalEntryId, debtAccountId: f.sale.associatedDebtAccountId, direction: "RECEIVABLE", postingSequence: 1, remainingDzd: "20.00" }),
   ]));
   expect(candidates).toEqual(expect.arrayContaining([
     expect.objectContaining({ id: f.pair.payableOriginalEntryId, sourceKind: "RESTRICTED" }),
