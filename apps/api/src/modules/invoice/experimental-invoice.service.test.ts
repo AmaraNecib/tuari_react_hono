@@ -1,0 +1,52 @@
+import { randomUUID } from "node:crypto";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { expect, it } from "vitest";
+import { createDatabaseConnection } from "../../infrastructure/database/factory";
+import { createFifoLock } from "../../infrastructure/database/fifo-lock";
+import { ensureFreshExperimentalInvoiceSettlementSchema } from "../../infrastructure/database/fresh-experimental-invoice-settlement-schema";
+import { ExactFinanceService } from "../company/exact-finance.service";
+import { SqliteExactFinanceRepository } from "../company/adapters/sqlite-exact-finance.repository";
+import { SqliteExperimentalInvoiceRepository } from "./adapters/sqlite-exact-invoice.repository";
+import { ExperimentalExactInvoiceService } from "./experimental-invoice.service";
+
+const party = "00000000-0000-4000-8000-000000000999";
+const invoiceId = "00000000-0000-4000-8000-000000000101";
+const now = "2026-11-10T00:00:00.000Z";
+it("receives an experimental invoice and records actual bank cash against its owned ledger original", async () => {
+  const path = join(mkdtempSync(join(tmpdir(), "tuari-615-invoice-service-")), "fixture.sqlite");
+  let db = createDatabaseConnection(path, "", { journalMode: "preserve" });
+  try {
+    await ensureFreshExperimentalInvoiceSettlementSchema(db);
+    db.prepare("INSERT INTO external_counterparty(id,full_name,phone_number,note,created_at,updated_at) VALUES (?,?,?,?,?,?)").run(party,"Vendor","",null,now,now);
+    const lock = createFifoLock();
+    const repository = new SqliteExperimentalInvoiceRepository(db, lock);
+    const finance = new ExactFinanceService(new SqliteExactFinanceRepository(db, lock), { id: randomUUID, now: () => now });
+    const service = new ExperimentalExactInvoiceService(repository, finance, { id: randomUUID, now: () => now });
+    const draft = service.createInvoice({ requestId: "draft", id: invoiceId, counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: party, supplierName: "Vendor", lineItems: [{ description: "Goods", source: { mode: "agreed-total", total: "100.00", quantity: "1" } }] });
+    expect(draft).toMatchObject({ status: "DRAFT", totalAmount: "100.00", paidAmount: "0.00", settledAmount: "0.00", remainingAmount: "100.00" });
+    const received = service.receiveInvoice({ requestId: "receive", id: invoiceId });
+    expect(received.status).toBe("RECEIVED");
+    const payment = service.createPayment({ requestId: "cash", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: party, direction: "PURCHASE", paymentDate: now, paymentMethod: "BANK_TRANSFER", totalAmount: "20.00", allocations: [{ invoiceId, amount: "20.00" }] });
+    expect(payment.unallocatedAmount).toBe("0.00");
+    expect(service.getInvoice(invoiceId)).toMatchObject({ status: "RECEIVED", paidAmount: "20.00", settledAmount: "0.00", remainingAmount: "80.00" });
+    expect(finance.remaining(received.debtEntryId!)).toBe("80.00");
+    const unallocated = service.createPayment({ requestId: "cash-unallocated", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: party, direction: "PURCHASE", paymentDate: now, paymentMethod: "CHECK", totalAmount: "3.00", allocations: [] });
+    expect(unallocated.unallocatedAmount).toBe("3.00");
+    service.allocatePayment({ requestId: "allocate-check", id: unallocated.id, allocations: [{ invoiceId, amount: "3.00" }] });
+    expect(service.getInvoice(invoiceId)).toMatchObject({ paidAmount: "23.00", settledAmount: "0.00", remainingAmount: "77.00" });
+    service.voidPayment({ requestId: "void-check", id: unallocated.id, reason: "test reversal" });
+    expect(service.getInvoice(invoiceId)).toMatchObject({ paidAmount: "20.00", settledAmount: "0.00", remainingAmount: "80.00" });
+    const saleId = "00000000-0000-4000-8000-000000000111";
+    const sale = service.createInvoice({ requestId: "sale-draft", id: saleId, counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: party, supplierName: "Vendor", direction: "SALE", lineItems: [{ description: "Sale", source: { mode: "agreed-total", total: "5.00", quantity: "1" } }] });
+    expect(sale.direction).toBe("SALE");
+    service.receiveInvoice({ requestId: "sale-receive", id: saleId });
+    service.createPayment({ requestId: "sale-check", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: party, direction: "SALE", paymentDate: now, paymentMethod: "CHECK", totalAmount: "5.00", allocations: [{ invoiceId: saleId, amount: "5.00" }] });
+    expect(service.getInvoice(saleId)).toMatchObject({ status: "PAID", paidAmount: "5.00", settledAmount: "0.00", remainingAmount: "0.00" });
+    db.close();
+    db = createDatabaseConnection(path, "", { journalMode: "preserve" });
+    const reopened = new SqliteExperimentalInvoiceRepository(db, createFifoLock());
+    expect(reopened.getInvoice(invoiceId)).toMatchObject({ status: "RECEIVED", paidAmount: "20.00", settledAmount: "0.00", remainingAmount: "80.00" });
+  } finally { db.close(); }
+});
