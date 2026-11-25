@@ -24,6 +24,10 @@ export function useExactInventoryLocation(client: ExactInventoryClient, location
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "location", location], enabled: location !== null,
     queryFn: () => { if (!location) throw new Error("Select an inventory location"); return client.locationContents(location) } })
 }
+export function useExactInventoryOutbound(client: ExactInventoryClient, id: string | null) {
+  return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "outbound", id], enabled: id !== null,
+    queryFn: () => { if (!id) throw new Error("Select an outbound transfer"); return client.getOutbound({ id }) } })
+}
 export function useExactInventoryOutbounds(client: ExactInventoryClient) {
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "outbounds"], queryFn: () => client.listOutbounds() })
 }

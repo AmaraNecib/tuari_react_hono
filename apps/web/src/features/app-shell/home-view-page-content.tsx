@@ -18,6 +18,7 @@ export function HomeViewPageContent({
   earningApproval,
   returnTo,
   invoiceId,
+  outboundId,
   navigation,
   page,
   selectedCounterparty,
@@ -47,6 +48,7 @@ export function HomeViewPageContent({
         earningApproval={earningApproval}
         returnTo={returnTo}
         selectedInvoiceId={invoiceId}
+        selectedOutboundId={outboundId}
         navigation={navigation}
         page={page}
         selectedCounterparty={selectedCounterparty}

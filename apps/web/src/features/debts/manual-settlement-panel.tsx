@@ -47,7 +47,7 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
   const locked = busy || pending !== null || storageFailed
   const p = options.data?.find(entry => entry.id === payable)
   const r = options.data?.find(entry => entry.id === receivable)
-  const sourceHref = (entry: typeof p) => entry?.sourceKind === "PURCHASE" ? `/invoices/${encodeURIComponent(entry.sourceId)}` : entry?.sourceKind === "SALE" ? `/outbound-transfers?source=${encodeURIComponent(entry.sourceId)}` : null
+  const sourceHref = (entry: typeof p) => entry?.sourceKind === "PURCHASE" ? `/invoices/${encodeURIComponent(entry.sourceId)}` : entry?.sourceKind === "SALE" ? `/outbound-transfers?source=${encodeURIComponent(entry.sourceId)}&party=${encodeURIComponent(partyId)}` : null
   let parsed: string | null = null
   try { parsed = parseLocalizedMoneyInput(amount).toWire() } catch { /* Incomplete input has no preview. */ }
   const valid = Boolean(p && r && parsed && Money.parse(parsed).compare(Money.parse("0")) > 0 && Money.parse(parsed).compare(Money.parse(p.remainingDzd!)) <= 0 && Money.parse(parsed).compare(Money.parse(r.remainingDzd!)) <= 0)

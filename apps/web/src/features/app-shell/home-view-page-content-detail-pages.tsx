@@ -57,6 +57,7 @@ export function HomeViewPageDetailContent({
   navigation,
   page,
   selectedInvoiceId,
+  selectedOutboundId,
   selectedCounterparty,
   selectedEmployeeManagerOptions,
   selectedEmployee,
@@ -81,6 +82,7 @@ export function HomeViewPageDetailContent({
   | "t"
 > & {
   selectedInvoiceId?: string
+  selectedOutboundId?: string
   selectedEmployeeManagerOptions: HomeViewPageContentProps["derived"]["managerOptions"]
   selectedProjectManagerOptions: HomeViewPageContentProps["derived"]["projectManagerOptions"]
   selectedWarehouseManagerOptions: HomeViewPageContentProps["derived"]["warehouseManagerOptions"]
@@ -340,7 +342,6 @@ export function HomeViewPageDetailContent({
       return renderLazy(<TransferHistoryPage />)
 
     case "inventory":
-    case "outbound-transfers":
     case "outbound-transfer-create":
     case "outbound-transfer-create-v2":
       return renderLazy(<ExactFinancialRoutePage
@@ -355,7 +356,8 @@ export function HomeViewPageDetailContent({
       />)
 
     case "invoices":
-      return renderLazy(<ExactInventoryPage client={financialClient.inventory} locations={[
+    case "outbound-transfers":
+      return renderLazy(<ExactInventoryPage initialOutboundId={selectedOutboundId} initialOutboundPartyId={selectedCounterparty?.id} client={financialClient.inventory} locations={[
         ...derived.warehouses.map(row => ({ id: row.id, label: row.name, type: "WAREHOUSE" as const })),
         ...derived.projects.map(row => ({ id: row.id, label: row.name, type: "PROJECT" as const })),
       ]} parties={derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName }))} />)

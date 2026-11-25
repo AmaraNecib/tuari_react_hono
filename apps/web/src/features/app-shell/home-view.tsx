@@ -74,6 +74,7 @@ export function HomeView({
   counterpartyId,
   employeeId,
   invoiceId,
+  outboundId,
   projectId,
   warehouseId,
   paginationCursor,
@@ -89,6 +90,7 @@ export function HomeView({
   counterpartyId?: string
   employeeId?: string
   invoiceId?: string
+  outboundId?: string
   projectId?: string
   warehouseId?: string
   paginationCursor?: string
@@ -234,6 +236,7 @@ export function HomeView({
             salariesSearch={salariesSearch}
             onSalariesSearchChange={onSalariesSearchChange}
             invoiceId={invoiceId}
+            outboundId={outboundId}
             page={page}
             paginationCursor={paginationCursor}
             paginationLimit={paginationLimit}
