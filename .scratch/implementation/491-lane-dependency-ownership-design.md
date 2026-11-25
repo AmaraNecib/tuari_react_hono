@@ -1,0 +1,9 @@
+# #491 lane dependency ownership
+
+Base: `f779b3cdfab6b784edce7db5d200c31b46182288`. Verification mode: focused-local / CI-final-enforced. Risk: high-assurance tooling and dependency ownership.
+
+One worktree is the lane's canonical source and mutable build owner. The ownership preflight checks existing root and package `node_modules` roots, pnpm's mutable `.pnpm` virtual stores, contracts links, `packages/contracts/dist`, and the contracts manifest's `exports['.'].import` and `.types` targets. Existing target paths and parent components must resolve inside the canonical contracts package. Missing ordinary build components are allowed before setup/build; dangling, looping, inaccessible, or broken links fail closed. This closes the export-file ownership gap without adding arbitrary dependency-entry or freshness checks. The separate full preflight still requires exported build files before API/web checks. Direct package scripts pass `../..` explicitly because pnpm starts them from package cwd.
+
+Root and direct API, web, and contracts test, typecheck, build, and dev scripts call the ownership preflight before their tool. pnpm's immutable content-addressed store may be shared; its mutable `.pnpm` virtual store must resolve inside the worktree. This check does not inspect arbitrary package entry links or prove artifact freshness. Raw direct tool invocations remain outside the guard. Backup ignore behavior is unchanged.
+
+Applied wisdom: conflicted parent manifests can poison worktree tools, so this lane uses its own pinned source tree; Turbo logs can replay another tree's paths, so focused checks run directly; stale contracts output can mask source changes, so API test entry points build contracts first. The historical advice to install in every checkout is excluded because owner selected lane-owned installs and prohibited installs in this task. Candidate: keep direct package entry-point guards aligned when adding supported package scripts.
