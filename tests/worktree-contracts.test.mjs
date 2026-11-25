@@ -79,32 +79,43 @@ test('ownership command reaches downstream on valid root and blocks sibling node
   }
 });
 
-test('ownership rejects a pnpm virtual store linked to another worktree', async t => {
-  const { root, sibling } = await fixture(t);
-  await mkdir(path.join(root, 'node_modules'), { recursive: true });
-  await mkdir(path.join(sibling, 'node_modules/.pnpm'), { recursive: true });
-  await linkDirectory(path.join(sibling, 'node_modules/.pnpm'), path.join(root, 'node_modules/.pnpm'));
-  const result = await inspectWorktreeOwnership(root);
-  assert.equal(result.ok, false, JSON.stringify(result));
-  assert.ok(result.diagnostics.some(item => item.includes('node_modules/.pnpm')), JSON.stringify(result));
-});
+function runOwnershipDownstream(root, sentinel) {
+  const code = `const {spawnSync}=require('node:child_process');const {writeFileSync}=require('node:fs');const r=spawnSync(process.execPath,${JSON.stringify([cliPath, '--ownership-only', root])},{encoding:'utf8'});if(r.status!==0){process.stderr.write(r.stdout+r.stderr);process.exit(r.status??1)}writeFileSync(${JSON.stringify(sentinel)},'ran')`;
+  return spawnSync(process.execPath, ['-e', code], { cwd: root, encoding: 'utf8', timeout: 10000 });
+}
 
-test('ownership rejects dangling and looping virtual-store links', async t => {
-  for (const kind of ['internal', 'external', 'loop']) {
-    const { root, sibling } = await fixture(t);
-    const store = path.join(root, 'node_modules/.pnpm');
-    await mkdir(path.dirname(store), { recursive: true });
-    const target = kind === 'internal' ? path.join(root, 'missing-store') : kind === 'external' ? path.join(sibling, 'missing-store') : store;
-    if (kind === 'loop') await symlink('loop-b', store, process.platform === 'win32' ? 'junction' : 'dir');
-    await symlink(kind === 'loop' ? 'loop-a' : target, kind === 'loop' ? path.join(root, 'node_modules/loop-b') : store, process.platform === 'win32' ? 'junction' : 'dir');
-    const result = await inspectWorktreeOwnership(root);
-    assert.equal(result.ok, false, `${kind}: ${JSON.stringify(result)}`);
-  }
-});
+for (const relative of ['node_modules/.pnpm', 'apps/api/node_modules/.pnpm', 'apps/web/node_modules/.pnpm', 'packages/contracts/node_modules/.pnpm', 'node_modules', 'apps/api/node_modules', 'apps/web/node_modules', 'packages/contracts/node_modules', 'packages/contracts/dist']) {
+  test(`ownership blocks foreign, dangling and looping ${relative} before downstream execution`, async t => {
+    for (const kind of ['foreign', 'internal', 'external', 'loop']) {
+      const { root, sibling } = await fixture(t);
+      const link = path.join(root, relative);
+      await rm(link, { recursive: true, force: true });
+      await mkdir(path.dirname(link), { recursive: true });
+      const target = kind === 'foreign' ? sibling : kind === 'internal' ? path.join(root, 'missing-target') : kind === 'external' ? path.join(sibling, 'missing-target') : link;
+      await linkDirectory(target, link);
+      if (kind === 'loop') await assert.rejects(lstat(path.join(link, 'probe')), error => ['ELOOP', 'ENOENT', 'EINVAL'].includes(error.code));
+      const result = await inspectWorktreeOwnership(root);
+      assert.equal(result.ok, false, `${kind}: ${JSON.stringify(result)}`);
+      assert.ok(result.diagnostics.some(item => item.includes(relative)), JSON.stringify(result));
+      const sentinel = path.join(root, 'downstream-ran');
+      const command = runOwnershipDownstream(root, sentinel);
+      assert.equal(command.error, undefined, `${relative} ${kind}: ${command.error}`);
+      assert.equal(command.status, 1, `${relative} ${kind}: ${command.stderr}`);
+      await assert.rejects(lstat(sentinel), { code: 'ENOENT' });
+    }
+  });
+}
 
-test('ownership allows missing local install and contracts output paths', async t => {
+test('ownership allows missing local install and contracts output paths before downstream execution', async t => {
   const { root } = await fixture(t);
+  for (const relative of ['node_modules', 'apps/api/node_modules', 'apps/web/node_modules', 'packages/contracts/node_modules', 'packages/contracts/dist']) {
+    await rm(path.join(root, relative), { recursive: true, force: true });
+  }
   assert.deepEqual(await inspectWorktreeOwnership(root), { ok: true, diagnostics: [] });
+  const sentinel = path.join(root, 'downstream-ran');
+  const result = runOwnershipDownstream(root, sentinel);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(await readFile(sentinel, 'utf8'), 'ran');
 });
 
 test('supported manifest scripts run their declared ownership preflight from real package cwd', async t => {
