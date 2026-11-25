@@ -36,6 +36,26 @@ export async function inspectWorktreeOwnership(repositoryRoot = process.cwd()) {
       } else diagnostics.push(`Cannot inspect ${relative}: ${error.message}`);
     }
   }
+  // pnpm's virtual store is mutable install state. Its content-addressed
+  // store may be shared, but the worktree-local .pnpm directory may not.
+  for (const relative of ['node_modules', 'apps/api/node_modules', 'apps/web/node_modules', 'packages/contracts/node_modules']) {
+    const virtualStore = path.join(root, relative, '.pnpm');
+    try {
+      const info = await lstat(virtualStore);
+      const actual = await realpath(virtualStore);
+      if (!within(root, actual)) diagnostics.push(`${relative}/.pnpm resolves outside this worktree: ${actual}`);
+      if (!info.isDirectory() && !info.isSymbolicLink()) diagnostics.push(`${relative}/.pnpm is not a directory`);
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        try {
+          const info = await lstat(virtualStore);
+          if (info.isSymbolicLink()) diagnostics.push(`${relative}/.pnpm is a broken or dangling link`);
+        } catch (inspectError) {
+          if (inspectError.code !== 'ENOENT') diagnostics.push(`Cannot inspect ${relative}/.pnpm: ${inspectError.message}`);
+        }
+      } else diagnostics.push(`Cannot inspect ${relative}/.pnpm: ${error.message}`);
+    }
+  }
   const contracts = path.join(root, 'packages/contracts');
   let packageRoot;
   try { packageRoot = await realpath(contracts); }

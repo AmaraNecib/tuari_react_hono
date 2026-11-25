@@ -79,6 +79,34 @@ test('ownership command reaches downstream on valid root and blocks sibling node
   }
 });
 
+test('ownership rejects a pnpm virtual store linked to another worktree', async t => {
+  const { root, sibling } = await fixture(t);
+  await mkdir(path.join(root, 'node_modules'), { recursive: true });
+  await mkdir(path.join(sibling, 'node_modules/.pnpm'), { recursive: true });
+  await linkDirectory(path.join(sibling, 'node_modules/.pnpm'), path.join(root, 'node_modules/.pnpm'));
+  const result = await inspectWorktreeOwnership(root);
+  assert.equal(result.ok, false, JSON.stringify(result));
+  assert.ok(result.diagnostics.some(item => item.includes('node_modules/.pnpm')), JSON.stringify(result));
+});
+
+test('ownership rejects dangling and looping virtual-store links', async t => {
+  for (const kind of ['internal', 'external', 'loop']) {
+    const { root, sibling } = await fixture(t);
+    const store = path.join(root, 'node_modules/.pnpm');
+    await mkdir(path.dirname(store), { recursive: true });
+    const target = kind === 'internal' ? path.join(root, 'missing-store') : kind === 'external' ? path.join(sibling, 'missing-store') : store;
+    if (kind === 'loop') await symlink('loop-b', store, process.platform === 'win32' ? 'junction' : 'dir');
+    await symlink(kind === 'loop' ? 'loop-a' : target, kind === 'loop' ? path.join(root, 'node_modules/loop-b') : store, process.platform === 'win32' ? 'junction' : 'dir');
+    const result = await inspectWorktreeOwnership(root);
+    assert.equal(result.ok, false, `${kind}: ${JSON.stringify(result)}`);
+  }
+});
+
+test('ownership allows missing local install and contracts output paths', async t => {
+  const { root } = await fixture(t);
+  assert.deepEqual(await inspectWorktreeOwnership(root), { ok: true, diagnostics: [] });
+});
+
 test('supported manifest scripts run their declared ownership preflight from real package cwd', async t => {
   const { root } = await fixture(t);
   const manifests = [
