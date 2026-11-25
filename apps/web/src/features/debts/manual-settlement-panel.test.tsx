@@ -14,7 +14,7 @@ const reverse: PendingSettlement = { kind: "reverse", input: { requestId: "R", s
 const queries: QueryClient[] = []
 function fixture() {
  const client = {
-  candidates: vi.fn().mockResolvedValue([{ id: "a", direction: "PAYABLE", postingSequence: 1, remainingDzd: "100.00" }, { id: "b", direction: "RECEIVABLE", postingSequence: 1, remainingDzd: "60.00" }]),
+  candidates: vi.fn().mockResolvedValue([{ id: "a", direction: "PAYABLE", postingSequence: 1, remainingDzd: "100.00", sourceKind: "PURCHASE", sourceId: "invoice-1", sourceLabel: "IN-00001" }, { id: "b", direction: "RECEIVABLE", postingSequence: 1, remainingDzd: "60.00", sourceKind: "SALE", sourceId: "sale-1", sourceLabel: "SALE · sale-1" }]),
   history: vi.fn().mockResolvedValue({ items: [], nextOffset: null }), accountHistory: vi.fn(),
   preview: vi.fn().mockResolvedValue({ payableRemainingDzd: "100.00", receivableRemainingDzd: "60.00", projectedPayableRemainingDzd: "75.00", projectedReceivableRemainingDzd: "35.00", netPositionDzd: "40.00" }),
   confirm: vi.fn().mockResolvedValue({}), reverse: vi.fn().mockResolvedValue({}),

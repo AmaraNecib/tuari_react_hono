@@ -33,7 +33,14 @@ export class ManualSettlementService {
         return this.finance.listEntries(account.id).filter(entry => entry.status === "LIVE" && !entry.targetEntryId && !entry.correctionOfEntryId && !entry.invoiceId
           && (!(entry.producerType || entry.producerId) || this.trustedInventoryOriginal(entry, input.externalCounterpartyId, account.direction))
           && Money.parse(entry.signedAmountDzd).compare(Money.parse("0")) > 0)
-          .map(entry => ({ id: entry.id, debtAccountId: account.id, direction: account.direction, postingSequence: entry.postingSequence, remainingDzd: remainingByEntry.get(entry.id)! }))
+          .map(entry => {
+            const group = entry.producerType === "INVENTORY_PURCHASE" && entry.producerId ? this.inventory?.getGroup(entry.producerId) : null;
+            const outbound = entry.producerType === "INVENTORY_OUTBOUND" && entry.producerId ? this.inventory?.getOutbound(entry.producerId) : null;
+            const sourceKind = group ? "PURCHASE" as const : outbound ? "SALE" as const : "MANUAL" as const;
+            const sourceId = group?.id ?? outbound?.id ?? entry.id;
+            const sourceLabel = group ? (group.invoiceNumber || group.id) : outbound ? `${outbound.transferType} · ${outbound.id}` : `#${entry.postingSequence}`;
+            return { id: entry.id, debtAccountId: account.id, direction: account.direction, postingSequence: entry.postingSequence, remainingDzd: remainingByEntry.get(entry.id)!, sourceKind, sourceId, sourceLabel };
+          })
           .filter(entry => Money.parse(entry.remainingDzd).compare(Money.parse("0")) > 0);
       });
     });

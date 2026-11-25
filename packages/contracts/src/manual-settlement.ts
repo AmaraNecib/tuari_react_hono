@@ -57,6 +57,7 @@ export const manualSettlementHistoryOutputSchema = z.object({ items: z.array(man
 export const manualSettlementCandidateSchema = z.object({
   id: entityIdSchema, debtAccountId: entityIdSchema, direction: z.enum(["PAYABLE", "RECEIVABLE"]),
   postingSequence: z.number().int(), remainingDzd: positive,
+  sourceKind: z.enum(["MANUAL", "PURCHASE", "SALE"]), sourceId: entityIdSchema, sourceLabel: z.string().min(1).max(200),
 });
 export const manualSettlementContract = {
   candidates: oc.input(z.object({ externalCounterpartyId: entityIdSchema }).strict()).output(z.array(manualSettlementCandidateSchema)),
