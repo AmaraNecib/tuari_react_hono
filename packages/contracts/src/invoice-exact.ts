@@ -93,6 +93,11 @@ export const exactInvoiceListSchema = z.object({
   cursor: z.string().max(2048).optional(), limit: z.number().int().min(1).max(100).default(50),
   filters: z.object({ status: exactInvoiceSchema.shape.status.optional(), counterpartyId: entityIdSchema.optional() }).optional(),
 });
+export const experimentalExactInvoiceListSchema = z.object({
+  sort: z.object({ field: z.enum(["createdAt", "invoiceDate", "totalAmount"]), direction: z.enum(["asc", "desc"]) }).optional(),
+  cursor: z.string().max(2048).optional(), limit: z.number().int().min(1).max(100).default(50),
+  filters: z.object({ status: experimentalExactInvoiceSchema.shape.status.optional(), counterpartyId: entityIdSchema.optional() }).optional(),
+});
 export const exactPaymentListSchema = z.object({
   sort: z.object({ field: z.enum(["createdAt", "paymentDate", "totalAmount"]), direction: z.enum(["asc", "desc"]) }).optional(),
   cursor: z.string().max(2048).optional(), limit: z.number().int().min(1).max(100).default(50),
@@ -108,4 +113,5 @@ export type ExactInvoiceVoid = z.input<typeof exactInvoiceVoidSchema>;
 export type ExactPaymentCreate = z.input<typeof exactPaymentCreateSchema>;
 export type ExactPaymentAllocate = z.input<typeof exactPaymentAllocateSchema>;
 export type ExactInvoiceList = z.input<typeof exactInvoiceListSchema>;
+export type ExperimentalExactInvoiceList = z.input<typeof experimentalExactInvoiceListSchema>;
 export type ExactPaymentList = z.input<typeof exactPaymentListSchema>;

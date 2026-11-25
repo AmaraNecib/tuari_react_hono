@@ -98,9 +98,15 @@ Native repository tests use the actual experimental full graph, persist received
 
 ### Experimental service checkpoint
 
-`ExperimentalExactInvoiceService` delegates draft, receive, payment allocation and payment void workflows to the existing synchronous `ExactInvoiceService` through an internal repository bridge. The bridge preserves the experimental settled projection while keeping normal v1 rows and contracts unchanged. Both repositories enlist with `ExactFinanceService` using the same connection and FIFO lock. The wrapper returns experimental invoice rows and refuses invoice void when a noncash portion is present, directing callers to reverse the linked settlement first.
+The normal `ExactInvoiceService` and internal `ExperimentalExactInvoiceService` now share a typed `InvoiceServiceCore<TInvoice>` with fixed parser/status/list policies. Each public wrapper keeps its original constructor and invoice row contract; no client-selectable mode exists. The experimental policy parses every constructed or changed row with `experimentalExactInvoiceSchema`, initializes `settledAmount`, and derives `SETTLED` truthfully. Command callbacks return the complete parsed invoice row inside the existing aggregate work, so recorded results preserve the original command snapshot. `getInvoice` and list calls remain current-state reads. Experimental list filtering accepts `SETTLED`; normal list schema stays cash-only.
 
-Native service proof creates and receives a 100.00 PURCHASE invoice, records a 20.00 BANK_TRANSFER allocation, and independently reads paid 20.00, settled 0.00, remaining 80.00 and ledger remaining 80.00 after reopen. It also allocates then voids a 3.00 CHECK and proves paid/remaining restore, and verifies a fully cash-paid SALE with CHECK becomes PAID. This does not prove noncash settlement creation/reversal, changed-intent replay after restart, source matrix pairing, or public route wiring.
+Native replay proof retains the original DRAFT, update and RECEIVE results through later receive, settlement, reversal and invoice cancellation; delete-draft replay survives row deletion. Payment replay returns its original result. The mixed invoice/manual tests independently verify current state, same-intent replay after reopen, changed-intent conflict, and SETTLED versus RECEIVED list filtering. Normal invoice lifecycle/guard tests still pass after core factoring.
+
+### Command replay and SETTLED list checkpoint
+
+`InvoiceServiceCore<TInvoice>` owns one implementation for normal and experimental paths. Its fixed row parser is applied to all values written or returned from command work, preserving full experimental settled/status snapshots in the aggregate receipt. Wrappers do not reread repository state after a command. Current `getInvoice`/list reads still fetch current rows. Normal `exactInvoiceListSchema` remains unchanged; `experimentalExactInvoiceListSchema` separately accepts SETTLED and filters by the stored experimental status.
+
+Native regressions cover replaying create/update/receive after later changes, delete-draft after deletion, payment after cancellation, and void after reopen. They also check current invoice state differs from the replayed historical result where expected, plus SETTLED/RECEIVED filters. The disposable experimental receipt layout is unchanged; no normal migration or receipt reinterpretation is needed.
 
 ### Invoice settlement participant checkpoint
 
