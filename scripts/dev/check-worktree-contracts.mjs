@@ -36,6 +36,8 @@ export async function inspectWorktreeOwnership(repositoryRoot = process.cwd()) {
       } else diagnostics.push(`Cannot inspect ${relative}: ${error.message}`);
     }
   }
+  const exportOwnership = await inspectContractsExportOwnership(root);
+  diagnostics.push(...exportOwnership.diagnostics);
   // pnpm's virtual store is mutable install state. Its content-addressed
   // store may be shared, but the worktree-local .pnpm directory may not.
   for (const relative of ['node_modules', 'apps/api/node_modules', 'apps/web/node_modules', 'packages/contracts/node_modules']) {
@@ -79,6 +81,58 @@ export async function inspectWorktreeOwnership(repositoryRoot = process.cwd()) {
     }
   }
   return { ok: diagnostics.length === 0, diagnostics };
+}
+
+async function inspectContractsExportOwnership(root) {
+  const diagnostics = [];
+  const packageRoot = path.join(root, 'packages/contracts');
+  let metadata;
+  try { metadata = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8')); }
+  catch (error) { return { diagnostics: [`Cannot read contracts exports: ${error.message}`] }; }
+  const entry = metadata?.exports?.['.'];
+  if (!entry || typeof entry !== 'object') return { diagnostics: ['Malformed contracts exports: missing . entry'] };
+  for (const kind of ['import', 'types']) {
+    const target = entry[kind];
+    if (typeof target !== 'string' || !target.startsWith('./') || target.includes('\\\\') || path.isAbsolute(target)) {
+      diagnostics.push(`Invalid ${kind} export target`); continue;
+    }
+    const resolved = path.resolve(packageRoot, target);
+    if (!within(packageRoot, resolved)) { diagnostics.push(`${kind} export target escapes contracts package: ${target}`); continue; }
+    let cursor = packageRoot;
+    let broken = false;
+    for (const part of path.relative(packageRoot, resolved).split(path.sep)) {
+      cursor = path.join(cursor, part);
+      try { await lstat(cursor); }
+      catch (error) {
+        if (error.code === 'ENOENT') {
+          try { await realpath(path.dirname(cursor)); }
+          catch (parentError) {
+            if (parentError.code !== 'ENOENT') { diagnostics.push(`Broken contracts ${kind} export target parent: ${parentError.code ?? parentError.message}`); broken = true; }
+          }
+          if (!broken) break;
+        } else { diagnostics.push(`Cannot inspect contracts ${kind} export target: ${error.code ?? error.message}`); broken = true; }
+      }
+      if (!broken) {
+        try {
+          const actual = await realpath(cursor);
+          if (!within(packageRoot, actual)) { diagnostics.push(`${kind} export target resolves outside contracts package: ${target}`); broken = true; }
+        } catch (error) {
+          diagnostics.push(`Broken contracts ${kind} export target: ${target} (${error.code ?? error.message})`);
+          broken = true;
+        }
+      }
+      if (broken) break;
+    }
+    if (!broken) {
+      try {
+        const actual = await realpath(resolved);
+        if (!(await stat(actual)).isFile()) diagnostics.push(`Contracts ${kind} build target is not a regular file: ${target}`);
+      } catch (error) {
+        if (error.code !== 'ENOENT') diagnostics.push(`Cannot resolve contracts ${kind} export target: ${error.code ?? error.message}`);
+      }
+    }
+  }
+  return { diagnostics };
 }
 
 export async function inspectWorktreeContracts(repositoryRoot = process.cwd()) {

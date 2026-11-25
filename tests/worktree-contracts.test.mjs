@@ -106,6 +106,37 @@ for (const relative of ['node_modules/.pnpm', 'apps/api/node_modules/.pnpm', 'ap
   });
 }
 
+for (const kind of ['import', 'types']) {
+  test(`ownership rejects ${kind} export linked to sibling before downstream`, async t => {
+    const { root, target, sibling } = await fixture(t);
+    const filename = kind === 'import' ? 'entry.js' : 'entry.d.ts';
+    await writeFile(path.join(sibling, filename), 'foreign');
+    await linkDirectory(sibling, path.join(target, 'external'));
+    const manifest = metadata();
+    manifest.exports['.'][kind] = `./external/${filename}`;
+    await writeFile(path.join(target, 'package.json'), JSON.stringify(manifest));
+    const sentinel = path.join(root, 'downstream-ran');
+    const command = runOwnershipDownstream(root, sentinel);
+    assert.equal(command.status, 1, command.stderr);
+    assert.match(command.stderr, /resolves outside contracts package/);
+    await assert.rejects(lstat(sentinel), { code: 'ENOENT' });
+  });
+}
+
+test('ownership rejects dangling export links but allows missing ordinary build output', async t => {
+  const { root, target } = await fixture(t);
+  await rm(path.join(target, 'dist'), { recursive: true });
+  assert.deepEqual(await inspectWorktreeOwnership(root), { ok: true, diagnostics: [] });
+  await mkdir(path.join(target, 'dist'), { recursive: true });
+  await linkDirectory(path.join(target, 'dist', 'absent'), path.join(target, 'dist', 'broken'));
+  const manifest = metadata();
+  manifest.exports['.'].import = './dist/broken/index.js';
+  await writeFile(path.join(target, 'package.json'), JSON.stringify(manifest));
+  const result = await inspectWorktreeOwnership(root);
+  assert.equal(result.ok, false, JSON.stringify(result));
+  assert.match(result.diagnostics.join('\\n'), /Broken contracts import export target|dangling/);
+});
+
 test('ownership allows missing local install and contracts output paths before downstream execution', async t => {
   const { root } = await fixture(t);
   for (const relative of ['node_modules', 'apps/api/node_modules', 'apps/web/node_modules', 'packages/contracts/node_modules', 'packages/contracts/dist']) {
