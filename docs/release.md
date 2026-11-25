@@ -170,8 +170,10 @@ which read failed.
    gh release download beta --repo AmaraNecib/tuari_react_hono --pattern '*-setup.exe'
    ```
 
-The `beta` channel is the fastest way to get a customer an installer, because it
-needs no tag and no stable promotion.
+The `beta` channel is an internal prerelease channel, not an approved customer
+installer. Neither channel availability nor a successful publish authorizes
+customer distribution. Apply the [manual-update gates](manual-update-runbook.md)
+before any installation; release selection remains the owner's decision.
 
 ## Publishing the stable channel
 
@@ -201,9 +203,10 @@ being downloaded, but a customer may notice them.
 
 - **No code-signing certificate.** `tauri.conf.json` sets
   `bundle.targets: "nsis"` and has no Windows signing configuration, so the
-  installer is unsigned. Windows SmartScreen shows "Windows protected your PC";
-  the customer clicks **More info** then **Run anyway**. An EV or OV
-  code-signing certificate is required to remove that warning.
+  installer is unsigned. Windows may show a SmartScreen or other security
+  warning. Stop the installation and escalate to the release owner. Never
+  bypass an operating-system warning. The owner must approve the release and
+  signing posture before customer installation.
 - **No production update signing key.** Repository secrets
   `UPDATE_SIGNING_KEY`, `UPDATE_PUBLIC_KEY`, and `UPDATE_KEY_ID` are unset
   (`gh secret list` returns nothing). Both workflows fall back to generating an
@@ -224,7 +227,18 @@ being downloaded, but a customer may notice them.
 
 ## Verifying a published installer
 
-Download every asset the release published:
+This section describes internal artifact checks, not installation approval.
+Before downloading a candidate for internal inspection, obtain the owner's
+exact-artifact selection and approved source under the
+[manual-update runbook](manual-update-runbook.md#approved-source-gate).
+Execution additionally requires the
+[disposable rehearsal prerequisites](manual-update-runbook.md#disposable-rehearsal-prerequisites).
+Customer installation requires every customer-installation gate, including
+accepted rehearsal results. None of these approvals is supplied by this
+document. The commands below use beta as an internal example, not as a customer
+recommendation.
+
+For an approved internal inspection, download the selected release's assets:
 
 ```bash
 gh release download beta --repo AmaraNecib/tuari_react_hono --dir ./verify
@@ -238,9 +252,15 @@ The installer asset is named `tuari-<version>-<channel>-setup.exe`. For the
 certutil -hashfile ./verify/tuari-0.1.0-beta.1-beta-setup.exe SHA256
 ```
 
-Run the installer. It uses `installMode: currentUser`, so it installs under the
-user profile without an admin prompt. Launch Tuari, complete first-run setup,
-and confirm the version in the app matches the release.
+Do not run the installer against customer data on the strength of these checks.
+An authorized operator may test the selected installer only after the
+[disposable rehearsal prerequisites](manual-update-runbook.md#disposable-rehearsal-prerequisites)
+pass. The rehearsal produces evidence required for later customer installation;
+its result is not a prerequisite for starting that rehearsal. The configured
+installation mode is `currentUser`; that configuration alone is not
+shipped-runtime proof.
+Record the installed version and startup result. Stop on any security warning
+or unexpected data location; do not overwrite an existing customer project.
 
 To verify the portable zip and update package the way CI does, run the script
 from the repository root (it resolves `scripts/` against the current directory)
@@ -270,7 +290,15 @@ the signature check fails.
 | A run shows `"jobs": []` and fails instantly | The workflow file is not valid YAML, or it is not on the default branch | Reproduce the parse locally with PyYAML; check the workflow `name` in the Actions API |
 | `release.yml` aborts at "Verify tag is on main branch" | The tag is not an ancestor of `main` | Promote the commit to `main`, then re-tag |
 | `gh run view --log` says "log not found" | GitHub has no logs for startup failures | Read the workflow file and reproduce the build locally |
-| SmartScreen blocks the installer | The binary is unsigned | Click **More info** then **Run anyway**; get a signing certificate to remove it |
+| Windows displays SmartScreen or another security warning | The installer is unsigned or its reputation is unknown | Stop. Do not bypass the warning. Escalate to the release owner. |
+
+## Manual update readiness
+
+The in-app update flow is not an installation path for customers. Its apply
+strategy currently reports failure without replacing application files. Use
+only an owner-approved manual installer source and verify the artifact as
+described in [the manual-update runbook](manual-update-runbook.md). This
+readiness note does not select a release or authorize distribution.
 
 ## Related documents
 
