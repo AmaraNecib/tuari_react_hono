@@ -15,7 +15,6 @@ describe("home view derived helpers", () => {
           hasManagedWarehouseHistory: false,
           hasManagerHistory: true,
           hasProjectHistory: true,
-          hasSalaryPayments: true,
           hasWarehouseHistory: false,
           managesAnyProject: true,
           managesAnyWarehouse: false,

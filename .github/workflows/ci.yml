@@ -34,6 +34,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo lint
+      - run: pnpm check:telemetry-viewer
       # Root-level gates turbo never runs: turbo has no root lint task, so the
       # prose gate and the issue-closing harness would silently pass CI.
       - run: pnpm check:unslop
@@ -292,10 +293,76 @@ jobs:
           # Passed through the environment, not interpolated into the script:
           # map-derived, but never splice shipped data into shell source.
           E2E_SPECS: ${{ needs.detect.outputs.e2e_specs }}
+          E2E_MODE: ${{ needs.detect.outputs.e2e_mode }}
         run: |
+          pnpm --filter @tuari/contracts build
           pnpm exec playwright install --with-deps chromium
-          # shellcheck disable=SC2086  # E2E_SPECS is an intentional space-separated list
-          pnpm test:e2e $E2E_SPECS
+          # The connected-exact config owns its isolated API, web server, and run directory.
+          if [ "$E2E_MODE" = full ]; then
+            selected_specs=(tests/e2e/*.spec.ts)
+          else
+            read -r -a selected_specs <<< "$E2E_SPECS"
+          fi
+          generic_specs=()
+          manual_settlement=false
+          connected_exact=false
+          for spec in "${selected_specs[@]}"; do
+            if [ "$spec" = "tests/e2e/payroll-connected-exact.spec.ts" ]; then
+              connected_exact=true
+            elif [ "$spec" = "tests/e2e/manual-settlement-connected.spec.ts" ]; then
+              manual_settlement=true
+            else
+              generic_specs+=("$spec")
+            fi
+          done
+          if [ "${#generic_specs[@]}" -gt 0 ]; then
+            pnpm test:e2e "${generic_specs[@]}"
+          fi
+          if [ "$manual_settlement" = true ]; then
+            pnpm exec playwright test --config=playwright.manual-settlement.config.ts tests/e2e/manual-settlement-connected.spec.ts
+          fi
+          node --test tests/telemetry-viewer.browser.test.mjs tests/viewer-dashboard.browser.test.mjs
+          if [ "$connected_exact" = true ]; then
+            pnpm exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts
+          fi
+
+      - name: Upload manual settlement failure artifacts
+        if: failure() && !cancelled() && needs.detect.outputs.e2e_mode != 'skip'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: manual-settlement-failure-artifacts
+          path: |
+            .scratch/evidence/613-ui/run-*/artifacts/**/trace.zip
+            .scratch/evidence/613-ui/run-*/after/*/activity-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/settlements-idle-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/preview-element.png
+            .scratch/evidence/613-ui/run-*/after/*/form-element.png
+            .scratch/evidence/613-ui/run-*/after/*/preview-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/payable-activity-links.png
+            .scratch/evidence/613-ui/run-*/after/*/receivable-activity-links.png
+            .scratch/evidence/613-ui/run-*/after/*/payable-history.png
+            .scratch/evidence/613-ui/run-*/after/*/receivable-history.png
+            .scratch/evidence/613-ui/run-*/after/*/payable-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/receivable-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/mobile-drawer.png
+            .scratch/evidence/613-ui/run-*/after/*/manual-settlement-element.png
+            .scratch/evidence/613-ui/run-*/after/*/settlement-viewport.png
+            .scratch/evidence/613-ui/run-*/after/*/ledger-element.png
+            .scratch/evidence/613-ui/run-*/after/*/viewport-sidebar.png
+            .scratch/evidence/613-ui/run-*/after/*/sidebar-element.png
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload connected payroll failure artifacts
+        if: needs.detect.outputs.e2e_mode != 'skip' && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2 (immutable SHA, matching the cache action pinning practice)
+        with:
+          name: connected-payroll-failure-artifacts
+          path: .scratch/reviews/558-connected/run-*/artifacts/**
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload Playwright HTML report
         if: needs.detect.outputs.e2e_mode != 'skip' && !cancelled()
@@ -343,6 +410,10 @@ jobs:
         if: needs.detect.outputs.encryption == 'true'
         with:
           persist-credentials: false
+      - name: Test Windows Shell ZIP file identity
+        if: needs.detect.outputs.encryption == 'true'
+        shell: powershell
+        run: ./scripts/smoke/portable-shell-entry-names.test.ps1
       - uses: pnpm/action-setup@v4
         if: needs.detect.outputs.encryption == 'true'
       - uses: actions/setup-node@v4
@@ -353,6 +424,12 @@ jobs:
       - name: Install dependencies
         if: needs.detect.outputs.encryption == 'true'
         run: pnpm install --frozen-lockfile
+      - name: Test Windows portable proof lifecycle
+        if: needs.detect.outputs.encryption == 'true'
+        run: node --test --test-name-pattern="closes a separate proof process before publishing" apps/desktop/scripts/build-portable.test.mjs
+      - name: Test Windows ZIP identity and workflow output
+        if: needs.detect.outputs.encryption == 'true'
+        run: node --test --test-name-pattern="creates a Windows Explorer-visible ZIP" apps/desktop/scripts/build-portable.test.mjs
       - name: Build shared contracts
         if: needs.detect.outputs.encryption == 'true'
         run: pnpm --filter @tuari/contracts build

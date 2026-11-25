@@ -133,7 +133,7 @@ describe("debt payment form to RPC", () => {
     const amount = screen.getByRole("textbox", { name: /مبلغ الدفعة/ }) as HTMLInputElement
     fireEvent.change(amount, { target: { value: "500" } })
     fireEvent.click(screen.getByRole("button", { name: "تأكيد الدفعة" }))
-    await waitFor(() => expect(showErrorToast).toHaveBeenCalledWith("تعذر تسجيل الدفعة"))
+    await waitFor(() => expect(showErrorToast).toHaveBeenCalledWith("تعذر تنفيذ العملية الآن."))
     expect(amount.value).toBe("500")
     expect(onOpenChange).not.toHaveBeenCalled()
   })

@@ -3,14 +3,14 @@ import { i18n } from "@/i18n"
 /** Returns CSS tone class for a status value. */
 export function getStatusTone(status: string) {
   if (status === "ACTIVE") {
-    return "bg-emerald-500/12 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-400/14 dark:text-emerald-200"
+    return "bg-good/12 text-good ring-good/20"
   }
 
   if (status === "LEFT" || status === "ARCHIVED") {
-    return "bg-slate-500/12 text-slate-700 ring-slate-500/20 dark:bg-slate-400/14 dark:text-slate-200"
+    return "bg-muted text-muted-foreground ring-border/20"
   }
 
-  return "bg-amber-500/12 text-amber-700 ring-amber-500/20 dark:bg-amber-400/14 dark:text-amber-100"
+  return "bg-warn/12 text-warn ring-warn/20"
 }
 
 const statusLabelKeys: Record<string, string> = {

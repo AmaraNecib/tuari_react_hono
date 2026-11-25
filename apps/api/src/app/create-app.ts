@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import type { AppDependencies } from "./dependencies";
+import type { FreshExactAppDependencies } from "./fresh-exact-dependencies";
 import { isLocalHostname, normalizeOrigin } from "../infrastructure/config/url";
 import {
   createRpcFailureStore,
@@ -89,7 +90,7 @@ function isLocalhostHostname(url: string) {
 }
 
 function shouldDisableCaching(path: string) {
-  return path.startsWith("/api/auth/") || path.startsWith("/api/inventory/") || path === "/rpc/session";
+  return path.startsWith("/api/expenses/") || path.startsWith("/api/auth/") || path.startsWith("/api/inventory/") || path === "/rpc/session";
 }
 
 function getRemoteAddress(env: unknown) {
@@ -124,7 +125,7 @@ type RpcInterceptorOptions = { request: RpcRequestInfo; path?: readonly string[]
 type RpcInterceptorState = [unknown, RpcHandleResult | unknown, boolean]
 
 export function createApp(
-  dependencies: AppDependencies,
+  dependencies: AppDependencies | FreshExactAppDependencies,
   transportSecurity: TransportSecurityConfig,
 ) {
   const app = new Hono();
@@ -136,6 +137,8 @@ export function createApp(
     transportSecurity.authRateLimitMaxRequests ?? 30,
     15 * 60 * 1000,
   ).startCleanup()
+  const expenseUploadLimiter = new SlidingWindowRateLimiter(10, 60_000).startCleanup();
+  const isExpenseUpload = (method: string, path: string) => method === "POST" && /^\/api\/expenses\/[^/]+\/attachments$/.test(path);
   // The implemented router's concrete type (with `Lazy`-wrapped and
   // `MergedErrorMap` variants) is not directly assignable to the fetch
   // adapter's `Router<any, RpcContext>` parameter; bridge at this boundary.
@@ -316,7 +319,11 @@ export function createApp(
   // When a Content-Length is present this rejects with 413 BEFORE the body is read,
   // so multipart uploads are never fully buffered past the cap (defense in depth
   // below the module-owned per-file + total attachment caps).
-  app.use("*", bodyLimitMiddleware);
+  app.use("*", (c, next) => {
+    // Hono buffers chunked bodies here. Expense uploads run this same size
+    // guard only after authorization and the principal request budget below.
+    return isExpenseUpload(c.req.method, c.req.path) ? next() : bodyLimitMiddleware(c, next);
+  });
 
   app.use(
     "/api/auth/*",
@@ -344,7 +351,73 @@ export function createApp(
 
   app.use("/rpc/*", createOriginBlockingMiddleware((origin) => transport.isAllowedOrigin(origin)));
 
-  app.use("/api/inventory/*", createOriginBlockingMiddleware((origin) => transport.isAllowedOrigin(origin)));
+  const inventoryOriginGuard = createOriginBlockingMiddleware((origin) => transport.isAllowedOrigin(origin));
+  const attachmentNavigationOriginGuard = createOriginBlockingMiddleware(
+    (origin) => transport.isAllowedOrigin(origin),
+    { allowOriginlessSafelist: true },
+  );
+  app.use("/api/inventory/*", (c, next) => {
+    // Only the single-file read route permits originless browser navigation.
+    // Session and bootstrap-owner authorization still run in its handler.
+    const guard = /^\/api\/inventory\/attachments\/[^/]+$/.test(c.req.path)
+      ? attachmentNavigationOriginGuard
+      : inventoryOriginGuard;
+    return guard(c, next);
+  });
+
+  app.use("/api/expenses/*", (c, next) => {
+    const download = /^\/api\/expenses\/[^/]+\/attachments\/[^/]+$/.test(c.req.path);
+    return (download ? attachmentNavigationOriginGuard : inventoryOriginGuard)(c, next);
+  });
+  app.use("/api/expenses/*", async (c, next) => {
+    const user = await dependencies.sessionService.getCurrentUser(c.req.raw.headers);
+    if (!user) return c.json({ message: "Authentication required" }, 401);
+    const permission = c.req.method === "POST" ? "expenses:update" : "expenses:read";
+    if (!user.permissions.includes(permission)) return c.json({ message: "Permission denied" }, 403);
+    if (c.req.method === "POST") {
+      const refusal = mutationLicenseRefusalMessage(getLicenseInfo().status);
+      if (refusal) return c.json({ message: refusal }, 403);
+      if (isExpenseUpload(c.req.method, c.req.path)) {
+        if (!expenseUploadLimiter.allow(user.id)) return c.json({ message: "Too many expense uploads. Try again in one minute." }, 429);
+        return bodyLimitMiddleware(c, next);
+      }
+    }
+    await next();
+  });
+  app.on(["GET", "POST"], "/api/expenses/:expenseId/attachments", async c => {
+    try {
+      const service = dependencies.expenseAttachments;
+      if (!service) return c.json({ message: "Expense files unavailable" }, 503);
+      const id = c.req.param("expenseId");
+      if (c.req.method === "GET") return c.json({ items: service.list(id) });
+      const form = await c.req.formData();
+      const files = form.getAll("files");
+      if (files.some(file => !(file instanceof File))) return c.json({ message: "Invalid files" }, 400);
+      const items = await service.add(id, (files as File[]).map(file => ({
+        name: file.name, type: file.type, size: file.size,
+        bytes: async () => new Uint8Array(await file.arrayBuffer()),
+      })));
+      return c.json({ items });
+    } catch (error) {
+      if (error instanceof InventoryError) return c.json({ error: error.appError }, getAppErrorStatus(error.appError.code));
+      throw error;
+    }
+  });
+  app.get("/api/expenses/:expenseId/attachments/:fileId", async c => {
+    try {
+      const service = dependencies.expenseAttachments;
+      if (!service) return c.json({ message: "Expense files unavailable" }, 503);
+      const { attachment, body } = await service.download(c.req.param("expenseId"), c.req.param("fileId"));
+      c.header("Content-Type", attachment.mimeType);
+      c.header("Content-Length", String(attachment.byteSize));
+      c.header("Content-Disposition", `inline; filename="${encodeURIComponent(attachment.originalName)}"`);
+      c.header("X-Content-Type-Options", "nosniff");
+      return c.body(body);
+    } catch (error) {
+      if (error instanceof InventoryError) return c.json({ error: error.appError }, getAppErrorStatus(error.appError.code));
+      throw error;
+    }
+  });
 
   app.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -409,6 +482,9 @@ export function createApp(
         return c.json({ success: false, error: { code: "UPGRADE_REQUIRED", message: licenseRefusal } }, 403)
       }
 
+      const attachmentsService = "inventoryService" in dependencies
+        ? dependencies.inventoryService : dependencies.inventoryAttachmentService
+
       const { invoiceGroupId } = c.req.param()
       const formData = await c.req.formData()
       const files = formData.getAll("files").filter((value): value is File => value instanceof File)
@@ -424,7 +500,7 @@ export function createApp(
         bytes: () => file.arrayBuffer().then((buffer) => new Uint8Array(buffer)),
       }))
 
-      const attachments = await dependencies.inventoryService.addInvoiceAttachments(
+      const attachments = await attachmentsService.addInvoiceAttachments(
         invoiceGroupId,
         normalizedFiles,
         {
@@ -455,8 +531,11 @@ export function createApp(
         return c.json({ message: "غير مصرح بهذا الإجراء." }, 401)
       }
 
+      const attachmentsService = "inventoryService" in dependencies
+        ? dependencies.inventoryService : dependencies.inventoryAttachmentService
+
       const { attachmentId } = c.req.param()
-      const { attachment, body } = await dependencies.inventoryService.getAttachmentDownload(attachmentId)
+      const { attachment, body } = await attachmentsService.getAttachmentDownload(attachmentId)
       c.header("Content-Type", attachment.mimeType)
       c.header("Content-Length", String(attachment.byteSize))
       c.header("Content-Disposition", `inline; filename="${encodeURIComponent(attachment.originalName)}"`)

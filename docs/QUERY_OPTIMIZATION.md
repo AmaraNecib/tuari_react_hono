@@ -120,7 +120,7 @@ The test file `apps/api/src/tests/integration/query-explain-regression.test.ts` 
 2. **Asserts no SCAN TABLE** without USING INDEX
 3. **Executes all queries** with dummy parameters to verify structural correctness
 
-This test runs in CI on every PR to catch index regressions.
+This test runs as part of the API test suite when the API job is selected. See the [test](../apps/api/src/tests/integration/query-explain-regression.test.ts), the [API job condition](../.github/workflows/ci.yml#L194), and the [CI scope selector](../scripts/ci/ci-scope.mjs) for current execution details.
 
 ---
 

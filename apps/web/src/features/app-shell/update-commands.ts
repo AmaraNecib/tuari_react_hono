@@ -4,6 +4,7 @@
  */
 
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
+import { i18n } from "@/i18n"
 
 export type UpdateApplyResult = {
   success: boolean
@@ -49,7 +50,7 @@ export async function pickUpdateFile(): Promise<string | null> {
       multiple: false,
       filters: [
         {
-          name: "ملفات التحديث",
+          name: i18n.t("shellCopy.updateFiles"),
           extensions: ["update"],
         },
       ],
@@ -68,7 +69,7 @@ export async function applyUpdate(path: string): Promise<UpdateApplyResult> {
   if (!isDesktopRuntime()) {
     return {
       success: false,
-      message: "هذه الميزة متاحة فقط في تطبيق سطح المكتب.",
+      message: i18n.t("shellCopy.desktopOnly"),
     }
   }
 

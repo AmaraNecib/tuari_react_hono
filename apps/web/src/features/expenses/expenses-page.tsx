@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { useMemo, useState, type ReactNode } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -30,6 +31,7 @@ import { Surface } from "@/features/shared/page-primitives"
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { AppDate } from "@/components/app-date"
 
+import { ExpenseAttachments } from "./expense-attachments"
 import { ExpenseFormDialog, ExactExpenseFormDialog, type ExpenseFormDialogProps, type ExpenseLookupOption } from "./expense-form-dialog"
 import { buildExpenseFilters, getCurrentMonthExpenseDates } from "./expenses-filters"
 import { useExpensesListQuery, useVoidExpenseMutation } from "./expenses-queries"
@@ -93,6 +95,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
   const [toDate, setToDate] = useState("")
   const [groupByProject, setGroupByProject] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
+  const [receiptExpenseId, setReceiptExpenseId] = useState<string | null>(null)
   const [editingExpense, setEditingExpense] = useState<Record | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [voidingExpense, setVoidingExpense] = useState<Record | null>(null)
@@ -151,9 +154,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
   }, [items])
 
   const groups = data?.groupsByProject ?? []
-  const displayedGroups = renderDetail
-    ? [...groups, ...[...itemsByGroup.keys()].filter(id => !groups.some(group => group.projectId === id)).map(projectId => ({ projectId, total: zero, count: 0 }))]
-    : groups
+  const displayedGroups = [...groups, ...[...itemsByGroup.keys()].filter(id => !groups.some(group => group.projectId === id)).map(projectId => ({ projectId, total: zero, count: 0 }))]
 
   const openCreate = () => {
     setEditingExpense(null)
@@ -342,7 +343,8 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
                             </span>
                           ) : null}
                           <span className="font-medium text-ink">{money(item.amount)}</span>
-                          {renderDetail && <Button size="sm" variant="outline" className="ms-2" onClick={() => setDetailId(item.id)}>التفاصيل</Button>}
+                          <Button size="sm" variant="outline" onClick={() => setReceiptExpenseId(item.id)}>{t("inventory.transfer.attachments")}</Button>
+                          {renderDetail && <Button size="sm" variant="outline" className="ms-2" onClick={() => setDetailId(item.id)}>{featureI18n.t("featureCopy.expensesPage.details")}</Button>}
                           {renderDetail && item.status === "VOIDED" && <span className="ms-2">{t("expenses.status.voided")}</span>}
                         </span>
                       </li>
@@ -400,7 +402,8 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-2">
-                        {renderDetail && <Button size="sm" variant="outline" onClick={() => setDetailId(item.id)}>التفاصيل</Button>}
+                        <Button size="sm" variant="outline" onClick={() => setReceiptExpenseId(item.id)}>{t("inventory.transfer.attachments")}</Button>
+                        {renderDetail && <Button size="sm" variant="outline" onClick={() => setDetailId(item.id)}>{featureI18n.t("featureCopy.expensesPage.details")}</Button>}
                         {item.status === "LIVE" ? (
                           <>
                             <Button size="sm" variant="outline" onClick={() => openEdit(item)}>
@@ -422,6 +425,14 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
           )}
         </>
       </TableQueryState>
+
+      <Dialog open={receiptExpenseId !== null} onOpenChange={open => { if (!open) setReceiptExpenseId(null) }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>{t("inventory.transfer.attachments")}</DialogTitle></DialogHeader>
+          {receiptExpenseId && <ExpenseAttachments key={receiptExpenseId} expenseId={receiptExpenseId} readOnly />}
+          <DialogFooter><Button variant="outline" onClick={() => setReceiptExpenseId(null)}>{t("common.close")}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {renderForm({ open: formOpen, onOpenChange: setFormOpen, expense: editingExpense, projects, employees, sellers })}
       {renderDetail?.(detailId, () => setDetailId(null), expense => { setDetailId(null); openEdit(expense) }, expense => { setDetailId(null); openVoid(expense) })}
@@ -487,43 +498,43 @@ function ExactExpenseDetail({ client, id, onClose, onEdit, onVoid, projects, emp
     responsibleWorkerId: t("expenses.table.responsibleWorker"), sellerId: t("expenses.table.seller"),
     projectId: t("expenses.table.project"), stockItemId: t("expenses.form.stockItem"), note: t("expenses.form.note"),
   }
-  const money = (value: string | null) => value === null ? <span>غير متاح</span>
+  const money = (value: string | null) => value === null ? <span>{featureI18n.t("featureCopy.expensesPage.unavailable")}</span>
     : <MoneyValue exact value={value} currencyLabel={t("expenses.currency")} />
   return (
     <Dialog open={id !== null} onOpenChange={open => { if (!open) onClose() }}>
       <DialogContent className="max-w-2xl">
-        <DialogHeader><DialogTitle>تفاصيل المصروف وسجل التعديلات</DialogTitle></DialogHeader>
-        <TableQueryState query={query} resource="تفاصيل المصروف">
+        <DialogHeader><DialogTitle>{featureI18n.t("featureCopy.expensesPage.title")}</DialogTitle></DialogHeader>
+        <TableQueryState query={query} resource={featureI18n.t("featureCopy.expensesPage.resource")}>
           {detail && <div className="max-h-[70vh] space-y-4 overflow-y-auto">
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-              <dt>المبلغ</dt><dd>{money(detail.amount)}</dd>
-              <dt>الحالة</dt><dd>{detail.status === "VOIDED" ? t("expenses.status.voided") : "ساري"}</dd>
-              <dt>التاريخ</dt><dd><AppDate value={detail.expenseDate} /></dd>
-              <dt>الوصف</dt><dd>{detail.whatFor ?? t("expenses.noDescription")}</dd>
-              <dt>ملاحظة</dt><dd>{detail.note ?? t("expenses.none")}</dd>
-              <dt>المشروع</dt><dd><bdi>{referenceLabel(detail.projectId, projects)}</bdi></dd>
-              <dt>المسؤول</dt><dd><bdi>{referenceLabel(detail.responsibleWorkerId, employees)}</bdi></dd>
-              <dt>المورّد</dt><dd><bdi>{referenceLabel(detail.sellerId, sellers)}</bdi></dd>
-              <dt>قطعة المخزون</dt><dd><bdi>{detail.stockItemId ?? t("expenses.none")}</bdi></dd>
-              <dt>آخر من عدّل السجل</dt><dd><bdi>{detail.actorLabel ?? detail.actorUserId ?? t("expenses.none")}</bdi></dd>
-              <dt>معرّف العملية</dt><dd className="break-all"><bdi>{detail.transactionId ?? t("expenses.none")}</bdi></dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.amount")}</dt><dd>{money(detail.amount)}</dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.status")}</dt><dd>{detail.status === "VOIDED" ? t("expenses.status.voided") : featureI18n.t("featureCopy.expensesPage.active")}</dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.date")}</dt><dd><AppDate value={detail.expenseDate} /></dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.description")}</dt><dd>{detail.whatFor ?? t("expenses.noDescription")}</dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.note")}</dt><dd>{detail.note ?? t("expenses.none")}</dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.project")}</dt><dd><bdi>{referenceLabel(detail.projectId, projects)}</bdi></dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.responsible")}</dt><dd><bdi>{referenceLabel(detail.responsibleWorkerId, employees)}</bdi></dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.seller")}</dt><dd><bdi>{referenceLabel(detail.sellerId, sellers)}</bdi></dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.stockItem")}</dt><dd><bdi>{detail.stockItemId ?? t("expenses.none")}</bdi></dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.lastActor")}</dt><dd><bdi>{detail.actorLabel ?? detail.actorUserId ?? t("expenses.none")}</bdi></dd>
+              <dt>{featureI18n.t("featureCopy.expensesPage.transactionId")}</dt><dd className="break-all"><bdi>{detail.transactionId ?? t("expenses.none")}</bdi></dd>
               {detail.status === "VOIDED" && <>
-                <dt>سبب الإلغاء</dt><dd>{detail.voidReason ?? t("expenses.none")}</dd>
-                <dt>ألغاه</dt><dd><bdi>{detail.voidedBy ?? t("expenses.none")}</bdi></dd>
-                <dt>وقت الإلغاء</dt><dd>{detail.voidedAt ? <AppDate value={detail.voidedAt} includeTime /> : t("expenses.none")}</dd>
+                <dt>{featureI18n.t("featureCopy.expensesPage.voidReason")}</dt><dd>{detail.voidReason ?? t("expenses.none")}</dd>
+                <dt>{featureI18n.t("featureCopy.expensesPage.voidedBy")}</dt><dd><bdi>{detail.voidedBy ?? t("expenses.none")}</bdi></dd>
+                <dt>{featureI18n.t("featureCopy.expensesPage.voidedAt")}</dt><dd>{detail.voidedAt ? <AppDate value={detail.voidedAt} includeTime /> : t("expenses.none")}</dd>
               </>}
             </dl>
-            <h3 className="font-semibold">سجل التعديلات</h3>
-            {detail.revisions.length === 0 ? <p>لا توجد تعديلات</p> : <ol className="space-y-3">
+            <h3 className="font-semibold">{featureI18n.t("featureCopy.expensesPage.revisions")}</h3>
+            {detail.revisions.length === 0 ? <p>{featureI18n.t("featureCopy.expensesPage.noRevisions")}</p> : <ol className="space-y-3">
               {detail.revisions.map(revision => <li key={revision.id} className="border-t border-line pt-3">
-                <p className="mb-2 text-sm text-ink-2">الحقول المعدّلة: {revision.changedFields.map(field => changedFieldLabels[field]).join("، ") || t("expenses.none")}</p>
+                <p className="mb-2 text-sm text-ink-2">{featureI18n.t("featureCopy.expensesPage.changedFields")}{revision.changedFields.map(field => changedFieldLabels[field]).join(featureI18n.t("featureCopy.expensesPage.listSeparator")) || t("expenses.none")}</p>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
-                  <dt>المبلغ السابق</dt><dd>{money(revision.previousAmount)}</dd>
-                  <dt>المبلغ الجديد</dt><dd>{money(revision.newAmount)}</dd>
-                  <dt>السبب</dt><dd>{revision.reason ?? t("expenses.none")}</dd>
-                  <dt>الفاعل</dt><dd><bdi>{revision.actorLabel ?? revision.actorUserId ?? t("expenses.none")}</bdi></dd>
-                  <dt>الوقت</dt><dd><AppDate value={revision.createdAt} includeTime /></dd>
-                  <dt>معرّف العملية</dt><dd className="break-all"><bdi>{revision.transactionId ?? t("expenses.none")}</bdi></dd>
+                  <dt>{featureI18n.t("featureCopy.expensesPage.previousAmount")}</dt><dd>{money(revision.previousAmount)}</dd>
+                  <dt>{featureI18n.t("featureCopy.expensesPage.newAmount")}</dt><dd>{money(revision.newAmount)}</dd>
+                  <dt>{featureI18n.t("featureCopy.expensesPage.reason")}</dt><dd>{revision.reason ?? t("expenses.none")}</dd>
+                  <dt>{featureI18n.t("featureCopy.expensesPage.actor")}</dt><dd><bdi>{revision.actorLabel ?? revision.actorUserId ?? t("expenses.none")}</bdi></dd>
+                  <dt>{featureI18n.t("featureCopy.expensesPage.time")}</dt><dd><AppDate value={revision.createdAt} includeTime /></dd>
+                  <dt>{featureI18n.t("featureCopy.expensesPage.transactionId")}</dt><dd className="break-all"><bdi>{revision.transactionId ?? t("expenses.none")}</bdi></dd>
                 </dl>
               </li>)}
             </ol>}

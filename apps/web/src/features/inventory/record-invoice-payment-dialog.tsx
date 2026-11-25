@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Record invoice payment dialog for recording payments against inventory invoices.
  */
@@ -83,16 +84,16 @@ export function RecordInvoicePaymentDialog({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{t("inventory.payment.title")}</DialogTitle>
-          <DialogDescription>{invoiceDetail.group.supplierName || `الفاتورة ${invoiceDetail.group.invoiceNumber}`}</DialogDescription>
+          <DialogDescription>{invoiceDetail.group.supplierName || featureI18n.t("featureCopy.recordInvoicePaymentDialog.invoiceLabel", { value1: invoiceDetail.group.invoiceNumber })}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="rounded-xl border border-border/60 bg-surface p-4">
             <p className="text-sm text-muted-foreground">{t("inventory.payment.remainingDebt")}</p>
-            <p className={cn("mt-2 font-mono text-2xl font-semibold", remainingDebt > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400")} dir="ltr">
-              <CurrencyRun amount={remainingDebt.toFixed(2)} currencyLabel="دج" />
+            <p className={cn("mt-2 font-mono text-2xl font-semibold", remainingDebt > 0 ? "text-bad" : "text-good")} dir="ltr">
+              <CurrencyRun amount={remainingDebt.toFixed(2)} currencyLabel={featureI18n.t("featureCopy.recordInvoicePaymentDialog.currency")} />
             </p>
-            {remainingDebt <= 0 && <p className="mt-1 text-xs text-green-600 dark:text-green-400">{t("inventory.payment.fullyPaid")}</p>}
+            {remainingDebt <= 0 && <p className="mt-1 text-xs text-good">{t("inventory.payment.fullyPaid")}</p>}
           </div>
 
           {remainingDebt > 0 && (
@@ -102,7 +103,7 @@ export function RecordInvoicePaymentDialog({
                 <CurrencyInput placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} disabled={recordPaymentMutation.isPending} />
               </label>
 
-              {!isAmountValid && amountValue !== null && <p className="text-xs text-red-600">{t("inventory.payment.exceedsDebt")}</p>}
+              {!isAmountValid && amountValue !== null && <p className="text-xs text-bad">{t("inventory.payment.exceedsDebt")}</p>}
 
               <Button size="sm" variant="outline" className="w-full" onClick={handlePayFull} disabled={recordPaymentMutation.isPending}>
                 {t("inventory.payment.payFull")}

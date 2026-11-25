@@ -1,23 +1,23 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Debts feature queries.
  *
  * Feature-scoped data access for the debts domain (Plan 005 Phase 4, issue
- * #177). The debts consumers — the debts hub, the externals list, the
- * employee debts tab and the external-counterparty detail page — read from
- * these narrow queries instead of the cross-domain workspace composite, so
- * the debts mutations (which invalidate the `debtsSummary` / `debtsDetail`
- * workspace-domain keys) keep them fresh.
+ * #177). Legacy numeric query helpers remain for callers not yet moved off
+ * the workspace-domain contract. The active externals list and party-detail
+ * ledgers now use the exact financial debt summary and detail clients.
  *
- * Query keys are shared with `workspaceQueryKeys` in
- * `@/features/app-shell/workspace-keys` — that map is the single source
- * of truth for mutation invalidation.
+ * The legacy numeric detail helper still uses `workspaceQueryKeys`; exact
+ * query keys and invalidation live in `debts-exact-queries.ts`.
  */
+import { Money, sumMoneyHistory } from "@tuari/contracts"
 import type {
   AppError,
   DebtEntry,
   DebtPartyDetail,
   DebtPartySummaryItem,
   DebtsSummary,
+  ExactDebtsClient,
   ExternalCounterparty,
 } from "@tuari/contracts"
 
@@ -47,14 +47,16 @@ export type DebtsHubTotals = {
   owedToUsDzd: number
 }
 
+export type ExactDebtSummary = Awaited<ReturnType<ExactDebtsClient["summary"]>>
+
 export type ExternalCounterpartyRow = {
   id: string
   fullName: string
   note: string | null
-  openCaseCount: number
+  openAccountCount: number
   phone: string
-  totalBalanceDzd: number
-  totalCaseCount: number
+  totalBalanceDzd: string
+  totalAccountCount: number
 }
 
 function requireEntitySuccess<T>(result: {
@@ -65,28 +67,13 @@ function requireEntitySuccess<T>(result: {
 }) {
   if (!result.success || !result.item) {
     throw new AppMutationError({
-      message: result.error?.message ?? "تعذر تحميل بيانات الديون.",
+      message: result.error?.message ?? featureI18n.t("featureCopy.debtsQueries.loadError"),
       code: result.error?.code,
       fieldErrors: result.error?.fieldErrors,
     })
   }
 
   return result.item
-}
-
-/**
- * Debts summary query (hub + externals list data source).
- *
- * Reads `debtsSummary` — the same key the debts mutations invalidate, so the
- * hub always reflects newly created accounts, entries, payments and
- * settlements without a full workspace refetch.
- */
-export function useDebtsSummaryQuery({ enabled = true }: { enabled?: boolean } = {}) {
-  return useWorkspaceScopedQuery({
-    key: workspaceQueryKeys.debtsSummary,
-    enabled,
-    queryFn: async (): Promise<DebtsSummary> => rpcClient.debtsSummary(),
-  })
 }
 
 /**
@@ -222,26 +209,32 @@ export function buildDebtsHubRows(
  * debts summary's per-party balance/case counts (if the party has accounts).
  */
 export function buildExternalCounterpartyRows(
-  summary: DebtsSummary,
+  summary: ExactDebtSummary,
   externalCounterparties: ExternalCounterparty[],
 ): ExternalCounterpartyRow[] {
-  const partyById = new Map<string, DebtPartySummaryItem>(
-    summary.parties
-      .filter((party) => party.partyType === "EXTERNAL_COUNTERPARTY")
-      .map((party) => [party.externalCounterpartyId ?? "", party]),
-  )
+  const accountsByParty = new Map<string, ExactDebtSummary["accounts"]>()
+  for (const account of summary.accounts) {
+    if (account.partyType !== "EXTERNAL_COUNTERPARTY" || !account.externalCounterpartyId) continue
+    const accounts = accountsByParty.get(account.externalCounterpartyId) ?? []
+    accounts.push(account)
+    accountsByParty.set(account.externalCounterpartyId, accounts)
+  }
 
   return externalCounterparties
     .map((counterparty) => {
-      const party = partyById.get(counterparty.id)
+      const accounts = accountsByParty.get(counterparty.id) ?? []
+      const totalBalance = sumMoneyHistory(accounts.map(account => {
+        const balance = Money.parse(account.currentBalance)
+        return account.direction === "PAYABLE" ? balance.negate() : balance
+      }))
       return {
         id: counterparty.id,
         fullName: counterparty.fullName,
         note: counterparty.note,
-        openCaseCount: party?.openDebtCasesCount ?? 0,
+        openAccountCount: accounts.filter(account => account.status === "OPEN").length,
         phone: counterparty.phoneNumber,
-        totalBalanceDzd: party?.totalBalanceDzd ?? 0,
-        totalCaseCount: party ? party.openDebtCasesCount + party.settledDebtCasesCount : 0,
+        totalBalanceDzd: totalBalance,
+        totalAccountCount: accounts.length,
       }
     })
     .sort((left, right) => left.fullName.localeCompare(right.fullName, "ar"))

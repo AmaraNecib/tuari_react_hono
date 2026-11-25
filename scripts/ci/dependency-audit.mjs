@@ -32,7 +32,7 @@ export function evaluateAudit(report, { now = new Date().toISOString(), expiresA
   const exceptionFindings = findings.filter(({ id }) => id === ALLOWED_ID);
   if (exceptionFindings.some(({ module, severity, version }) => module !== ALLOWED_PACKAGE || severity !== 'high' || !ALLOWED_VERSIONS.has(version))) return fail('picomatch exception advisory identity, severity, or version changed');
   const highOrCritical = findings.filter(({ severity }) => severity === 'high' || severity === 'critical');
-  if (exitCode === 1 && highOrCritical.length === 0) return fail('pnpm audit exited nonzero without a high or critical finding');
+  if (exitCode === 1 && findings.length === 0) return fail('pnpm audit exited nonzero without any advisory finding');
   if (exitCode === 0 && highOrCritical.length > 0) return fail('pnpm audit exited zero despite a high or critical finding');
   const allowed = highOrCritical.filter(({ id, module, severity, version }) => id === ALLOWED_ID && module === ALLOWED_PACKAGE && severity === 'high' && ALLOWED_VERSIONS.has(version));
   if (allowed.length !== highOrCritical.length) return fail('unapproved high or critical vulnerability remains');
@@ -42,8 +42,8 @@ export function evaluateAudit(report, { now = new Date().toISOString(), expiresA
   return { pass: true, message: `${findings.length} advisory finding(s) reported; low and moderate findings remain visible.` };
 }
 
-export function auditOnce({ command = (process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'), args = ['audit', '--json', '--audit-level', 'high'], platform = process.platform, now = new Date().toISOString() } = {}) {
-  const result = spawnSync(command, args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, shell: platform === 'win32' });
+export function auditOnce({ command = (process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'), args = ['audit', '--json', '--audit-level', 'high'], platform = process.platform, now = new Date().toISOString(), spawn = spawnSync } = {}) {
+  const result = spawn(command, args, { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, shell: platform === 'win32' });
   if (result.error) return { pass: false, reason: `pnpm audit could not run: ${result.error.message}`, stdout: result.stdout ?? '', stderr: result.stderr ?? '', status: result.status };
   if (result.signal || result.status === null) return { pass: false, reason: `pnpm audit terminated without an exit code${result.signal ? ` (${result.signal})` : ''}`, stdout: result.stdout ?? '', stderr: result.stderr ?? '', status: result.status };
   const stdout = result.stdout ?? '';

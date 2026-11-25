@@ -141,6 +141,8 @@ describe("approved earning RPC with real auth and encrypted persistence", { time
       success: false,
       error: { code: "BUSINESS_RULE" },
     });
+    await expect(client.employeePayrollGet({ employeeId })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+    await expect(client.employeePayrollCashRecord({ requestId: "unconfigured-payroll", employeeId, amount: "1.00", paymentDate: "2026-11-19T09:00:00.000Z", wages: [] })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
 
     first.close();
     openRoots.splice(openRoots.indexOf(first), 1);

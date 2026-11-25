@@ -20,11 +20,11 @@ const createService = (overrides: {
   saveInvoiceAttachment?: InventoryAttachmentStorage["saveInvoiceAttachment"]
   createAttachment?: InventoryRepository["createAttachment"]
 }) => {
-  // addInvoiceAttachments only touches getInvoiceGroupById / withTransaction /
+  // addInvoiceAttachments only touches invoiceGroupExists / withTransaction /
   // createAttachment — keep the repository double minimal so an unrelated
   // port method added to the interface cannot break this test's type-check.
   const repository = {
-    getInvoiceGroupById: overrides.getInvoiceGroupById ?? (() => ({ id: "group-1" }) as never),
+    invoiceGroupExists: (id: string) => overrides.getInvoiceGroupById ? overrides.getInvoiceGroupById(id) !== null : true,
     withTransaction: vi.fn((callback: () => unknown) => callback()) as InventoryRepository["withTransaction"],
     createAttachment: overrides.createAttachment ?? (vi.fn((data) => ({ id: "att-1", ...data })) as never),
   } as unknown as InventoryRepository
@@ -165,6 +165,18 @@ describe("InventoryService.addInvoiceAttachments — attachment limits owned by 
       name: "InventoryError",
       appError: { code: "VALIDATION" },
     })
+  })
+
+  it("validates every file before loading any bytes", async () => {
+    for (const invalid of [
+      { ...makeFile("too-big.pdf", 5 * 1024 * 1024 + 1) },
+      { ...makeFile("unsafe.html", 10), type: "text/html" },
+    ]) {
+      const bytes = vi.fn(async () => new Uint8Array([1]));
+      const service = createService({});
+      await expect(service.addInvoiceAttachments("group-1", [{ ...makeFile("valid.pdf", 1), bytes }, invalid])).rejects.toMatchObject({ appError: { code: "VALIDATION" } });
+      expect(bytes).not.toHaveBeenCalled();
+    }
   })
 
   it("loads file bytes only for files that pass validation (happy path reads each loader)", async () => {

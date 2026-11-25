@@ -28,21 +28,13 @@ export function createFinanceHandlers(
   financeService: FinanceService,
 ) {
   return {
-    externalCounterpartiesList: os.externalCounterpartiesList.handler(m.queryAuth(async ({ input }) =>
-      financeService.listExternalCounterparties(input as ExternalCounterpartyListFilters | undefined)
-    )),
-    externalCounterpartiesGet: os.externalCounterpartiesGet.handler(m.queryAuth(async ({ input }) =>
-      financeService.getExternalCounterparty((input as IdInput).id)
-    )),
-    externalCounterpartiesCreate: os.externalCounterpartiesCreate.handler(m.mutationAudit(
-      ({ input, auditContext }) => financeService.createExternalCounterparty(input as ExternalCounterpartyCreateInput, auditContext),
-      toFailureResult,
-    )),
+    ...createCounterpartyHandlers(os, m, financeService),
     debtAccountsList: os.debtAccountsList.handler(m.queryAuth(async ({ input }) =>
       financeService.listDebtAccounts(input as DebtAccountListFilters | undefined)
     )),
     debtAccountsGet: os.debtAccountsGet.handler(m.queryAuth(async ({ input }) =>
-      financeService.getDebtAccount((input as IdInput).id)
+      financeService.getDebtAccount((input as IdInput).id),
+      toFailureResult,
     )),
     debtAccountsCreate: os.debtAccountsCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => financeService.createDebtAccount(input as DebtAccountCreateInput, auditContext),
@@ -72,13 +64,34 @@ export function createFinanceHandlers(
       toFailureResult,
     )),
     debtPartyDetail: os.debtPartyDetail.handler(m.queryAuth(async ({ input }) =>
-      financeService.getDebtPartyDetail(input as DebtPartyDetailInput)
+      financeService.getDebtPartyDetail(input as DebtPartyDetailInput),
+      toFailureResult,
     )),
     debtsSummary: os.debtsSummary.handler(m.queryAuth(async () =>
       financeService.listDebtsSummary()
     )),
     employeeDebtEntryCreate: os.employeeDebtEntryCreate.handler(m.mutationAudit(
       ({ input, auditContext }) => financeService.createEmployeeDebtEntry(input as EmployeeDebtEntryCreateInput, auditContext),
+      toFailureResult,
+    )),
+  };
+}
+
+export function createCounterpartyHandlers(
+  os: ReturnType<typeof implement>,
+  m: RpcMiddleware,
+  financeService: Pick<FinanceService, "listExternalCounterparties" | "getExternalCounterparty" | "createExternalCounterparty">,
+) {
+  return {
+    externalCounterpartiesList: os.externalCounterpartiesList.handler(m.queryAuth(async ({ input }) =>
+      financeService.listExternalCounterparties(input as ExternalCounterpartyListFilters | undefined)
+    )),
+    externalCounterpartiesGet: os.externalCounterpartiesGet.handler(m.queryAuth(async ({ input }) =>
+      financeService.getExternalCounterparty((input as IdInput).id),
+      toFailureResult,
+    )),
+    externalCounterpartiesCreate: os.externalCounterpartiesCreate.handler(m.mutationAudit(
+      ({ input, auditContext }) => financeService.createExternalCounterparty(input as ExternalCounterpartyCreateInput, auditContext),
       toFailureResult,
     )),
   };

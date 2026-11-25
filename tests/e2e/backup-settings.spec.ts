@@ -1,9 +1,12 @@
+import { installManagedApiLifecycle } from "./helpers/test"
 import { mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { expect, test } from "@playwright/test"
+import { expect, test } from "./helpers/test"
 
 import { bootstrapOrSignIn } from "./helpers/session"
+
+installManagedApiLifecycle()
 
 /**
  * Backup status surface (#439) + backup-folder setting (#436).

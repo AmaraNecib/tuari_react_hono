@@ -1,15 +1,9 @@
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::fs::{copy, create_dir_all, read_to_string, remove_file, write, File, OpenOptions};
-use std::io::{Read, Write};
-use std::net::TcpStream;
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
+use std::fs::{copy, create_dir_all, read_to_string, remove_file, write, File};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
-use std::thread::sleep;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
 use crate::update::{UpdateProvider, UpdateStrategy};
@@ -23,13 +17,9 @@ const APP_DB_KEY_BYTES: usize = 32;
 const SECRETS_KEYRING_SERVICE: &str = "com.tuari.desktop.secrets";
 const BETTER_AUTH_SECRET_ACCOUNT: &str = "better-auth.secret";
 const APP_DB_KEY_ACCOUNT: &str = "app-db.key";
-const API_STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
-const API_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DESKTOP_AUTH_SERVICE: &str = "com.tuari.desktop.auth";
 const DESKTOP_AUTH_ACCOUNT: &str = "desktop-bearer-token";
 const DESKTOP_REQUEST_ORIGIN: &str = "https://tauri.localhost";
-#[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 // ─── Sensitive-command window ACL ──────────────────────────────────
 //
@@ -273,14 +263,19 @@ fn strip_windows_extended_path_prefix(path: &str) -> String {
 pub mod error;
 pub mod crypto;
 pub mod clock;
+pub mod event_sink;
+mod support_zip;
+mod support_bundle;
 pub mod license;
 pub mod recovery;
 pub mod update;
 pub mod trust;
 
-struct ApiProcess {
-    child: Mutex<Option<Child>>,
-}
+#[path = "commands/api_runtime.rs"]
+mod api_runtime;
+use api_runtime::ApiRuntime;
+#[cfg(test)]
+use api_runtime::{configure_api_child_environment, prepare_api_temp_directory};
 
 struct RuntimeSecrets {
     better_auth_secret: String,
@@ -582,11 +577,28 @@ fn matches_inventory_attachment_download_path(path: &str) -> bool {
     !remaining_path.is_empty() && !remaining_path.contains('/')
 }
 
+#[test]
+fn expense_attachment_bridge_paths_are_scoped() {
+    assert!(matches_expense_attachment_path("/api/expenses/one/attachments"));
+    assert!(matches_expense_attachment_path("/api/expenses/one/attachments/file"));
+    assert!(!matches_expense_attachment_path("/api/expenses/one/attachments/file/extra"));
+    assert!(!matches_expense_attachment_path("/api/expenses//attachments"));
+}
+
+fn matches_expense_attachment_path(path: &str) -> bool {
+    let path = path.split('?').next().unwrap_or(path);
+    let Some(rest) = path.strip_prefix("/api/expenses/") else { return false; };
+    let parts: Vec<_> = rest.split('/').collect();
+    matches!(parts.as_slice(), [expense, "attachments"] if !expense.is_empty())
+        || matches!(parts.as_slice(), [expense, "attachments", file] if !expense.is_empty() && !file.is_empty())
+}
+
 fn is_allowed_desktop_bridge_path(path: &str) -> bool {
     matches!(path, "/rpc" | "/api/auth/profile")
         || path.starts_with("/rpc/")
         || path.starts_with("/rpc?")
         || path.starts_with("/api/auth/profile?")
+        || matches_expense_attachment_path(path)
         || matches_inventory_attachment_upload_path(path)
         || matches_inventory_attachment_download_path(path)
 }
@@ -1046,6 +1058,37 @@ struct UpdateApplyResult {
     message: String,
 }
 
+#[derive(serde::Serialize)]
+struct RecentDiagnosticEvents {
+    events: Vec<crate::event_sink::DiagnosticEvent>,
+    status: crate::event_sink::DiagnosticStatus,
+}
+
+#[tauri::command]
+fn get_recent_diagnostic_events() -> RecentDiagnosticEvents {
+    let (events, status) = crate::event_sink::recent_diagnostics();
+    RecentDiagnosticEvents { events, status }
+}
+
+#[tauri::command]
+async fn export_support_bundle(window: tauri::Window, app: AppHandle) -> Result<serde_json::Value, String> {
+    assert_sensitive_command_window(&window)?;
+    use tauri_plugin_dialog::DialogExt;
+    let destination = app.dialog().file().set_file_name("tuari-support.zip").add_filter("ZIP", &["zip"]).blocking_save_file();
+    let Some(destination) = destination else { return Ok(serde_json::json!({"status":"cancelled"})); };
+    let path = destination.into_path().map_err(|_| "Invalid destination".to_string())?;
+    let root = resolve_logs_dir(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::support_bundle::save(&root, Some(&path)).map_err(|_| "Unable to save complete support bundle; choose a new filename and check retained logs")?;
+        Ok(serde_json::json!({"status":"saved","savedPath":path.to_string_lossy()}))
+    }).await.map_err(|_| "Support export failed".to_string())?.map_err(str::to_string)
+}
+
+#[tauri::command]
+fn record_ui_failure(id: u32) {
+    crate::event_sink::record_ui_failure(id);
+}
+
 #[tauri::command]
 fn get_current_version() -> Result<String, String> {
     Ok(env!("CARGO_PKG_VERSION").to_string())
@@ -1054,9 +1097,18 @@ fn get_current_version() -> Result<String, String> {
 #[tauri::command]
 fn check_for_updates() -> Result<UpdateCheckResult, String> {
     let provider = crate::update::GithubReleasesProvider::new("AmaraNecib", "tuari_react_hono");
+    check_for_updates_with(&provider)
+}
+
+fn check_for_updates_with(provider: &dyn UpdateProvider) -> Result<UpdateCheckResult, String> {
+    crate::event_sink::emit("info", "update check started", None);
     let info = provider
         .check_for_updates(env!("CARGO_PKG_VERSION"))
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            crate::event_sink::emit("error", "update check failed", None);
+            e.to_string()
+        })?;
+    crate::event_sink::emit("info", "update check complete", None);
     match info {
         Some(update) => Ok(UpdateCheckResult {
             update_available: true,
@@ -1891,7 +1943,7 @@ fn ensure_runtime_files(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), 
     let project_dir = resolve_project_dir(app)?;
     let logs_dir = resolve_logs_dir(app)?;
     create_dir_all(&project_dir).map_err(|error| error.to_string())?;
-    create_dir_all(&logs_dir).map_err(|error| error.to_string())?;
+    let _ = create_dir_all(&logs_dir);
 
     let auth_db_path = project_dir.join("tuari.sqlite");
     let app_db_path = project_dir.join("tuari.sqlite");
@@ -1908,7 +1960,7 @@ fn ensure_runtime_files(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), 
     migrate_legacy_db_if_needed(&app_db_path, &legacy_app_db_path)?;
 
     ensure_file_exists(&auth_db_path)?;
-    ensure_file_exists(&server_log_path)?;
+    // Log storage failure must not prevent the application from starting.
 
     Ok((auth_db_path, app_db_path, server_log_path))
 }
@@ -1920,170 +1972,7 @@ fn resolve_attachments_root(app_db_path: &Path) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("attachments").join("invoices"))
 }
 
-/// Stops stale API sidecar children left over from a previous run (e.g.
-/// after a crash) before a fresh child is spawned.
-///
-/// Matching is by process identity — command lines that look like OUR child
-/// (`node <install>/bin/api-runtime/dist/index.cjs`) — never by port. The
-/// previous port-based cleanup could terminate an unrelated process that
-/// happened to listen on `API_PORT`.
-fn cleanup_stale_api_processes(app: &AppHandle) {
-    if cfg!(debug_assertions) {
-        return;
-    }
 
-    // Never guess: if we cannot determine this installation's runtime path we
-    // leave every process alone rather than risk killing a foreign sidecar.
-    let install_runtime_dir = match resolve_api_runtime_dir(app) {
-        Ok(dir) => dir,
-        Err(_) => return,
-    };
-
-    #[cfg(target_os = "windows")]
-    {
-        // Enumerate candidate node.exe processes (read-only), then let the
-        // unit-tested identity predicate decide which PIDs are ours before
-        // killing. The kill list is never derived from the listening port.
-        let output = Command::new("powershell")
-            .args([
-                "-NoProfile",
-                "-Command",
-                "Get-CimInstance Win32_Process -Filter \"Name = 'node.exe'\" -ErrorAction SilentlyContinue | ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }",
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .output();
-
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                let Some((pid, command_line)) = line.split_once('|') else {
-                    continue;
-                };
-                if is_api_sidecar_command_line(command_line, &install_runtime_dir) {
-                    let _ = Command::new("taskkill")
-                        .args(["/PID", pid, "/T", "/F"])
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .creation_flags(CREATE_NO_WINDOW)
-                        .status();
-                }
-            }
-        }
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        // pgrep -a prints "<pid> <full command line>" for node processes;
-        // only the ones the identity predicate recognizes as our sidecar
-        // child are stopped.
-        let output = Command::new("pgrep")
-            .args(["-a", "node"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .output();
-
-        if let Ok(output) = output {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                let Some((pid, command_line)) = line.split_once(' ') else {
-                    continue;
-                };
-                if is_api_sidecar_command_line(command_line, &install_runtime_dir) {
-                    let _ = Command::new("kill")
-                        .args(["-9", pid])
-                        .stdout(Stdio::null())
-                        .stderr(Stdio::null())
-                        .status();
-                }
-            }
-        }
-    }
-}
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("..")
-}
-
-fn is_api_ready() -> bool {
-    let mut stream = match TcpStream::connect((API_HOST, API_PORT)) {
-        Ok(stream) => stream,
-        Err(_) => return false,
-    };
-
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
-    let _ = stream.set_write_timeout(Some(Duration::from_secs(1)));
-
-    let request = format!(
-        "GET /health HTTP/1.1\r\nHost: {API_HOST}:{API_PORT}\r\nConnection: close\r\n\r\n"
-    );
-
-    if stream.write_all(request.as_bytes()).is_err() {
-        return false;
-    }
-
-    let mut response = String::new();
-    if stream.read_to_string(&mut response).is_err() {
-        return false;
-    }
-
-    response.starts_with("HTTP/1.1 200") || response.contains(r#"{"status":"ok"}"#)
-}
-
-fn stop_child_process(child: &mut Child) {
-    #[cfg(target_os = "windows")]
-    {
-        let _ = Command::new("taskkill")
-            .args(["/PID", &child.id().to_string(), "/T", "/F"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .creation_flags(CREATE_NO_WINDOW)
-            .status();
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        let _ = child.kill();
-    }
-}
-
-fn wait_for_api_ready(child: &mut Child, server_log_path: &Path) -> Result<(), String> {
-    let deadline = Instant::now() + API_STARTUP_TIMEOUT;
-
-    loop {
-        if is_api_ready() {
-            return Ok(());
-        }
-
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                return Err(format!(
-                    "The local API stopped before startup completed ({status}). Check {}.",
-                    server_log_path.display()
-                ));
-            }
-            Ok(None) => {}
-            Err(error) => {
-                return Err(format!(
-                    "Failed while waiting for the local API to start: {error}"
-                ));
-            }
-        }
-
-        if Instant::now() >= deadline {
-            return Err(format!(
-                "Timed out while starting the local API. Check {}.",
-                server_log_path.display()
-            ));
-        }
-
-        sleep(API_STARTUP_POLL_INTERVAL);
-    }
-}
 
 /// Map a `LicenseManager::initialize` failure to the `TUARI_LICENSE_STATUS`
 /// string the API sidecar understands (see
@@ -2126,135 +2015,12 @@ fn license_failure_env_map(error: &crate::error::RustCoreError) -> HashMap<Strin
     ])
 }
 
-fn spawn_api_process(app: &AppHandle) -> Result<Child, String> {
-    let (auth_db_path, app_db_path, server_log_path) = ensure_runtime_files(app)?;
-    let attachments_root = resolve_attachments_root(&app_db_path);
-    let runtime_secrets = load_runtime_secrets(app)?;
-    cleanup_stale_api_processes(app);
 
-    let log_file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&server_log_path)
-        .map_err(|error| error.to_string())?;
-    let error_log_file = log_file.try_clone().map_err(|error| error.to_string())?;
-
-    let mut command = if cfg!(debug_assertions) {
-        let mut cmd = Command::new(if cfg!(target_os = "windows") {
-            "pnpm.cmd"
-        } else {
-            "pnpm"
-        });
-        cmd.arg("--filter")
-            .arg("@tuari/api")
-            .arg("dev")
-            .current_dir(workspace_root());
-        cmd
-    } else {
-        let resource_dir = app
-            .path()
-            .resource_dir()
-            .map_err(|error| error.to_string())?;
-        let node_binary_name = if cfg!(target_os = "windows") {
-            "node.exe"
-        } else {
-            "node"
-        };
-        let node_path = resource_dir.join("bin").join(node_binary_name);
-        let runtime_dir = api_runtime_dir(&resource_dir);
-        let sidecar_path = api_sidecar_entry_path(&runtime_dir);
-
-        let mut cmd = Command::new(node_path);
-        cmd.arg(strip_windows_extended_path_prefix(
-            &sidecar_path.to_string_lossy(),
-        ));
-        cmd.current_dir(runtime_dir);
-        cmd
-    };
-
-    #[cfg(target_os = "windows")]
-    command.creation_flags(CREATE_NO_WINDOW);
-
-    command
-        .env_clear()
-        .env("API_HOST", API_HOST)
-        .env("API_PORT", API_PORT.to_string())
-        .env("ALLOWED_ORIGINS", ALLOWED_ORIGINS)
-        .env("BETTER_AUTH_SECRET", runtime_secrets.better_auth_secret)
-        .env(
-            "BETTER_AUTH_URL",
-            format!("http://{API_HOST}:{API_PORT}"),
-        )
-        .env("AUTH_DB_PATH", auth_db_path.as_os_str())
-        .env("APP_DB_PATH", app_db_path.as_os_str())
-        .env("APP_ATTACHMENTS_ROOT", attachments_root.as_os_str())
-        .env("DATABASE_URL", to_sqlite_url(&app_db_path))
-        .stdout(Stdio::from(log_file))
-        .stderr(Stdio::from(error_log_file));
-
-    // The bundled Node runtime needs `SystemRoot`: Node seeds its OpenSSL CSPRNG
-    // from the Windows security provider through that path, and `env_clear()`
-    // above removes it. Without it Node aborts during startup with
-    // `Assertion failed: ncrypto::CSPRNG(nullptr, 0)` and the sidecar dies
-    // before it can bind the API port. `windir`, `PATH`, and `TEMP` were each
-    // tested and made no difference; see scripts/smoke/sidecar-env-repro.ps1.
-    #[cfg(target_os = "windows")]
-    if let Ok(system_root) = std::env::var("SystemRoot") {
-        command.env("SystemRoot", system_root);
-    }
-
-    // Point the API sidecar at the user-editable config.json (may not exist
-    // yet — the API treats a missing file as "use env/defaults").
-    if let Ok(tuari_dir) = resolve_tuari_dir(app) {
-        command.env(
-            "TUARI_CONFIG_FILE",
-            tuari_dir.join("config.json").as_os_str(),
-        );
-    }
-
-    // Set structured license env vars for the API sidecar per Licensing Architecture §15.5.
-    // #399: on an initialization failure the block is still emitted, with an
-    // explicit status (clock -> "suspicious", everything else -> "unknown"), so
-    // the API and support can tell WHY licensing failed instead of seeing an
-    // omitted variable. The API keeps its own fail-closed default regardless.
-    if let Ok(tuari_dir) = resolve_tuari_dir(app) {
-        match crate::license::LicenseManager::initialize(&tuari_dir) {
-            Ok(manager) => {
-                let env_map = manager.to_env_map();
-                for (key, value) in &env_map {
-                    command.env(key, value);
-                }
-                // Only expose APP_DB_KEY if the license includes the EncryptedDb feature
-                if manager.has_feature("encrypted_db") {
-                    command.env("APP_DB_KEY", runtime_secrets.app_db_key);
-                }
-            }
-            Err(error) => {
-                for (key, value) in license_failure_env_map(&error) {
-                    command.env(key, value);
-                }
-            }
-        }
-    }
-
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("Failed to launch API process: {error}"))?;
-
-    if let Err(error) = wait_for_api_ready(&mut child, &server_log_path) {
-        stop_child_process(&mut child);
-        return Err(error);
-    }
-
-    Ok(child)
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .manage(ApiProcess {
-            child: Mutex::new(None),
-        })
+        .manage(ApiRuntime::default())
         .manage(DesktopAuthRuntimeState {
             session: Mutex::new(None),
         })
@@ -2275,12 +2041,19 @@ pub fn run() {
             check_for_updates,
             apply_update,
             get_current_version,
+            get_recent_diagnostic_events,
+            export_support_bundle,
+            record_ui_failure,
             start_update_download,
             cancel_update_download,
             restart_app,
             app_ready
         ])
         .setup(|app| {
+            match resolve_logs_dir(app.handle()) {
+                Ok(root) => crate::event_sink::initialize(root),
+                Err(_) => eprintln!("Local logging degraded: cannot resolve log directory"),
+            }
             // The DB-key rotation commands operate on the same secret store the
             // API sidecar's APP_DB_KEY comes from, so a rotation stays in sync
             // with what the next spawned process will read.
@@ -2290,10 +2063,7 @@ pub fn run() {
                 previous: Mutex::new(None),
             });
 
-            let child = spawn_api_process(app.handle())?;
-            let state = app.state::<ApiProcess>();
-            let mut guard = state.child.lock().map_err(|error| error.to_string())?;
-            *guard = Some(child);
+            app.state::<ApiRuntime>().start(app.handle())?;
 
             // Splashscreen fallback watcher: if the frontend never signals
             // `app_ready` (webview JS crash, hung first load), force-reveal
@@ -2334,44 +2104,186 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+                crate::event_sink::emit("info", "shutdown", None);
                 kill_api(app);
             }
         });
 }
 
 fn kill_api(app: &AppHandle) {
-    let state = app.state::<ApiProcess>();
-    let lock_result = state.child.lock();
-    if let Ok(mut guard) = lock_result {
-        if let Some(child) = guard.as_mut() {
-            stop_child_process(child);
-        }
-        *guard = None;
-    }
+    app.state::<ApiRuntime>().stop();
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn update_caller_records_success_and_failure() {
+        struct Provider(bool);
+        impl crate::update::UpdateProvider for Provider {
+            fn check_for_updates(&self, _: &str) -> Result<Option<crate::update::UpdateInfo>, crate::error::RustCoreError> {
+                if self.0 { Err(crate::error::RustCoreError::Internal("offline".into())) } else { Ok(None) }
+            }
+            fn download_update(&self, _: &crate::update::UpdateInfo, _: &std::path::Path) -> Result<(), crate::error::RustCoreError> { unreachable!() }
+        }
+        let events = crate::event_sink::capture_events(|| {
+            assert!(!super::check_for_updates_with(&Provider(false)).unwrap().update_available);
+            assert!(super::check_for_updates_with(&Provider(true)).is_err());
+        });
+        assert!(events.iter().any(|e| e["message"] == "update check started" && e["severity"] == "info" && e["lifecycle"] == true));
+        assert!(events.iter().any(|e| e["message"] == "update check complete" && e["severity"] == "info" && e["lifecycle"] == true));
+        assert!(events.iter().any(|e| e["message"] == "update check failed" && e["severity"] == "error"));
+    }
     use super::{
-        copy_allowlisted_legacy_runtime_files_if_missing, encode_secret,
-        api_sidecar_entry_path,
-        has_portable_runtime_layout, is_allowed_desktop_bridge_path,
+        api_sidecar_entry_path, clear_app_ready, complete_db_key_rotation_in_store,
+        configure_api_child_environment, copy_allowlisted_legacy_runtime_files_if_missing,
+        encode_secret, has_portable_runtime_layout, is_allowed_desktop_bridge_path,
         is_api_sidecar_command_line, is_sensitive_command_window_allowed, is_valid_secret,
-        license_failure_env_map, license_status_for_error,
-        load_or_create_secret, matches_inventory_attachment_download_path,
+        license_failure_env_map, license_status_for_error, load_or_create_secret,
+        mark_app_ready_if_first, matches_inventory_attachment_download_path,
         matches_inventory_attachment_upload_path, migrate_legacy_secret_file, normalize_token,
-        complete_db_key_rotation_in_store, restore_db_key_in_store, rotate_db_key_in_store,
-        should_force_reveal_main_window, strip_windows_extended_path_prefix,
-        AppReadyState, DesktopApiBridgeError,
-        DESKTOP_API_BRIDGE_ERROR_KIND, APP_DB_KEY_ACCOUNT,
-        BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
-        SecretStore, clear_app_ready, mark_app_ready_if_first,
+        restore_db_key_in_store, rotate_db_key_in_store, should_force_reveal_main_window,
+        strip_windows_extended_path_prefix, AppReadyState, DesktopApiBridgeError, SecretStore,
+        APP_DB_KEY_ACCOUNT, BETTER_AUTH_SECRET_ACCOUNT, BETTER_AUTH_SECRET_BYTES,
+        DESKTOP_API_BRIDGE_ERROR_KIND, SPLASHSCREEN_FALLBACK_REVEAL_DELAY,
     };
     use std::fs::{create_dir_all, remove_dir_all};
     use std::path::PathBuf;
+    use std::process::Command;
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use crate::error::RustCoreError;
+
+    #[test]
+    fn api_temp_directory_is_created_writable_and_reusable() {
+        let root = unique_temp_dir();
+        let path = super::prepare_api_temp_directory(&root).expect("prepare temp");
+        assert_eq!(path, std::fs::canonicalize(root.join("temp")).unwrap());
+        std::fs::write(path.join("sqlite-probe"), b"writable").unwrap();
+        assert_eq!(
+            std::fs::read(path.join("sqlite-probe")).unwrap(),
+            b"writable"
+        );
+        std::fs::write(path.join(".write-probe"), b"stale probe owned by another launch").unwrap();
+        assert_eq!(super::prepare_api_temp_directory(&root).unwrap(), path);
+        assert_eq!(std::fs::read_dir(&path).unwrap().count(), 2);
+        remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn api_temp_directory_refuses_a_file() {
+        let root = unique_temp_dir();
+        create_dir_all(&root).unwrap();
+        std::fs::write(root.join("temp"), b"do not replace").unwrap();
+        let error = super::prepare_api_temp_directory(&root).unwrap_err();
+        assert!(error.contains("API temporary directory"), "{error}");
+        assert_eq!(std::fs::read(root.join("temp")).unwrap(), b"do not replace");
+        remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn api_temp_environment_is_explicit_in_both_modes() {
+        let root = unique_temp_dir();
+        let path = super::prepare_api_temp_directory(&root).unwrap();
+        for development in [true, false] {
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command.env("TUARI_TEST_SECRET", "must-not-cross");
+            configure_api_child_environment(&mut command, development, &path);
+            let env: std::collections::HashMap<_, _> = command.get_envs().collect();
+            for key in ["TEMP", "TMP", "SQLITE_TMPDIR"] {
+                assert_eq!(
+                    env.get(std::ffi::OsStr::new(key)),
+                    Some(&Some(path.as_os_str()))
+                );
+            }
+            assert!(!env.contains_key(std::ffi::OsStr::new("TUARI_TEST_SECRET")));
+            command
+                .args(["--exact", "tests::environment_probe_child", "--nocapture"])
+                .env("TUARI_ENV_PROBE", "1")
+                .env("TUARI_EXPECTED_TEMP", &path);
+            let output = command.output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert!(String::from_utf8_lossy(&output.stdout).contains("SECRET_PRESENT=false"));
+        }
+        remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn development_api_process_can_resolve_node_through_host_path() {
+        let mut command = if cfg!(target_os = "windows") {
+            let system_root = std::env::var_os("SystemRoot").expect("Windows SystemRoot");
+            let mut command =
+                Command::new(PathBuf::from(system_root).join("System32").join("cmd.exe"));
+            command.args(["/d", "/c", "node --version"]);
+            command
+        } else {
+            let mut command = Command::new("/bin/sh");
+            command.args(["-c", "node --version"]);
+            command
+        };
+        let root = unique_temp_dir();
+        let temp_dir = super::prepare_api_temp_directory(&root).unwrap();
+        configure_api_child_environment(&mut command, true, &temp_dir);
+
+        let output = command.output().expect("launch node lookup probe");
+        assert!(
+            output.status.success(),
+            "development child could not resolve node: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .starts_with('v'));
+    }
+
+    #[test]
+    fn production_api_process_does_not_inherit_arbitrary_parent_secrets() {
+        let mut command = Command::new(std::env::current_exe().expect("test executable"));
+        command
+            .args(["--exact", "tests::environment_probe_child", "--nocapture"])
+            .env("PATH", "production-path-must-not-cross")
+            .env("TUARI_TEST_SECRET", "parent-secret-must-not-cross");
+        let root = unique_temp_dir();
+        let temp_dir = super::prepare_api_temp_directory(&root).unwrap();
+        configure_api_child_environment(&mut command, false, &temp_dir);
+        command
+            .env("TUARI_ENV_PROBE", "1")
+            .env("TUARI_EXPECTED_TEMP", &temp_dir);
+
+        let output = command.output().expect("launch isolated environment probe");
+        assert!(output.status.success(), "environment probe child failed");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            stdout.contains("PATH_PRESENT=false"),
+            "unexpected child PATH: {stdout}"
+        );
+        assert!(
+            stdout.contains("SECRET_PRESENT=false"),
+            "parent secret leaked: {stdout}"
+        );
+    }
+
+    #[test]
+    fn environment_probe_child() {
+        if std::env::var_os("TUARI_ENV_PROBE").is_none() {
+            return;
+        }
+        let expected = std::env::var_os("TUARI_EXPECTED_TEMP").unwrap();
+        for key in ["TEMP", "TMP", "SQLITE_TMPDIR"] {
+            assert_eq!(std::env::var_os(key), Some(expected.clone()));
+        }
+        let probe = PathBuf::from(expected).join("child-writable");
+        std::fs::write(&probe, b"child").unwrap();
+        std::fs::remove_file(probe).unwrap();
+        println!("PATH_PRESENT={}", std::env::var_os("PATH").is_some());
+        println!(
+            "SECRET_PRESENT={}",
+            std::env::var_os("TUARI_TEST_SECRET").is_some()
+        );
+    }
 
     fn unique_temp_dir() -> PathBuf {
         let unique_suffix = SystemTime::now()

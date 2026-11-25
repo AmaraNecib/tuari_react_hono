@@ -1,7 +1,9 @@
 import { z } from "zod";
+import { paymentMethodSchema } from "./core";
+import { exactDebtEntrySchema } from "./debts-exact";
 import { Money, UnitPrice, Quantity, parseExactLine } from "./exact-money";
 import {
-  inventoryAssetUnitCreateInputSchema, inventoryAssetEntryCreateInputSchema, inventoryConsumableBalanceSchema, inventoryMovementSchema, inventoryItemDefinitionSchema,
+  inventoryInvoiceAttachmentSchema, inventoryAssetUnitCreateInputSchema, inventoryAssetEntryCreateInputSchema, inventoryConsumableBalanceSchema, inventoryMovementSchema, inventoryItemDefinitionSchema,
   inventoryConsumableEntryCreateInputSchema, inventoryInvoiceGroupCreateInputSchema,
   inventoryInvoiceGroupSchema, inventoryAssetUnitSchema, inventoryAssetChargeSchema,
   inventoryAssetChargeRevisionSchema, inventoryEntrySchema,
@@ -62,9 +64,10 @@ const exactAssetEntryInput = z.object({ ...inventoryAssetEntryCreateInputSchema.
   if (input.warehouseId && input.projectId) ctx.addIssue({ code: "custom", message: "Choose one destination", path: ["warehouseId"] });
 });
 export const exactInventoryInvoiceCreateSchema = z.object({ ...inventoryInvoiceGroupCreateInputSchema.shape,
-  ...command, paidAmountDzd: exactInventoryMoneySchema.nullable().optional(),
+  ...command, initialPaymentMethod: paymentMethodSchema.optional(), paidAmountDzd: exactInventoryMoneySchema.nullable().optional(),
   entries: z.array(z.discriminatedUnion("kind", [exactConsumableInput, exactAssetEntryInput])).min(1).max(10000),
 }).superRefine((input, ctx) => {
+  if (input.initialPaymentMethod && !input.createDebt) ctx.addIssue({ code: "custom", message: "Initial method requires debt mode", path: ["initialPaymentMethod"] });
   if (input.warehouseId && input.projectId) ctx.addIssue({ code: "custom", message: "Choose one default destination", path: ["warehouseId"] });
   if (input.createDebt && !input.externalCounterpartyId) ctx.addIssue({ code: "custom", message: "Debt requires an external counterparty", path: ["externalCounterpartyId"] });
   if (input.createDebt && !input.paymentInputType) ctx.addIssue({ code: "custom", message: "Choose first-payment input mode", path: ["paymentInputType"] });
@@ -131,7 +134,7 @@ export const exactInventoryLocationInputSchema = z.object({ warehouseId: z.strin
   if (Boolean(input.warehouseId) === Boolean(input.projectId)) ctx.addIssue({ code: "custom", message: "Choose exactly one location" });
 });
 export const exactInventoryLocationSchema = z.object({ assets: z.array(exactInventoryAssetSchema), consumables: z.array(inventoryConsumableBalanceSchema) });
-export const exactInventoryDetailSchema = z.object({ group: exactInventoryInvoiceSchema, entries: z.array(exactInventoryEntrySchema),
+export const exactInventoryDetailSchema = z.object({ payments: z.array(exactDebtEntrySchema).optional(), attachments: z.array(inventoryInvoiceAttachmentSchema), group: exactInventoryInvoiceSchema, entries: z.array(exactInventoryEntrySchema),
   consumableBalances: z.array(inventoryConsumableBalanceSchema), movements: z.array(inventoryMovementSchema) });
 const aggregateAmount = z.string().max(256).regex(/^-?(?:0|[1-9]\d*)\.\d{2}$/);
 export const exactInventoryProjectContributionSchema = z.object({ projectId: z.string().min(1), chargedMaterialsDzd: aggregateAmount, equipmentChargesDzd: aggregateAmount,
@@ -139,6 +142,30 @@ export const exactInventoryProjectContributionSchema = z.object({ projectId: z.s
 export const exactInventoryProjectChargesSchema = z.object({ projectId: z.string().min(1), totalDzd: aggregateAmount, charges: z.array(exactInventoryChargeSchema) });
 export const exactInventoryChargeDefaultSchema = z.object({ assetUnitId: z.string().min(1), amountDzd: exactInventoryMoneySchema, purchasePriceDzd: exactInventoryMoneySchema, source: z.enum(["LAST_CHARGE", "PURCHASE_PRICE"]) });
 export const exactInventoryDefinitionsSchema = z.array(inventoryItemDefinitionSchema);
+const exactHistoryAggregate = z.string().max(256).regex(/^-?(?:0|[1-9]\d*)\.\d{2}$/);
+export const exactInventoryHistoryInputSchema = z.object({
+  warehouseId: z.string().min(1).optional(), projectId: z.string().min(1).optional(),
+  dateFrom: z.string().optional(), dateTo: z.string().optional(),
+  locationType: z.enum(["WAREHOUSE", "PROJECT", "ALL"]).optional(),
+  transferType: z.enum(["PURCHASE", "INTERNAL", "SALE", "GIFT", "RETURN", "ALL"]).optional(),
+  search: z.string().max(200).optional(), offset: z.number().int().min(0).max(100000).default(0),
+  limit: z.number().int().min(1).max(100).default(50),
+}).superRefine((input, ctx) => {
+  if (input.warehouseId && input.projectId) ctx.addIssue({ code: "custom", message: "Choose one location" });
+});
+export const exactInventoryHistoryItemSchema = z.object({ id: z.string().min(1), name: z.string(), quantity: z.number().nonnegative(), type: z.enum(["ASSET", "CONSUMABLE"]), priceSource: exactInventoryLineSchema.nullable(), to: z.object({ type: z.enum(["WAREHOUSE", "PROJECT"]), id: z.string(), name: z.string() }).nullable().optional() });
+export const exactInventoryHistoryRowSchema = z.object({
+  id: z.string().min(1), date: z.string().datetime(), type: z.enum(["PURCHASE", "INTERNAL", "SALE", "GIFT", "RETURN"]),
+  from: z.object({ type: z.enum(["WAREHOUSE", "PROJECT"]), id: z.string(), name: z.string() }).nullable(),
+  to: z.object({ type: z.enum(["WAREHOUSE", "PROJECT"]), id: z.string(), name: z.string() }).nullable(),
+  counterparty: z.object({ id: z.string(), name: z.string() }).nullable(), items: z.array(exactInventoryHistoryItemSchema),
+  totalAmountDzd: exactHistoryAggregate.nullable(), paidAmountDzd: exactHistoryAggregate.nullable(), remainingDebtDzd: exactHistoryAggregate.nullable(),
+  currency: z.literal("DZD").nullable(), paymentStatus: z.enum(["PAID", "PARTIAL", "UNPAID", "N/A"]),
+  status: z.enum(["COMPLETED", "PENDING", "CANCELLED"]), note: z.string().nullable(),
+});
+export const exactInventoryHistorySchema = z.object({ items: z.array(exactInventoryHistoryRowSchema), total: z.number().int().nonnegative(), offset: z.number().int().nonnegative(), limit: z.number().int().positive(), summary: z.object({ total: z.number().int().nonnegative(), sales: z.number().int().nonnegative(), internal: z.number().int().nonnegative(), totalAmountDzd: exactHistoryAggregate }) });
+export const exactInventoryAssetHistoryInputSchema = z.object({ assetUnitId: z.string().min(1) });
+export const exactInventoryAssetHistorySchema = z.object({ assetUnitId: z.string().min(1), items: z.array(exactInventoryChargeSchema) });
 export type ExactInventoryInvoiceInput = z.input<typeof exactInventoryInvoiceCreateSchema>;
 export type ExactInventoryInvoice = z.infer<typeof exactInventoryInvoiceSchema>;
 export type ExactInventoryEntry = z.infer<typeof exactInventoryEntrySchema>;
@@ -151,5 +178,7 @@ export type ExactInventoryConsumableTransfer = z.input<typeof exactInventoryCons
 export type ExactInventoryPayment = z.input<typeof exactInventoryPaymentSchema>;
 export type ExactInventoryOutboundPayment = z.input<typeof exactInventoryOutboundPaymentSchema>;
 export type ExactInventoryOutboundView = z.infer<typeof exactInventoryOutboundViewSchema>;
+export type ExactInventoryHistoryInput = z.input<typeof exactInventoryHistoryInputSchema>;
+export type ExactInventoryHistoryRow = z.infer<typeof exactInventoryHistoryRowSchema>;
 export type ExactInventoryChargeUpdate = z.input<typeof exactInventoryChargeUpdateSchema>;
 export type ExactInventoryChargeVoid = z.input<typeof exactInventoryChargeVoidSchema>;

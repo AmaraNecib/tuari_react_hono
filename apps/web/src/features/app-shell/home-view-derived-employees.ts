@@ -16,7 +16,6 @@ type EmployeeDeleteFacts = {
   hasManagedWarehouseHistory: boolean
   hasManagerHistory: boolean
   hasProjectHistory: boolean
-  hasSalaryPayments: boolean
   hasWarehouseHistory: boolean
   managesAnyProject: boolean
   managesAnyWarehouse: boolean
@@ -44,7 +43,6 @@ export type EmployeeRelationshipFacts = {
   employeeIdsWithManagedWarehouseHistory: Set<string>
   employeeIdsWithManagerHistory: Set<string>
   employeeIdsWithProjectHistory: Set<string>
-  employeeIdsWithSalaryPayments: Set<string>
   employeeIdsWithWarehouseHistory: Set<string>
   activeReportsByManagerId: Map<string, DemoWorkspace["managerAssignments"]>
   activeProjectsByManagerId: Map<string, DemoWorkspace["projects"]>
@@ -67,7 +65,6 @@ export function buildEmployeeRelationshipFacts(workspace: DemoWorkspace): Employ
     employeeIdsWithManagedWarehouseHistory: collectIds(workspace.warehouseManagerOwnershipHistory, (entry) => entry.managerId),
     employeeIdsWithManagerHistory,
     employeeIdsWithProjectHistory: collectIds(workspace.projectAssignments, (assignment) => assignment.employeeId),
-    employeeIdsWithSalaryPayments: collectIds(workspace.salaryPayments, (payment) => payment.employeeId),
     employeeIdsWithWarehouseHistory: collectIds(workspace.warehouseAssignments, (assignment) => assignment.employeeId),
     activeReportsByManagerId: groupItemsBy(
       workspace.managerAssignments,
@@ -96,7 +93,6 @@ export function deriveEmployeeDeleteState(facts: EmployeeDeleteFacts, t: Transla
     !facts.hasWarehouseHistory &&
     !facts.hasManagedProjectHistory &&
     !facts.hasManagedWarehouseHistory &&
-    !facts.hasSalaryPayments &&
     !facts.managesAnyProject &&
     !facts.managesAnyWarehouse
 
@@ -108,7 +104,7 @@ export function deriveEmployeeDeleteState(facts: EmployeeDeleteFacts, t: Transla
         ? t("detailPages.employee.deleteReasonManagementHistory")
         : facts.hasProjectHistory || facts.hasWarehouseHistory
           ? t("detailPages.employee.deleteReasonWorkHistory")
-          : facts.hasManagedProjectHistory || facts.hasManagedWarehouseHistory || facts.hasSalaryPayments
+          : facts.hasManagedProjectHistory || facts.hasManagedWarehouseHistory
             ? t("detailPages.employee.deleteReasonHistoryOrPayments")
             : facts.managesAnyProject || facts.managesAnyWarehouse
               ? t("detailPages.employee.deleteReasonManagedScope")
@@ -179,7 +175,6 @@ export function buildEmployeeRow({
       hasManagedWarehouseHistory: relationshipFacts.employeeIdsWithManagedWarehouseHistory.has(employee.id),
       hasManagerHistory: relationshipFacts.employeeIdsWithManagerHistory.has(employee.id),
       hasProjectHistory: relationshipFacts.employeeIdsWithProjectHistory.has(employee.id),
-      hasSalaryPayments: relationshipFacts.employeeIdsWithSalaryPayments.has(employee.id),
       hasWarehouseHistory: relationshipFacts.employeeIdsWithWarehouseHistory.has(employee.id),
       managesAnyProject: (relationshipFacts.projectsByManagerId.get(employee.id) ?? []).length > 0,
       managesAnyWarehouse: (relationshipFacts.warehousesByManagerId.get(employee.id) ?? []).length > 0,

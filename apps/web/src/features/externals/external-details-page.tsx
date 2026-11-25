@@ -1,26 +1,30 @@
 /**
  * External counterparty details page.
  */
-import type { DebtAccount, DebtEntry, ExternalCounterparty } from "@tuari/contracts"
+import type { ExactDebtsClient, ExternalCounterparty } from "@tuari/contracts"
 import { useTranslation } from "react-i18next"
 
 import { RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shared/record-page-frame"
 
-import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
+import { useCompositeWorkspaceQuery } from "@/features/app-shell/workspace-queries"
+import { ExactDebtsPage } from "@/features/debts/debts-exact-page"
+import { type ManualSettlementClient } from "@/features/debts/manual-settlement-panel"
 
 /**
  * @description Component
  */
 export function ExternalCounterpartyDetailsPage({
   counterparty,
-  debtAccounts,
-  debtEntriesByAccountId,
+  debtClient,
+  manualSettlementClient,
 }: {
   counterparty: ExternalCounterparty & { phone?: string }
-  debtAccounts: DebtAccount[]
-  debtEntriesByAccountId: Record<string, DebtEntry[]>
+  debtClient: ExactDebtsClient
+  manualSettlementClient?: ManualSettlementClient
 }) {
   const { t } = useTranslation()
+  const metadata = useCompositeWorkspaceQuery({ enabled: Boolean(manualSettlementClient) })
+  const manualSettlementSupported = !metadata.isError && metadata.data?.capabilities?.manualSettlement === true
   return (
     <RecordPageFrame
       backHref="/externals"
@@ -34,12 +38,7 @@ export function ExternalCounterpartyDetailsPage({
         <RecordInfoCard label={t("externals.details.notes")} value={counterparty.note?.trim() || t("common.noNotes")} />
       </RecordInfoGrid>
 
-      <DebtCasesPanel
-        accounts={debtAccounts}
-        debtEntriesByAccountId={debtEntriesByAccountId}
-        externalCounterpartyId={counterparty.id}
-        title={t("externals.details.ledger")}
-      />
+      <ExactDebtsPage manualSettlementSupported={manualSettlementSupported} manualSettlementClient={manualSettlementClient} client={debtClient} scopedParty={{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }} parties={[{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }]} />
     </RecordPageFrame>
   )
 }

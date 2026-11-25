@@ -67,7 +67,9 @@ test('fails for a different GHSA, package, version, or severity', () => {
 });
 
 test('every other high or critical finding fails while low and moderate remain reportable', () => {
-  assert.equal(evaluateAudit(report([allowed(['4.0.7']), { id: 'GHSA-other', versions: ['1.0.0'] }]), { now: '2026-11-20T00:00:00Z', expiresAt }).pass, false);
+  for (const severity of ['high', 'critical']) {
+    assert.equal(evaluateAudit(report([allowed(['4.0.7']), { id: 'GHSA-other', severity, versions: ['1.0.0'] }]), { now: '2026-11-20T00:00:00Z', expiresAt }).pass, false);
+  }
   for (const severity of ['low', 'moderate']) assert.equal(evaluateAudit(report([{ id: 'GHSA-other', severity }]), { now: '2026-11-20T00:00:00Z', expiresAt }).pass, true);
 });
 
@@ -99,16 +101,40 @@ test('CLI integration preserves JSON, stderr, and native exit status from a fake
     const malformed = auditOnce({ command: process.execPath, args: [fake], platform: 'linux' });
     assert.equal(malformed.pass, false);
     assert.match(malformed.reason, /valid JSON/);
+    const lowAndModerate = report([
+      { id: 'GHSA-low', module: 'low-package', severity: 'low', versions: ['1.0.0'] },
+      { id: 'GHSA-moderate', module: 'moderate-package', severity: 'moderate', versions: ['2.0.0'] },
+    ]);
+    writeFileSync(fake, `process.stdout.write(${JSON.stringify(JSON.stringify(lowAndModerate))}); process.exit(1);`);
+    const findingsExit = auditOnce({ command: process.execPath, args: [fake], platform: 'linux', now: '2026-11-20T00:00:00Z' });
+    assert.equal(findingsExit.pass, true);
+    assert.equal(findingsExit.status, 1);
+    assert.equal(findingsExit.stdout, JSON.stringify(lowAndModerate));
+
+    writeFileSync(fake, `process.stdout.write(${JSON.stringify(JSON.stringify(report()))}); process.stderr.write('ERR_PNPM_META_FETCH_FAIL'); process.exit(1);`);
+    const networkError = auditOnce({ command: process.execPath, args: [fake], platform: 'linux', now: '2026-11-20T00:00:00Z' });
+    assert.equal(networkError.pass, false);
+    assert.match(networkError.reason, /without any advisory finding/);
+    assert.equal(networkError.stderr, 'ERR_PNPM_META_FETCH_FAIL');
+
+    const terminated = auditOnce({ spawn: () => ({ error: null, signal: 'SIGTERM', status: null, stdout: '', stderr: '' }) });
+    assert.equal(terminated.pass, false);
+    assert.match(terminated.reason, /terminated without an exit code/);
+
     const unavailable = auditOnce({ command: path.join(dir, 'missing-pnpm'), platform: 'linux' });
     assert.equal(unavailable.pass, false);
     assert.match(unavailable.reason, /could not run/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('nonzero exit passes only for a valid vulnerability report allowed by policy', () => {
-  assert.equal(evaluateAudit(report([allowed(['4.0.7'])]), { now: '2026-11-20T00:00:00Z', expiresAt, exitCode: 1 }).pass, true);
-  assert.equal(evaluateAudit(report(), { now: '2026-11-20T00:00:00Z', expiresAt, exitCode: 1 }).pass, false);
+test('pnpm exit 1 accepts valid low or moderate findings but not an empty report', () => {
+  for (const severity of ['low', 'moderate']) {
+    assert.equal(evaluateAudit(report([{ id: 'GHSA-other', severity }]), { now: '2026-11-20T00:00:00Z', expiresAt, exitCode: 1 }).pass, true);
+  }
+  const empty = evaluateAudit(report(), { now: '2026-11-20T00:00:00Z', expiresAt, exitCode: 1 });
+  assert.equal(empty.pass, false);
+  assert.match(empty.reason, /without any advisory finding/);
   assert.equal(evaluateAudit(null, { now: '2026-11-20T00:00:00Z', expiresAt, exitCode: 1 }).pass, false);
   assert.equal(evaluateAudit(report([allowed(['4.0.7'])]), { now: '2026-11-20T00:00:00Z', expiresAt, exitCode: 2 }).pass, false);
-  assert.equal(evaluateAudit(report([allowed(['4.0.7'])]), { now: '2026-11-20T00:00:00Z', expiresAt, exitCode: 0 }).pass, false);
+  assert.equal(evaluateAudit(report([{ id: 'GHSA-other', severity: 'high' }]), { now: '2026-11-20T00:00:00Z', expiresAt, exitCode: 0 }).pass, false);
 });

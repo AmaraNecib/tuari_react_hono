@@ -12,13 +12,14 @@
  *      row back — a plain better-sqlite3 build accepts `PRAGMA key` as a no-op
  *      and would fail step 1, so the two together rule out the silent-plaintext
  *      failure mode;
- *   3. the shipped runtime boots with `APP_DB_KEY`, and the REAL daily-backup
- *      path (`VACUUM INTO` on a worker connection, `backup.snapshot.ts`) writes
- *      a backup that is also non-plaintext and key-readable.
+ *   3. the shipped runtime boots with `APP_DB_KEY` against a fresh application
+ *      database, and its REAL daily-backup path writes a non-plaintext,
+ *      key-readable copy of the initialized application schema.
  *
  * Step 3 boots the artifact instead of re-implementing the backup: a copy of
  * `VACUUM INTO` here would be a second, drifting definition of "the daily
- * backup", and the point of this gate is to exercise the code that ships.
+ * backup". Marker-row proof stays on a separate binding-only database; placing
+ * its foreign table in the application file would bypass exact schema startup.
  *
  * Deliberately independent of the API's own plaintext predicate: a proof that
  * shared the predicate it is proving could not catch a bug in that predicate.
@@ -70,6 +71,30 @@ const SQLCIPHER_PACKAGE_DIR = path.join("node_modules", "better-sqlite3-multiple
 
 const DEFAULT_HEALTH_TIMEOUT_MS = 90_000;
 const DEFAULT_BACKUP_TIMEOUT_MS = 120_000;
+
+/** Keep native binding probes outside the application's exact-schema database. */
+export function proofDatabasePaths(workspace) {
+  return {
+    roundTripDb: path.join(workspace, "roundtrip.sqlite"),
+    liveDb: path.join(workspace, "data", DATABASE_FILE_NAME),
+  };
+}
+/** Reject reused binding files before the sidecar can mistake them for app data. */
+export function assertFreshApplicationDatabase(databasePath) {
+  if (existsSync(databasePath)) throw new Error("application startup requires a fresh database path");
+}
+
+export const APPLICATION_ROWS_SQL = "SELECT slice, version FROM exact_money_schema ORDER BY slice";
+
+/** Independent expected startup rows, not a comparison of two possibly empty files. */
+export function assertApplicationRows(rows, label) {
+  const expected = ["debt", "expenses", "inventory", "invoice", "workforce"]
+    .map((slice) => ({ slice, version: 1 }));
+  if (JSON.stringify(rows) !== JSON.stringify(expected)) {
+    throw new Error(`${label}: did not return the expected persisted application rows`);
+  }
+}
+
 // Every `runBundledNode` probe talks to a native addon. A hung native call must
 // not hold the job: without a bound, `spawnSync` never returns, the script never
 // reaches its own error checks or cleanup, and the Windows runner stays
@@ -541,10 +566,9 @@ export async function runProof(options, { log = console.log } = {}) {
 
   const key = `proof-key-${randomBytes(24).toString("hex")}`;
   const marker = `roundtrip-${randomBytes(8).toString("hex")}`;
-  const roundTripDb = path.join(workspace, "roundtrip.sqlite");
   const dataDir = path.join(workspace, "data");
   const backupsRoot = path.join(workspace, "backups");
-  const liveDb = path.join(dataDir, DATABASE_FILE_NAME);
+  const { roundTripDb, liveDb } = proofDatabasePaths(workspace);
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(backupsRoot, { recursive: true });
 
@@ -613,13 +637,10 @@ export async function runProof(options, { log = console.log } = {}) {
     results.push("plain SQLite reader reached SQL data and was rejected");
 
     log("[4/4] The shipped runtime boots with a key and its daily backup is encrypted too");
-    // Seed a known row before startup schedules its real snapshot, so the actual
-    // backup must carry this exact row rather than merely matching the schema.
-    runBundledNode(nodeExe, runtimeDir, WRITE_ROW_PROBE_SOURCE, {
-      TUARI_PROOF_DB: liveDb,
-      TUARI_PROOF_KEY: key,
-      TUARI_PROOF_MARKER: marker,
-    });
+    // Start with a fresh application database. Pre-seeding a probe-only table
+    // bypasses the application's exact schema gate and does not prove its normal
+    // startup path. The separate round-trip database above owns marker proof.
+    assertFreshApplicationDatabase(liveDb);
     const port = await freePort();
     child = spawn(nodeExe, [SIDECAR_ENTRY], {
       cwd: runtimeDir,
@@ -655,16 +676,16 @@ export async function runProof(options, { log = console.log } = {}) {
         }) || "[]",
       ).map((row) => row.name);
 
+    const keyedApplicationRows = (databasePath) => JSON.parse(
+      runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
+        TUARI_PROOF_DB: databasePath,
+        TUARI_PROOF_KEY: key,
+        TUARI_PROOF_SQL: APPLICATION_ROWS_SQL,
+      }) || "[]",
+    );
     const liveTables = keyedTableNames(liveDb);
-    const liveMarker = JSON.parse(runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
-      TUARI_PROOF_DB: liveDb,
-      TUARI_PROOF_KEY: key,
-      TUARI_PROOF_SQL: `SELECT marker FROM proof WHERE marker = '${marker}'`,
-    }) || "[]");
-    if (liveTables.length === 0 || liveMarker.length !== 1 || liveMarker[0].marker !== marker) {
-      throw new Error("the keyed sidecar database did not return the exact proof row");
-    }
-    results.push(`sidecar wrote ${liveSize} encrypted bytes and returned the exact proof row (${liveTables.length} tables)`);
+    assertApplicationRows(keyedApplicationRows(liveDb), "sidecar database");
+    results.push(`sidecar initialized ${liveTables.length} application tables in ${liveSize} encrypted bytes and returned all five persisted schema rows`);
 
     const snapshot = await waitForSnapshot(backupsRoot, {
       timeoutMs: options.backupTimeoutMs,
@@ -673,14 +694,7 @@ export async function runProof(options, { log = console.log } = {}) {
     });
     const snapshotSize = assertNotPlaintextDatabase(snapshot, "daily backup");
     const snapshotTables = keyedTableNames(snapshot);
-    const snapshotMarker = JSON.parse(runBundledNode(nodeExe, runtimeDir, READ_ROWS_PROBE_SOURCE, {
-      TUARI_PROOF_DB: snapshot,
-      TUARI_PROOF_KEY: key,
-      TUARI_PROOF_SQL: `SELECT marker FROM proof WHERE marker = '${marker}'`,
-    }) || "[]");
-    if (snapshotTables.length === 0 || snapshotMarker.length !== 1 || snapshotMarker[0].marker !== marker) {
-      throw new Error("the keyed daily backup did not return the exact proof row");
-    }
+    assertApplicationRows(keyedApplicationRows(snapshot), "daily backup");
     // The backup is a `VACUUM INTO` copy of the live database, so every table
     // the live database had at backup time must be present in the backup. A
     // table that is missing means the copy is not faithful.
@@ -693,7 +707,7 @@ export async function runProof(options, { log = console.log } = {}) {
     // with *extra* tables is not a failure. A table that is missing from the
     // backup still is.
     //
-    // It is deliberately schema-agnostic, so it cannot drift with a migration.
+    // Persisted application rows are checked separately above.
     const missingTables = liveTables.filter((table) => !snapshotTables.includes(table));
     if (missingTables.length > 0) {
       throw new Error(
@@ -701,25 +715,26 @@ export async function runProof(options, { log = console.log } = {}) {
         + `(the backup has [${snapshotTables.join(", ")}])`,
       );
     }
-    results.push(`daily backup ${path.relative(backupsRoot, snapshot)} is ${snapshotSize} encrypted bytes (key-readable)`);
-    const backupSql = `SELECT marker FROM proof WHERE marker = '${marker}'`;
-    for (const [mode, probeKey, label] of [
-      ["wrong-key", `wrong-${randomBytes(16).toString("hex")}`, "wrong key"],
-      ["no-key", "", "no key"],
-    ]) {
-      requireExpectedReadFailure(nodeExe, runtimeDir, NEGATIVE_READ_PROBE_SOURCE, {
-        TUARI_PROOF_DB: snapshot,
-        TUARI_PROOF_KEY: probeKey,
-        TUARI_PROOF_MODE: mode,
-        TUARI_PROOF_SQL: backupSql,
-      }, `backup ${label} reader`);
-      results.push(`daily backup ${label} reader reached SQL data and was rejected`);
+    results.push(`daily backup ${path.relative(backupsRoot, snapshot)} is ${snapshotSize} encrypted bytes and returned all five persisted schema rows`);
+    for (const [databasePath, databaseLabel] of [[liveDb, "sidecar database"], [snapshot, "daily backup"]]) {
+      for (const [mode, probeKey, label] of [
+        ["wrong-key", `wrong-${randomBytes(16).toString("hex")}`, "wrong key"],
+        ["no-key", "", "no key"],
+      ]) {
+        requireExpectedReadFailure(nodeExe, runtimeDir, NEGATIVE_READ_PROBE_SOURCE, {
+          TUARI_PROOF_DB: databasePath,
+          TUARI_PROOF_KEY: probeKey,
+          TUARI_PROOF_MODE: mode,
+          TUARI_PROOF_SQL: APPLICATION_ROWS_SQL,
+        }, `${databaseLabel} ${label} reader`);
+        results.push(`${databaseLabel} ${label} reader reached SQL data and was rejected`);
+      }
+      requireExpectedReadFailure(nodeExe, runtimeDir, PLAIN_READ_PROBE_SOURCE, {
+        TUARI_PROOF_DB: databasePath,
+        TUARI_PROOF_SQL: APPLICATION_ROWS_SQL,
+      }, `${databaseLabel} plain SQLite reader`);
+      results.push(`${databaseLabel} plain SQLite reader reached SQL data and was rejected`);
     }
-    requireExpectedReadFailure(nodeExe, runtimeDir, PLAIN_READ_PROBE_SOURCE, {
-      TUARI_PROOF_DB: snapshot,
-      TUARI_PROOF_SQL: backupSql,
-    }, "backup plain SQLite reader");
-    results.push("daily backup plain SQLite reader reached SQL data and was rejected");
 
     return { results };
   } catch (error) {

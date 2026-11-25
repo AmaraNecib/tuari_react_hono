@@ -16,13 +16,39 @@ import { ExactFinanceService } from "../company/exact-finance.service";
 import { InMemoryExactFinanceRepository } from "../company/adapters/inmemory-exact-finance.repository";
 import { InMemoryExactInventoryRepository } from "./adapters/inmemory-exact-inventory.repository";
 import { ExactInventoryService } from "./inventory-exact.service";
+it.each(["memory", "plain", "keyed"] as const)("%s: initial methods retain exact payment identity independently of input mode", kind => {
+  const { inventory, openPeer } = setup(kind);
+  const peer = openPeer?.();
+  for (const method of ["CASH", "BANK_TRANSFER", "CHECK", undefined] as const) {
+    for (const mode of ["AMOUNT", "PERCENT"] as const) {
+      const input = { requestId: `method-${method}-${mode}`, warehouseId: "warehouse", createDebt: true, externalCounterpartyId: partyId,
+        paymentInputType: mode, paidAmountDzd: mode === "AMOUNT" ? "2.50" : undefined, paidPercent: mode === "PERCENT" ? 25 : undefined,
+        initialPaymentMethod: method, entries: [{ kind: "CONSUMABLE" as const, itemDefinitionId: "material", quantity: 2, unitPriceDzd: "5.0000" }] };
+      const detail = inventory.createInvoiceGroup(input);
+      expect(detail.payments).toHaveLength(1);
+      expect(detail.payments[0]).toMatchObject({ paymentMethod: method ?? null, signedAmountDzd: "-2.50", targetEntryId: detail.group.debtEntryId, producerId: detail.group.id, producerType: "INVENTORY_PURCHASE" });
+      expect(inventory.createInvoiceGroup(input)).toEqual(detail);
+      expect((peer ?? inventory).getInvoiceGroup(detail.group.id).payments).toEqual(detail.payments);
+      expect(() => inventory.createInvoiceGroup({ ...input, initialPaymentMethod: method === "CHECK" ? "CASH" : "CHECK" })).toThrow(/conflict/i);
+    }
+  }
+});
+it("rejects invalid or zero-payment method metadata without writing inventory", () => {
+  const { inventory } = setup("memory");
+  const input = { requestId: "invalid-method", warehouseId: "warehouse", createDebt: true, externalCounterpartyId: partyId, paymentInputType: "AMOUNT" as const, paidAmountDzd: "0.00", entries: [{ kind: "CONSUMABLE" as const, itemDefinitionId: "material", quantity: 1, unitPriceDzd: "5.0000" }] };
+  expect(() => inventory.createInvoiceGroup({ ...input, initialPaymentMethod: "CARD" } as never)).toThrow();
+  expect(() => inventory.createInvoiceGroup({ ...input, initialPaymentMethod: "CASH" })).toThrow();
+  expect(inventory.listInvoiceGroups()).toHaveLength(0);
+  const detail = inventory.createInvoiceGroup(input);
+  expect(detail.payments).toEqual([]);
+});
 const date = "2026-11-10T00:00:00.000Z";
 const partyId = "party";
 const dependencies = { id: randomUUID, now: () => date };
 const closes: (() => void)[] = [];
 afterEach(() => { for (const close of closes.splice(0)) close(); });
 function setup(kind: "memory" | "plain" | "keyed") {
-  const references = { warehouses: [{ id: "warehouse", name: "Synthetic warehouse" }], projects: [{ id: "project", name: "Synthetic project" }], definitions: [
+  const references = { warehouses: [{ id: "warehouse", name: "Synthetic warehouse" }], projects: [{ id: "warehouse", name: "Collision project" }, { id: "project", name: "Synthetic project" }, { id: "project-two", name: "Second project" }], definitions: [
     { id: "material", name: "Synthetic material", itemType: "CONSUMABLE" as const, unit: "m", description: null, isActive: true, createdAt: date, updatedAt: date },
     { id: "asset", name: "Synthetic equipment", itemType: "ASSET" as const, unit: null, description: null, isActive: true, createdAt: date, updatedAt: date },
   ] };
@@ -40,7 +66,7 @@ function setup(kind: "memory" | "plain" | "keyed") {
     nativeDb = db;
     closes.push(() => db.close());
     db.pragma("foreign_keys=ON");
-    db.exec(`CREATE TABLE employee(id TEXT PRIMARY KEY); CREATE TABLE external_counterparty(id TEXT PRIMARY KEY); CREATE TABLE warehouse(id TEXT PRIMARY KEY,name TEXT NOT NULL); CREATE TABLE project(id TEXT PRIMARY KEY,name TEXT NOT NULL); INSERT INTO external_counterparty VALUES ('${partyId}'); INSERT INTO warehouse VALUES ('warehouse','Synthetic warehouse'); INSERT INTO project VALUES ('project','Synthetic project')`);
+    db.exec(`CREATE TABLE employee(id TEXT PRIMARY KEY); CREATE TABLE external_counterparty(id TEXT PRIMARY KEY); CREATE TABLE warehouse(id TEXT PRIMARY KEY,name TEXT NOT NULL); CREATE TABLE project(id TEXT PRIMARY KEY,name TEXT NOT NULL); INSERT INTO external_counterparty VALUES ('${partyId}'); INSERT INTO warehouse VALUES ('warehouse','Synthetic warehouse'); INSERT INTO project VALUES ('warehouse','Collision project'),('project','Synthetic project'),('project-two','Second project')`);
     for (const sql of exactInvoiceSchemaStatements) db.exec(sql);
     for (const sql of exactDebtSchemaStatements) db.exec(sql);
     for (const sql of exactInventorySchemaStatements) db.exec(sql);
@@ -79,18 +105,86 @@ it.each(["memory", "plain", "keyed"] as const)("%s: loads each shared outbound d
   expect(remaining()).toEqual({ [first.id]: "50.00", [second.id]: "80.00", [returned.id]: "80.00", [gift.id]: "0.00" });
   expect(reads).toHaveBeenCalledTimes(2);
 });
+it.each(["memory", "plain", "keyed"] as const)("%s: purchase destinations follow saved entries with whole invoice money", kind => {
+  const { inventory, repo, ledger } = setup(kind);
+  const allB = inventory.createInvoiceGroup({ requestId: "all-b", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", projectId: "project", itemDefinitionId: "material", quantity: 3, unitPriceDzd: "2.0000" }] });
+  expect(inventory.transferHistory({ warehouseId: "warehouse" }).total).toBe(0);
+  expect(inventory.transferHistory({}).items[0]).toMatchObject({ to: { type: "PROJECT", id: "project" }, items: [{ quantity: 3, to: { type: "PROJECT", id: "project" } }] });
+  const mixed = inventory.createInvoiceGroup({ requestId: "mixed", warehouseId: "warehouse", createDebt: true, externalCounterpartyId: partyId, paymentInputType: "AMOUNT", paidAmountDzd: "1.00", entries: [
+    { kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 2, unitPriceDzd: "5.0000" },
+    { kind: "CONSUMABLE", projectId: "project", itemDefinitionId: "material", quantity: 4, unitPriceDzd: "5.0000" },
+  ] });
+  const reads = vi.spyOn(ledger, "listEntries");
+  const global = inventory.transferHistory({});
+  expect(global.items.find(row => row.id === mixed.group.id)).toMatchObject({ to: null, totalAmountDzd: "30.00", paidAmountDzd: "1.00", remainingDebtDzd: "29.00" });
+  expect(global.total).toBe(2);
+  expect(global.summary.totalAmountDzd).toBe("36.00");
+  const local = inventory.transferHistory({ warehouseId: "warehouse" });
+  expect(local.items).toHaveLength(1);
+  expect(local.items[0]).toMatchObject({ to: { type: "WAREHOUSE", id: "warehouse" }, totalAmountDzd: "30.00", paidAmountDzd: "1.00", remainingDebtDzd: "29.00", items: [{ quantity: 2, to: { type: "WAREHOUSE", id: "warehouse" } }] });
+  expect(local.items[0]!.items).toHaveLength(1);
+  expect(inventory.transferHistory({ warehouseId: "warehouse", locationType: "PROJECT" }).total).toBe(0);
+  expect(inventory.transferHistory({ locationType: "PROJECT" }).items.find(row => row.id === mixed.group.id)!.items.map(item => item.quantity)).toEqual([4]);
+  expect(inventory.transferHistory({ search: "Synthetic project", limit: 1 }).summary.totalAmountDzd).toBe("36.00");
+  expect(inventory.transferHistory({ projectId: "project", offset: 1, limit: 1 }).summary.totalAmountDzd).toBe("36.00");
+  expect(reads).not.toHaveBeenCalled();
+  // A typed ID collision in persisted inputs must not turn a project into a warehouse.
+  const entry = repo.listEntries(allB.group.id)[0]!;
+  repo.saveEntry({ ...entry, projectId: "warehouse" });
+  expect(inventory.transferHistory({ warehouseId: "warehouse" }).total).toBe(1);
+  expect(inventory.transferHistory({ projectId: "warehouse" }).items[0]!.id).toBe(allB.group.id);
+  const mixedProject = repo.listEntries(mixed.group.id).find(row => row.projectId)!;
+  repo.saveEntry({ ...mixedProject, projectId: "warehouse" });
+  expect(inventory.transferHistory({}).items.find(row => row.id === mixed.group.id)!.to).toBeNull();
+  expect(inventory.transferHistory({ projectId: "warehouse" }).items.find(row => row.id === mixed.group.id)!.items.map(row => row.quantity)).toEqual([4]);
+});
+
+it("returns exact purchase, internal, and outbound history with bounded filters and pagination", () => {
+  const { inventory } = setup("memory");
+  inventory.createInvoiceGroup({ requestId: "history-purchase", warehouseId: "warehouse", createDebt: true, externalCounterpartyId: partyId,
+    paymentInputType: "AMOUNT", paidAmountDzd: "1.00", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 2, priceSource: { mode: "agreed-total", total: "9007199254740993.07", quantity: "2" } }] });
+  inventory.transferConsumable({ requestId: "history-move", inventoryEntryId: inventory.getLocationContents({ warehouseId: "warehouse" }).consumables[0]!.inventoryEntryId,
+    fromWarehouseId: "warehouse", toProjectId: "project", quantity: 1 });
+  const outbound = inventory.createOutboundTransfer({ requestId: "history-outbound", fromType: "PROJECT", fromId: "project", counterpartyId: partyId,
+    transferType: "RETURN", debtAmountDzd: "9007199254740993.07", firstPaymentAmountDzd: "0.07", items: [{ itemId: "material", quantity: 1 }] });
+  const history = inventory.transferHistory({});
+  expect(new Set(history.items.map(row => row.type))).toEqual(new Set(["RETURN", "INTERNAL", "PURCHASE"]));
+  expect(history.items.find(row => row.id === outbound.id)).toMatchObject({ type: "RETURN", totalAmountDzd: "9007199254740993.07", paidAmountDzd: "0.07", remainingDebtDzd: "9007199254740993.00", currency: "DZD", counterparty: { id: partyId } });
+  expect(history.items.find(row => row.type === "PURCHASE")!.items[0]!.priceSource).toMatchObject({ mode: "agreed-total", total: "9007199254740993.07" });
+  expect(inventory.transferHistory({ transferType: "INTERNAL", projectId: "project" }).total).toBe(1);
+  expect(inventory.transferHistory({ search: "Synthetic material" }).total).toBe(3);
+  expect(inventory.transferHistory({ offset: 1, limit: 1 }).items[0]).toEqual(history.items[1]);
+});
+
+it("uses inclusive Algeria local date bounds and distinguishes overlapping location IDs", () => {
+  const { inventory, repo } = setup("memory");
+  const base = { id: "date-event", movementType: "TRANSFER" as const, itemType: "CONSUMABLE" as const, inventoryEntryId: null, assetUnitId: null, quantity: 1,
+    fromWarehouseId: "same", fromProjectId: null, toWarehouseId: null, toProjectId: null, note: null, createdAt: date };
+  repo.saveMovement({ ...base, id: "local-start", fromWarehouseId: null, fromProjectId: "same", occurredAt: "2026-10-14T23:00:00.000Z" });
+  repo.saveMovement({ ...base, id: "local-end", occurredAt: "2026-10-15T22:59:59.999Z" });
+  repo.saveMovement({ ...base, id: "next-day", occurredAt: "2026-10-15T23:00:00.000Z" });
+  expect(inventory.transferHistory({ dateFrom: "2026-10-15", dateTo: "2026-10-15" }).items.map(row => row.id)).toEqual(["local-end", "local-start"]);
+  expect(inventory.transferHistory({ warehouseId: "same" }).items.map(row => row.id)).toContain("local-end");
+  expect(inventory.transferHistory({ projectId: "same" }).items.map(row => row.id)).toEqual(["local-start"]);
+});
+
 it("rejects incomplete outbound ledger links rather than showing a false zero balance", () => {
   const { inventory, repo, finance } = setup("memory");
   inventory.createInvoiceGroup({ requestId: "broken-link-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 1, unitPriceDzd: "1.0000" }] });
+  inventory.createInvoiceGroup({ requestId: "broken-link-extra-stock", warehouseId: "warehouse", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 2, unitPriceDzd: "1.0000" }] });
   const transfer = inventory.createOutboundTransfer({ requestId: "broken-link-sale", fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType: "SALE", debtAmountDzd: "1.00", items: [{ itemId: "material", quantity: 1 }] });
   // Historical domain records are an independent persisted input to this read.
   repo.saveOutbound({ ...transfer, associatedDebtAccountId: null });
+  expect(() => inventory.transferHistory({})).toThrow(/linked debt account/);
   expect(() => inventory.listOutboundTransfers()).toThrow(/linked debt account/);
   repo.saveOutbound({ ...transfer, debtEntryId: null });
+  expect(() => inventory.transferHistory({})).toThrow(/linked original obligation/);
   expect(() => inventory.listOutboundTransfers()).toThrow(/linked original obligation/);
   repo.saveOutbound({ ...transfer, debtEntryId: "missing-original" });
   expect(() => inventory.listOutboundTransfers()).toThrow(/obligation not found/);
   repo.saveOutbound(transfer);
+  const gift = inventory.createOutboundTransfer({ requestId: "history-debt-free-gift", fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType: "GIFT", items: [{ itemId: "material", quantity: 1 }] });
+  expect(inventory.transferHistory({}).items.find(row => row.id === gift.id)).toMatchObject({ paymentStatus: "N/A", totalAmountDzd: null, paidAmountDzd: null, remainingDebtDzd: null });
   finance.forProducer({ type: "INVENTORY_OUTBOUND", id: transfer.id }).voidEntry({ requestId: "void-linked-original", entryId: transfer.debtEntryId!, voidReason: "Cancelled obligation" });
   expect(() => inventory.listOutboundTransfers()).toThrow(/obligation not found/);
 });
@@ -346,4 +440,101 @@ it.each(["memory", "plain", "keyed"] as const)("%s: retains an agreed 10000 tota
   ] });
   expect(result.group.grossTotalDzd).toBe("10000.00");
   expect(result.entries[0]).toMatchObject({ unitPriceDzd: null, priceSource: { mode: "agreed-total", total: "10000.00", quantity: "300" } });
+});
+
+it.each(["memory", "plain", "keyed"] as const)("%s: reads only the requested asset charge chain including voids and ordered audit revisions", kind => {
+  const { inventory, repo } = setup(kind);
+  const purchase = inventory.createInvoiceGroup({ requestId: "history-assets", projectId: "project", entries: [{ kind: "ASSET", itemDefinitionId: "asset", assets: [
+    { assetName: "History unit", purchasePriceDzd: "90071992547409.93" }, { assetName: "Other unit", purchasePriceDzd: "0.01" },
+  ] }] });
+  const asset = purchase.entries[0]!.assets[0]!;
+  const first = repo.listCharges().find(row => row.assetUnitId === asset.id)!;
+  inventory.updateAssetCharge({ requestId: "history-correct", chargeId: first.id, amountDzd: "90071992547409.92", reason: "Correction", actorUserId: "actor", actorLabel: "Operator", transactionId: "history-transaction" });
+  inventory.transferAsset({ requestId: "history-away", assetUnitId: asset.id, toWarehouseId: "warehouse" });
+  inventory.transferAsset({ requestId: "history-back", assetUnitId: asset.id, toProjectId: "project-two" });
+  inventory.voidAssetCharge({ requestId: "history-void", chargeId: first.id, reason: "Duplicate placement", actorUserId: "actor" });
+  const before = JSON.stringify(repo.listCharges());
+  const broad = vi.spyOn(repo, "listCharges").mockImplementation(() => { throw new Error("Broad charge read forbidden"); });
+  const result = inventory.getAssetChargeHistory(asset.id);
+  expect(result.assetUnitId).toBe(asset.id);
+  expect(result.items.map(row => row.projectId)).toEqual(["project-two", "project"]);
+  expect(result.items.map(row => [row.assetUnitId, row.placementSequence, row.status, row.amountDzd])).toEqual([
+    [asset.id, 2, "LIVE", "90071992547409.92"], [asset.id, 1, "VOID", "90071992547409.92"],
+  ]);
+  expect(result.items[1]!.revisions.map(row => [row.revisionSequence, row.previousAmountDzd, row.newAmountDzd, row.reason, row.actorUserId])).toEqual([
+    [1, "90071992547409.93", "90071992547409.92", "Correction", "actor"], [2, "90071992547409.92", null, "Duplicate placement", "actor"],
+  ]);
+  expect(result.items[1]!.revisions[0]).toMatchObject({ actorLabel: "Operator", createdAt: date, transactionId: "history-transaction" });
+  expect(() => inventory.getAssetChargeHistory("missing")).toThrow("Asset not found");
+  broad.mockRestore();
+  expect(JSON.stringify(repo.listCharges())).toBe(before);
+});
+
+it.each(["plain", "keyed"] as const)("%s: pages native candidates before display hydration with full wide summary and stable tied ordering", kind => {
+  const { inventory, repo, finance, ledger, nativeDb } = setup(kind);
+  for (let index = 0; index < 120; index++) {
+    inventory.createInvoiceGroup({ requestId: `paged-purchase-${index}`, warehouseId: "warehouse", note: "Paging purchase", entries: [{ kind: "CONSUMABLE", itemDefinitionId: "material", quantity: 2, priceSource: { mode: "agreed-total", total: "92233720368547758.07", quantity: "2" } }] });
+  }
+  for (let index = 0; index < 12; index++) inventory.createOutboundTransfer({ requestId: `paged-sale-${index}`, fromType: "WAREHOUSE", fromId: "warehouse", counterpartyId: partyId, transferType: "SALE", debtAmountDzd: "1.01", firstPaymentAmountDzd: "0.01", notes: "Paging sale", items: [{ itemId: "material", quantity: 1 }] });
+  const group = vi.spyOn(repo, "getGroup");
+  const outbound = vi.spyOn(repo, "getOutbound");
+  const detail = vi.spyOn(finance, "detail");
+  const original = vi.spyOn(ledger, "getEntry");
+  vi.spyOn(repo, "listGroups").mockImplementation(() => { throw new Error("Broad display read"); });
+  vi.spyOn(repo, "listOutbounds").mockImplementation(() => { throw new Error("Broad display read"); });
+  vi.spyOn(repo, "listMovements").mockImplementation(() => { throw new Error("Broad display read"); });
+  const mutations = nativeDb!.prepare("SELECT total_changes() AS count").get();
+  const queries = vi.spyOn(nativeDb!, "prepare");
+  const page = inventory.transferHistory({ limit: 5 });
+  expect(nativeDb!.prepare("SELECT total_changes() AS count").get()).toEqual(mutations);
+  const sql = queries.mock.calls.map(call => call[0]);
+  expect(sql.some(query => query.includes("json_group_array"))).toBe(true);
+  expect(sql.filter(query => query.startsWith('SELECT "id" AS "id",') && (query.includes('FROM "inventory_invoice_group" WHERE id=?') || query.includes('FROM "inventory_outbound_transfer" WHERE id=?')))).toHaveLength(5);
+  expect(page.summary).toEqual({ total: 132, sales: 12, internal: 0, totalAmountDzd: "11068046444225730980.52" });
+  expect(group.mock.calls.length + outbound.mock.calls.length).toBe(5);
+  expect(detail.mock.calls.length).toBeLessThanOrEqual(1);
+  expect(original.mock.calls.length).toBeGreaterThanOrEqual(12);
+  const ids: string[] = [];
+  for (let offset = 0; offset < page.total; offset += 5) {
+    const next = inventory.transferHistory({ offset, limit: 5 });
+    expect(next.summary).toEqual(page.summary);
+    ids.push(...next.items.map(row => row.id));
+  }
+  expect(new Set(ids).size).toBe(132);
+  expect(ids).toEqual([...ids].sort((a, b) => b.localeCompare(a)));
+  const filtered = inventory.transferHistory({ search: "Paging sale", limit: 1 });
+  expect(filtered).toMatchObject({ total: 12, summary: { total: 12, sales: 12, totalAmountDzd: "12.12" } });
+  expect(filtered.items[0]).toMatchObject({ paidAmountDzd: "0.01", remainingDebtDzd: "1.00" });
+  expect(inventory.transferHistory({ search: "Synthetic material", limit: 1 }).total).toBe(132);
+  expect(inventory.transferHistory({ search: ids[0], limit: 1 }).total).toBe(1);
+  expect(inventory.transferHistory({ search: "Synthetic warehouse", limit: 1 }).total).toBe(132);
+  expect(inventory.transferHistory({ search: "party", limit: 1 }).total).toBe(12);
+  expect(inventory.transferHistory({ transferType: "SALE", limit: 1 }).total).toBe(12);
+  expect(inventory.transferHistory({ warehouseId: "warehouse", dateFrom: "2026-11-10", dateTo: "2026-11-10", limit: 1 }).total).toBe(132);
+  expect(inventory.transferHistory({ projectId: "warehouse", limit: 1 }).total).toBe(0);
+  const broken = repo.getOutbound(filtered.items[0]!.id)!;
+  repo.saveOutbound({ ...broken, associatedDebtAccountId: null });
+  expect(() => inventory.transferHistory({ search: "Paging purchase", limit: 1 })).toThrow("linked debt account");
+  repo.saveOutbound(broken);
+  finance.forProducer({ type: "INVENTORY_OUTBOUND", id: broken.id }).voidEntry({ requestId: "paged-void", entryId: broken.debtEntryId!, voidReason: "Invalid source" });
+  expect(() => inventory.transferHistory({ search: "Paging purchase", limit: 1 })).toThrow("Live outbound obligation not found");
+  // Corrupt only this disposable fixture to model a missing historical original.
+  nativeDb!.pragma("foreign_keys=OFF");
+  try { nativeDb!.prepare("DELETE FROM debt_entry WHERE id=?").run(broken.debtEntryId); }
+  finally { nativeDb!.pragma("foreign_keys=ON"); }
+  expect(() => inventory.transferHistory({ search: "Paging purchase", limit: 1 })).toThrow("Live outbound obligation not found");
+}, 30000);
+
+it.each(["plain", "keyed"] as const)("%s: native candidate filters keep inclusive Algeria days and typed overlapping location IDs", kind => {
+  const { inventory, repo, nativeDb } = setup(kind);
+  nativeDb!.exec("INSERT INTO warehouse VALUES ('overlap','Warehouse overlap'); INSERT INTO project VALUES ('overlap','Project overlap')");
+  const base = { movementType: "TRANSFER" as const, itemType: "CONSUMABLE" as const, inventoryEntryId: null, assetUnitId: null, quantity: 1, fromWarehouseId: "overlap", fromProjectId: null, toWarehouseId: null, toProjectId: null, note: "Boundary", createdAt: date };
+  repo.saveMovement({ ...base, id: "start", occurredAt: "2026-10-14T23:00:00.000Z", fromWarehouseId: null, fromProjectId: "overlap" });
+  repo.saveMovement({ ...base, id: "end", occurredAt: "2026-10-15T22:59:59.999Z" });
+  repo.saveMovement({ ...base, id: "next", occurredAt: "2026-10-15T23:00:00.000Z" });
+  const filters = { dateFrom: "2026-10-15", dateTo: "2026-10-15", limit: 1 };
+  expect(inventory.transferHistory(filters)).toMatchObject({ total: 2, items: [{ id: "end" }], summary: { internal: 2, totalAmountDzd: "0.00" } });
+  expect(inventory.transferHistory({ ...filters, offset: 1 }).items.map(row => row.id)).toEqual(["start"]);
+  expect(inventory.transferHistory({ ...filters, warehouseId: "overlap" }).items.map(row => row.id)).toEqual(["end"]);
+  expect(inventory.transferHistory({ ...filters, projectId: "overlap" }).items.map(row => row.id)).toEqual(["start"]);
 });

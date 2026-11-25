@@ -11,6 +11,15 @@
     "scripts/ci/ci-acceptance.mjs",
     "tests/ci-final.test.mjs",
     "tests/e2e-selection.test.mjs",
+    "tests/telemetry-viewer.browser.test.mjs",
+    "tests/telemetry-viewer.test.mjs",
+    "scripts/tuari-viewer.mjs",
+    "scripts/viewer/*.mjs",
+    "scripts/viewer/dashboard.jsx",
+    "scripts/viewer/dashboard.css",
+    "tests/viewer-dashboard.browser.test.mjs",
+    "tests/viewer-dashboard.test.mjs",
+    "tests/fixtures/viewer/**",
     ".husky/**",
     ".github/workflows/ci.yml",
 
@@ -73,10 +82,15 @@
     "foundation-smoke.spec.ts",
     "fonts.spec.ts",
     "splashscreen.spec.ts",
-    "web-hygiene.spec.ts"
+    "web-hygiene.spec.ts",
+    "managed-api-isolation.spec.ts"
   ],
 
   "features": [
+    {
+      "match": ["apps/web/src/features/debts/**", "apps/api/src/**/manual-settlement*", "apps/api/src/**/sqlite-manual-settlement*", "packages/contracts/src/manual-settlement.ts", "playwright.manual-settlement.config.ts", "tests/e2e/manual-settlement-connected.spec.ts"],
+      "specs": ["debt-entry.spec.ts", "manual-settlement-connected.spec.ts"]
+    },
     {
       "match": [
         "apps/web/src/features/auth/**",
@@ -129,7 +143,10 @@
       "specs": [
         "employees.spec.ts",
         "employees-search.spec.ts",
+        "employee-select-capture.spec.ts",
         "employee-earnings.spec.ts",
+        "payroll-connected-exact.spec.ts",
+        "payroll-recovery.spec.ts",
         "salaries.spec.ts",
         "worker-assignment.spec.ts"
       ]
@@ -191,6 +208,8 @@
         "table-query-states.spec.ts",
         "legacy-password-recovery.spec.ts",
         "mobile-drawer.spec.ts",
+        "payroll-connected-exact.spec.ts",
+        "payroll-recovery.spec.ts",
         "projects.spec.ts",
         "recovery-keys.spec.ts",
         "salaries.spec.ts",

@@ -33,6 +33,7 @@ import {
 } from "@tuari/contracts";
 
 import { CompanyError } from "./company.errors";
+import { CounterpartyService } from "./counterparty.service";
 import {
   assertDebtEntryDateNotBackdated,
   buildDebtPartyKey,
@@ -193,33 +194,21 @@ export class FinanceService {
   // External counterparties
   // ---------------------------------------------------------------------------
 
+  private get counterpartyService() {
+    return this._counterpartyService ??= new CounterpartyService(this.repository, this.mutation);
+  }
+  private _counterpartyService?: CounterpartyService;
+
   listExternalCounterparties(filters?: ExternalCounterpartyListFilters) {
-    return { items: this.repository.listExternalCounterparties(filters) };
+    return this.counterpartyService.listExternalCounterparties(filters);
   }
 
   getExternalCounterparty(id: string) {
-    const counterparty = this.repository.getExternalCounterpartyById(id);
-    if (!counterparty) {
-      throw new CompanyError("NOT_FOUND", "تعذر العثور على الطرف الخارجي المطلوب.");
-    }
-
-    return successResult("تم تحميل الطرف الخارجي بنجاح.", counterparty);
+    return this.counterpartyService.getExternalCounterparty(id);
   }
 
-  createExternalCounterparty(
-    input: ExternalCounterpartyCreateInput,
-    auditContext?: MutationAuditContext,
-  ) {
-    this.mutation.createMutationAuditContext(auditContext);
-    return this.mutation.withTransaction(() => {
-      const counterparty = this.repository.createExternalCounterparty({
-        fullName: input.fullName.trim(),
-        phoneNumber: input.phoneNumber.trim(),
-        note: normalizeText(input.note),
-      });
-
-      return successResult("تم إنشاء الطرف الخارجي بنجاح.", counterparty);
-    });
+  createExternalCounterparty(input: ExternalCounterpartyCreateInput, auditContext?: MutationAuditContext) {
+    return this.counterpartyService.createExternalCounterparty(input, auditContext);
   }
 
   // ---------------------------------------------------------------------------

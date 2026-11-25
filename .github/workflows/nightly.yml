@@ -31,6 +31,18 @@ jobs:
           persist-credentials: false
           ref: develop
 
+      - name: Capture checked-out source SHA
+        id: source
+        shell: pwsh
+        run: |
+          $sourceShaOutput = git rev-parse HEAD
+          $gitExitCode = $LASTEXITCODE
+          if ($gitExitCode -ne 0) { throw "git rev-parse HEAD failed with exit code $gitExitCode" }
+          $sourceSha = ($sourceShaOutput -join '').Trim()
+          if ($sourceSha -notmatch '^[0-9a-fA-F]{40}$') { throw "Expected a full checked-out commit SHA, got '$sourceSha'" }
+          "sha=$sourceSha" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Nightly source commit: $sourceSha"
+
       # ── Setup ──────────────────────────────────────────────
 
       - name: Setup pnpm
@@ -117,7 +129,36 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
       - name: Create portable package
-        run: pnpm --filter @tuari/desktop portable:only
+        id: portable_package
+        shell: pwsh
+        run: |
+          & "scripts/packaging/portable-packaging-capture.ps1" -DiagnosticsDirectory (Join-Path $env:RUNNER_TEMP "portable-lock-diagnostics")
+          exit $LASTEXITCODE
+
+      - name: Upload portable rename diagnostics
+        if: ${{ failure() && steps.portable_package.outcome == 'failure' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nightly-portable-rename-diagnostics
+          path: |
+            ${{ runner.temp }}/portable-lock-diagnostics/portable-rename-failure.json
+            ${{ runner.temp }}/portable-lock-diagnostics/portable-rename.etl
+            ${{ runner.temp }}/portable-lock-diagnostics/wpr-status.log
+            ${{ runner.temp }}/portable-lock-diagnostics/wpr-start.log
+            ${{ runner.temp }}/portable-lock-diagnostics/wpr-stop.log
+            ${{ runner.temp }}/portable-lock-diagnostics/diagnostic-errors.log
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Check portable ZIP in Windows Shell
+        id: portable
+        shell: pwsh
+        run: |
+          $portableZip = Get-ChildItem -LiteralPath "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "Tuari-portable*.zip" | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (-not $portableZip) { throw "No portable ZIP found for Windows Shell check" }
+          $ErrorActionPreference = 'Stop'
+          & "scripts/smoke/check-portable-zip-shell.ps1" -ZipPath $portableZip.FullName
+          "path=$($portableZip.FullName)" | Out-File -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       # ── Generate signing keys (if no secrets configured) ──
 
@@ -163,11 +204,10 @@ jobs:
           Write-Host "Nightly version from patched config: $version"
 
           # Paths to artifacts
-          $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1
-          if (-not $portableZip) {
-            throw "No portable zip found!"
+          $portableZipPath = "${{ steps.portable.outputs.path }}"
+          if (-not $portableZipPath -or -not (Test-Path -LiteralPath $portableZipPath -PathType Leaf)) {
+            throw "The Shell-verified portable ZIP is unavailable"
           }
-          $portableZipPath = $portableZip.FullName
 
           # Compute SHA-256
           $hash = (Get-FileHash -Path $portableZipPath -Algorithm SHA256).Hash.ToLower()
@@ -217,12 +257,9 @@ jobs:
           Copy-Item -Path $signedOutput -Destination $artifactsDir
 
           # Also stage the portable zip and installer for the smoke test
-          $portableZip = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/portable" -Filter "*.zip" | Select-Object -First 1
-          if ($portableZip) {
-            $portableName = "tuari-$version-nightly-portable.zip"
-            Copy-Item -Path $portableZip.FullName -Destination (Join-Path $artifactsDir $portableName)
-            Write-Host "Staged portable zip: $portableName"
-          }
+          $portableName = "tuari-$version-nightly-portable.zip"
+          Copy-Item -LiteralPath $portableZipPath -Destination (Join-Path $artifactsDir $portableName)
+          Write-Host "Staged Shell-verified portable zip: $portableName"
           $installer = Get-ChildItem -Path "apps/desktop/src-tauri/target/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
           if ($installer) {
             $installerName = "tuari-$version-nightly-setup.exe"
@@ -253,15 +290,66 @@ jobs:
       # ── Smoke test ─────────────────────────────────────────
 
       - name: Smoke test nightly artifacts
+        id: verify
         shell: pwsh
         run: |
           # Use the matching verification key from the key-generation step
           $pubKeyFile = Join-Path $env:RUNNER_TEMP "verification-key.pem"
+          $diagnosticsDir = Join-Path $env:RUNNER_TEMP "nightly-verifier-diagnostics"
           node scripts/verify-release-assets.mjs `
             --artifacts "${{ steps.manifest.outputs.artifacts_dir }}" `
             --public-key "$pubKeyFile" `
             --version "${{ steps.manifest.outputs.version }}" `
-            --channel nightly
+            --channel nightly `
+            --diagnostics-dir "$diagnosticsDir"
+
+      - name: Capture failed portable verifier evidence
+        if: failure() && steps.verify.outcome == 'failure'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $evidenceDir = Join-Path $env:RUNNER_TEMP "nightly-verifier-evidence"
+          $sourceDir = "apps/desktop/src-tauri/target/release/bundle/portable"
+          $artifactsDir = "${{ steps.manifest.outputs.artifacts_dir }}"
+          $diagnosticsDir = Join-Path $env:RUNNER_TEMP "nightly-verifier-diagnostics"
+          New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
+          $sourceEvidence = Join-Path $evidenceDir "producer-zips"
+          $stagedEvidence = Join-Path $evidenceDir "selected-zips"
+          New-Item -ItemType Directory -Force -Path $sourceEvidence, $stagedEvidence | Out-Null
+          $captured = @()
+          foreach ($file in @(Get-ChildItem -LiteralPath $sourceDir -Filter "Tuari-portable*.zip" -File -ErrorAction SilentlyContinue)) {
+            $destination = Join-Path $sourceEvidence $file.Name
+            Copy-Item -LiteralPath $file.FullName -Destination $destination
+            $captured += [pscustomobject]@{ role = "producer"; path = $destination; sizeBytes = (Get-Item -LiteralPath $destination).Length; sha256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() }
+          }
+          foreach ($file in @(Get-ChildItem -LiteralPath $artifactsDir -Filter "*-portable.zip" -File -ErrorAction SilentlyContinue)) {
+            $destination = Join-Path $stagedEvidence $file.Name
+            Copy-Item -LiteralPath $file.FullName -Destination $destination
+            $captured += [pscustomobject]@{ role = "selected"; path = $destination; sizeBytes = (Get-Item -LiteralPath $destination).Length; sha256 = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash.ToLowerInvariant() }
+          }
+          if (Test-Path -LiteralPath $diagnosticsDir -PathType Container) {
+            Copy-Item -LiteralPath $diagnosticsDir -Destination $evidenceDir -Recurse
+          }
+          $metadata = [pscustomobject]@{ sourceSha = $env:GITHUB_SHA; runId = $env:GITHUB_RUN_ID; runAttempt = $env:GITHUB_RUN_ATTEMPT; capturedZips = $captured }
+          $metadata | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidenceDir "run-metadata.json") -Encoding utf8
+          if ($captured.Count -eq 0) { Write-Error "No portable ZIP candidate was available to capture" }
+
+      - name: Upload failed portable verifier evidence
+        if: failure() && steps.verify.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nightly-verifier-failure-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/nightly-verifier-evidence/
+          if-no-files-found: error
+          retention-days: 3
+
+      - name: Test Windows sidecar process probe
+        shell: pwsh
+        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/smoke/windows-sidecar-probe.test.ps1
+
+      - name: Test SQLCipher prebuild cleanup
+        shell: pwsh
+        run: node --test scripts/smoke/sqlcipher-prebuild-subprocess.test.mjs
 
       - name: Run installer smoke test
         shell: pwsh
@@ -285,6 +373,12 @@ jobs:
           Write-Host "Artifacts ready for upload from: ${{ steps.manifest.outputs.artifacts_dir }}"
           Get-ChildItem -Path "${{ steps.manifest.outputs.artifacts_dir }}" | ForEach-Object { Write-Host "  - $($_.Name)" }
 
+      - name: Update nightly tag
+        shell: pwsh
+        run: node scripts/update-nightly-tag.mjs "${{ steps.source.outputs.sha }}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       # ── Upload to Nightly Release ────────────────────────
 
       - name: Upload to nightly release
@@ -295,8 +389,12 @@ jobs:
           $tag = "nightly"
           $releaseName = "Tuari Nightly ($version)"
 
-          # Delete previous nightly release if it exists (ignore 'not found' errors)
-          gh release delete $tag --yes --repo "${{ github.repository }}" 2>&1 | Where-Object { $_ -notlike '*not found*' }
+          # The tag has already been updated and verified. Do not delete the previous release if that step failed.
+          $deleteOutput = & gh release delete $tag --yes --repo "${{ github.repository }}" 2>&1
+          $deleteExitCode = $LASTEXITCODE
+          if ($deleteExitCode -ne 0 -and ($deleteOutput -join "`n") -notmatch '(?i)(release not found|HTTP 404)') {
+            throw "gh release delete failed with exit code $deleteExitCode`: $($deleteOutput -join "`n")"
+          }
 
           # Collect artifact paths as an array for safe quoting
           $artifactFiles = @(Get-ChildItem -Path $artifactsDir | ForEach-Object { $_.FullName })
@@ -305,11 +403,13 @@ jobs:
           gh release create $tag `
             --title "$releaseName" `
             --notes "Nightly build from $version" `
-            --target "$env:GITHUB_SHA" `
+            --target "${{ steps.source.outputs.sha }}" `
             --prerelease `
             '--latest=false' `
             --repo "${{ github.repository }}" `
             $artifactFiles
+          $createExitCode = $LASTEXITCODE
+          if ($createExitCode -ne 0) { throw "gh release create failed with exit code $createExitCode" }
 
           Write-Host "Nightly release created: $releaseName"
         env:

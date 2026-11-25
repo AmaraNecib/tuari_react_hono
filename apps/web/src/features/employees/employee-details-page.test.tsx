@@ -2,11 +2,10 @@
 
 import "@/i18n"
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { ComponentProps, ReactNode } from "react"
-import { ALGERIA_DAY, MIDNIGHT_CROSSING, UTC_DAY, pinUtcTimeZone } from "@/test-utils/algeria-day"
+import type { ReactNode } from "react"
 
 const { approveEarning, sessionUser, earningHistoryItems } = vi.hoisted(() => ({
   approveEarning: vi.fn(),
@@ -22,6 +21,7 @@ vi.mock("@/features/employees/employee-earnings-queries", () => ({
   useApproveEmployeeEarningMutation: () => ({ mutateAsync: approveEarning, isPending: false }),
   useEmployeeEarningsQuery: () => ({ data: { items: earningHistoryItems }, isPending: false, isError: false, isFetching: false, error: null, refetch: vi.fn() }),
 }))
+vi.mock("@/features/employees/employee-payroll-panel", () => ({ EmployeePayrollPanel: () => null }))
 vi.mock("@/features/session/use-session-query", () => ({
   useSessionQuery: () => ({ data: { user: sessionUser } }),
 }))
@@ -32,9 +32,9 @@ vi.mock("@/components/ui/date-picker", () => ({
 }))
 
 import { EmployeeDetailsPage } from "./employee-details-page"
+import type { ExactDebtsClient } from "@tuari/contracts"
 import type { EmployeeTableRow } from "./employee-table"
 
-type SalaryPaymentsProp = ComponentProps<typeof EmployeeDetailsPage>["salaryPayments"]
 const PROJECT = { id: "project-1", name: "مشروع الرواتب" }
 
 function worker(overrides: Partial<EmployeeTableRow> = {}): EmployeeTableRow {
@@ -70,20 +70,19 @@ function worker(overrides: Partial<EmployeeTableRow> = {}): EmployeeTableRow {
   }
 }
 
-function renderDetails(employee: EmployeeTableRow = worker(), salaryPayments: SalaryPaymentsProp = []) {
+function renderDetails(employee: EmployeeTableRow = worker(), onApproveEarning = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
       <EmployeeDetailsPage
         activeTab="finance"
-        debtAccounts={[]}
-        debtEntriesByAccountId={{}}
+        debtClient={{ summary: vi.fn().mockResolvedValue({ accounts: [], grossPayableDzd: "0.00", grossReceivableDzd: "0.00" }) } as unknown as ExactDebtsClient}
         employee={employee}
         managedProjects={[]}
         managedWarehouses={[]}
         projects={[PROJECT]}
         onTabChange={vi.fn()}
-        salaryPayments={salaryPayments}
+        onApproveEarning={onApproveEarning}
         workHistory={[]}
       />
     </QueryClientProvider>,
@@ -99,16 +98,31 @@ describe("EmployeeDetailsPage earnings entry", () => {
 
   afterEach(cleanup)
 
-  it("shows the exact daily reference and opens the shared approval dialog", async () => {
-    renderDetails(worker({ salaryReference: { period: "DAILY", amount: "4500.1234" } }))
+  it("keeps the exact daily reference and routes both approval actions to the full page", () => {
+    const onApproveEarning = vi.fn()
+    renderDetails(worker({ salaryReference: { period: "DAILY", amount: "4500.1234" } }), onApproveEarning)
 
     expect(screen.getByText("4,500.1234")).toBeTruthy()
     fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
+    fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[1]!)
 
-    const dialog = await screen.findByRole("dialog")
-    expect(dialog).toBeTruthy()
-    expect(dialog.textContent).toContain("عامل الرواتب")
-    expect(screen.queryByRole("button", { name: "حفظ دفعة الراتب" })).toBeNull()
+    expect(onApproveEarning).toHaveBeenNthCalledWith(1, "worker-1")
+    expect(onApproveEarning).toHaveBeenNthCalledWith(2, "worker-1")
+    expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("offers approval from an active manager profile without adding a worker-only debt tab", () => {
+    const onApproveEarning = vi.fn()
+    renderDetails(worker({ isWorker: false, roleKey: "project_manager", role: "مدير مشروع" }), onApproveEarning)
+
+    const actions = screen.getAllByRole("button", { name: "اعتماد الأجر" })
+    expect(actions).toHaveLength(2)
+    fireEvent.click(actions[0]!)
+    fireEvent.click(actions[1]!)
+    expect(onApproveEarning).toHaveBeenCalledTimes(2)
+    expect(onApproveEarning).toHaveBeenLastCalledWith("worker-1")
+    expect(screen.getAllByRole("tab")).toHaveLength(3)
+    expect(screen.queryByRole("tab", { name: "الديون" })).toBeNull()
   })
 
   it("keeps a legal zero reference distinct from a missing reference and shows monthly precision", () => {
@@ -152,72 +166,18 @@ describe("EmployeeDetailsPage earnings entry", () => {
     expect(screen.queryByText(PROJECT.id)).toBeNull()
   })
 
-  it("opens approval without a salary reference and accepts an explicit earned amount", async () => {
-    renderDetails(worker({ salaryReference: null }))
+  it("routes approval for an employee without a salary reference", () => {
+    const onApproveEarning = vi.fn()
+    renderDetails(worker({ salaryReference: null }), onApproveEarning)
     fireEvent.click(screen.getAllByRole("button", { name: "اعتماد الأجر" })[0]!)
 
-    await screen.findByRole("dialog")
-    fireEvent.change(screen.getByLabelText("إجمالي الأجر المعتمد بالدينار الجزائري"), { target: { value: "1250" } })
-    fireEvent.change(screen.getByLabelText("المبلغ غير الموزع بالدينار الجزائري"), { target: { value: "1250" } })
-    fireEvent.click(screen.getByRole("button", { name: "اعتماد الأجر" }))
-
-    await waitFor(() => expect(approveEarning).toHaveBeenCalledTimes(1))
-    expect(approveEarning.mock.calls[0]![0]).toMatchObject({
-      employeeId: "worker-1",
-      currencyCode: "DZD",
-      totalAmount: "1250.00",
-      unallocatedAmount: "1250.00",
-      segments: [],
-    })
-    expect(approveEarning.mock.calls[0]![0].referenceSalary).toBeNull()
+    expect(onApproveEarning).toHaveBeenCalledWith("worker-1")
+    expect(approveEarning).not.toHaveBeenCalled()
   })
 
-  it("keeps recorded salary payments and their day count read-only", () => {
-    renderDetails(worker(), [{
-      id: "payment-1",
-      paymentDate: "2026-03-31T00:00:00.000Z",
-      days: 15,
-      expectedAmountDzd: 15000,
-      actualAmountDzd: 15000,
-      periodType: "MONTHLY",
-      note: null,
-    }])
-
-    expect(screen.getByRole("columnheader", { name: "الأيام" })).toBeTruthy()
-    expect(screen.getByText("15")).toBeTruthy()
-    expect(screen.queryByRole("button", { name: "حفظ دفعة الراتب" })).toBeNull()
-  })
-})
-
-describe("stored business day timezone (#473)", () => {
-  let restoreTimeZone: () => void
-
-  beforeEach(() => {
-    restoreTimeZone = pinUtcTimeZone()
-  })
-
-  afterEach(() => {
-    cleanup()
-    restoreTimeZone()
-  })
-
-  it("runs under UTC so the assertions are not vacuous", () => {
-    expect(Intl.DateTimeFormat().resolvedOptions().timeZone).toBe("UTC")
-    expect(ALGERIA_DAY).not.toBe(UTC_DAY)
-  })
-
-  it("renders the salary payment history date on its Algeria day, not the ambient UTC day", () => {
-    renderDetails(worker(), [{
-      id: "payment-1",
-      paymentDate: MIDNIGHT_CROSSING,
-      days: 15,
-      expectedAmountDzd: 15000,
-      actualAmountDzd: 15000,
-      periodType: "MONTHLY",
-      note: null,
-    }])
-
-    expect(screen.getByText(ALGERIA_DAY)).toBeTruthy()
-    expect(screen.queryByText(UTC_DAY)).toBeNull()
+  it("does not present retired expected-versus-paid metrics as empty financial data", () => {
+    renderDetails()
+    expect(screen.queryByRole("columnheader", { name: "الأيام" })).toBeNull()
+    expect(screen.getByRole("heading", { name: "سجل الأجور المعتمدة" })).toBeTruthy()
   })
 })

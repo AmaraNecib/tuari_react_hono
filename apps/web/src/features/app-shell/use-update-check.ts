@@ -1,3 +1,5 @@
+import { supportFailureMessage } from "@/lib/error-correlation"
+import { i18n } from "@/i18n"
 /**
  * Hook for checking for updates via the Tauri IPC command.
  * Caches the last check result in localStorage for offline display.
@@ -90,11 +92,7 @@ export function useUpdateCheck() {
         cacheResult(result)
         setState({ status: "up-to-date", checkedAt: new Date().toISOString() })
       }
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : ""
+    } catch {
 
       // If we have a cached result, show it with offline flag
       const cached = getCachedResult()
@@ -113,7 +111,7 @@ export function useUpdateCheck() {
         return
       }
 
-      setState({ status: "error", message })
+      setState({ status: "error", message: supportFailureMessage(i18n.t("shell.settingsAboutError")) })
     }
   }, [])
 

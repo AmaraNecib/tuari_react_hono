@@ -1,0 +1,183 @@
+import { mkdirSync, writeFileSync } from "node:fs"
+import { join } from "node:path"
+import { execFileSync } from "node:child_process"
+import { expect, test, type Page } from "@playwright/test"
+import type { ExactDebtAccount } from "../../packages/contracts/src"
+import { bootstrapOrSignIn } from "./helpers/session"
+
+function fixture<T>(run: string, command: string, value = ""): T {
+  return JSON.parse(execFileSync(process.execPath, ["apps/api/node_modules/tsx/dist/cli.mjs", "--tsconfig", "tests/e2e/connected-exact.tsconfig.json", "tests/e2e/manual-settlement-fixture.ts", run, command, value], { encoding: "utf8" })) as T
+}
+test.skip(process.env.CONNECTED_EXACT_TEST !== "1", "Dedicated disposable native application required")
+async function rpc<T>(page: Page, path: string, input: unknown): Promise<T> {
+  return page.evaluate(async ({ api, path, input }) => {
+    const response = await fetch(`${api}/rpc/${path}`, { method: "POST", credentials: "include", headers: { "content-type": "application/json" }, body: JSON.stringify({ json: input }) })
+    const body = await response.json()
+    if (!response.ok) throw new Error(`${path}: ${response.status} ${JSON.stringify(body)}`)
+    return body.json
+  }, { api: process.env.PLAYWRIGHT_API_URL!, path, input }) as Promise<T>
+}
+
+test("external manual pair baseline and responsive evidence #613", async ({ page, browser, context }) => {
+  await bootstrapOrSignIn(page)
+  const party = await rpc<{ success: boolean; item: { id: string } }>(page, "externalCounterpartiesCreate", { fullName: "جهة التسوية اليدوية 613", phoneNumber: "0555123613" })
+  expect(party.success).toBe(true)
+  const accounts: ExactDebtAccount[] = []
+  for (const [direction, openingBalanceDzd] of [["PAYABLE", "100.00"], ["RECEIVABLE", "60.00"]]) {
+    accounts.push(await rpc<ExactDebtAccount>(page, "financial/debts/create", { requestId: crypto.randomUUID(), partyType: "EXTERNAL_COUNTERPARTY", externalCounterpartyId: party.item.id, direction, openingBalanceDzd, reasonCategory: "OTHER", reasonDetail: "رصيد يدوي للاختبار" }))
+  }
+  const run = process.env.MANUAL_SETTLEMENT_RUN!
+  const phase = process.env.MANUAL_SETTLEMENT_CAPTURE ?? "before"
+  // Seed a real excluded producer posting through its trusted ledger capability.
+  const produced = fixture<{id:string}>(run, "producer", accounts[0]!.id)
+  const storageState = await context.storageState()
+  const captures: object[] = []
+  for (const [name, width, height] of [["desktop", 1280, 800], ["tablet", 1024, 768], ["mobile", 390, 844]] as const) {
+    const dir = join(run, phase, name)
+    mkdirSync(dir, { recursive: true })
+    const recording = await browser.newContext({ storageState, viewport: { width, height }, baseURL: process.env.MANUAL_SETTLEMENT_WEB_URL!, recordVideo: { dir, size: { width, height } } })
+    const view = await recording.newPage()
+    await view.goto(`/externals/${party.item.id}`)
+    await expect(view.getByRole("heading", { name: "جهة التسوية اليدوية 613", exact: true })).toBeVisible()
+    const ledger = view.getByRole("main", { name: "سجل الديون الدقيق", exact: true })
+    await expect(ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button")).toHaveCount(2)
+    await ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات علينا/ }).click()
+    await expect(ledger.getByRole("table")).toBeVisible()
+    if (phase === "after" || process.env.MANUAL_SETTLEMENT_VISUAL_BASELINE === "1") {
+      await expect(ledger.getByRole("tablist")).toHaveCount(1)
+      await expect(ledger.getByRole("tab", { name: "حركة الحساب", exact: true })).toHaveAttribute("aria-selected", "true")
+      await view.screenshot({ path: join(dir, "activity-viewport.png"), fullPage: false, animations: "disabled" })
+      await ledger.getByRole("tab", { name: "التسويات", exact: true }).focus()
+      await view.keyboard.press("Enter")
+      const historyPanel = view.getByRole("region", { name: "تسوية متبادلة بين دينين يدويين", exact: true })
+      await expect(historyPanel).toBeVisible()
+      await expect(view.getByRole("dialog")).toHaveCount(0)
+      await view.screenshot({ path: join(dir, "settlements-idle-viewport.png"), fullPage: false, animations: "disabled" })
+      await historyPanel.getByRole("button", { name: "تسوية متبادلة جديدة", exact: true }).click()
+      const panel = view.getByRole("dialog", { name: "تسوية متبادلة بين دينين يدويين", exact: true })
+      await expect(panel.getByRole("combobox", { name: "الدين المستحق علينا", exact: true })).toBeVisible()
+      const pOptions = await panel.getByRole("combobox", { name: "الدين المستحق علينا", exact: true }).locator("option").evaluateAll(elements => elements.map(element => (element as HTMLOptionElement).value).filter(Boolean))
+      const rOptions = await panel.getByRole("combobox", { name: "الدين المستحق لنا", exact: true }).locator("option").evaluateAll(elements => elements.map(element => (element as HTMLOptionElement).value).filter(Boolean))
+      expect(pOptions).toHaveLength(1); expect(rOptions).toHaveLength(1)
+      expect(pOptions).not.toContain(produced.id)
+      await panel.getByRole("combobox", { name: "الدين المستحق علينا", exact: true }).selectOption(pOptions[0])
+      await panel.getByRole("combobox", { name: "الدين المستحق لنا", exact: true }).selectOption(rOptions[0])
+      await panel.getByRole("textbox", { name: "مبلغ التسوية المتبادلة", exact: true }).fill("25")
+      await panel.getByRole("button", { name: "معاينة التسوية المتبادلة", exact: true }).focus()
+      await view.keyboard.press("Enter")
+      const preview = panel.getByRole("region", { name: "معاينة التسوية المتبادلة", exact: true })
+      await expect(preview).toContainText("75")
+      await expect(preview).toContainText("35")
+      await preview.screenshot({ path: join(dir, "preview-element.png"), animations: "disabled" })
+      await panel.screenshot({ path: join(dir, "form-element.png"), animations: "disabled" })
+      await view.screenshot({ path: join(dir, "preview-viewport.png"), fullPage: false, animations: "disabled" })
+      await view.keyboard.press("Escape")
+      await expect(panel).not.toBeVisible()
+      await expect(historyPanel.getByRole("button", { name: "تسوية متبادلة جديدة", exact: true })).toBeFocused()
+      await historyPanel.getByRole("button", { name: "تسوية متبادلة جديدة", exact: true }).click()
+      await expect(panel.getByRole("textbox", { name: "مبلغ التسوية المتبادلة", exact: true })).toHaveValue("25")
+      await expect(preview).toContainText("75")
+      const seen: unknown[] = []
+      await view.route("**/rpc/financial/manualSettlement/confirm", async route => {
+        seen.push(route.request().postDataJSON())
+        const response = await route.fetch()
+        if (seen.length === 1) await route.abort("failed")
+        else await route.fulfill({ response })
+      })
+      await panel.getByRole("button", { name: "تأكيد التسوية المتبادلة", exact: true }).click()
+      await expect.poll(() => seen.length).toBe(1)
+      await view.keyboard.press("Escape")
+      await ledger.getByRole("tab", { name: "حركة الحساب", exact: true }).click()
+      await ledger.getByRole("tab", { name: "التسويات", exact: true }).click()
+      await expect(historyPanel.getByRole("button", { name: "إعادة الطلب نفسه", exact: true })).toBeVisible()
+      await view.reload()
+      await ledger.getByRole("tab", { name: "التسويات", exact: true }).click()
+      const resumed = view.getByRole("region", { name: "تسوية متبادلة بين دينين يدويين", exact: true })
+      await expect(resumed.getByRole("button", { name: "إعادة الطلب نفسه", exact: true })).toBeVisible()
+      const owner = fixture<{id:string}>(run, "deny")
+      await resumed.getByRole("button", { name: "إعادة الطلب نفسه", exact: true }).click()
+      await expect.poll(() => seen.length).toBe(2)
+      await expect(resumed.getByRole("button", { name: "إعادة الطلب نفسه", exact: true })).toBeEnabled()
+      expect(await view.evaluate(() => Object.values(sessionStorage).some(raw => raw.includes('"requestId"')))).toBe(true)
+      fixture(run, "restore", owner.id)
+      await view.reload()
+      await ledger.getByRole("tab", { name: "التسويات", exact: true }).click()
+      await resumed.getByRole("button", { name: "إعادة الطلب نفسه", exact: true }).click()
+      await expect(resumed.getByRole("button", { name: "إعادة الطلب نفسه", exact: true })).toHaveCount(0)
+      expect(seen).toHaveLength(3); expect(seen[1]).toEqual(seen[0]); expect(seen[2]).toEqual(seen[0])
+      await expect(ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات علينا/ })).toContainText("76")
+      await expect(ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات لنا/ })).toContainText("35")
+      const settled = await rpc<{items: {id:string; payableSettlementEntryId:string; receivableSettlementEntryId:string}[]}>(view, "financial/manualSettlement/history", { externalCounterpartyId: party.item.id })
+      const operation = settled.items[0]!
+      for (const [direction, postingId] of [[/مستحقات علينا/, operation.payableSettlementEntryId], [/مستحقات لنا/, operation.receivableSettlementEntryId]] as const) {
+        await ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: direction }).click()
+        await ledger.getByRole("tab", { name: "حركة الحساب", exact: true }).click()
+        const activity = ledger.getByRole("tabpanel", { name: "حركة الحساب", exact: true })
+        const row = activity.locator(`[data-entry-id="${postingId}"]`)
+        await expect(row.locator(`[data-manual-settlement-id="${operation.id}"]`)).toBeVisible()
+        await expect(row).toContainText("تسوية مسجلة")
+        await expect(row).toContainText("25")
+        // The account-local posting identity prevents a party-wide history from satisfying this proof.
+        expect((await rpc<{entries:{id:string}[]}>(view, "financial/debts/detail", { id: accounts[direction.source.includes("علينا") ? 0 : 1]!.id })).entries.some(entry => entry.id === postingId)).toBe(true)
+      }
+      await ledger.getByRole("tab", { name: "التسويات", exact: true }).click()
+      await resumed.getByRole("button", { name: "عكس التسوية كاملة", exact: true }).click()
+      await resumed.getByRole("textbox", { name: "سبب العكس", exact: true }).fill("إلغاء التسوية التجريبية")
+      await resumed.getByRole("button", { name: "تأكيد العكس الكامل", exact: true }).click()
+      await expect(resumed.getByText("معكوسة بالكامل", { exact: true })).toHaveCount(captures.length + 1)
+      await expect(ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات علينا/ })).toContainText("101")
+      await expect(ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات لنا/ })).toContainText("60")
+      const operations = await rpc<{items: {id:string; reversal:{id:string; payableReversalEntryId:string; receivableReversalEntryId:string}}[]}>(view, "financial/manualSettlement/history", { externalCounterpartyId: party.item.id })
+      const latest = operations.items.find(item => item.reversal)!
+      for (const direction of [/مستحقات علينا/, /مستحقات لنا/]) {
+        await ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: direction }).click()
+        await ledger.getByRole("tab", { name: "حركة الحساب", exact: true }).click()
+        const activity = ledger.getByRole("tabpanel", { name: "حركة الحساب", exact: true })
+        await expect(activity.getByRole("table").locator(`[data-manual-settlement-id="${latest.id}"]`).first()).toContainText("معكوسة بالكامل")
+        const reversalPostingId = direction.source.includes("علينا") ? latest.reversal.payableReversalEntryId : latest.reversal.receivableReversalEntryId
+        await expect(activity.locator(`[data-entry-id="${reversalPostingId}"] [data-manual-reversal-id="${latest.reversal.id}"]`)).toContainText("إلغاء التسوية التجريبية")
+        await activity.screenshot({ path: join(dir, direction.source.includes("علينا") ? "payable-activity-links.png" : "receivable-activity-links.png"), animations: "disabled" })
+        await ledger.getByRole("tab", { name: "التسويات", exact: true }).click()
+        const history = ledger.getByRole("tabpanel", { name: "التسويات", exact: true })
+        await expect(history.locator(`[data-manual-settlement-id="${latest.id}"]`)).toContainText("معكوسة بالكامل")
+        await expect(history.locator(`[data-manual-reversal-id="${latest.reversal.id}"]`)).toContainText("إلغاء التسوية التجريبية")
+        const side = direction.source.includes("علينا") ? "payable" : "receivable"
+        if (phase === "after") {
+          const row = history.locator(`[data-manual-settlement-id="${latest.id}"]`)
+          const details = row.getByText("عرض تفاصيل القيدين الأصليين", { exact: true })
+          if (!(await row.locator("details").first().getAttribute("open") === "")) {
+            await details.focus()
+            await view.keyboard.press("Enter")
+          }
+          await expect(row.locator("details").first()).toHaveAttribute("open", "")
+          await expect(row).toContainText("تفاصيل المصدر غير متاحة")
+          await expect(row.locator("details").last()).not.toHaveAttribute("open", "")
+        }
+        await history.screenshot({ path: join(dir, `${side}-history.png`), animations: "disabled" })
+        await view.screenshot({ path: join(dir, `${side}-viewport.png`), fullPage: false, animations: "disabled" })
+      }
+      if (name === "mobile") {
+        await view.getByRole("banner").getByRole("button", { name: "توسيع الشريط الجانبي", exact: true }).click()
+        await expect(view.locator('.tauri-shell')).toHaveAttribute('data-sidebar-open', 'true')
+        await view.screenshot({ path: join(dir, "mobile-drawer.png"), animations: "disabled" })
+        await view.locator(".sb-mobile-backdrop").click({ position: { x: 5, y: 400 } })
+      }
+      await resumed.scrollIntoViewIfNeeded()
+      await resumed.screenshot({ path: join(dir, "manual-settlement-element.png"), animations: "disabled" })
+      await view.screenshot({ path: join(dir, "settlement-viewport.png"), fullPage: false, animations: "disabled" })
+      await ledger.getByRole("navigation", { name: "حسابات الديون" }).getByRole("button", { name: /مستحقات علينا/ }).click()
+    }
+    await view.evaluate(() => document.fonts.ready)
+    await ledger.screenshot({ path: join(dir, "ledger-element.png"), animations: "disabled" })
+    await view.screenshot({ path: join(dir, "viewport-sidebar.png"), fullPage: false, animations: "disabled" })
+    if (name !== "mobile") await view.locator("aside").screenshot({ path: join(dir, "sidebar-element.png"), animations: "disabled" })
+    await ledger.getByRole("tab", { name: "التسويات", exact: true }).focus()
+    await view.keyboard.press("Enter")
+    await expect(ledger.getByRole("tabpanel", { name: "التسويات", exact: true })).toBeVisible()
+    const video = view.video()!
+    await recording.close()
+    await video.saveAs(join(dir, "route-clip.webm"))
+    captures.push({ name, width, height, directory: dir })
+  }
+  writeFileSync(join(run, `${phase}-manifest.json`), JSON.stringify({ phase, sourceSha: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), captures, note: "Committed actual native route. Functional flow at the named viewport. All viewport captures use fullPage:false with no CSS or scroll-host normalization. Element captures use locator.screenshot at native scale and may exceed viewport height. Clips are separate per actual route and viewport. Owner signoff pending." }, null, 2))
+})

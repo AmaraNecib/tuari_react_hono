@@ -1712,6 +1712,16 @@ export async function applyEmployeeUserLinkMigration(db: DbExecutor): Promise<vo
   });
 }
 
+/** Finalize fresh identity tables without running legacy financial migrations. */
+export async function ensureFreshApplicationIdentity(db: DbExecutor): Promise<void> {
+  await db.$transaction(async tx => {
+    await ensurePhoneOnlyAuthFields(tx);
+    await applyEmployeeUserLinkMigration(tx);
+    await ensureSeedRoles(tx);
+    await ensureSeedRolePermissions(tx);
+  });
+}
+
 export async function ensureDatabaseSchema(db: DbExecutor): Promise<void> {
   await assertLegacyMoneySchema(db);
   await db.$executeRawUnsafe("PRAGMA foreign_keys = ON");

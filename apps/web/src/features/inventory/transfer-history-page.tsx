@@ -1,8 +1,10 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Transfer history page with filters for viewing all inventory movements.
  * Shows internal transfers, sales, gifts, and returns.
  */
 import { CurrencyRun } from "@/features/shared/money-value"
+import { formatExactMoney } from "@/features/shared/exact-money-display"
 import { TableQueryState } from "@/features/shared/table-primitives"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
@@ -15,17 +17,18 @@ import { AppDate } from "@/components/app-date"
 import { useTransferHistoryQuery, type TransferHistoryFilters, type TransferHistoryItem } from "./transfer-history-hooks"
 
 /** formatCurrency - helper function. */
-function formatCurrency(amount: number): string {
-  return amount.toLocaleString("ar-DZ")
+function formatCurrency(amount: string, aggregate = false): string {
+  return formatExactMoney(amount, { aggregate, grouped: true }).text
 }
 
 /** getTransferTypeLabel - helper function. */
 function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
   const labels: Record<string, string> = {
-    INTERNAL: "تحويل داخلي",
-    SALE: "بيع",
-    GIFT: "هدية",
-    RETURN: "مرتجع",
+    PURCHASE: featureI18n.t("featureCopy.transferHistoryPage.purchase"),
+    INTERNAL: featureI18n.t("featureCopy.transferHistoryPage.internal"),
+    SALE: featureI18n.t("featureCopy.transferHistoryPage.sale"),
+    GIFT: featureI18n.t("featureCopy.transferHistoryPage.gift"),
+    RETURN: featureI18n.t("featureCopy.transferHistoryPage.returned"),
   }
   return labels[type] ?? type
 }
@@ -33,6 +36,7 @@ function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
 /** getTransferTypeColor - helper function. */
 function getTransferTypeColor(type: TransferHistoryItem["type"]): string {
   const colors: Record<string, string> = {
+    PURCHASE: "bg-ink/10 text-ink",
     INTERNAL: "bg-ink/10 text-ink",
     SALE: "bg-good/10 text-good",
     GIFT: "bg-primary/10 text-primary",
@@ -44,9 +48,9 @@ function getTransferTypeColor(type: TransferHistoryItem["type"]): string {
 /** getPaymentStatusLabel - helper function. */
 function getPaymentStatusLabel(status: TransferHistoryItem["paymentStatus"]): string {
   const labels: Record<string, string> = {
-    PAID: "مدفوع",
-    PARTIAL: "جزئي",
-    UNPAID: "غير مدفوع",
+    PAID: featureI18n.t("featureCopy.transferHistoryPage.paid"),
+    PARTIAL: featureI18n.t("featureCopy.transferHistoryPage.partial"),
+    UNPAID: featureI18n.t("featureCopy.transferHistoryPage.unpaid"),
     "N/A": "—",
   }
   return labels[status ?? "N/A"] ?? "—"
@@ -77,11 +81,12 @@ export function TransferHistoryPage() {
     setFilters((prev) => ({ ...prev, [key]: value || undefined }))
   }
 
-  // Calculate summary stats
-  const totalTransfers = transfers.length
-  const totalSales = transfers.filter((t) => t.type === "SALE").length
-  const totalInternal = transfers.filter((t) => t.type === "INTERNAL").length
-  const totalValue = transfers.reduce((sum, t) => sum + (t.totalAmount ?? 0), 0)
+  const summary = transfersQuery.data?.summary
+  const totalTransfers = summary?.total
+  const totalSales = summary?.sales
+  const totalInternal = summary?.internal
+  const totalValue = summary?.totalAmountDzd
+  const summaryValue = <T,>(value: T) => transfersQuery.isPending && !transfersQuery.data ? "…" : transfersQuery.isError && !transfersQuery.data ? "—" : value
 
   return (
     <div className="space-y-6">
@@ -101,23 +106,27 @@ export function TransferHistoryPage() {
           stats={[
             {
               label: t("inventory.transferHistory.totalTransfers"),
-              value: totalTransfers,
+              value: summaryValue(totalTransfers),
             },
             {
               label: t("inventory.transferHistory.totalSales"),
-              value: totalSales,
+              value: summaryValue(totalSales),
             },
             {
               label: t("inventory.transferHistory.totalInternal"),
-              value: totalInternal,
+              value: summaryValue(totalInternal),
             },
             {
               label: t("inventory.transferHistory.totalValue"),
-              value: <CurrencyRun amount={formatCurrency(totalValue)} currencyLabel="دج" />,
+              value: summaryValue(<CurrencyRun amount={totalValue === undefined ? "�" : formatCurrency(totalValue, true)} currencyLabel={featureI18n.t("featureCopy.transferHistoryPage.currency")} />),
             },
           ]}
         />
       </Surface>
+
+      {(!filters.transferType || filters.transferType === "PURCHASE") && (
+        <p className="text-sm text-ink-4">{t("inventory.transferHistory.purchaseSummaryScope")}</p>
+      )}
 
       {/* Filters */}
       <Surface variant="panel">
@@ -164,6 +173,7 @@ export function TransferHistoryPage() {
                 onChange={(e) => updateFilter("transferType", e.target.value === "ALL" ? undefined : e.target.value)}
               >
                 <option value="ALL">{t("inventory.transferHistory.allTypes")}</option>
+                <option value="PURCHASE">{featureI18n.t("featureCopy.transferHistoryPage.purchase")}</option>
                 <option value="INTERNAL">{t("inventory.transferHistory.internal")}</option>
                 <option value="SALE">{t("inventory.transfer.typeSale")}</option>
                 <option value="GIFT">{t("inventory.transfer.typeGift")}</option>
@@ -191,8 +201,7 @@ export function TransferHistoryPage() {
                 {t("inventory.transferHistory.clearFilters")}
               </Button>
               <span className="text-sm text-ink-4">
-                {totalTransfers} نتيجة
-              </span>
+                {summaryValue(totalTransfers)} {featureI18n.t("featureCopy.transferHistoryPage.result")}</span>
             </div>
           </div>
         </PageSurfaceContent>
@@ -219,6 +228,7 @@ export function TransferHistoryPage() {
               </div>
             )}
           </TableQueryState>
+          {transfersQuery.hasNextPage && <Button variant="outline" disabled={transfersQuery.isFetchingNextPage} onClick={() => void transfersQuery.fetchNextPage()}>{t("inventory.transferHistory.showMore")}</Button>}
         </PageSurfaceContent>
       </Surface>
     </div>
@@ -244,12 +254,14 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
 
       {/* Route */}
       <div className="flex items-center gap-2 text-sm">
-        {transfer.from ? (
+        {transfer.type === "PURCHASE" && transfer.counterparty ? (
+          <span className="text-ink-3">{transfer.counterparty.name}</span>
+        ) : transfer.from ? (
           <a
             href={transfer.from.type === "WAREHOUSE" ? `/warehouses/${transfer.from.id}` : `/projects/${transfer.from.id}`}
             className="text-primary hover:underline"
           >
-            {transfer.from.type === "WAREHOUSE" ? "مستودع" : "مشروع"}: {transfer.from.name}
+            {transfer.from.type === "WAREHOUSE" ? featureI18n.t("featureCopy.transferHistoryPage.warehouse") : featureI18n.t("featureCopy.transferHistoryPage.project")}: {transfer.from.name}
           </a>
         ) : (
           <span className="text-ink-4">—</span>
@@ -260,8 +272,14 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
             href={transfer.to.type === "WAREHOUSE" ? `/warehouses/${transfer.to.id}` : `/projects/${transfer.to.id}`}
             className="text-primary hover:underline"
           >
-            {transfer.to.type === "WAREHOUSE" ? "مستودع" : "مشروع"}: {transfer.to.name}
+            {transfer.to.type === "WAREHOUSE" ? featureI18n.t("featureCopy.transferHistoryPage.warehouse") : featureI18n.t("featureCopy.transferHistoryPage.project")}: {transfer.to.name}
           </a>
+        ) : transfer.type === "PURCHASE" ? (
+          <span className="text-ink-4">
+            {t(transfer.items.some(item => item.to)
+              ? "inventory.transferHistory.itemDestinations"
+              : "inventory.transferHistory.unknownDestination")}
+          </span>
         ) : transfer.counterparty ? (
           <span className="text-ink-3">{transfer.counterparty.name}</span>
         ) : (
@@ -279,29 +297,31 @@ function TransferHistoryItem({ transfer }: { transfer: TransferHistoryItem }) {
             >
               <span className="font-medium">{item.name}</span>
               <span className="text-ink-4">×{item.quantity}</span>
+              {item.to && <a className="text-primary hover:underline" href={item.to.type === "WAREHOUSE" ? `/warehouses/${item.to.id}` : `/projects/${item.to.id}`}>{item.to.name}</a>}
             </span>
           ))}
         </div>
       )}
 
-      {/* Payment Info (for sales) */}
-      {transfer.type === "SALE" && transfer.totalAmount !== undefined && (
+      {transfer.type === "PURCHASE" && <p className="text-xs text-ink-4">{t("inventory.transferHistory.wholeInvoiceAmounts")}</p>}
+      {/* Payment information */}
+      {(transfer.type === "PURCHASE" || transfer.type === "SALE" || transfer.type === "RETURN" || transfer.type === "GIFT") && transfer.totalAmountDzd !== null && (
         <div className="flex items-center justify-between border-t border-line/50 pt-3">
           <div className="flex items-center gap-4">
             <div>
               <span className="text-xs text-ink-4">{t("inventory.transferHistory.total")}</span>
-              <span className="ms-2 font-medium tabular-nums"><CurrencyRun amount={formatCurrency(transfer.totalAmount)} currencyLabel="دج" /></span>
+              <span className="ms-2 font-medium tabular-nums"><CurrencyRun amount={formatCurrency(transfer.totalAmountDzd!)} currencyLabel={featureI18n.t("featureCopy.transferHistoryPage.currency")} /></span>
             </div>
-            {transfer.paidAmount !== undefined && transfer.paidAmount > 0 && (
+            {transfer.paidAmountDzd !== null && transfer.paidAmountDzd !== "0.00" && (
               <div>
                 <span className="text-xs text-ink-4">{t("inventory.transferHistory.paid")}</span>
-                <span className="ms-2 font-medium tabular-nums text-good"><CurrencyRun amount={formatCurrency(transfer.paidAmount)} currencyLabel="دج" /></span>
+                <span className="ms-2 font-medium tabular-nums text-good"><CurrencyRun amount={formatCurrency(transfer.paidAmountDzd!)} currencyLabel={featureI18n.t("featureCopy.transferHistoryPage.currency")} /></span>
               </div>
             )}
-            {transfer.remainingDebt !== undefined && transfer.remainingDebt > 0 && (
+            {transfer.remainingDebtDzd !== null && transfer.remainingDebtDzd !== "0.00" && (
               <div>
                 <span className="text-xs text-ink-4">{t("inventory.transferHistory.debt")}</span>
-                <span className="ms-2 font-medium tabular-nums text-warn"><CurrencyRun amount={formatCurrency(transfer.remainingDebt)} currencyLabel="دج" /></span>
+                <span className="ms-2 font-medium tabular-nums text-warn"><CurrencyRun amount={formatCurrency(transfer.remainingDebtDzd!)} currencyLabel={featureI18n.t("featureCopy.transferHistoryPage.currency")} /></span>
               </div>
             )}
           </div>

@@ -3,6 +3,8 @@
  * Provides request tracing, error context, and performance metrics.
  */
 
+import { localTimestamp, type EventSink } from "./event-sink";
+
 export interface LogContext {
   requestId: string;
   userId?: string;
@@ -25,6 +27,9 @@ export interface LogEntry {
 
 export class StructuredLogger {
   private static context: LogContext | null = null;
+  private static sink?: EventSink;
+
+  static setSink(sink: EventSink | undefined): void { this.sink = sink; }
 
   /**
    * Initialize logging context for a request.
@@ -114,6 +119,7 @@ export class StructuredLogger {
     try {
       const result = operation();
       const duration = Date.now() - start;
+      if (duration > 2000) this.warn(`${name} slow operation`, { duration });
       this.info(`${name} completed`, { duration });
       return result;
     } catch (error) {
@@ -134,6 +140,7 @@ export class StructuredLogger {
     try {
       const result = await operation();
       const duration = Date.now() - start;
+      if (duration > 2000) this.warn(`${name} slow operation`, { duration });
       this.info(`${name} completed`, { duration });
       return result;
     } catch (error) {
@@ -158,10 +165,19 @@ export class StructuredLogger {
   }
 
   private static output(entry: LogEntry): void {
-    // In production, this would send to observability platform (DataDog, New Relic, etc.)
-    // For now, output to console in JSON format for easy parsing
+    try { this.outputUnchecked(entry); }
+    catch {
+      try { console.error("Local logging degraded"); } catch { /* Logging never owns application control flow. */ }
+    }
+  }
+
+  private static outputUnchecked(entry: LogEntry): void {
+    this.sink?.emit({ severity: entry.level, source: "api", message: entry.message,
+      attributes: { ...entry.data, error: entry.error, requestId: entry.context.requestId } });
+    // Healthy file capture owns the record. Stderr is reserved for degraded fallback.
+    if (this.sink && !this.sink.degraded) return;
     const logLine = JSON.stringify({
-      timestamp: new Date(entry.context.timestamp).toISOString(),
+      timestamp: localTimestamp(),
       level: entry.level.toUpperCase(),
       requestId: entry.context.requestId,
       userId: entry.context.userId,

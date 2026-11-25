@@ -90,7 +90,6 @@ type NavItem = {
 
 type NavGroup = {
   labelKey: string
-  fallback: string
   items: NavItem[]
 }
 
@@ -168,12 +167,10 @@ export function WorkspaceSidebar({
   const groups: NavGroup[] = [
     {
       labelKey: "shell.navGroupOverview",
-      fallback: "نظرة عامة",
       items: [{ key: "dashboard", target: workspaceRoutes.dashboard(), Icon: Gauge }],
     },
     {
       labelKey: "shell.navGroupOps",
-      fallback: "العمليات",
       items: [
         { key: "projects",          target: workspaceRoutes.projects(),          Icon: BriefcaseBusiness },
         { key: "warehouses",        target: workspaceRoutes.warehouses(),        Icon: Warehouse },
@@ -183,7 +180,6 @@ export function WorkspaceSidebar({
     },
     {
       labelKey: "shell.navGroupFinance",
-      fallback: "المالية",
       items: [
         { key: "invoices",          target: workspaceRoutes.invoices(),          Icon: FileText },
         { key: "debts",             target: workspaceRoutes.debts(),             Icon: HandCoins },
@@ -194,7 +190,6 @@ export function WorkspaceSidebar({
     },
     {
       labelKey: "shell.navGroupPeople",
-      fallback: "الموظفون",
       items: [
         { key: "employees", target: workspaceRoutes.employees(), Icon: Users },
         { key: "externals", target: workspaceRoutes.externals(), Icon: UserSquare2 },
@@ -202,7 +197,6 @@ export function WorkspaceSidebar({
     },
     {
       labelKey: "shell.navGroupSystem",
-      fallback: "النظام",
       items: [{ key: "settings", target: workspaceRoutes.settings(), Icon: Settings }],
     },
   ]
@@ -212,10 +206,10 @@ export function WorkspaceSidebar({
       {/* Brand */}
       <div className="flex items-center gap-3 px-5 border-b border-line flex-shrink-0" style={{ height: "var(--header-h)" }}>
         <div className="w-[1.375rem] h-[1.375rem] rounded-[0.3125rem] bg-ink text-bg grid place-items-center text-sm font-display italic font-medium flex-shrink-0">
-          ط
+          {t("shellCopy.brandInitial")}
         </div>
         <span className="sb-collapse-hide font-display italic text-[1.1875rem] tracking-[-0.01em] whitespace-nowrap overflow-hidden">
-          نظام
+          {t("shellCopy.brandName")}
         </span>
       </div>
 
@@ -225,7 +219,7 @@ export function WorkspaceSidebar({
           <div key={group.labelKey}>
             {/* Group header */}
             <div className="sb-collapse-hide px-3 pb-1 pt-2 text-[0.6875rem] font-semibold tracking-wider uppercase text-ink-4">
-              {t(group.labelKey, group.fallback)}
+              {t(group.labelKey)}
             </div>
 
             {/* Group items */}

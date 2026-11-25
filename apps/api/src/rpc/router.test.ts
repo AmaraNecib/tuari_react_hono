@@ -15,6 +15,7 @@ import { CompanyError } from "../modules/company/company.errors";
 import { schemaStatements } from "../infrastructure/database/schema-definitions";
 import { createInventoryRepository } from "../modules/inventory/adapters/sqlite-inventory.repository";
 import { InventoryService } from "../modules/inventory/inventory.service";
+import { InventoryError } from "../modules/inventory/inventory.errors";
 import { InventoryAttachmentStorage } from "../modules/inventory/inventory.storage";
 import { AssetChargeService } from "../modules/inventory/asset-charge.service";
 import { createInMemoryAssetChargeRepository } from "../modules/inventory/adapters/in-memory-asset-charge.repository";
@@ -338,6 +339,7 @@ describe("RPC router", () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain("not a folder");
+    expect(result).toHaveProperty("reason", "not_directory");
   });
 
   it("rejects the backup folder without a session", async () => {
@@ -990,6 +992,7 @@ describe("RPC router", () => {
       ]);
     const recoveryKeyService = new RecoveryKeyService({
       insertKey: vi.fn(),
+      findKeyById: vi.fn(),
       findKeyByHash: vi.fn(),
       updateKeyStatus: vi.fn(),
       countAvailableKeys: vi.fn(),
@@ -1032,6 +1035,7 @@ describe("RPC router", () => {
     const insertKey = vi.fn();
     const stubPort = {
       insertKey,
+      findKeyById: vi.fn(),
       findKeyByHash: vi.fn(),
       updateKeyStatus: vi.fn(),
       // First call: empty pool → 3 generated. Second: full pool → none.
@@ -1782,6 +1786,47 @@ describe("RPC router", () => {
       await expect(client.paymentsDelete({ id: randomUUID() })).rejects.toMatchObject({
         code: "NOT_FOUND",
       });
+    });
+  });
+
+  describe("entity query failure envelopes (#437)", () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    const id = randomUUID();
+    const cases = [
+      ["inventoryInvoiceGroupsGet", InventoryService, "getInvoiceGroup", { id }, InventoryError],
+      ["inventoryLocationContentsGet", InventoryService, "getLocationContents", { warehouseId: id }, InventoryError],
+      ["inventoryAssetsGet", InventoryService, "getAsset", { id }, InventoryError],
+      ["inventoryItemDefinitionsGet", InventoryService, "getItemDefinition", { id }, InventoryError],
+      ["projectsGet", OperationsService, "getProject", { id }, CompanyError],
+      ["warehousesGet", OperationsService, "getWarehouse", { id }, CompanyError],
+      ["projectAssignmentsGet", OperationsService, "getProjectAssignment", { id }, CompanyError],
+      ["warehouseAssignmentsGet", OperationsService, "getWarehouseAssignment", { id }, CompanyError],
+      ["debtAccountsGet", FinanceService, "getDebtAccount", { id }, CompanyError],
+      ["debtPartyDetail", FinanceService, "getDebtPartyDetail", { partyType: "INTERNAL_WORKER", workerId: id }, CompanyError],
+      ["externalCounterpartiesGet", FinanceService, "getExternalCounterparty", { id }, CompanyError],
+      ["rolesGet", WorkforceService, "getRole", { id }, CompanyError],
+      ["managerAssignmentsGet", WorkforceService, "getManagerAssignment", { id }, CompanyError],
+      ["employeesGet", WorkforceService, "getEmployee", { id }, CompanyError],
+    ];
+
+    it.each(cases)("%s maps async domain errors through the router", async (procedure, Service, method, input, DomainError) => {
+      const router = createTestRouter(createHarness());
+      const spy = vi.spyOn(Service.prototype, method).mockRejectedValueOnce(new DomainError("NOT_FOUND", "missing entity"));
+      const client = createRouterClient(router, { context: createContext() as never });
+      await expect(client[procedure](input)).resolves.toEqual({
+        success: false,
+        error: { code: "NOT_FOUND", message: "missing entity", fieldErrors: [] },
+      });
+      expect(spy).toHaveBeenCalledOnce();
+    });
+
+    it.each(cases)("%s preserves unexpected rejections", async (procedure, Service, method, input) => {
+      const router = createTestRouter(createHarness());
+      const error = new Error("unexpected failure");
+      vi.spyOn(Service.prototype, method).mockRejectedValueOnce(error);
+      const client = createRouterClient(router, { context: createContext() as never });
+      await expect(client[procedure](input)).rejects.toBe(error);
     });
   });
 

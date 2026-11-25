@@ -18,7 +18,10 @@ const { systemLogList } = vi.hoisted(() => ({ systemLogList: vi.fn() }))
 
 vi.mock("@/lib/orpc-client", () => ({
   rpcClient: { systemLogList },
+  orpc: { session: { queryOptions: () => ({ queryKey: ["session"] }) } },
 }))
+
+vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: "user-1" } } }) }))
 
 function logEntry(overrides: Pick<SystemLogEntry, "id" | "createdAt" | "summary">): SystemLogEntry {
   return {
@@ -49,8 +52,8 @@ afterEach(() => {
 })
 
 /**
- * The audit log's date range is applied client-side over the fetched system
- * log. The end bound must include the whole picked day (#428 round 2): before
+ * The audit log sends its date range through the shared query to the server.
+ * The end bound must include the whole picked day (#428 round 2): before
  * the fix a bare `yyyy-MM-dd` parsed as UTC midnight and dropped every log
  * written after 00:00 on the picked end date.
  */
@@ -75,21 +78,58 @@ describe("AuditLogPage end-of-day range boundary", () => {
       act(() => setDateFormat("YYYY/MM/DD"))
       expect(day.textContent).toBe("2026/10/01")
       expect(timestamp.textContent).toContain("12:00:00 ص")
-      fireEvent.click(screen.getByRole("button", { name: "تصدير CSV" }))
-      expect(createObjectURL).toHaveBeenCalledTimes(1)
-      const blob = createObjectURL.mock.calls[0]![0] as Blob
-      const csv = await new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onload = () => resolve(reader.result as string)
-        reader.readAsText(blob)
-      })
-      expect(csv).toContain('"1‏/10‏/2026، 12:00:00 ص"')
-      expect(csv).not.toContain("30‏/9‏/2026، 11:00:00 م")
+      for (const [order, expected] of [
+        ["DD/MM/YYYY", "01/10/2026"], ["MM/DD/YYYY", "10/01/2026"],
+        ["YYYY/MM/DD", "2026/10/01"], ["YYYY/DD/MM", "2026/01/10"],
+      ] as const) {
+        act(() => setDateFormat(order))
+        fireEvent.click(screen.getByRole("button", { name: "تصدير CSV" }))
+        const blob = createObjectURL.mock.calls.at(-1)![0] as Blob
+        const csv = await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.readAsText(blob)
+        })
+        expect(csv.split("\n")[1]).toBe(`"${expected} 12:00:00 ص","مدير التشغيل","الحساب","تحديث الحساب","account-1","حدث اختباري"`)
+        expect(csv).not.toMatch(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/)
+      }
+      expect(createObjectURL).toHaveBeenCalledTimes(4)
+      expect(systemLogList).toHaveBeenCalledOnce()
     } finally {
       restore()
       vi.restoreAllMocks()
       vi.unstubAllGlobals()
     }
+  })
+
+  it("exports all filtered rows beyond the visible page, not hidden search results", async () => {
+    const items = Array.from({ length: 22 }, (_, index) => logEntry({
+      id: `row-${index}`, createdAt: MIDNIGHT_CROSSING, summary: `selected-${index}`,
+    }))
+    items.push(logEntry({ id: "excluded", createdAt: MIDNIGHT_CROSSING, summary: "unrelated" }))
+    const original = JSON.stringify(items)
+    systemLogList.mockResolvedValue({ items })
+    const blobs: Blob[] = []
+    vi.stubGlobal("URL", { createObjectURL: (blob: Blob) => { blobs.push(blob); return "blob:audit" } })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    try {
+      renderPage()
+      await screen.findByText("selected-0")
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "selected-" } })
+      expect(screen.queryByText("selected-21")).toBeNull()
+      fireEvent.click(screen.getByRole("button", { name: "تصدير CSV" }))
+      const csv = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => resolve(reader.result as string)
+        reader.readAsText(blobs[0]!)
+      })
+      expect(csv.split("\n")).toHaveLength(23)
+      expect(csv).toContain('"selected-21"')
+      expect(csv).not.toContain("unrelated")
+      expect(JSON.stringify(items)).toBe(original)
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "no-match" } })
+      expect(screen.queryByRole("button", { name: "تصدير CSV" })).toBeNull()
+    } finally { click.mockRestore(); vi.unstubAllGlobals() }
   })
 
   it("includes a log written at 23:59 on the picked end date and excludes the next day", async () => {
@@ -100,12 +140,13 @@ describe("AuditLogPage end-of-day range boundary", () => {
     const lastMillisecond = toAlgeriaDayBoundaryIso(endDay, "end")!
     const dayAfter = new Date(Date.parse(lastMillisecond) + 1).toISOString()
 
-    systemLogList.mockResolvedValue({
-      items: [
-        logEntry({ id: "log-on-end-day", createdAt: lastMillisecond, summary: "حدث في نهاية اليوم" }),
-        logEntry({ id: "log-next-day", createdAt: dayAfter, summary: "حدث بعد منتصف الليل" }),
-      ],
-    })
+    const items = [
+      logEntry({ id: "log-on-end-day", createdAt: lastMillisecond, summary: "حدث في نهاية اليوم" }),
+      logEntry({ id: "log-next-day", createdAt: dayAfter, summary: "حدث بعد منتصف الليل" }),
+    ]
+    systemLogList.mockImplementation(async (filters) => ({
+      items: items.filter((entry) => !filters?.toDate || entry.createdAt <= filters.toDate),
+    }))
 
     renderPage()
 
@@ -121,8 +162,9 @@ describe("AuditLogPage end-of-day range boundary", () => {
     expect(cell, `day ${endDay} not found`).not.toBeNull()
     fireEvent.click(cell!.querySelector("button") ?? (cell as HTMLElement))
 
-    // 23:59 on the end day stays; 00:00 the next day is filtered out.
-    expect(screen.getByText("حدث في نهاية اليوم")).toBeTruthy()
+    // Wait for the new server-filtered query before checking the rows.
+    await screen.findByText("حدث في نهاية اليوم")
+    expect(systemLogList).toHaveBeenLastCalledWith(expect.objectContaining({ toDate: lastMillisecond }))
     await waitFor(() => expect(screen.queryByText("حدث بعد منتصف الليل")).toBeNull())
   })
 })

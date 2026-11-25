@@ -4,12 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "pnpm run typecheck && vite build",
+    "dev": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && vite --host 127.0.0.1",
+    "build": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && pnpm run typecheck && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "lint": "eslint .",
-    "test": "vitest run",
-    "typecheck": "tsrs --noEmit"
+    "test": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && vitest run",
+    "typecheck": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && tsrs --noEmit"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import {
   DEBT_BALANCE_STATE_PHRASE,
   getDebtAccountBalanceState,
@@ -41,29 +42,29 @@ type DebtBalanceTone = {
 
 const DEBT_BALANCE_STATE_TONE: Record<DebtBalanceState, DebtBalanceTone> = {
   owedToUs: {
-    badgeClassName: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    textClassName: "text-emerald-700 dark:text-emerald-300",
-    description: `رصيد لنا — ${DEBT_BALANCE_STATE_PHRASE.owedToUs}.`,
+    badgeClassName: "border-good/25 bg-good/10 text-good",
+    textClassName: "text-good",
+    get description() { return featureI18n.t("featureCopy.debtUtils.owedToUsDescription", { value1: DEBT_BALANCE_STATE_PHRASE.owedToUs }) },
   },
   owedByUs: {
-    badgeClassName: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-    textClassName: "text-rose-700 dark:text-rose-300",
-    description: `رصيد علينا — ${DEBT_BALANCE_STATE_PHRASE.owedByUs}.`,
+    badgeClassName: "border-bad/25 bg-bad/10 text-bad",
+    textClassName: "text-bad",
+    get description() { return featureI18n.t("featureCopy.debtUtils.owedByUsDescription", { value1: DEBT_BALANCE_STATE_PHRASE.owedByUs }) },
   },
   creditWithUs: {
-    badgeClassName: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-    textClassName: "text-emerald-700 dark:text-emerald-300",
-    description: `دفعنا أكثر مما علينا — ${DEBT_BALANCE_STATE_PHRASE.creditWithUs}.`,
+    badgeClassName: "border-good/25 bg-good/10 text-good",
+    textClassName: "text-good",
+    get description() { return featureI18n.t("featureCopy.debtUtils.creditWithUsDescription", { value1: DEBT_BALANCE_STATE_PHRASE.creditWithUs }) },
   },
   creditWithThem: {
-    badgeClassName: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-300",
-    textClassName: "text-rose-700 dark:text-rose-300",
-    description: `دفعوا أكثر مما علينا — ${DEBT_BALANCE_STATE_PHRASE.creditWithThem}.`,
+    badgeClassName: "border-bad/25 bg-bad/10 text-bad",
+    textClassName: "text-bad",
+    get description() { return featureI18n.t("featureCopy.debtUtils.creditWithThemDescription", { value1: DEBT_BALANCE_STATE_PHRASE.creditWithThem }) },
   },
   settled: {
     badgeClassName: "border-border/70 bg-muted/50 text-muted-foreground",
     textClassName: "text-muted-foreground",
-    description: "لا يوجد رصيد مفتوح — الحساب مسوّى.",
+    get description() { return featureI18n.t("featureCopy.debtUtils.settledDescription") },
   },
 }
 
@@ -123,21 +124,21 @@ export function getConsolidationRemainder(input: {
 
   const netAmount = payableAmount - receivableAmount
   if (netAmount === 0) {
-    return { description: "سيتم إلغاء الحركتين بالكامل. لا يبقى رصيد.", label: "إلغاء تام" }
+    return { description: featureI18n.t("featureCopy.debtUtils.fullCancellationDescription"), label: featureI18n.t("featureCopy.debtUtils.fullCancellation") }
   }
 
   if (netAmount > 0) {
     const remaining = getDebtAccountBalanceDisplay({ currentBalance: netAmount, direction: payableDirection })
     return {
-      description: `يبقى رصيد ${formatDebtAmount(netAmount)} دج على حساب ${getDebtDirectionLabel(payableDirection)} (${remaining.phrase}).`,
-      label: `يبقى ${remaining.phrase} ${formatDebtAmount(netAmount)} دج`,
+      description: featureI18n.t("featureCopy.debtUtils.remainingDescription", { value1: formatDebtAmount(netAmount), value2: getDebtDirectionLabel(payableDirection), value3: remaining.phrase }),
+      label: featureI18n.t("featureCopy.debtUtils.remainingLabel", { value1: remaining.phrase, value2: formatDebtAmount(netAmount) }),
     }
   }
 
   const remaining = getDebtAccountBalanceDisplay({ currentBalance: -netAmount, direction: receivableDirection })
   return {
-    description: `يبقى رصيد ${formatDebtAmount(-netAmount)} دج على حساب ${getDebtDirectionLabel(receivableDirection)} (${remaining.phrase}).`,
-    label: `يبقى ${remaining.phrase} ${formatDebtAmount(-netAmount)} دج`,
+    description: featureI18n.t("featureCopy.debtUtils.remainingDescription", { value1: formatDebtAmount(-netAmount), value2: getDebtDirectionLabel(receivableDirection), value3: remaining.phrase }),
+    label: featureI18n.t("featureCopy.debtUtils.remainingLabel", { value1: remaining.phrase, value2: formatDebtAmount(-netAmount) }),
   }
 }
 
@@ -181,7 +182,7 @@ export function findAccountByDirection(accounts: DebtAccount[], direction: DebtA
  * Direction label (the account's orientation), not a balance phrase.
  */
 export function getDebtDirectionLabel(direction: DebtAccount["direction"]) {
-  return direction === "PAYABLE" ? "مستحقات علينا" : "مستحقات لنا"
+  return direction === "PAYABLE" ? featureI18n.t("featureCopy.debtUtils.payable") : featureI18n.t("featureCopy.debtUtils.receivable")
 }
 
 /**
@@ -229,7 +230,7 @@ export function formatDebtCaseLabel(account: DebtAccount, index: number) {
     return note
   }
 
-  return `حالة الدين ${index + 1}`
+  return featureI18n.t("featureCopy.debtUtils.caseLabel", { value1: index + 1 })
 }
 
 export function sortDebtEntries(entries: DebtEntry[]) {
@@ -242,15 +243,15 @@ export function sortDebtEntries(entries: DebtEntry[]) {
 export function getDebtEntryTypeLabel(entryType: DebtEntry["entryType"]) {
   switch (entryType) {
     case "OPENING":
-      return "رصيد افتتاحي"
+      return featureI18n.t("featureCopy.debtUtils.opening")
     case "PAYMENT":
-      return "دفعة"
+      return featureI18n.t("featureCopy.debtUtils.payment")
     case "ADJUSTMENT":
-      return "تعديل"
+      return featureI18n.t("featureCopy.debtUtils.adjustment")
     case "ADVANCE":
-      return "سلفة"
+      return featureI18n.t("featureCopy.debtUtils.advance")
     case "SETTLEMENT":
-      return "تسوية"
+      return featureI18n.t("featureCopy.debtUtils.settlement")
     default:
       return entryType
   }

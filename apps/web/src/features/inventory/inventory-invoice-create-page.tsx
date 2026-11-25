@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { useTranslation } from "react-i18next"
 import { useState } from "react"
 
@@ -10,7 +11,7 @@ import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
 import { CollapsibleSection } from "@/components/ui/collapsible-section"
 import { PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { showErrorToast } from "@/lib/toast"
+import { showErrorToast, showValidationToast } from "@/lib/toast"
 
 import {
   uploadInvoiceAttachments,
@@ -187,35 +188,35 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       // The type is a field on the row now, so a row without it is incomplete
       // exactly like a row without its item.
       if (line.kind === "") {
-        return `اختر نوع السطر ${index + 1}.`
+        return featureI18n.t("featureCopy.inventoryInvoiceCreatePage.lineKindRequired", { value1: index + 1 })
       }
 
       if (!line.itemOption) {
-        return `اختر تعريف العنصر في السطر ${index + 1}.`
+        return featureI18n.t("featureCopy.inventoryInvoiceCreatePage.lineDefinitionRequired", { value1: index + 1 })
       }
 
       if (line.warehouseId && line.projectId) {
-        return `اختر مستودعًا أو مشروعًا واحدًا فقط في السطر ${index + 1}.`
+        return featureI18n.t("featureCopy.inventoryInvoiceCreatePage.lineDestinationExclusive", { value1: index + 1 })
       }
 
       if (line.kind === "CONSUMABLE") {
         if (Number(line.quantity) <= 0) {
-          return `أدخل كمية أكبر من صفر في السطر ${index + 1}.`
+          return featureI18n.t("featureCopy.inventoryInvoiceCreatePage.lineQuantityPositive", { value1: index + 1 })
         }
 
         if (Number(line.unitPriceDzd) < 0 || Number(line.totalPriceDzd) < 0) {
-          return `أدخل سعرًا صالحًا في السطر ${index + 1}.`
+          return featureI18n.t("featureCopy.inventoryInvoiceCreatePage.linePriceValid", { value1: index + 1 })
         }
       }
 
       if (line.kind === "ASSET") {
         for (const [assetIndex, asset] of line.assets.entries()) {
           if (!asset.assetName.trim()) {
-            return `اسم الأصل مطلوب في السطر ${index + 1} - الأصل ${assetIndex + 1}.`
+            return featureI18n.t("featureCopy.inventoryInvoiceCreatePage.assetNameRequired", { value1: index + 1, value2: assetIndex + 1 })
           }
 
           if (Number(asset.purchasePriceDzd) < 0) {
-            return t("inventory.invoiceCreate.invalidAssetPrice", `سعر الأصل غير صالح في السطر ${index + 1} - الأصل ${assetIndex + 1}.`)
+            return t("inventory.invoiceCreate.invalidAssetPrice")
           }
         }
       }
@@ -227,7 +228,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
   /** validateForm - helper function. */
   function validateForm() {
     if (warehouseId && projectId) {
-      return "اختر مستودعًا أو مشروعًا واحدًا فقط كوجهة افتراضية."
+      return featureI18n.t("featureCopy.inventoryInvoiceCreatePage.defaultDestinationExclusive")
     }
 
     // The wire contract bounds the paid fields (amount >= 0, percent 0-100);
@@ -235,13 +236,13 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     if (createDebt && paymentInputType === "PERCENT") {
       const percent = Number(paidValue)
       if (percent < 0 || percent > 100) {
-        return t("inventory.invoiceCreate.invalidPaidPercent", "النسبة المدفوعة يجب أن تكون بين 0 و 100.")
+        return t("inventory.invoiceCreate.invalidPaidPercent")
       }
     }
 
     if (createDebt && paymentInputType === "AMOUNT") {
       if (Number(paidValue) < 0) {
-        return t("inventory.invoiceCreate.invalidPaidAmount", "المبلغ المدفوع يجب أن يكون صفرًا أو أكثر.")
+        return t("inventory.invoiceCreate.invalidPaidAmount")
       }
     }
 
@@ -261,11 +262,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     ? t("inventory.invoiceCreate.noLines")
     : validateLines(lines)
 
-  /** Upload failures name the file/reason when the server provided one. */
-  function resolveUploadError(error: unknown) {
-    return error instanceof Error && error.message.trim().length > 0
-      ? error.message
-      : t("inventory.invoiceCreate.attachmentsUploadFailed")
+  function resolveUploadError() {
+    return t("inventory.invoiceCreate.attachmentsUploadFailed")
   }
 
   async function handleSubmit() {
@@ -283,7 +281,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     const attachmentValidationMessage = validateInvoiceAttachmentFiles(files, attachmentMessages)
     if (attachmentValidationMessage) {
       setAttachmentError(attachmentValidationMessage)
-      showErrorToast(attachmentValidationMessage)
+      showValidationToast(attachmentValidationMessage)
       return
     }
 
@@ -359,13 +357,12 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
       setUploadingAttachments(true)
       try {
         await uploadInvoiceAttachments(groupId, files)
-      } catch (error) {
+      } catch {
         // The invoice was already saved — surface the failed upload (the
         // creation mutation's onError does NOT cover this separate step) and
         // stay on the page in the retry state: the user must see the partial
         // save and be able to retry the upload against the same invoice id.
-        // The server message already names the offending file.
-        showErrorToast(resolveUploadError(error))
+        showErrorToast(resolveUploadError())
         return
       } finally {
         setUploadingAttachments(false)
@@ -391,8 +388,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
     setUploadingAttachments(true)
     try {
       await uploadInvoiceAttachments(createdInvoiceGroupId, files)
-    } catch (error) {
-      showErrorToast(resolveUploadError(error))
+    } catch {
+      showErrorToast(resolveUploadError())
       return
     } finally {
       setUploadingAttachments(false)
@@ -407,15 +404,15 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
         <PageSurfaceContent>
           <PageHeader
             title={t("inventory.invoiceCreate.title")}
-            description="أنشئ فاتورة واحدة، أرفق ملفاتها، ثم أضف كل العناصر المرتبطة بها دفعة واحدة."
+            description={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.description")}
           />
           {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
 
           {/* Essential create path: invoice number + date, always visible */}
           <div className="grid gap-3 md:grid-cols-2">
             <label className="space-y-1.5 text-sm">
-              <FieldLabel label="رقم الفاتورة" />
-              <Input placeholder="تلقائي" value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
+              <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.invoiceNumber")} />
+              <Input placeholder={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.automatic")} value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
             </label>
             <label className="space-y-1.5 text-sm">
               <FieldLabel label={t("common.invoiceDate")} />
@@ -441,14 +438,14 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                 {createDebt ? (
                   <>
                     <label className="space-y-1.5 text-sm">
-                      <FieldLabel label="طريقة الدفع" required />
+                      <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.paymentMethod")} required />
                       <NativeSelect value={paymentInputType} onChange={(event) => setPaymentInputType(event.target.value as "AMOUNT" | "PERCENT")}>
-                        <option value="AMOUNT">مبلغ ثابت</option>
-                        <option value="PERCENT">نسبة مئوية</option>
+                        <option value="AMOUNT">{featureI18n.t("featureCopy.inventoryInvoiceCreatePage.fixedAmount")}</option>
+                        <option value="PERCENT">{featureI18n.t("featureCopy.inventoryInvoiceCreatePage.percentage")}</option>
                       </NativeSelect>
                     </label>
                     <label className="space-y-1.5 text-sm">
-                      <FieldLabel label={paymentInputType === "AMOUNT" ? "المدفوع الآن" : "النسبة المدفوعة"} />
+                      <FieldLabel label={paymentInputType === "AMOUNT" ? featureI18n.t("featureCopy.inventoryInvoiceCreatePage.paidNow") : featureI18n.t("featureCopy.inventoryInvoiceCreatePage.paidPercent")} />
                       <Input type="number" min="0" step="0.01" value={paidValue} onChange={(event) => setPaidValue(event.target.value)} />
                     </label>
                   </>
@@ -459,7 +456,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
             <CollapsibleSection title={t("inventory.invoiceCreate.counterpartySection")}>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-1.5 text-sm">
-                  <FieldLabel label="الجهة الخارجية" />
+                  <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.externalParty")} />
                   <CreateableSelect
                     value={externalCounterpartyId}
                     onChange={(id) => {
@@ -470,11 +467,11 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                       }
                     }}
                     options={counterparties.map((c) => ({ id: c.id, name: c.fullName }))}
-                    emptyLabel="بدون جهة خارجية"
-                    createLabel="إنشاء جهة خارجية"
+                    emptyLabel={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.noExternalParty")}
+                    createLabel={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.createExternalParty")}
                     createFields={[
                       { key: "fullName", label: t("externals.create.fullName"), placeholder: t("externals.create.fullNamePlaceholder"), required: true },
-                      { key: "phoneNumber", label: "رقم الهاتف", placeholder: "0612345678" },
+                      { key: "phoneNumber", label: featureI18n.t("featureCopy.inventoryInvoiceCreatePage.phone"), placeholder: "0612345678" },
                     ]}
                     onCreate={async (data) => {
                       const result = await createCounterpartyMutation.mutateAsync({
@@ -488,8 +485,8 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                   />
                 </label>
                 <label className="space-y-1.5 text-sm">
-                  <FieldLabel label="اسم المورد" />
-                  <Input placeholder="اختياري إذا أدخلت جهة خارجية" value={supplierName} onChange={(event) => setSupplierName(event.target.value)} />
+                  <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.supplierName")} />
+                  <Input placeholder={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.supplierPlaceholder")} value={supplierName} onChange={(event) => setSupplierName(event.target.value)} />
                 </label>
               </div>
             </CollapsibleSection>
@@ -502,11 +499,11 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                     value={warehouseId}
                     onChange={(id) => { setWarehouseId(id); if (id) setProjectId("") }}
                     options={warehouses.map((w) => ({ id: w.id, name: w.name }))}
-                    emptyLabel="بدون مستودع"
-                    createLabel="إنشاء مستودع"
+                    emptyLabel={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.noWarehouse")}
+                    createLabel={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.createWarehouse")}
                     createFields={[
-                      { key: "name", label: "اسم المستودع", placeholder: "المستودع...", required: true },
-                      { key: "address", label: "العنوان", placeholder: "المدينة..." },
+                      { key: "name", label: featureI18n.t("featureCopy.inventoryInvoiceCreatePage.warehouseName"), placeholder: featureI18n.t("featureCopy.inventoryInvoiceCreatePage.warehousePlaceholder"), required: true },
+                      { key: "address", label: featureI18n.t("featureCopy.inventoryInvoiceCreatePage.address"), placeholder: featureI18n.t("featureCopy.inventoryInvoiceCreatePage.cityPlaceholder") },
                     ]}
                     onCreate={async (data) => {
                       const result = await createWarehouseMutation.mutateAsync({
@@ -527,11 +524,11 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                     value={projectId}
                     onChange={(id) => { setProjectId(id); if (id) setWarehouseId("") }}
                     options={projects.map((p) => ({ id: p.id, name: p.name }))}
-                    emptyLabel="بدون مشروع"
-                    createLabel="إنشاء مشروع"
+                    emptyLabel={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.noProject")}
+                    createLabel={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.createProject")}
                     createFields={[
-                      { key: "name", label: "اسم المشروع", placeholder: "المشروع...", required: true },
-                      { key: "location", label: "الموقع", placeholder: "المدينة..." },
+                      { key: "name", label: featureI18n.t("featureCopy.inventoryInvoiceCreatePage.projectName"), placeholder: featureI18n.t("featureCopy.inventoryInvoiceCreatePage.projectPlaceholder"), required: true },
+                      { key: "location", label: featureI18n.t("featureCopy.inventoryInvoiceCreatePage.location"), placeholder: featureI18n.t("featureCopy.inventoryInvoiceCreatePage.cityPlaceholder") },
                     ]}
                     onCreate={async (data) => {
                       const result = await createProjectMutation.mutateAsync({
@@ -552,11 +549,11 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
             <CollapsibleSection title={t("inventory.invoiceCreate.notesSection")}>
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="space-y-1.5 text-sm">
-                  <FieldLabel label={t("common.note", "ملاحظات")} />
-                  <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder="اختياري" />
+                  <FieldLabel label={t("common.note")} />
+                  <Input value={note} onChange={(event) => setNote(event.target.value)} placeholder={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.optional")} />
                 </label>
                 <label className="space-y-1.5 text-sm">
-                  <FieldLabel label="ملفات الفاتورة" />
+                  <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.files")} />
                   <FileInput
                     multiple
                     accept={INVOICE_ATTACHMENT_ACCEPT}
@@ -584,7 +581,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
           <Surface key={index} variant="panel">
             <PageSurfaceContent>
               <SurfaceHeader
-                title={`العنصر ${index + 1}`}
+                title={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.itemTitle", { value1: index + 1 })}
                 description={line.kind === "CONSUMABLE" ? t("inventory.invoiceCreate.consumable") : line.kind === "ASSET" ? t("inventory.invoiceCreate.asset") : t("inventory.invoiceCreate.chooseLineType")}
                 action={<Button variant="outline" size="sm" onClick={() => setLines((current) => current.filter((_, lineIndex) => lineIndex !== index))}>{t("common.delete")}</Button>}
               />
@@ -600,10 +597,10 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                   </NativeSelect>
                 </label>
                 <div className="space-y-1.5 text-sm">
-                  <FieldLabel label="تعريف العنصر" required />
+                  <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.itemDefinition")} required />
                   <ItemOptionPicker
                     key={line.kind}
-                    label="تعريف العنصر"
+                    label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.itemDefinition")}
                     usage={invoiceLineUsage(line.kind === "ASSET" ? "ASSET" : "CONSUMABLE")}
                     value={line.itemOption}
                     onChange={(option) => changeLineDefinition(index, option)}
@@ -629,7 +626,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
               {line.kind === "CONSUMABLE" ? (
                 <div className="grid gap-3 md:grid-cols-3">
                   <label className="space-y-1.5 text-sm">
-                    <FieldLabel label={`الكمية ${definition?.unit ? `(${definition.unit})` : ""}`} required />
+                    <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.quantity", { value1: definition?.unit ? `(${definition.unit})` : "" })} required />
                     <Input type="number" min="0" value={line.quantity} onChange={(event) => {
                       const quantity = event.target.value
                       const nextTotal = Number(quantity || 0) * Number(line.unitPriceDzd || 0)
@@ -637,7 +634,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                     }} />
                   </label>
                   <label className="space-y-1.5 text-sm">
-                    <FieldLabel label="سعر الوحدة" required />
+                    <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.unitPrice")} required />
                     <Input type="number" min="0" step="0.01" value={line.unitPriceDzd} onChange={(event) => {
                       const unitPriceDzd = event.target.value
                       const nextTotal = Number(line.quantity || 0) * Number(unitPriceDzd || 0)
@@ -645,7 +642,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                     }} />
                   </label>
                   <label className="space-y-1.5 text-sm">
-                    <FieldLabel label="الإجمالي" required />
+                    <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.total")} required />
                     <Input type="number" min="0" step="0.01" value={line.totalPriceDzd} onChange={(event) => {
                       const totalPriceDzd = event.target.value
                       const quantity = Number(line.quantity || 0)
@@ -661,40 +658,40 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
                   {line.assets.map((asset, assetIndex) => (
                     <div key={assetIndex} className="grid gap-3 rounded-xl border border-border p-3 md:grid-cols-3">
                       <label className="space-y-1.5 text-sm">
-                        <FieldLabel label="اسم الأصل" required />
+                        <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.assetName")} required />
                         <Input value={asset.assetName} onChange={(event) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: currentLine.assets.map((currentAsset, currentAssetIndex) => currentAssetIndex === assetIndex ? { ...currentAsset, assetName: event.target.value } : currentAsset) }))} />
                       </label>
                       <label className="space-y-1.5 text-sm">
-                        <FieldLabel label="كود الأصل" />
+                        <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.assetCode")} />
                         <Input value={asset.assetTag} onChange={(event) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: currentLine.assets.map((currentAsset, currentAssetIndex) => currentAssetIndex === assetIndex ? { ...currentAsset, assetTag: event.target.value } : currentAsset) }))} />
                       </label>
                       <label className="space-y-1.5 text-sm">
-                        <FieldLabel label="الرقم التسلسلي" />
+                        <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.serialNumber")} />
                         <Input value={asset.serialNumber} onChange={(event) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: currentLine.assets.map((currentAsset, currentAssetIndex) => currentAssetIndex === assetIndex ? { ...currentAsset, serialNumber: event.target.value } : currentAsset) }))} />
                       </label>
                       <label className="space-y-1.5 text-sm">
-                        <FieldLabel label="الحالة" />
+                        <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.condition")} />
                         <NativeSelect value={asset.condition} onChange={(event) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: currentLine.assets.map((currentAsset, currentAssetIndex) => currentAssetIndex === assetIndex ? { ...currentAsset, condition: event.target.value as AssetRow["condition"] } : currentAsset) }))}>
-                          <option value="NEW">جديد</option>
-                          <option value="USED">مستعمل</option>
-                          <option value="MAINTENANCE">صيانة</option>
-                          <option value="DAMAGED">متضرر</option>
+                          <option value="NEW">{featureI18n.t("featureCopy.inventoryInvoiceCreatePage.new")}</option>
+                          <option value="USED">{featureI18n.t("featureCopy.inventoryInvoiceCreatePage.used")}</option>
+                          <option value="MAINTENANCE">{featureI18n.t("featureCopy.inventoryInvoiceCreatePage.maintenance")}</option>
+                          <option value="DAMAGED">{featureI18n.t("featureCopy.inventoryInvoiceCreatePage.damaged")}</option>
                         </NativeSelect>
                       </label>
                       <label className="space-y-1.5 text-sm">
-                        <FieldLabel label="تاريخ الشراء" />
+                        <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.purchaseDate")} />
                         <DatePicker
                           value={asset.purchaseDate}
                           onChange={(value: string) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: currentLine.assets.map((currentAsset, currentAssetIndex) => currentAssetIndex === assetIndex ? { ...currentAsset, purchaseDate: value } : currentAsset) }))}
                         />
                       </label>
                       <label className="space-y-1.5 text-sm">
-                        <FieldLabel label="سعر الأصل" required />
+                        <FieldLabel label={featureI18n.t("featureCopy.inventoryInvoiceCreatePage.assetPrice")} required />
                         <Input type="number" min="0" step="0.01" value={asset.purchasePriceDzd} onChange={(event) => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: currentLine.assets.map((currentAsset, currentAssetIndex) => currentAssetIndex === assetIndex ? { ...currentAsset, purchasePriceDzd: event.target.value } : currentAsset) }))} />
                       </label>
                     </div>
                   ))}
-                  <Button variant="outline" size="sm" onClick={() => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: [...currentLine.assets, createAssetRow(currentLine.itemOption?.name ?? "", invoiceDate || getAlgeriaDateInputValue())] }))}>إضافة أصل آخر</Button>
+                  <Button variant="outline" size="sm" onClick={() => setLines((current) => current.map((currentLine, lineIndex) => lineIndex !== index || currentLine.kind !== "ASSET" ? currentLine : { ...currentLine, assets: [...currentLine.assets, createAssetRow(currentLine.itemOption?.name ?? "", invoiceDate || getAlgeriaDateInputValue())] }))}>{featureI18n.t("featureCopy.inventoryInvoiceCreatePage.addAsset")}</Button>
                 </div>
               ) : null}
             </PageSurfaceContent>
@@ -718,7 +715,7 @@ export function InventoryInvoiceCreatePage({ onCreated }: { onCreated: (invoiceI
         {createdInvoiceGroupId ? (
           <Button disabled={uploadingAttachments} onClick={() => {
             void handleRetryAttachmentUpload().catch(() => {
-              showErrorToast("تعذر حفظ الفاتورة.")
+              showErrorToast(featureI18n.t("featureCopy.inventoryInvoiceCreatePage.saveError"))
             })
           }}>
             {t("inventory.invoiceCreate.retryAttachments")}

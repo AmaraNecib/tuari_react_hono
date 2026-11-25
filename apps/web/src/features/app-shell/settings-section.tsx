@@ -1,3 +1,4 @@
+import { extractAuthErrorMessage } from "@/lib/auth-api"
 import { useCallback, useEffect, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -13,6 +14,7 @@ import { AppDate } from "@/components/app-date"
 
 import { RecordPageFrame } from "@/features/shared/record-page-frame"
 import { BackupSettings } from "./backup-settings"
+import { DiagnosticsSettings } from "./diagnostics-settings"
 import { RecoveryKeySettings } from "./recovery-key-settings"
 import { UpdateSection } from "@/features/update/update-section"
 import { useQueryClient } from "@tanstack/react-query"
@@ -246,8 +248,8 @@ export function SettingsSection({
       setNewPassword("")
       setFieldErrors({})
     } catch (error) {
-      const message = error instanceof Error ? error.message : t("toasts.actionError")
-      if (message.includes(t("auth.errors.invalidPassword", "كلمة المرور الحالية غير صحيحة")) || message.toLowerCase().includes("invalid password")) {
+      const message = extractAuthErrorMessage(error, t("toasts.actionError"))
+      if (message.includes(t("auth.errors.invalidPassword")) || message.toLowerCase().includes("invalid password")) {
         setFieldErrors({ currentPassword: t("toasts.accountPasswordCurrentInvalid") })
         return
       }
@@ -271,7 +273,7 @@ export function SettingsSection({
   const licenseStatus = useLicenseStatus()
 
   const [activeTab, setActiveTab] = useUrlTab(
-    ['account', 'appearance', 'licensing', 'system', 'security', 'about'] as const,
+    ['account', 'appearance', 'licensing', 'system', 'diagnostics', 'security', 'about'] as const,
     'account'
   )
 
@@ -309,6 +311,13 @@ export function SettingsSection({
           onClick={() => setActiveTab('system')}
         >
           {t('settings.tabs.system')}
+        </button>
+        <button
+          type="button"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === 'diagnostics' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setActiveTab('diagnostics')}
+        >
+          {t('settings.tabs.diagnostics')}
         </button>
         <button
           type="button"
@@ -398,12 +407,12 @@ export function SettingsSection({
             <ActivationPage
               activateLabel={t('license.activate')}
               activatingLabel={t('license.activating')}
-              description={t('license.description', 'أدخل مفتاح الترخيص لتفعيل النسخة الكاملة من توارتي.')}
+              description={t('license.description')}
               errorMessage={licenseActivation.error}
               keyLabel={t('license.keyLabel')}
               keyPlaceholder={t('license.keyPlaceholder')}
               successMessage={licenseActivation.result?.message ?? null}
-              title={t('license.title', 'تفعيل الترخيص')}
+              title={t('license.title')}
               onActivate={async (key) => {
                 await licenseActivation.activateLicense(key)
                 await licenseStatus.refresh()
@@ -443,7 +452,7 @@ export function SettingsSection({
                         </span>
                       </>
                     )}
-                    {checkUpdateState.status === 'error' && settingsUpdateError}
+                    {checkUpdateState.status === 'error' && (checkUpdateState.message || settingsUpdateError)}
                     {checkUpdateState.status === 'idle' && null}
                   </p>
                 </div>
@@ -525,6 +534,16 @@ export function SettingsSection({
       )}
 
       {/* Security Tab — recovery keys + DB encryption key */}
+      {activeTab === 'diagnostics' && (
+        isDesktopRuntime() ? <DiagnosticsSettings /> : (
+          <div className="p-5 border border-line rounded-xl">
+            <p className="text-sm text-muted-foreground">
+              {t('settings.about.onlyAvailableInDesktop')}
+            </p>
+          </div>
+        )
+      )}
+
       {activeTab === 'security' && <RecoveryKeySettings />}
 
       {/* About Tab */}
@@ -586,13 +605,13 @@ export function SettingsSection({
                 )}
 
                 {updateState.status === "success" && (
-                  <div className="mt-4 rounded-md bg-green-50 dark:bg-green-950 p-3 text-sm text-green-800 dark:text-green-200">
+                  <div className="mt-4 rounded-md bg-good-soft p-3 text-sm text-good">
                     {updateState.message || settingsUpdateSuccess}
                   </div>
                 )}
 
                 {updateState.status === "error" && (
-                  <div className="mt-4 rounded-md bg-red-50 dark:bg-red-950 p-3 text-sm text-red-800 dark:text-red-200">
+                  <div className="mt-4 rounded-md bg-bad-soft p-3 text-sm text-bad">
                     {updateState.message || settingsUpdateError}
                   </div>
                 )}

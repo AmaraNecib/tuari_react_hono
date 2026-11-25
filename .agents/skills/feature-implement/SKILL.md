@@ -32,10 +32,14 @@ review or final rendering. Keep source frozen for independent readers.
 
 ## 3. Review once, then bound corrections
 
-Run `debate`, `test-audit`, `code-review` in that order, each in a distinct
-read-only session at the committed HEAD. This repository retains all three
-initial lenses. Give them the actual worktree, base/head, spec, direct callers
-and prior evidence, not an empty fresh checkout.
+Follow routine-review routing and activation in `docs/engineering-workflow.md`.
+Before adoption gates are complete, and for excluded or uncertain work, run
+`debate`, `test-audit`, `code-review` in that order, each in a distinct read-only
+session at committed HEAD. After activation, eligible narrow routine work may
+use one fresh combined independent reviewer for standards, spec and proof
+adequacy. A policy patch uses the deeper route, not its proposed exception.
+Give reviewers the actual worktree, base/head, spec, direct callers and prior
+evidence, not an empty fresh checkout.
 
 Record exact-tree executions and finding dispositions in ignored local reports.
 No local scored review or separate confidence-assessment step is required.

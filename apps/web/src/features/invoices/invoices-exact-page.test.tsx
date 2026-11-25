@@ -11,18 +11,53 @@ const party = { id: "party", label: "المورد أحمد", type: "EXTERNAL_COU
 const date = "2026-11-10T00:00:00.000Z"
 const invoice: ExactInvoice = { id: "invoice", invoiceNumber: "INV-1", supplierName: party.label, supplierPhone: null, counterpartyId: party.id, counterpartyType: party.type, currency: "DZD", direction: "PURCHASE", warehouseId: null, projectId: null, invoiceDate: date, dueDate: null, notes: null, status: "RECEIVED", totalAmount: "90071992547409.93", paidAmount: "0.00", remainingAmount: "90071992547409.93", debtAccountId: "account", debtEntryId: "entry", createdAt: date, updatedAt: date, lineItems: [{ id: "line", invoiceId: "invoice", description: "مادة", source: { mode: "agreed-total", total: "90071992547409.93", quantity: "1" } }] }
 const queries: QueryClient[] = []
-function fixture(row = invoice, firstPage = { hasMore: false, nextCursor: null as string | null }) {
-  const client = { listInvoices: vi.fn().mockResolvedValue({ items: [row], ...firstPage }), listPayments: vi.fn().mockResolvedValue({ items: [], hasMore: false, nextCursor: null }), createInvoice: vi.fn().mockResolvedValue(invoice), updateInvoice: vi.fn().mockResolvedValue(invoice), receiveInvoice: vi.fn().mockResolvedValue(invoice), deleteDraft: vi.fn().mockResolvedValue({ id: invoice.id }), voidInvoice: vi.fn().mockResolvedValue(invoice), createPayment: vi.fn().mockResolvedValue({}), allocatePayment: vi.fn().mockResolvedValue({}), voidPayment: vi.fn().mockResolvedValue({}), deleteUnallocatedPayment: vi.fn().mockResolvedValue({}), splitPayment: vi.fn().mockResolvedValue([{ invoiceId: invoice.id, amount: "0.01" }]) }
+function fixture(row = invoice, firstPage = { hasMore: false, nextCursor: null as string | null }, routeIntent: { initialInvoiceId?: string; initialCreate?: boolean } = {}) {
+  const client = { getInvoice: vi.fn().mockImplementation(({ id }: { id: string }) => Promise.resolve({ ...row, id, invoiceNumber: id })), listInvoices: vi.fn().mockResolvedValue({ items: [row], ...firstPage }), listPayments: vi.fn().mockResolvedValue({ items: [], hasMore: false, nextCursor: null }), createInvoice: vi.fn().mockResolvedValue(invoice), updateInvoice: vi.fn().mockResolvedValue(invoice), receiveInvoice: vi.fn().mockResolvedValue(invoice), deleteDraft: vi.fn().mockResolvedValue({ id: invoice.id }), voidInvoice: vi.fn().mockResolvedValue(invoice), createPayment: vi.fn().mockResolvedValue({}), allocatePayment: vi.fn().mockResolvedValue({}), voidPayment: vi.fn().mockResolvedValue({}), deleteUnallocatedPayment: vi.fn().mockResolvedValue({}), splitPayment: vi.fn().mockResolvedValue([{ invoiceId: invoice.id, amount: "0.01" }]) }
   const query = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   queries.push(query)
   query.setQueryData(sessionQueryKey, { user: { id: "operator", name: "Operator", phone: "0612345678", version: "0.0.0" } })
   query.setQueryData(workspaceQueryKeys.workspaceSnapshot("operator"), { numeric: "unchanged" })
-  const mount = () => render(<QueryClientProvider client={query}><ExactInvoicesPage client={client as unknown as ExactInvoicesClient} parties={[party]} /></QueryClientProvider>)
+  const mount = () => render(<QueryClientProvider client={query}><ExactInvoicesPage client={client as unknown as ExactInvoicesClient} parties={[party]} {...routeIntent} /></QueryClientProvider>)
   const view = mount()
-  return { client, query, unmount: view.unmount, remount: mount }
+  return { client, query, unmount: view.unmount, remount: mount, navigate: (id: string) => view.rerender(<QueryClientProvider client={query}><ExactInvoicesPage client={client as unknown as ExactInvoicesClient} parties={[party]} initialInvoiceId={id} /></QueryClientProvider>) }
 }
 afterEach(() => { cleanup(); queries.splice(0).forEach(query => query.clear()) })
-describe("opt-in exact invoices and payments", () => {
+describe("normal-route exact invoices and payments", () => {
+  it("opens the draft editor when the create route loads", async () => {
+    fixture(invoice, undefined, { initialCreate: true })
+    expect(await screen.findByRole("dialog")).toBeTruthy()
+    expect(screen.getByRole("heading", { name: "فاتورة جديدة" })).toBeTruthy()
+  })
+
+  it("opens the matching invoice when an exact invoice detail route loads", async () => {
+    fixture(invoice, undefined, { initialInvoiceId: invoice.id })
+    expect(await screen.findByRole("dialog")).toBeTruthy()
+    expect(screen.getByRole("heading", { name: "تفاصيل الفاتورة" })).toBeTruthy()
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "رجوع" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
+  it("keeps a routed invoice closed after an outside click", async () => {
+    fixture(invoice, undefined, { initialInvoiceId: invoice.id })
+    await screen.findByRole("dialog")
+    const backdrop = document.querySelector('[data-slot="dialog-overlay"]')!
+    fireEvent.mouseDown(backdrop)
+    fireEvent.mouseUp(backdrop)
+    fireEvent.click(backdrop)
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
+  it("fetches a detail outside the first list page and consumes each new ID once", async () => {
+    const { client, navigate } = fixture(invoice, undefined, { initialInvoiceId: "older-invoice" })
+    let dialog = await screen.findByRole("dialog")
+    expect(client.getInvoice).toHaveBeenCalledWith({ id: "older-invoice" })
+    expect((within(dialog).getByRole("textbox", { name: "رقم الفاتورة" }) as HTMLInputElement).value).toBe("older-invoice")
+    fireEvent.click(within(dialog).getByRole("button", { name: "رجوع" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+    navigate("next-invoice")
+    dialog = await screen.findByRole("dialog")
+    expect((within(dialog).getByRole("textbox", { name: "رقم الفاتورة" }) as HTMLInputElement).value).toBe("next-invoice")
+    fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" })
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
+  })
   it.each(["DRAFT", "RECEIVED", "PAID", "VOIDED"] as const)("separates %s state from action controls in a dedicated column", async status => {
     fixture({ ...invoice, status })
     const region = await screen.findByRole("region", { name: "جدول الفواتير" })

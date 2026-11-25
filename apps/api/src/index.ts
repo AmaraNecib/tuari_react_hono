@@ -1,22 +1,28 @@
 import { serve } from "@hono/node-server";
 
 import { createApp } from "./app/create-app";
-import { createAppDependencies } from "./app/dependencies";
+import { createFreshExactAppDependencies } from "./app/fresh-exact-dependencies";
 import { installShutdownHook } from "./app/shutdown";
 import { createAppConfig } from "./config";
 import { createStartupBackup } from "./modules/backup/backup.scheduler";
 
+import { createRuntimeSink, installRuntimeEvents } from "./infrastructure/observability/runtime-events";
+
+const eventSink = createRuntimeSink();
+installRuntimeEvents(eventSink);
+
 async function main() {
+  eventSink.emit({ severity: "info", source: "api", message: "startup", lifecycle: true });
   // Single validated config — env + optional TUARI_CONFIG_FILE merge. Every
   // consumer (server bind, transport security, dependencies) reads from this
   // one injected AppConfig instead of separate env singletons.
   const config = createAppConfig();
 
-  // Self-contained composition root: opens the database connection, runs the
-  // schema migrations, builds Drizzle + better-auth, and wires every domain
-  // service. No raw handles are created or passed here — the root keeps the
-  // connection and hands the rest of the app narrow ports.
-  const appDependencies = await createAppDependencies({}, config);
+  // The normal server entry selects the exact financial root. Unsupported or
+  // incompatible databases fail closed; startup never falls back to legacy.
+  eventSink.emit({ severity: "info", source: "api", message: "database initialization started", lifecycle: true });
+  const appDependencies = await createFreshExactAppDependencies({}, config);
+  eventSink.emit({ severity: "info", source: "api", message: "database initialization complete", lifecycle: true });
 
   const app = createApp(appDependencies, {
     allowedOrigins: config.allowedOrigins,
@@ -68,10 +74,23 @@ async function main() {
         server.close(() => resolve())
       }),
     close: appDependencies.close,
+  }, {
+    log: (message) => {
+      eventSink.emit({
+        severity: message.startsWith("Failed") || message.startsWith("Shutdown timed out") ? "error" : "info",
+        source: "api",
+        message,
+        lifecycle: true,
+      });
+      if (eventSink.degraded) {
+        try { console.error(message); } catch { /* Shutdown must continue if stderr is unavailable. */ }
+      }
+    },
   });
 }
 
 main().catch((error) => {
+  eventSink.emit({ severity: "error", source: "api", message: "startup failed", attributes: { error: error instanceof Error ? error.stack : String(error) } });
   console.error("Failed to start API", error);
   process.exit(1);
 });

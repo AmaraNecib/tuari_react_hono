@@ -51,8 +51,11 @@ and log paths. Background verification inherits the parent's explicit mode;
 it does not widen scope. Full checks are CI-final unless a concrete gap
 justifies a local run. See `guard` for completion criteria.
 
-All three initial lenses remain required here: `debate`, `test-audit`,
-`code-review`. A bounded fix gets one fresh combined-delta review, carrying
+Use the engineering workflow's narrow routine-review routing only after its
+owner decision, governance review, merge and higher-priority alignment gates
+are complete. Otherwise retain the three distinct initial lenses. All excluded
+or uncertain work keeps that deeper route; a policy patch cannot approve its
+own lighter review. A bounded fix gets one fresh combined-delta review, carrying
 forward unchanged conclusions explicitly. Never rerun a valid exact-tree
 execution merely to get another report. Current-head verdicts and unresolved
 findings still gate merge.

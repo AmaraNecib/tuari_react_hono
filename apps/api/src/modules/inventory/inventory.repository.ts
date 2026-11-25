@@ -66,6 +66,8 @@ export interface InventoryRepository {
   listInvoiceGroups(filters?: InventoryInvoiceGroupListFilters): InventoryInvoiceGroupRecord[]
   /** getLatestInvoiceNumber. */
   getLatestInvoiceNumber(): string | null
+  /** Attachment ownership lookup, independent of monetary columns. */
+  invoiceGroupExists(id: string): boolean
   /** getInvoiceGroupById. */
   getInvoiceGroupById(id: string): InventoryInvoiceGroupRecord | null
   /** createInvoiceGroup. */

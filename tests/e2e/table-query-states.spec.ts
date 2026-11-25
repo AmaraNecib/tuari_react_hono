@@ -1,9 +1,12 @@
-import { expect, test } from "@playwright/test"
+import { installManagedApiLifecycle } from "./helpers/test"
+import { expect, test } from "./helpers/test"
 import { bootstrapOrSignIn } from "./helpers/session"
 import { databaseFixturesAvailable, resetE2eDatabase } from "./helpers/db-isolation"
 
+installManagedApiLifecycle()
+
 test.skip(!databaseFixturesAvailable, "external API: direct-SQLite fixtures are unavailable")
-test.beforeAll(() => { resetE2eDatabase() })
+test.beforeAll(async () => { await resetE2eDatabase() })
 
 // Delay a real catalog read, fail it, then let the retry reach the API.
 // The empty database is synthetic and belongs to this Playwright run.
@@ -23,6 +26,7 @@ test("catalog loading and API failure never claim an empty result, and retry rec
 
   await bootstrapOrSignIn(page)
   await page.getByRole("link", { name: "دليل العناصر", exact: true }).first().click()
+  await page.getByRole("button", { name: "دليل العناصر", exact: true }).click()
   await expect(page.getByRole("status").filter({ hasText: "جارٍ تحميل دليل العناصر" })).toBeVisible()
   await expect(page.getByText("لا توجد تعريفات عناصر حتى الآن.", { exact: true })).toBeHidden()
   const catalog = page.locator("section").filter({ has: page.getByRole("heading", { name: "العناصر الحالية", exact: true }) })
@@ -31,7 +35,9 @@ test("catalog loading and API failure never claim an empty result, and retry rec
   releaseRead()
   const error = page.getByRole("alert").filter({ hasText: "تعذر تحميل دليل العناصر." })
   await expect(error).toBeVisible({ timeout: 20_000 })
-  await expect(error).toContainText("الخادم غير متاح مؤقتًا")
+  await expect(error).toContainText("لم يكتمل طلب البيانات. تحقق من الاتصال ثم أعد المحاولة.")
+  await expect(error).toContainText(/TUARI-[0-9A-F]{8}/)
+  await expect(error).not.toContainText("الخادم غير متاح مؤقتًا")
   await expect(page.getByText("لا توجد تعريفات عناصر حتى الآن.", { exact: true })).toBeHidden()
   await error.screenshot({ path: test.info().outputPath("catalog-error.png") })
 
@@ -71,8 +77,11 @@ test("system-log filters keep focus during loading and can clear a failed read",
   await expect(page.getByRole("status").filter({ hasText: "جارٍ تحميل" })).toBeVisible()
   await page.locator("main").screenshot({ path: test.info().outputPath("system-log-loading.png") })
   releaseRead()
-  const error = page.getByRole("alert").filter({ hasText: "تعذر الاتصال التجريبي" })
+  const error = page.getByRole("alert").filter({ hasText: "تعذر تحميل السجل." })
   await expect(error).toBeVisible({ timeout: 20_000 })
+  await expect(error).toContainText("لم يكتمل طلب البيانات. تحقق من الاتصال ثم أعد المحاولة.")
+  await expect(error).toContainText(/TUARI-[0-9A-F]{8}/)
+  await expect(error).not.toContainText("تعذر الاتصال التجريبي")
   await expect(input).toBeVisible()
   await input.focus()
   await expect(input).toBeFocused()

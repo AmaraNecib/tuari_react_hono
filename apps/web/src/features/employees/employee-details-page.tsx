@@ -1,18 +1,19 @@
+import { i18n as featureI18n } from "@/i18n"
+import "./employee-finance.css"
 import type { ReactNode } from "react"
-import { AppDate } from "@/components/app-date"
 import { Button } from "@/components/ui/button"
 import { useMoneyGrouping } from "@/features/preferences/money-format-preference"
-import { CurrencyRun, MoneyValue } from "@/features/shared/money-value"
-import { formatExactMoney } from "@/features/shared/exact-money-display"
-import { parseLocalizedUnitPriceInput } from "@/features/shared/exact-money-input"
-import { useMemo, useState } from "react"
+import { CurrencyRun } from "@/features/shared/money-value"
+import { formatSalaryReferenceAmount } from "@/features/shared/exact-salary-reference-display"
+import { useMemo } from "react"
 import { useTranslation } from "react-i18next"
-import type { DebtAccount, DebtEntry, SalaryProjectAssignmentWindow } from "@tuari/contracts"
+import type { ExactDebtsClient, SalaryProjectAssignmentWindow } from "@tuari/contracts"
 
 import { getSalaryPeriodLabelKey } from "@/features/app-shell/salary-table-primitives"
-import { AddSalaryPaymentDialog, type SalaryProjectOption } from "./add-salary-payment-dialog"
+import type { SalaryProjectOption } from "./employee-earning-approval-form"
 import { EmployeeEarningsHistory } from "./employee-earnings-history"
-import { DebtCasesPanel } from "@/features/debts/debt-cases-panel"
+import { EmployeePayrollPanel } from "./employee-payroll-panel"
+import { ExactDebtsPage } from "@/features/debts/debts-exact-page"
 import { getArabicStatusLabel } from "@/features/shared/status-meta"
 import { classifyWorkforceRole } from "./role-classification"
 import { workspaceRoutes } from "@/router/navigation"
@@ -36,62 +37,23 @@ type EmployeeWorkHistoryRow = {
   statusLabel: string
 }
 
-function formatSalaryReferenceAmount(
-  reference: NonNullable<EmployeeTableRow["salaryReference"]>,
-  grouped: boolean,
-): string {
-  if (reference.period !== "DAILY") {
-    return formatExactMoney(reference.amount, { grouped }).text
-  }
-
-  const formatted = parseLocalizedUnitPriceInput(reference.amount).format()
-  if (!grouped) return formatted
-  const [whole = "", fraction] = formatted.split(".")
-  return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${fraction ? `.${fraction}` : ""}`
-}
-
-function getSalaryDifferenceMeta(expectedAmountDzd: number, actualAmountDzd: number) {
-  const difference = actualAmountDzd - expectedAmountDzd
-
-  if (difference > 0) {
-    return {
-      className: "text-emerald-700 dark:text-emerald-300",
-      value: difference,
-    }
-  }
-
-  if (difference < 0) {
-    return {
-      className: "text-rose-700 dark:text-rose-300",
-      value: difference,
-    }
-  }
-
-  return {
-    className: "text-muted-foreground",
-    value: difference,
-  }
-}
-
 /** Employee detail page with tabs for personal, work, and finance. */
 /**
  * @description Component
  */
 export function EmployeeDetailsPage({
   activeTab,
-  debtAccounts,
-  debtEntriesByAccountId,
+  debtClient,
   employee,
   managedProjects,
   managedWarehouses,
   projects = [],
   onTabChange,
-  salaryPayments,
+  onApproveEarning,
   workHistory,
 }: {
   activeTab: string
-  debtAccounts: DebtAccount[]
-  debtEntriesByAccountId: Record<string, DebtEntry[]>
+  debtClient: ExactDebtsClient
   employee: EmployeeTableRow
   managedProjects: string[]
   managedWarehouses: string[]
@@ -100,29 +62,13 @@ export function EmployeeDetailsPage({
   /** Projects the payment dialog can attribute a split to. */
   projects?: SalaryProjectOption[]
   onTabChange: (tabId: string) => void
-  salaryPayments: Array<{
-    id: string
-    paymentDate: string
-    days: number
-    expectedAmountDzd: number
-    actualAmountDzd: number
-    periodType: "DAILY" | "WEEKLY" | "MONTHLY"
-    note: string | null
-  }>
+  onApproveEarning?: (employeeId: string) => void
   workHistory: EmployeeWorkHistoryRow[]
 }) {
   const { t } = useTranslation()
   const { isProjectManager, isWarehouseManager, isWorker } = classifyWorkforceRole(employee.roleKey)
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false)
   const availableTabs = isWorker ? ["personal", "history", "finance", "debts"] : ["personal", "history", "finance"]
   const resolvedTab = availableTabs.includes(activeTab) ? activeTab : "personal"
-  const sortedSalaryPayments = useMemo(
-    () => [...salaryPayments].sort((left, right) => right.paymentDate.localeCompare(left.paymentDate)),
-    [salaryPayments],
-  )
-  const totalExpectedAmount = sortedSalaryPayments.reduce((sum, payment) => sum + payment.expectedAmountDzd, 0)
-  const totalActualAmount = sortedSalaryPayments.reduce((sum, payment) => sum + payment.actualAmountDzd, 0)
-  const totalDifferenceMeta = getSalaryDifferenceMeta(totalExpectedAmount, totalActualAmount)
   const currencyLabel = t("detailPages.salary.currency")
   const useGrouping = useMoneyGrouping()
   const salaryReference = employee.salaryReference ?? null
@@ -143,12 +89,13 @@ export function EmployeeDetailsPage({
   const canAssignWorkplace = isWorker && employee.status === "ACTIVE"
   const managedProjectCountLabel = managedProjects.length > 0 ? `${managedProjects.length} ${t("detailPages.employee.projectUnit")}` : t("detailPages.employee.noManagedProjects")
   const managedWarehouseCountLabel = managedWarehouses.length > 0 ? `${managedWarehouses.length} ${t("detailPages.employee.warehouseUnit")}` : t("detailPages.employee.noManagedWarehouses")
-  const managedProjectNamesLabel = managedProjects.length > 0 ? managedProjects.join("، ") : t("detailPages.employee.noManagedProjectNames")
-  const managedWarehouseNamesLabel = managedWarehouses.length > 0 ? managedWarehouses.join("، ") : t("detailPages.employee.noManagedWarehouseNames")
+  const managedProjectNamesLabel = managedProjects.length > 0 ? managedProjects.join(featureI18n.t("featureCopy.employeeDetailsPage.listSeparator")) : t("detailPages.employee.noManagedProjectNames")
+  const managedWarehouseNamesLabel = managedWarehouses.length > 0 ? managedWarehouses.join(featureI18n.t("featureCopy.employeeDetailsPage.listSeparator")) : t("detailPages.employee.noManagedWarehouseNames")
   const hasExpandedNotes = (employee.notes?.trim().length ?? 0) > 90
   const tabsBaseId = `employee-record-${employee.id}`
 
   return (
+    <div className="employee-record">
     <RecordPageFrame
       backHref="/employees"
       backLabel={t("detailPages.employee.back")}
@@ -157,20 +104,10 @@ export function EmployeeDetailsPage({
       editLabel={t("detailPages.employee.edit")}
       title={employee.name}
       action={
-        isWorker && employee.status === "ACTIVE" ? (
-          <>
-            <AddSalaryPaymentDialog
-              employeeId={employee.id}
-              employeeName={employee.name}
-              salaryReference={salaryReference}
-              projects={projects}
-              open={paymentDialogOpen}
-              onOpenChange={setPaymentDialogOpen}
-            />
-            <Button size="lg" onClick={() => setPaymentDialogOpen(true)}>
-              {t("earnings.approve")}
-            </Button>
-          </>
+        employee.status === "ACTIVE" ? (
+          <Button size="lg" onClick={() => onApproveEarning?.(employee.id)}>
+            {t("earnings.approve")}
+          </Button>
         ) : undefined
       }
     >
@@ -181,7 +118,7 @@ export function EmployeeDetailsPage({
           { id: "personal", label: t("detailPages.employee.personalTab") },
           { id: "history", label: t("detailPages.employee.historyTab") },
           { id: "finance", label: t("detailPages.employee.financeTab") },
-          ...(isWorker ? [{ id: "debts", label: "الديون" }] : []),
+          ...(isWorker ? [{ id: "debts", label: featureI18n.t("featureCopy.employeeDetailsPage.debts") }] : []),
         ]}
         onChange={onTabChange}
       />
@@ -238,95 +175,35 @@ export function EmployeeDetailsPage({
               label={t("detailPages.employee.financeSalaryPeriod")}
               value={salaryPeriodLabel(salaryReference?.period ?? null)}
             />
-            <RecordInfoCard label={t("detailPages.employee.financePaymentCount")} value={String(salaryPayments.length)} />
-            <RecordInfoCard label={t("detailPages.employee.financeTotalExpected")} value={<MoneyValue value={totalExpectedAmount} currencyLabel={currencyLabel} variant="detail" />} />
-            <RecordInfoCard label={t("detailPages.employee.financeTotalPaid")} value={<MoneyValue value={totalActualAmount} currencyLabel={currencyLabel} variant="detail" />} />
-            <RecordInfoCard
-              label={t("detailPages.employee.financeCumulativeDifference")}
-              value={<MoneyValue value={totalDifferenceMeta.value} currencyLabel={currencyLabel} variant="detail" signed toneClassName={totalDifferenceMeta.className} zeroAsDash />}
-            />
           </RecordInfoGrid>
 
-          <div className="rounded-xl border border-border/70 bg-sidebar p-5 dark:bg-surface" dir="rtl">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between" dir="rtl">
-              <div className="space-y-1 text-start">
-                <h3 className="text-lg font-semibold text-foreground">{t("detailPages.employee.financeSectionTitle")}</h3>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {t("detailPages.employee.financeSectionDescription")}
-                </p>
-              </div>
-              {isWorker && employee.status === "ACTIVE" ? (
-                <Button size="lg" onClick={() => setPaymentDialogOpen(true)}>
+          <section className="min-w-0 space-y-4 border-t border-border pt-4" aria-labelledby="employee-earnings-history-title" dir="rtl">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 id="employee-earnings-history-title" className="text-lg font-semibold text-foreground">
+                {t("earnings.historyTitle")}
+              </h3>
+              {employee.status === "ACTIVE" ? (
+                <Button size="lg" onClick={() => onApproveEarning?.(employee.id)}>
                   {t("earnings.approve")}
                 </Button>
               ) : null}
             </div>
-
-
-          </div>
-
-          <section className="space-y-3 rounded-xl border border-border/70 bg-sidebar p-5 dark:bg-surface" aria-labelledby="employee-earnings-history-title">
-            <h3 id="employee-earnings-history-title" className="text-lg font-semibold text-foreground">
-              {t("earnings.historyTitle")}
-            </h3>
-            <EmployeeEarningsHistory employeeId={employee.id} employeeNames={employeeNames} projectNames={projectNames} />
+            <EmployeePayrollPanel employeeId={employee.id} />
+            <details>
+              <summary className="cursor-pointer py-3 text-sm font-medium">{t("earnings.historyTitle")}</summary>
+              <EmployeeEarningsHistory employeeId={employee.id} employeeNames={employeeNames} projectNames={projectNames} />
+            </details>
           </section>
 
-          <div className="overflow-hidden rounded-xl border border-border/70 bg-sidebar dark:bg-surface" dir="rtl">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm" aria-label={t("detailPages.employee.financeSectionTitle")}>
-                <thead className="bg-muted/40 text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDate")}</th>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDays")}</th>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableExpected")}</th>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableActual")}</th>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableDifference")}</th>
-                    <th className="px-4 py-3 text-start font-medium" scope="col">{t("detailPages.employee.financeTableNotes")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedSalaryPayments.length > 0 ? (
-                    sortedSalaryPayments.map((payment) => {
-                      const difference = getSalaryDifferenceMeta(payment.expectedAmountDzd, payment.actualAmountDzd)
-
-                      return (
-                        <tr key={payment.id} className="border-t border-border/60 bg-sidebar dark:bg-background">
-                          <td className="px-4 py-4 text-start text-foreground">{<AppDate value={payment.paymentDate} />}</td>
-                          <td className="px-4 py-4 text-start font-mono tabular-nums text-foreground" dir="ltr">{payment.days}</td>
-                          <td className="px-4 py-4 text-start text-foreground"><MoneyValue value={payment.expectedAmountDzd} currencyLabel={currencyLabel} variant="detail" /></td>
-                          <td className="px-4 py-4 text-start text-foreground"><MoneyValue value={payment.actualAmountDzd} currencyLabel={currencyLabel} variant="detail" /></td>
-                          <td className="px-4 py-4 text-start font-medium">
-                            <MoneyValue value={difference.value} currencyLabel={currencyLabel} variant="detail" signed toneClassName={difference.className} zeroAsDash />
-                          </td>
-                          <td className="px-4 py-4 text-start text-muted-foreground">{payment.note?.trim() ? payment.note : noNotesLabel}</td>
-                        </tr>
-                      )
-                    })
-                  ) : (
-                    <tr>
-                      <td className="px-4 py-6 text-center text-muted-foreground" colSpan={6}>
-                        {t("detailPages.employee.financeEmpty")}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
         </div>
       </RecordTabPanel>
 
       {isWorker ? (
         <RecordTabPanel activeTab={resolvedTab} baseId={tabsBaseId} tabId="debts">
-          <DebtCasesPanel
-            accounts={debtAccounts}
-            debtEntriesByAccountId={debtEntriesByAccountId}
-            title="ديون العامل"
-            workerId={employee.id}
-          />
+          <ExactDebtsPage client={debtClient} scopedParty={{ id: employee.id, label: employee.name, partyType: "INTERNAL_WORKER" }} parties={[{ id: employee.id, label: employee.name, partyType: "INTERNAL_WORKER" }]} />
         </RecordTabPanel>
       ) : null}
     </RecordPageFrame>
+    </div>
   )
 }

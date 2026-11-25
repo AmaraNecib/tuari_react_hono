@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { FileInput, NativeSelect } from "@/components/ui/form-controls"
 import { CreateableSelect } from "@/components/ui/createable-select"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { showErrorToast } from "@/lib/toast"
+import { showValidationToast } from "@/lib/toast"
 import {
   MultiSourceItemPicker,
   type SelectedItem,
@@ -103,12 +103,12 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
   const handleSubmit = async () => {
     // Validate
     if (!counterpartyId) {
-      showErrorToast(t("validation.counterpartyRequired", "يرجى اختيار الطرف الخارجي"))
+      showValidationToast(t("validation.counterpartyRequired"))
       return
     }
 
     if (items.length === 0) {
-      showErrorToast(t("validation.itemsRequired", "يرجى إضافة عنصر واحد على الأقل"))
+      showValidationToast(t("validation.itemsRequired"))
       return
     }
 
@@ -352,7 +352,7 @@ export function OutboundTransferCreatePageV2({ onBack }: { onBack: () => void })
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder={t("common.noNotes", "لا توجد ملاحظات")}
+                placeholder={t("common.noNotes")}
                 className="min-h-20 rounded-xl border border-border bg-background px-3 py-2 text-sm"
               />
             </label>

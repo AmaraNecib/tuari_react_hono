@@ -1,6 +1,7 @@
+import { sqliteHistoryCandidates } from "./sqlite-inventory-history-read";
 import {
   Money, UnitPrice, exactInventoryInvoiceSchema, exactInventoryEntrySchema, exactInventoryAssetSchema, exactInventoryChargeSchema, exactInventoryOutboundSchema,
-  inventoryItemDefinitionSchema, inventoryConsumableBalanceSchema, inventoryMovementSchema,
+  inventoryInvoiceAttachmentSchema, inventoryItemDefinitionSchema, inventoryConsumableBalanceSchema, inventoryMovementSchema,
   type ExactInventoryInvoice, type ExactInventoryAsset, type ExactInventoryOutbound, type InventoryConsumableBalance, type InventoryMovement,
 } from "@tuari/contracts";
 import { bindMoney, bindUnitPrice, prepareMoneyRead, prepareUnitPriceRead } from "../../../infrastructure/database/exact-money-storage";
@@ -74,6 +75,12 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
     const columns = Object.keys(row);
     this.db.prepare(`INSERT INTO "${table}" (${columns.map(name => `"${name}"`).join(",")}) VALUES (${columns.map(() => "?").join(",")}) ON CONFLICT(id) DO UPDATE SET ${columns.filter(name => name !== "id").map(name => `"${name}"=excluded."${name}"`).join(",")}`).run(...Object.values(row));
   }
+  listAttachmentsByInvoiceGroupId(id: string) {
+    return this.lock.runSync(() => this.db.prepare(`SELECT id, invoice_group_id AS invoiceGroupId, original_name AS originalName, mime_type AS mimeType, byte_size AS byteSize, storage_key AS storageKey, relative_path AS relativePath, sha256, created_at AS createdAt FROM inventory_invoice_attachment WHERE invoice_group_id=? ORDER BY created_at DESC,id`).all(id).map(row => {
+      const attachment = row as { id: string };
+      return inventoryInvoiceAttachmentSchema.parse({ ...attachment, downloadUrl: `/api/inventory/attachments/${attachment.id}` });
+    }));
+  }
   getDefinition(id: string) {
     return this.withTransaction(() => {
       const row = this.db.prepare("SELECT id,name,item_type AS itemType,unit,description,is_active AS isActive,created_at AS createdAt,updated_at AS updatedAt FROM inventory_item_definition WHERE id=?").get(id) as Record<string, unknown> | undefined;
@@ -83,6 +90,15 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
   listDefinitions() { return this.withTransaction(() => this.ids("inventory_item_definition").map(id => this.getDefinition(id)!)); }
   warehouseExists(id: string) { return this.lock.runSync(() => Boolean(this.db.prepare("SELECT id FROM warehouse WHERE id=?").get(id))); }
   projectExists(id: string) { return this.lock.runSync(() => Boolean(this.db.prepare("SELECT id FROM project WHERE id=?").get(id))); }
+  counterpartyLabel(id: string): string {
+    return this.lock.runSync(() => {
+      const columns = this.db.pragma("table_info(external_counterparty)") as { name: string }[];
+      const nameColumn = columns.some(row => row.name === "full_name") ? "full_name" : columns.some(row => row.name === "name") ? "name" : null;
+      if (!nameColumn) return id;
+      const row = this.db.prepare(`SELECT "${nameColumn}" AS name FROM external_counterparty WHERE id=?`).get(id) as { name: string } | undefined;
+      return row?.name ?? id;
+    });
+  }
   locationLabel(warehouseId: string | null, projectId: string | null): string {
     return this.lock.runSync(() => {
       const table = warehouseId ? "warehouse" : "project";
@@ -128,6 +144,8 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
   deleteBalance(id: string) { this.withTransaction(() => { this.db.prepare("DELETE FROM inventory_consumable_balance WHERE id=?").run(id); }); }
   listMovements() { return this.withTransaction(() => this.ids("inventory_movement").map(id => inventoryMovementSchema.parse(this.row("inventory_movement", movementFields, id)))); }
   saveMovement(row: InventoryMovement) { this.withTransaction(() => { this.save("inventory_movement", this.metadata(row, movementFields)); }); }
+  listHistoryCandidates() { return this.withTransaction(() => sqliteHistoryCandidates(this.db, this)); }
+  getMovement(id: string) { return this.withTransaction(() => { const row = this.row("inventory_movement", movementFields, id); return row ? inventoryMovementSchema.parse(row) : null; }); }
   getCharge(id: string): ExactInventoryChargeRecord | null {
     return this.withTransaction(() => {
       const row = this.row("inventory_asset_charge", chargeFields, id);
@@ -137,6 +155,13 @@ export class SqliteExactInventoryRepository implements ExactInventoryRepository 
     });
   }
   listCharges() { return this.withTransaction(() => this.ids("inventory_asset_charge").map(id => this.getCharge(id)!)); }
+  listAssetCharges(assetUnitId: string) {
+    return this.withTransaction(() => this.boundedIds(this.db.prepare("SELECT id FROM inventory_asset_charge WHERE asset_unit_id=? ORDER BY placement_sequence DESC LIMIT 100001").all(assetUnitId) as { id: string }[]).map(id => {
+      const charge = this.getCharge(id);
+      if (!charge) throw new Error("Selected asset charge is missing");
+      return charge;
+    }));
+  }
   saveCharge(row: ExactInventoryChargeRecord) {
     this.withTransaction(() => {
       this.save("inventory_asset_charge", { ...this.metadata(row, chargeFields), amount_minor: bindMoney(Money.parse(row.amountDzd)) });

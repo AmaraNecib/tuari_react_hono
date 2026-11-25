@@ -1,0 +1,73 @@
+import { i18n as featureI18n } from "@/i18n"
+import { FailureCode } from "@/lib/failure-code"
+import { useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import type { InventoryInvoiceAttachment } from "@tuari/contracts"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { downloadDesktopApiFile } from "@/lib/desktop-api-bridge"
+import { isDesktopRuntime } from "@/lib/desktop-auth-session"
+import { resolveApiUrl } from "@/lib/runtime-config"
+import { uploadInvoiceAttachments } from "./inventory-hooks"
+import { INVOICE_ATTACHMENT_ACCEPT, validateInvoiceAttachmentFiles } from "./invoice-attachment-rules"
+
+export function usePurchaseAttachmentDraft() {
+  const { t } = useTranslation()
+  const [files, setFiles] = useState<File[]>([])
+  const [error, setError] = useState<object | null>(null)
+  const [pending, setPending] = useState(false)
+  const [needsReload, setNeedsReload] = useState(false)
+  const [batchVersion, setBatchVersion] = useState(0)
+  const busy = useRef(false)
+  const validation = validateInvoiceAttachmentFiles(files, {
+    tooMany: max => t("inventory.invoiceCreate.attachmentTooMany", { max }),
+    tooLarge: (fileName, maxMb) => t("inventory.invoiceCreate.attachmentTooLarge", { fileName, maxMb }),
+    totalTooLarge: maxMb => t("inventory.invoiceCreate.attachmentTotalTooLarge", { maxMb }),
+    unsupportedType: fileName => t("inventory.invoiceCreate.attachmentUnsupportedType", { fileName }),
+  })
+  async function upload(id: string, reload?: () => Promise<unknown>) {
+    if (busy.current) return
+    if (!needsReload && validation) throw new Error(validation)
+    busy.current = true
+    setPending(true); setError(null)
+    const batch = files
+    try {
+      if (!needsReload) {
+        if (batch.length) await uploadInvoiceAttachments(id, batch)
+        setFiles(current => current === batch ? [] : current)
+        setBatchVersion(current => current + 1)
+        if (reload) setNeedsReload(true)
+      }
+      if (reload) await reload()
+      setNeedsReload(false)
+    } catch (cause) {
+      setError({})
+      throw cause
+    } finally { busy.current = false; setPending(false) }
+  }
+  function selectFiles(next: File[]) {
+    if (!busy.current && !needsReload) { setFiles(next); setError(null) }
+  }
+  return { files, setFiles: selectFiles, batchVersion, needsReload, error: validation ?? (error ? t("inventory.invoiceCreate.attachmentsUploadFailed") : null), failure: error, pending, upload, valid: !validation }
+}
+
+export function PurchaseAttachmentFiles({ draft, disabled = false }: { draft: ReturnType<typeof usePurchaseAttachmentDraft>; disabled?: boolean }) {
+  return <div className="space-y-2"><label className="block space-y-2">{featureI18n.t("featureCopy.inventoryExactAttachments.files")}<Input key={draft.batchVersion} type="file" multiple accept={INVOICE_ATTACHMENT_ACCEPT} disabled={disabled || draft.pending || draft.needsReload} onChange={event => draft.setFiles(Array.from(event.target.files ?? []))} /></label>{draft.error && <p role="alert">{draft.error}<FailureCode error={draft.failure} /></p>}</div>
+}
+
+export function ExactPurchaseAttachments({ groupId, attachments, reload }: { groupId: string; attachments: InventoryInvoiceAttachment[]; reload(): Promise<unknown> }) {
+  const { t } = useTranslation()
+  const draft = usePurchaseAttachmentDraft()
+  const [downloadError, setDownloadError] = useState<object | null>(null)
+  async function download(file: InventoryInvoiceAttachment) {
+    setDownloadError(null)
+    try { await downloadDesktopApiFile(resolveApiUrl(`/api/inventory/attachments/${file.id}`), file.originalName) }
+    catch { setDownloadError({}) }
+  }
+  return <section className="space-y-3 border-t border-border pt-4"><h3>{featureI18n.t("featureCopy.inventoryExactAttachments.files")}</h3>
+    {attachments.map(file => isDesktopRuntime() ? <Button key={file.id} variant="outline" onClick={() => void download(file)}>{file.originalName}</Button> : <a key={file.id} className="block underline" href={resolveApiUrl(`/api/inventory/attachments/${file.id}`)} target="_blank" rel="noreferrer">{file.originalName}</a>)}
+    {downloadError && <p role="alert">{t("exactCommerce.commandError")}<FailureCode error={downloadError} /></p>}
+    <PurchaseAttachmentFiles draft={draft} />
+    <Button disabled={draft.pending || !draft.needsReload && (!draft.files.length || !draft.valid)} onClick={() => void draft.upload(groupId, reload).catch(() => {})}>{draft.needsReload && !draft.pending ? t("common.retry") : draft.error ? t("inventory.invoiceCreate.retryAttachments") : t("common.save")}</Button>
+  </section>
+}

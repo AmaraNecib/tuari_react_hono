@@ -22,66 +22,48 @@ import { getLockedDirectionForCategory, type ExternalCounterparty } from "@tuari
  */
 const DEBT_CATEGORIES: Array<{
   value: ReasonCategory
-  labelAr: string
-  labelEn: string
-  descriptionAr: string
-  descriptionEn: string
+  labelKey: string
+  descriptionKey: string
 }> = [
   {
     value: "SALARY_ADVANCE",
-    labelAr: "سلفة راتب",
-    labelEn: "Salary Advance",
-    descriptionAr: "صرفنا للعامل مال قبل استحقاقه",
-    descriptionEn: "We gave the worker money before they earned it",
+    labelKey: "detailPages.debt.categories.salaryAdvance.label",
+    descriptionKey: "detailPages.debt.categories.salaryAdvance.description",
   },
   {
     value: "REIMBURSEMENT",
-    labelAr: "تعويض مصاريف",
-    labelEn: "Reimbursement",
-    descriptionAr: "العامل دفع شيء نيابة عنا (ماء، مواد، نقل)",
-    descriptionEn: "Worker paid something on our behalf",
+    labelKey: "detailPages.debt.categories.reimbursement.label",
+    descriptionKey: "detailPages.debt.categories.reimbursement.description",
   },
   {
     value: "CASH_TAKE",
-    labelAr: "أخذ كاش",
-    labelEn: "Cash Take",
-    descriptionAr: "العامل أخذ كاش من الصندوق",
-    descriptionEn: "Worker took cash from the till",
+    labelKey: "detailPages.debt.categories.cashTake.label",
+    descriptionKey: "detailPages.debt.categories.cashTake.description",
   },
   {
     value: "EQUIPMENT_DAMAGE",
-    labelAr: "تلف معدات",
-    labelEn: "Equipment Damage",
-    descriptionAr: "العامل مدين لنا بسبب تلف معدات",
-    descriptionEn: "Worker owes us for damaged equipment",
+    labelKey: "detailPages.debt.categories.equipmentDamage.label",
+    descriptionKey: "detailPages.debt.categories.equipmentDamage.description",
   },
   {
     value: "PERSONAL_LOAN",
-    labelAr: "قرض شخصي",
-    labelEn: "Personal Loan",
-    descriptionAr: "أعطينا العامل قرض نقدي ليرجعه",
-    descriptionEn: "We gave the worker a cash loan to be repaid",
+    labelKey: "detailPages.debt.categories.personalLoan.label",
+    descriptionKey: "detailPages.debt.categories.personalLoan.description",
   },
   {
     value: "DIRECT_LOAN_GIVEN",
-    labelAr: "قرض مباشر (أعطينا)",
-    labelEn: "Direct Loan (Given)",
-    descriptionAr: "أعطينا الطرف الخارجي قرض",
-    descriptionEn: "We gave an external counterparty a loan",
+    labelKey: "detailPages.debt.categories.directLoanGiven.label",
+    descriptionKey: "detailPages.debt.categories.directLoanGiven.description",
   },
   {
     value: "DIRECT_LOAN_TAKEN",
-    labelAr: "قرض مباشر (أخذنا)",
-    labelEn: "Direct Loan (Taken)",
-    descriptionAr: "طرف خارجي أقرضنا مال",
-    descriptionEn: "An external counterparty lent us money",
+    labelKey: "detailPages.debt.categories.directLoanTaken.label",
+    descriptionKey: "detailPages.debt.categories.directLoanTaken.description",
   },
   {
     value: "OTHER",
-    labelAr: "أخرى",
-    labelEn: "Other",
-    descriptionAr: "سبب آخر — يرجى تقديم تفصيل",
-    descriptionEn: "Other — please provide details",
+    labelKey: "detailPages.debt.categories.other.label",
+    descriptionKey: "detailPages.debt.categories.other.description",
   },
 ]
 
@@ -283,8 +265,8 @@ export function DebtCreatePage({
                   type="button"
                   onClick={() => setReasonCategory(category.value)}
                 >
-                  <p className="font-semibold text-foreground">{category.labelAr}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{category.descriptionAr}</p>
+                  <p className="font-semibold text-foreground">{t(category.labelKey)}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{t(category.descriptionKey)}</p>
                 </button>
               ))}
             </div>
@@ -295,16 +277,16 @@ export function DebtCreatePage({
             className={cn(
               "rounded-xl border p-4 text-center",
               resolvedDirection === "owed-to-us"
-                ? "border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-950/20"
-                : "border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20",
+                ? "border-good/30 bg-good-soft/50"
+                : "border-bad/30 bg-bad-soft/50",
             )}
           >
             <p
               className={cn(
                 "text-lg font-semibold",
                 resolvedDirection === "owed-to-us"
-                  ? "text-emerald-700 dark:text-emerald-300"
-                  : "text-rose-700 dark:text-rose-300",
+                  ? "text-good"
+                  : "text-bad",
               )}
             >
               {directionLabel}
@@ -324,13 +306,13 @@ export function DebtCreatePage({
                   className={cn(
                     "rounded-xl border p-3 transition-all",
                     direction === "owed-to-us"
-                      ? "border-emerald-500/30 bg-primary/8"
+                      ? "border-good/30 bg-primary/8"
                       : "border-border/60 hover:bg-muted/40",
                   )}
                   type="button"
                   onClick={() => setDirection("owed-to-us")}
                 >
-                  <p className="font-semibold text-emerald-700 dark:text-emerald-300">
+                  <p className="font-semibold text-good">
                     {t("detailPages.debt.direction.owedToUs")}
                   </p>
                 </button>
@@ -338,13 +320,13 @@ export function DebtCreatePage({
                   className={cn(
                     "rounded-xl border p-3 transition-all",
                     direction === "owed-by-us"
-                      ? "border-rose-500/30 bg-primary/8"
+                      ? "border-bad/30 bg-primary/8"
                       : "border-border/60 hover:bg-muted/40",
                   )}
                   type="button"
                   onClick={() => setDirection("owed-by-us")}
                 >
-                  <p className="font-semibold text-rose-700 dark:text-rose-300">
+                  <p className="font-semibold text-bad">
                     {t("detailPages.debt.direction.owedByUs")}
                   </p>
                 </button>

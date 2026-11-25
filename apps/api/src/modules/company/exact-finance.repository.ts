@@ -30,6 +30,7 @@ export interface ExactFinanceRepository extends ExactTransactionParticipant {
   getAccount(id: string): ExactDebtAccount | null;
   listAccounts(): ExactDebtAccount[];
   saveAccount(account: ExactDebtAccount): void;
+  isManualSettlementVoidBlocked?(id: string): boolean;
   getEntry(id: string): ExactDebtEntry | null;
   listEntries(accountId: string): ExactDebtEntry[];
   saveEntry(entry: ExactDebtEntry): void;

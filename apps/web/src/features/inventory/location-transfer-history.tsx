@@ -1,10 +1,10 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Location-level transfer history component.
  * Embeddable in warehouse/project detail pages to show transfers for that location.
  */
 import { CurrencyRun } from "@/features/shared/money-value"
 import { TableQueryState } from "@/features/shared/table-primitives"
-import { useState } from "react"
 import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
@@ -15,10 +15,11 @@ import { useLocationTransferHistoryQuery, type TransferHistoryItem } from "./tra
 /** getTransferTypeLabel - helper function. */
 function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
   const labels: Record<string, string> = {
-    INTERNAL: "تحويل داخلي",
-    SALE: "بيع",
-    GIFT: "هدية",
-    RETURN: "مرتجع",
+    PURCHASE: featureI18n.t("featureCopy.locationTransferHistory.purchase"),
+    INTERNAL: featureI18n.t("featureCopy.locationTransferHistory.internal"),
+    SALE: featureI18n.t("featureCopy.locationTransferHistory.sale"),
+    GIFT: featureI18n.t("featureCopy.locationTransferHistory.gift"),
+    RETURN: featureI18n.t("featureCopy.locationTransferHistory.returned"),
   }
   return labels[type] ?? type
 }
@@ -26,6 +27,7 @@ function getTransferTypeLabel(type: TransferHistoryItem["type"]): string {
 /** getTransferTypeColor - helper function. */
 function getTransferTypeColor(type: TransferHistoryItem["type"]): string {
   const colors: Record<string, string> = {
+    PURCHASE: "bg-ink/10 text-ink",
     INTERNAL: "bg-ink/10 text-ink",
     SALE: "bg-good/10 text-good",
     GIFT: "bg-primary/10 text-primary",
@@ -54,8 +56,8 @@ function getMovementDirection(
 /** getMovementLabel - helper function. */
 function getMovementLabel(direction: "INCOMING" | "OUTGOING" | "BETWEEN"): string {
   const labels: Record<string, string> = {
-    INCOMING: "وارد",
-    OUTGOING: "صادر",
+    INCOMING: featureI18n.t("featureCopy.locationTransferHistory.incoming"),
+    OUTGOING: featureI18n.t("featureCopy.locationTransferHistory.outgoing"),
     BETWEEN: "—",
   }
   return labels[direction] ?? "—"
@@ -81,14 +83,13 @@ type LocationTransferHistoryProps = {
  */
 export function LocationTransferHistory({ locationId, locationType }: LocationTransferHistoryProps) {
   const { t } = useTranslation()
-  const [limit, setLimit] = useState(10)
   const transfersQuery = useLocationTransferHistoryQuery(locationId, locationType)
 
   const transfers = transfersQuery.data?.items ?? []
 
   // Limit displayed transfers
-  const displayedTransfers = transfers.slice(0, limit)
-  const hasMore = transfers.length > limit
+  const displayedTransfers = transfers
+  const hasMore = transfersQuery.hasNextPage
 
   return (
     <div className="space-y-4">
@@ -120,7 +121,8 @@ export function LocationTransferHistory({ locationId, locationType }: LocationTr
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setLimit((prev) => prev + 10)}
+                  disabled={transfersQuery.isFetchingNextPage}
+                  onClick={() => void transfersQuery.fetchNextPage()}
                 >
                   {t("inventory.transferHistory.showMore")}
                 </Button>
@@ -143,6 +145,7 @@ function LocationTransferItem({
   locationId: string
   locationType: "WAREHOUSE" | "PROJECT"
 }) {
+  const { t } = useTranslation()
   const direction = getMovementDirection(transfer, locationId, locationType)
 
   // Determine the other location
@@ -152,7 +155,7 @@ function LocationTransferItem({
   const counterparty = transfer.counterparty
 
   return (
-    <div className="flex items-center gap-3 rounded-lg border border-line/50 px-3 py-2 text-sm">
+    <div data-testid="location-transfer-history-row" className="flex items-center gap-3 rounded-lg border border-line/50 px-3 py-2 text-sm">
       {/* Direction indicator */}
       <span className={`text-xs font-medium ${getMovementColor(direction)}`}>
         {getMovementLabel(direction)}
@@ -169,7 +172,11 @@ function LocationTransferItem({
       {/* Items summary */}
       <div className="flex-1 min-w-0">
         <div className="truncate">
-          {transfer.items.map((item) => item.name).join("، ")}
+          {transfer.items.map((item, index) => (
+            <span key={item.id}>
+              {index > 0 && featureI18n.t("featureCopy.locationTransferHistory.listSeparator")}{item.name} <bdi dir="ltr">×{String(item.quantity)}</bdi>
+            </span>
+          ))}
         </div>
       </div>
 
@@ -177,7 +184,7 @@ function LocationTransferItem({
       <div className="text-xs text-ink-4 text-start">
         {otherLocation ? (
           <span>
-            {otherLocation.type === "WAREHOUSE" ? "مستودع" : "مشروع"}: {otherLocation.id}
+            {otherLocation.type === "WAREHOUSE" ? featureI18n.t("featureCopy.locationTransferHistory.warehouse") : featureI18n.t("featureCopy.locationTransferHistory.project")}: {otherLocation.name}
           </span>
         ) : counterparty ? (
           <span>{counterparty.name}</span>
@@ -185,9 +192,10 @@ function LocationTransferItem({
       </div>
 
       {/* Amount (for sales) */}
-      {transfer.totalAmount !== undefined && (
+      {transfer.totalAmountDzd !== null && (
         <span className="text-xs font-medium tabular-nums min-w-[80px] text-start">
-          <CurrencyRun amount={transfer.totalAmount.toLocaleString("ar-DZ")} currencyLabel="دج" />
+          <CurrencyRun amount={transfer.totalAmountDzd!} currencyLabel={featureI18n.t("featureCopy.locationTransferHistory.currency")} />
+          {transfer.type === "PURCHASE" && <span className="block font-normal">{t("inventory.transferHistory.wholeInvoiceAmounts")}</span>}
         </span>
       )}
     </div>

@@ -9,6 +9,8 @@ import type { Expense } from "@tuari/contracts"
 
 import { ExpenseFormDialog } from "./expense-form-dialog"
 
+vi.mock("./expense-attachments", () => ({ ExpenseAttachments: () => <div data-testid="expense-files" /> }))
+
 const { createMutateAsync, updateMutateAsync, optionsResult, definitionResult, optionsUsages } = vi.hoisted(() => ({
   createMutateAsync: vi.fn(async () => ({})),
   updateMutateAsync: vi.fn(async () => ({})),

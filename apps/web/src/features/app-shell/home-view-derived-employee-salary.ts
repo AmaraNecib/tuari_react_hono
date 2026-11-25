@@ -2,10 +2,7 @@
  * Employee salary derivation for the home view.
  * Formats and displays employee salary information.
  */
-import { getArabicRoleLabel } from "@/features/shared/status-meta"
-
 import type { HomeViewDetailCopy } from "./home-view-copy"
-import { formatName } from "./home-view-derived-formatters"
 import type { HomeViewDerivedLookups } from "./home-view-derived-lookups"
 import type { buildEmployeeRows } from "./home-view-derived-employees"
 import type { DemoWorkspace } from "./workspace-queries"
@@ -14,9 +11,7 @@ import type { DemoWorkspace } from "./workspace-queries"
  * buildEmployeeSalaryCollections({ component.
  */
 export function buildEmployeeSalaryCollections({
-  detailCopy,
   employeeRows,
-  lookups,
   workspace,
 }: {
   detailCopy: HomeViewDetailCopy
@@ -24,29 +19,6 @@ export function buildEmployeeSalaryCollections({
   lookups: HomeViewDerivedLookups
   workspace: DemoWorkspace
 }) {
-  const salaryPaymentsByEmployeeId = Object.fromEntries(
-    workspace.employees.map((employee) => [
-      employee.id,
-      workspace.salaryPayments
-        .filter((payment) => payment.employeeId === employee.id)
-        .sort((left, right) => right.paymentDate.localeCompare(left.paymentDate)),
-    ]),
-  )
-
-  const recentSalaryPayments = workspace.salaryPayments
-    .map((payment) => {
-      const employee = lookups.employeeById.get(payment.employeeId)
-      const role = employee ? lookups.roleById.get(employee.roleId) : null
-
-      return {
-        ...payment,
-        employeeName: employee ? formatName(employee) : detailCopy.shared.activeWorkerMissing,
-        employeePhone: employee?.phone ?? "—",
-        employeeRole: getArabicRoleLabel(role ?? null),
-      }
-    })
-    .sort((left, right) => right.paymentDate.localeCompare(left.paymentDate))
-
   // Group the assignments by employee in one pass. The previous shape scanned
   // every assignment once per employee, so a workspace refresh re-did the whole
   // scan as history grew.
@@ -84,7 +56,6 @@ export function buildEmployeeSalaryCollections({
       employeePhone: employee.phone,
       employeeRole: employee.role,
       salaryReference,
-      lastPaymentDate: salaryPaymentsByEmployeeId[employee.id]?.[0]?.paymentDate ?? null,
       // Assignment windows feed the payment form's derived per-project default.
       projectAssignments: projectAssignmentsByEmployeeId[employee.id] ?? [],
     }]
@@ -95,10 +66,8 @@ export function buildEmployeeSalaryCollections({
     .sort((left, right) => left.name.localeCompare(right.name, "ar"))
 
   return {
-    recentSalaryPayments,
     salariedEmployees,
     projectAssignmentsByEmployeeId,
-    salaryPaymentsByEmployeeId,
     salaryProjects,
   }
 }

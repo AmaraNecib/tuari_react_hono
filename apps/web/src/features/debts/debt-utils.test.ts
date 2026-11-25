@@ -137,16 +137,16 @@ describe("getConsolidationRemainder", () => {
 })
 
 describe("movement tone follows the account direction", () => {
-  it("a positive PAYABLE movement reads as a debt increase (rose)", () => {
+  it("a positive PAYABLE movement uses the negative semantic tone", () => {
     expect(
       getDebtAccountBalanceDisplay({ currentBalance: 5000, direction: "PAYABLE" }).textClassName,
-    ).toContain("rose")
+    ).toBe("text-bad")
   })
 
-  it("a positive RECEIVABLE movement reads as an increase for them (emerald)", () => {
+  it("a positive RECEIVABLE movement uses the positive semantic tone", () => {
     expect(
       getDebtAccountBalanceDisplay({ currentBalance: 5000, direction: "RECEIVABLE" }).textClassName,
-    ).toContain("emerald")
+    ).toBe("text-good")
   })
 })
 

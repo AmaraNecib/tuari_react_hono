@@ -102,6 +102,15 @@ export class SqliteExactFinanceRepository implements ExactFinanceRepository {
     });
   }
 
+  isManualSettlementVoidBlocked(id: string): boolean {
+    return this.withTransaction(() => {
+      if (!this.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='manual_debt_settlement'").get()) return false;
+      return Boolean(this.db.prepare(`SELECT s.id FROM manual_debt_settlement s LEFT JOIN manual_debt_settlement_reversal r ON r.settlement_id=s.id
+        WHERE s.payable_settlement_entry_id=? OR s.receivable_settlement_entry_id=? OR r.payable_reversal_entry_id=? OR r.receivable_reversal_entry_id=?
+        OR (r.id IS NULL AND (s.payable_original_entry_id=? OR s.receivable_original_entry_id=?)) LIMIT 1`).get(id, id, id, id, id, id));
+    });
+  }
+
   getAggregateCommand(id: string): ExactDebtCommand | null {
     return this.lock.runSync(() => this.db.prepare("SELECT id,fingerprint,result_json AS resultJson FROM exact_finance_command WHERE id=?").get(id) as ExactDebtCommand | undefined ?? null);
   }

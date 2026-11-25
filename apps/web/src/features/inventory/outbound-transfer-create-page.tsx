@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 /**
  * Outbound transfer creation page for creating new inventory transfers.
  */
@@ -9,7 +10,7 @@ import { outboundPickUsage } from "@tuari/contracts"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { PageActionGroup, PageHeader, PageSurfaceContent, Surface, SurfaceHeader } from "@/features/shared/page-primitives"
-import { showErrorToast } from "@/lib/toast"
+import { showValidationToast } from "@/lib/toast"
 import { ItemListEditor, type ItemEditorRow } from "./item-list-editor"
 import { useCreateOutboundTransferMutation, useInventoryExternalCounterpartiesQuery, useInventoryWarehousesQuery, useInventoryProjectsQuery } from "./inventory-hooks"
 
@@ -72,11 +73,11 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
   const handleSubmit = async () => {
     // Validate required fields
     if (!fromId) {
-      showErrorToast("يرجى اختيار الموقع الأصلي")
+      showValidationToast(featureI18n.t("featureCopy.outboundTransferCreatePage.sourceRequired"))
       return
     }
     if (!counterpartyId) {
-      showErrorToast("يرجى اختيار الطرف الخارجي")
+      showValidationToast(featureI18n.t("featureCopy.outboundTransferCreatePage.counterpartyRequired"))
       return
     }
 
@@ -84,16 +85,16 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
     const validationErrors: string[] = []
     const validatedItems = items.map((item, idx) => {
       if (!item.itemOption) {
-        validationErrors.push(`العنصر ${idx + 1}: يجب تحديد العنصر`)
+        validationErrors.push(featureI18n.t("featureCopy.outboundTransferCreatePage.itemRequired", { value1: idx + 1 }))
         return null
       }
       const quantity = Number(item.quantity)
       if (!item.quantity || quantity <= 0) {
-        validationErrors.push(`العنصر ${idx + 1}: يجب إدخال كمية أكبر من 0`)
+        validationErrors.push(featureI18n.t("featureCopy.outboundTransferCreatePage.quantityPositive", { value1: idx + 1 }))
         return null
       }
       if (!Number.isFinite(quantity)) {
-        validationErrors.push(`العنصر ${idx + 1}: الكمية غير صحيحة`)
+        validationErrors.push(featureI18n.t("featureCopy.outboundTransferCreatePage.invalidQuantity", { value1: idx + 1 }))
         return null
       }
       return {
@@ -104,12 +105,12 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
     }).filter((item) => item !== null)
 
     if (validationErrors.length > 0) {
-      showErrorToast(validationErrors.join("\n"))
+      showValidationToast(validationErrors.join("\n"))
       return
     }
 
     if (validatedItems.length === 0) {
-      showErrorToast("يرجى إضافة عنصر واحد على الأقل")
+      showValidationToast(featureI18n.t("featureCopy.outboundTransferCreatePage.itemsRequired"))
       return
     }
 
@@ -117,7 +118,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
     if (debtAmount) {
       const debtValue = Number(debtAmount)
       if (!Number.isFinite(debtValue) || debtValue < 0) {
-        showErrorToast("مبلغ الدين غير صحيح")
+        showValidationToast(featureI18n.t("featureCopy.outboundTransferCreatePage.invalidDebt"))
         return
       }
     }
@@ -139,30 +140,30 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
     <div className="space-y-6">
       <Surface variant="panel">
         <PageSurfaceContent>
-          <PageHeader title="إنشاء تحويل خارجي" description="تحويل العناصر إلى طرف خارجي" action={<PageActionGroup><Button variant="outline" onClick={onBack}>إلغاء</Button></PageActionGroup>} />
+          <PageHeader title={featureI18n.t("featureCopy.outboundTransferCreatePage.title")} description={featureI18n.t("featureCopy.outboundTransferCreatePage.description")} action={<PageActionGroup><Button variant="outline" onClick={onBack}>{featureI18n.t("featureCopy.outboundTransferCreatePage.cancel")}</Button></PageActionGroup>} />
         </PageSurfaceContent>
       </Surface>
 
       <Surface variant="panel">
         <PageSurfaceContent>
-          <SurfaceHeader title="بيانات التحويل" description="اختر الموقع الأصلي والطرف الخارجي" />
+          <SurfaceHeader title={featureI18n.t("featureCopy.outboundTransferCreatePage.transferData")} description={featureI18n.t("featureCopy.outboundTransferCreatePage.transferDataDescription")} />
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <label className="text-sm font-medium">نوع الموقع الأصلي</label>
+              <label className="text-sm font-medium">{featureI18n.t("featureCopy.outboundTransferCreatePage.sourceType")}</label>
               <select value={fromType} onChange={(e) => {
                 setFromType(e.target.value as "WAREHOUSE" | "PROJECT")
                 setFromId("")
                 clearItemOptions()
               }} className="h-10 rounded-xl border border-border bg-background px-3">
-                <option value="WAREHOUSE">مستودع</option>
-                <option value="PROJECT">مشروع</option>
+                <option value="WAREHOUSE">{featureI18n.t("featureCopy.outboundTransferCreatePage.warehouse")}</option>
+                <option value="PROJECT">{featureI18n.t("featureCopy.outboundTransferCreatePage.project")}</option>
               </select>
             </div>
 
             <div className="grid gap-2">
-              <label className="text-sm font-medium">اختر {fromType === "WAREHOUSE" ? "المستودع" : "المشروع"}</label>
+              <label className="text-sm font-medium">{featureI18n.t("featureCopy.outboundTransferCreatePage.choose")}{fromType === "WAREHOUSE" ? featureI18n.t("featureCopy.outboundTransferCreatePage.warehouseDefinite") : featureI18n.t("featureCopy.outboundTransferCreatePage.projectDefinite")}</label>
               <select value={fromId} onChange={(e) => { setFromId(e.target.value); clearItemOptions() }} className="h-10 rounded-xl border border-border bg-background px-3">
-                <option value="">اختر...</option>
+                <option value="">{featureI18n.t("featureCopy.outboundTransferCreatePage.choosePlaceholder")}</option>
                 {locations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
                     {loc.name}
@@ -172,9 +173,9 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
             </div>
 
             <div className="grid gap-2">
-              <label className="text-sm font-medium">الطرف الخارجي</label>
+              <label className="text-sm font-medium">{featureI18n.t("featureCopy.outboundTransferCreatePage.counterparty")}</label>
               <select value={counterpartyId} onChange={(e) => setCounterpartyId(e.target.value)} className="h-10 rounded-xl border border-border bg-background px-3">
-                <option value="">اختر الطرف الخارجي</option>
+                <option value="">{featureI18n.t("featureCopy.outboundTransferCreatePage.chooseCounterparty")}</option>
                 {counterparties.map((cp) => (
                   <option key={cp.id} value={cp.id}>
                     {cp.fullName}
@@ -184,11 +185,11 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
             </div>
 
             <div className="grid gap-2">
-              <label className="text-sm font-medium">نوع التحويل</label>
+              <label className="text-sm font-medium">{featureI18n.t("featureCopy.outboundTransferCreatePage.transferType")}</label>
               <select value={transferType} onChange={(e) => setTransferType(e.target.value as "SALE" | "GIFT" | "RETURN")} className="h-10 rounded-xl border border-border bg-background px-3">
-                <option value="SALE">بيع</option>
-                <option value="GIFT">هدية</option>
-                <option value="RETURN">إرجاع</option>
+                <option value="SALE">{featureI18n.t("featureCopy.outboundTransferCreatePage.sale")}</option>
+                <option value="GIFT">{featureI18n.t("featureCopy.outboundTransferCreatePage.gift")}</option>
+                <option value="RETURN">{featureI18n.t("featureCopy.outboundTransferCreatePage.returned")}</option>
               </select>
             </div>
           </div>
@@ -197,7 +198,7 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
 
       <Surface variant="panel">
         <PageSurfaceContent>
-          <SurfaceHeader title="العناصر المحولة" />
+          <SurfaceHeader title={featureI18n.t("featureCopy.outboundTransferCreatePage.items")} />
           {sourceUsage ? (
             <ItemListEditor items={items} usage={sourceUsage} onAdd={addItem} onRemove={removeItem} onUpdate={updateItem} />
           ) : (
@@ -208,16 +209,16 @@ export function OutboundTransferCreatePage({ onBack }: { onBack: () => void }) {
 
       <Surface variant="panel">
         <PageSurfaceContent>
-          <SurfaceHeader title="معلومات إضافية" />
+          <SurfaceHeader title={featureI18n.t("featureCopy.outboundTransferCreatePage.extraInformation")} />
           <div className="grid gap-4">
             <div className="grid gap-2">
-              <label className="text-sm font-medium">ملاحظات</label>
-              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="أي ملاحظات عن التحويل" className="min-h-20 rounded-xl border border-border bg-background px-3 py-2 text-sm" />
+              <label className="text-sm font-medium">{featureI18n.t("featureCopy.outboundTransferCreatePage.notes")}</label>
+              <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={featureI18n.t("featureCopy.outboundTransferCreatePage.notesPlaceholder")} className="min-h-20 rounded-xl border border-border bg-background px-3 py-2 text-sm" />
             </div>
 
             <div className="grid gap-2">
-              <label className="text-sm font-medium">مبلغ الدين (اختياري)</label>
-              <Input type="number" min="0" step="0.01" placeholder="إذا كان هناك دين مستحق" value={debtAmount} onChange={(e) => setDebtAmount(e.target.value)} />
+              <label className="text-sm font-medium">{featureI18n.t("featureCopy.outboundTransferCreatePage.debtAmount")}</label>
+              <Input type="number" min="0" step="0.01" placeholder={featureI18n.t("featureCopy.outboundTransferCreatePage.debtPlaceholder")} value={debtAmount} onChange={(e) => setDebtAmount(e.target.value)} />
             </div>
           </div>
         </PageSurfaceContent>

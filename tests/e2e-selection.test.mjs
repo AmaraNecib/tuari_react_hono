@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,44 @@ import {
 const rootDir = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
 const selectorPath = path.join(rootDir, 'scripts', 'ci', 'e2e-selection.mjs');
 const specDir = path.join(rootDir, 'tests', 'e2e');
+
+test('CI builds contracts and runs connected-exact only with its dedicated config', () => {
+  const workflow = readFileSync(path.join(rootDir, '.github/workflows/ci.yml'), 'utf8');
+  const e2eJob = workflow.slice(workflow.indexOf('  test-e2e:'), workflow.indexOf('\n  build:'));
+  assert.ok(e2eJob.indexOf('pnpm --filter @tuari/contracts build') < e2eJob.indexOf('pnpm exec playwright install'));
+  assert.match(e2eJob, /if \[ "\$spec" = "tests\/e2e\/payroll-connected-exact\.spec\.ts" \]; then/);
+  assert.match(e2eJob, /generic_specs\+=\("\$spec"\)/);
+  assert.match(e2eJob, /playwright test --config=playwright\.connected-exact\.config\.ts tests\/e2e\/payroll-connected-exact\.spec\.ts/);
+});
+
+test('CI E2E shell runs full and affected scopes without silently dropping coverage', () => {
+  const workflow = readFileSync(path.join(rootDir, '.github/workflows/ci.yml'), 'utf8');
+  const job = workflow.slice(workflow.indexOf('  test-e2e:'), workflow.indexOf('\n  build:'));
+  const script = job.slice(job.indexOf('          pnpm --filter @tuari/contracts build'), job.indexOf('\n      - name: Upload'))
+    .split('\n').map(line => line.replace(/^          /, '')).join('\n');
+  const run = (mode, specs) => execFileSync('bash', ['-c', 'set -euo pipefail\nnode() { printf "node %s\\n" "$*"; }\npnpm() { printf "%s\\n" "$*"; }\n' + script], {
+    cwd: rootDir, encoding: 'utf8', env: { ...process.env, E2E_MODE: mode, E2E_SPECS: specs },
+  }).trim().split('\n');
+  const dedicated = 'exec playwright test --config=playwright.connected-exact.config.ts tests/e2e/payroll-connected-exact.spec.ts';
+  const viewer = 'node --test tests/telemetry-viewer.browser.test.mjs tests/viewer-dashboard.browser.test.mjs';
+  const full = run('full', '');
+  assert.equal(full.filter(line => line === viewer).length, 1);
+  assert.equal(full[0], '--filter @tuari/contracts build');
+  const generic = full.find(line => line.startsWith('test:e2e '));
+  assert.ok(generic, 'full scope must execute generic tests');
+  for (const spec of readdirSync(specDir).filter(name => name.endsWith('.spec.ts') && !['payroll-connected-exact.spec.ts', 'manual-settlement-connected.spec.ts'].includes(name))) {
+    assert.ok(generic.split(' ').includes(`tests/e2e/${spec}`), spec);
+  }
+  assert.ok(!generic.includes('payroll-connected-exact.spec.ts'));
+  assert.equal(full.filter(line => line === dedicated).length, 1);
+  const manual = 'exec playwright test --config=playwright.manual-settlement.config.ts tests/e2e/manual-settlement-connected.spec.ts';
+  assert.ok(!generic.includes('manual-settlement-connected.spec.ts'));
+  assert.equal(full.filter(line => line === manual).length, 1);
+  assert.deepEqual(run('affected', 'tests/e2e/manual-settlement-connected.spec.ts').slice(2), [manual, viewer]);
+  const affected = run('affected', 'tests/e2e/expenses.spec.ts tests/e2e/payroll-connected-exact.spec.ts');
+  assert.deepEqual(affected.slice(2), ['test:e2e tests/e2e/expenses.spec.ts', viewer, dedicated]);
+  assert.deepEqual(run('affected', 'tests/e2e/payroll-connected-exact.spec.ts').slice(2), [viewer, dedicated]);
+});
 
 test('globToRegExp: ** crosses directories, * does not, ? is one char', () => {
   assert.ok(globToRegExp('apps/web/src/lib/**').test('apps/web/src/lib/a/b.ts'));
@@ -67,6 +105,26 @@ test('selectSpecs: a shared UI control routes its callers, warehouses included',
   assert.ok(scope.specs.includes('warehouses.spec.ts'));
 });
 
+test('selectSpecs: shared controls and exact money inputs route both payroll regressions', () => {
+  for (const file of [
+    'apps/web/src/components/ui/form-controls.tsx',
+    'apps/web/src/features/shared/exact-money-input.tsx',
+  ]) {
+    const scope = selectSpecs([file]);
+    assert.equal(scope.mode, 'affected', file);
+    assert.ok(scope.specs.includes('payroll-connected-exact.spec.ts'), file);
+    assert.ok(scope.specs.includes('payroll-recovery.spec.ts'), file);
+  }
+});
+
+test('selectSpecs: debt UI and settlement service changes retain both connected and ordinary debt coverage', () => {
+  for (const file of ['apps/web/src/features/debts/debts-exact-page.tsx', 'apps/api/src/modules/company/manual-settlement.service.ts']) {
+    const scope = selectSpecs([file]);
+    assert.equal(scope.mode, 'affected', file);
+    for (const spec of ['debt-entry.spec.ts', 'manual-settlement-connected.spec.ts']) assert.ok(scope.specs.includes(spec), spec);
+  }
+});
+
 test('selectSpecs: both sides of a rename are honoured', () => {
   // The hook and CI pass --no-renames so a rename reports source and
   // destination. A feature moved out of apps/web (destination inert) must still
@@ -91,6 +149,24 @@ test('selectSpecs: an empty diff fails closed to a full run', () => {
   assert.match(scope.reason, /empty diff/);
 });
 
+test('selectSpecs: telemetry viewer source and tests select browser CI', () => {
+  for (const file of [
+    'scripts/tuari-viewer.mjs',
+    'scripts/viewer/pipeline.mjs',
+    'scripts/viewer/dashboard.jsx',
+    'scripts/viewer/dashboard.css',
+    'scripts/viewer/model.mjs',
+    'scripts/viewer/build-dashboard.mjs',
+    'tests/viewer-dashboard.browser.test.mjs',
+    'tests/viewer-dashboard.test.mjs',
+    'tests/fixtures/viewer/2026-01-02/app.1.log',
+    'tests/telemetry-viewer.test.mjs',
+    'tests/telemetry-viewer.browser.test.mjs',
+  ]) {
+    assert.equal(selectSpecs([file], loadMap()).mode, 'full', file);
+  }
+});
+
 test('selectSpecs: docs-only diff is a skip', () => {
   const scope = selectSpecs(['docs/lessons/x.md', '.agents/wisdom/testing/README.md', 'README.md']);
   assert.equal(scope.mode, 'skip');
@@ -105,6 +181,32 @@ test('selectSpecs: always_specs join an affected run but not a skip', () => {
 
   const skip = selectSpecs(['docs/lessons/x.md']);
   assert.deepEqual(skip.specs, []);
+});
+
+test('selectSpecs: payroll UI and workforce API changes route payroll regressions without unrelated feature specs', () => {
+  for (const file of [
+    'apps/web/src/features/employees/payroll-panel.tsx',
+    'apps/api/src/modules/workforce/payroll.module.ts',
+  ]) {
+    const scope = selectSpecs([file]);
+    assert.equal(scope.mode, 'affected', file);
+    assert.ok(scope.specs.includes('payroll-connected-exact.spec.ts'), file);
+    assert.ok(scope.specs.includes('payroll-recovery.spec.ts'), file);
+    assert.ok(!scope.specs.includes('expenses.spec.ts'), file);
+  }
+});
+
+test('selectSpecs: cross-cutting managed API lifecycle coverage joins affected runs', () => {
+  const scope = selectSpecs(['apps/web/src/features/expenses/expenses-page.tsx']);
+  assert.equal(scope.mode, 'affected');
+  assert.ok(scope.specs.includes('managed-api-isolation.spec.ts'));
+});
+
+test('selectSpecs: employee batch row selects capture through the employees feature rule', () => {
+  const scope = selectSpecs(['apps/web/src/features/employees/employee-batch-row-card.tsx']);
+  assert.equal(scope.mode, 'affected');
+  assert.ok(scope.specs.includes('employee-select-capture.spec.ts'));
+  assert.ok(!loadMap().always_specs.includes('employee-select-capture.spec.ts'));
 });
 
 test('selectSpecs: api module maps to the owning feature specs', () => {

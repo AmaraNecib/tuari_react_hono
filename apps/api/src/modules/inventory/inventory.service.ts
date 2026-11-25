@@ -19,11 +19,8 @@ import type {
   InventoryAssetChargesListByProjectInput,
   InventoryAssetChargesListByUnitInput,
   InventoryInvoiceGroupCreateInput,
-  InventoryItemDefinitionCreateInput,
-  InventoryItemDefinitionUpdateInput,
   InventoryOutboundTransferCreateInput,
   InventoryItemOfferSource,
-  InventoryItemUsage,
   InventoryReport,
   ItemOfferCandidate,
   MovementReport,
@@ -31,8 +28,9 @@ import type {
 
 import { InventoryError } from "./inventory.errors"
 import { addQuantity, quantityDifferenceMatches, roundQuantity, subtractQuantity } from "./inventory.helpers"
-import { normalizePageSize } from "../shared/cursor"
-import { StructuredLogger } from "../../infrastructure/observability/logger"
+import { CatalogService } from "./catalog.service"
+import { InventoryAttachmentService } from "./inventory-attachment.service"
+import { createInventoryMutationAudit, type WorkspaceAdminAuthorizer } from "./inventory-mutation-audit"
 import { CompanyError } from "../company/company.errors"
 import { createAlgeriaTimestamp } from "../company/company-time"
 import { accumulateReportMoney, ageInDays, REPORT_MONEY_OVERFLOW_MESSAGE, resolveReportWindow, roundMoney } from "../company/report.helpers"
@@ -42,8 +40,6 @@ import type {
   InventoryConsumableBalanceRecord,
   InventoryItemDefinitionRecord,
   InventoryItemStockHolding,
-  InventoryUploadFile,
-  InventoryStoredUpload,
 } from "./inventory.types"
 import type { InventoryRepository } from "./inventory.repository"
 import { InventoryAttachmentStorage } from "./inventory.storage"
@@ -52,18 +48,6 @@ import type { AssetChargeService } from "./asset-charge.service"
 type DebtService = {
   createDebtAccount(input: DebtAccountCreateInput, auditContext?: MutationAuditContext): { success: true; item: { id: string } }
   createDebtEntry(input: DebtEntryCreateInput, auditContext?: MutationAuditContext): { success: true; item: { id: string } }
-}
-
-type WorkspaceAdminAuthorizer = {
-  isBootstrapOwner(userId: string): boolean
-}
-
-function normalizeMutationAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
-  return {
-    actorUserId: auditContext?.actorUserId ?? null,
-    actorLabel: auditContext?.actorLabel ?? null,
-    transactionId: auditContext?.transactionId ?? crypto.randomUUID(),
-  }
 }
 
 function successResult<T>(message: string, item: T) {
@@ -324,16 +308,6 @@ function itemOfferCandidate(
   }
 }
 
-const ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES = new Set([
-  "application/pdf",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-])
-const MAX_INVOICE_ATTACHMENT_COUNT = 10
-const MAX_INVOICE_ATTACHMENT_SIZE = 5 * 1024 * 1024
-const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 15 * 1024 * 1024
-
 // ---------------------------------------------------------------------------
 // Report aggregation helpers (shared with FinanceService — see
 // ../company/report.helpers.ts)
@@ -344,6 +318,8 @@ const MAX_INVOICE_ATTACHMENT_TOTAL_SIZE = 15 * 1024 * 1024
  * Inventory service handling item definitions, movements, invoices, transfers, and location contents.
  */
 export class InventoryService {
+  private readonly catalog: CatalogService
+  private readonly attachments: InventoryAttachmentService
   constructor(
     private readonly repository: InventoryRepository,
     private readonly storage: InventoryAttachmentStorage,
@@ -358,128 +334,20 @@ export class InventoryService {
      * exists to prevent (#422 round 5).
      */
     private readonly assetChargeService?: AssetChargeService,
-  ) {}
-
-  /** createMutationAuditContext. */
-  private createMutationAuditContext(auditContext?: MutationAuditContext): Required<MutationAuditContext> {
-    const audit = normalizeMutationAuditContext(auditContext)
-
-    if (!this.workspaceAdminAuthorizer) {
-      return audit
-    }
-
-    if (!audit.actorUserId || !this.workspaceAdminAuthorizer.isBootstrapOwner(audit.actorUserId)) {
-      throw new InventoryError("UNAUTHORIZED", "هذا الإجراء متاح فقط لحساب الإدارة الرئيسي.")
-    }
-
-    return audit
+  ) {
+    this.catalog = new CatalogService(repository, workspaceAdminAuthorizer)
+    this.attachments = new InventoryAttachmentService(repository, storage, workspaceAdminAuthorizer)
   }
 
-/** List item definitions with optional filters. */
-  listItemDefinitions(filters?: { itemType?: "CONSUMABLE" | "ASSET"; isActive?: boolean }) {
-    return { items: this.repository.listItemDefinitions(filters) }
+  private createMutationAuditContext(auditContext?: MutationAuditContext) {
+    return createInventoryMutationAudit(auditContext, this.workspaceAdminAuthorizer)
   }
 
-  /**
-   * Usage-scoped, paged item options for a picker.
-   *
-   * The offer rule is resolved once here and handed to the repository as data,
-   * so the read and the write gate (`createInvoiceGroup`) cannot drift.
-   */
-  listItemDefinitionOptions(input: {
-    usage: InventoryItemUsage
-    search?: string
-    cursor?: string
-    limit?: number
-  }): { items: InventoryItemDefinitionRecord[]; total: number; nextCursor: string | null; hasMore: boolean } {
-    const page = this.repository.listItemDefinitionsPaged({
-      filter: resolveItemOffer(input.usage),
-      search: input.search,
-      cursor: input.cursor,
-      limit: normalizePageSize(input.limit),
-    })
-
-    if (page.cursorReset) {
-      // A cursor from a different filter/search is not an error the picker can
-      // act on; restart at the first page and leave a trace for operators.
-      StructuredLogger.warn("Item-options cursor reset", {
-        surface: input.usage.surface,
-        search: input.search ?? null,
-      })
-    }
-
-    return {
-      items: page.items,
-      total: page.total,
-      nextCursor: page.nextCursor,
-      hasMore: page.nextCursor !== null,
-    }
-  }
-
-  /** getItemDefinition. */
-  getItemDefinition(id: string) {
-    const item = this.repository.getItemDefinitionById(id)
-    if (!item) {
-      throw new InventoryError("NOT_FOUND", "تعذر العثور على تعريف العنصر المطلوب.")
-    }
-
-    return successResult("تم تحميل تعريف العنصر بنجاح.", item)
-  }
-
-/** Create a new item definition. */
-  createItemDefinition(input: InventoryItemDefinitionCreateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
-
-    const item = this.repository.createItemDefinition({
-      name: input.name.trim(),
-      itemType: input.itemType,
-      unit: input.itemType === "CONSUMABLE" ? normalizeText(input.unit) : null,
-      description: normalizeText(input.description),
-    }, audit)
-
-    return successResult("تم إنشاء تعريف العنصر بنجاح.", item)
-  }
-
-/** Update an existing item definition. */
-  updateItemDefinition(input: InventoryItemDefinitionUpdateInput, auditContext?: MutationAuditContext) {
-    const audit = this.createMutationAuditContext(auditContext)
-
-    const current = this.repository.getItemDefinitionById(input.id)
-    if (!current) {
-      throw new InventoryError("NOT_FOUND", "تعذر العثور على تعريف العنصر المطلوب.")
-    }
-
-    const nextItemType = input.itemType ?? current.itemType
-    const nextUnit = nextItemType === "CONSUMABLE"
-      ? input.unit !== undefined
-        ? normalizeText(input.unit)
-        : current.unit
-      : null
-
-    if (nextItemType === "CONSUMABLE" && !nextUnit) {
-      throw new InventoryError("VALIDATION", "يجب إدخال وحدة قياس للمواد الاستهلاكية.", [{ field: "unit", message: "يجب إدخال وحدة قياس للمواد الاستهلاكية." }])
-    }
-
-    // Close the retroactive bypass: a definition's type is a fact the offer
-    // rule reads, so flipping it while entries reference it would make the rule
-    // a lie for existing rows. This is a behaviour change to an admin action.
-    if (nextItemType !== current.itemType && this.repository.countEntriesByItemDefinitionId(input.id) > 0) {
-      throw new InventoryError("CONFLICT", "لا يمكن تغيير نوع عنصر مستخدم في فواتير قائمة.", [
-        { field: "itemType", message: "لا يمكن تغيير نوع عنصر مستخدم في فواتير قائمة." },
-      ])
-    }
-
-    const item = this.repository.updateItemDefinition({
-      id: input.id,
-      name: input.name?.trim(),
-      itemType: nextItemType,
-      unit: nextUnit,
-      description: input.description !== undefined ? normalizeText(input.description) : undefined,
-      isActive: input.isActive,
-    }, audit)
-
-    return successResult("تم تحديث تعريف العنصر بنجاح.", item!)
-  }
+  listItemDefinitions(...args: Parameters<CatalogService["listItemDefinitions"]>) { return this.catalog.listItemDefinitions(...args) }
+  listItemDefinitionOptions(...args: Parameters<CatalogService["listItemDefinitionOptions"]>) { return this.catalog.listItemDefinitionOptions(...args) }
+  getItemDefinition(...args: Parameters<CatalogService["getItemDefinition"]>) { return this.catalog.getItemDefinition(...args) }
+  createItemDefinition(...args: Parameters<CatalogService["createItemDefinition"]>) { return this.catalog.createItemDefinition(...args) }
+  updateItemDefinition(...args: Parameters<CatalogService["updateItemDefinition"]>) { return this.catalog.updateItemDefinition(...args) }
 
 /** List invoice groups with optional filters. */
   listInvoiceGroups(filters?: { warehouseId?: string; projectId?: string }) {
@@ -1043,101 +911,8 @@ export class InventoryService {
     return this.getLocationContents({ warehouseId: input.toWarehouseId ?? null, projectId: input.toProjectId ?? null })
   }
 
-  /** addInvoiceAttachments. */
-  async addInvoiceAttachments(invoiceGroupId: string, files: InventoryUploadFile[], auditContext?: MutationAuditContext) {
-    this.createMutationAuditContext(auditContext)
-
-    const group = this.repository.getInvoiceGroupById(invoiceGroupId)
-    if (!group) {
-      throw new InventoryError("NOT_FOUND", "تعذر العثور على الفاتورة المطلوبة.")
-    }
-
-    if (files.length === 0) {
-      throw new InventoryError("VALIDATION", "يجب اختيار ملف واحد على الأقل.")
-    }
-
-    if (files.length > MAX_INVOICE_ATTACHMENT_COUNT) {
-      throw new InventoryError("VALIDATION", "عدد الملفات المرفوعة كبير جدًا.", [
-        { field: "files", message: `الحد الأقصى هو ${MAX_INVOICE_ATTACHMENT_COUNT} ملفات لكل فاتورة.` },
-      ])
-    }
-
-    const totalFileSize = files.reduce((sum, file) => sum + file.size, 0)
-    if (totalFileSize > MAX_INVOICE_ATTACHMENT_TOTAL_SIZE) {
-      throw new InventoryError("VALIDATION", "إجمالي حجم الملفات كبير جدًا.", [
-        { field: "files", message: "يرجى تقليل إجمالي حجم المرفقات قبل الرفع." },
-      ])
-    }
-
-    const savedFiles: Array<InventoryStoredUpload> = []
-
-    try {
-      for (const file of files) {
-        if (!ALLOWED_INVOICE_ATTACHMENT_MIME_TYPES.has(file.type)) {
-          throw new InventoryError("VALIDATION", `نوع الملف غير مدعوم: ${file.name}`)
-        }
-
-        if (file.size > MAX_INVOICE_ATTACHMENT_SIZE) {
-          throw new InventoryError("VALIDATION", `حجم الملف كبير جدًا: ${file.name}`)
-        }
-
-        // Read the bytes only after every limit check passes — over-limit
-        // requests are rejected before any byte-array copy is allocated
-        // (issue #214: lazy bytes owned by the module, not the transport).
-        const byteContent = await file.bytes()
-
-        const saved = await this.storage.saveInvoiceAttachment({
-          invoiceGroupId,
-          originalName: file.name,
-          bytes: byteContent,
-        })
-
-        savedFiles.push({
-          id: saved.attachmentId,
-          originalName: file.name,
-          mimeType: file.type,
-          byteSize: file.size,
-          storageKey: saved.storageKey,
-          relativePath: saved.relativePath,
-          sha256: saved.sha256,
-        })
-      }
-
-      const attachments = this.repository.withTransaction(() =>
-        savedFiles.map((file) =>
-          this.repository.createAttachment({
-            invoiceGroupId,
-            originalName: file.originalName,
-            mimeType: file.mimeType,
-            byteSize: file.byteSize,
-            storageKey: file.storageKey,
-            relativePath: file.relativePath,
-            sha256: file.sha256,
-          }),
-        ),
-      )
-
-      return attachments
-    } catch (error) {
-      await Promise.all(savedFiles.map((file) => this.storage.deleteRelativePath(file.relativePath)))
-      throw error
-    }
-  }
-
-  /** getAttachmentDownload. */
-  async getAttachmentDownload(id: string) {
-    const attachment = this.repository.getAttachmentById(id)
-    if (!attachment) {
-      throw new InventoryError("NOT_FOUND", "تعذر العثور على الملف المطلوب.")
-    }
-
-    const body = await this.storage.readRelativePath(attachment.relativePath)
-
-    return {
-      attachment,
-      body,
-    }
-  }
+  addInvoiceAttachments(...args: Parameters<InventoryAttachmentService["addInvoiceAttachments"]>) { return this.attachments.addInvoiceAttachments(...args) }
+  getAttachmentDownload(...args: Parameters<InventoryAttachmentService["getAttachmentDownload"]>) { return this.attachments.getAttachmentDownload(...args) }
 
 /** Record a payment against an invoice group. */
   recordInvoicePayment(input: { invoiceGroupId: string; amountDzd: number; note?: string | null }, auditContext?: MutationAuditContext) {

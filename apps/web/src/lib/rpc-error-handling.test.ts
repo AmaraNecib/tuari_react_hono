@@ -19,10 +19,10 @@ class WireGateError extends Error {
 
 describe("rpc-error-handling", () => {
   describe("extractRpcIssueMessage", () => {
-    it("should extract message from Error instance", () => {
+    it("suppresses operational Error text", () => {
       const error = new Error("Something went wrong")
       const result = extractRpcIssueMessage(error)
-      expect(result).toBe("Something went wrong")
+      expect(result).toBeNull()
     })
 
     it("should return null for Error with empty message", () => {
@@ -176,16 +176,16 @@ describe("rpc-error-handling", () => {
   })
 
   describe("buildErrorMessage", () => {
-    it("should return RPC extracted message when available", () => {
+    it("uses the safe fallback for operational RPC errors", () => {
       const error = new Error("RPC error message")
       const result = buildErrorMessage(error, "fallback")
-      expect(result).toBe("RPC error message")
+      expect(result).toBe("fallback")
     })
 
-    it("should return error.message when RPC message not available", () => {
+    it("never falls back to raw exception messages", () => {
       const error = new Error("Direct error message")
       const result = buildErrorMessage(error, "fallback")
-      expect(result).toBe("Direct error message")
+      expect(result).toBe("fallback")
     })
 
     it("should return fallback when no error messages available", () => {

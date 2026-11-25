@@ -10,8 +10,8 @@ export type ExactInventoryAction =
   | { kind: "createOutbound"; input: ExactInventoryOutboundInput }
   | { kind: "updateCharge"; input: ExactInventoryChargeUpdate }
   | { kind: "voidCharge"; input: ExactInventoryChargeVoid }
-export function useExactInventoryInvoices(client: ExactInventoryClient) {
-  return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "invoices"], queryFn: () => client.listInvoices() })
+export function useExactInventoryInvoices(client: ExactInventoryClient, { enabled = true }: { enabled?: boolean } = {}) {
+  return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "invoices"], enabled, queryFn: () => client.listInvoices() })
 }
 export function useExactInventoryDefinitions(client: ExactInventoryClient) {
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "definitions"], queryFn: () => client.definitions() })
@@ -30,6 +30,10 @@ export function useExactInventoryOutbounds(client: ExactInventoryClient) {
 export function useExactProjectContribution(client: ExactInventoryClient, projectId: string | null) {
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "contribution", projectId], enabled: projectId !== null,
     queryFn: () => { if (!projectId) throw new Error("Select a project"); return client.projectContribution({ projectId }) } })
+}
+export function useExactAssetHistory(client: ExactInventoryClient, assetUnitId: string | null) {
+  return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "asset-history", assetUnitId], enabled: assetUnitId !== null,
+    queryFn: () => { if (!assetUnitId) throw new Error("Select an inventory asset"); return client.assetHistory({ assetUnitId }) } })
 }
 export function useExactProjectCharges(client: ExactInventoryClient, projectId: string | null) {
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "charges", projectId], enabled: projectId !== null,

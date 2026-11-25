@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { toast } from "sonner"
+import { createErrorId, formatErrorCode, recordUiFailure } from "./error-correlation"
 
 function ToastMessage({ id, message }: { id: string | number; message: ReactNode }) {
   return (
@@ -20,9 +21,31 @@ export function showSuccessToast(message: ReactNode) {
   return id
 }
 
-/** Shows an error toast notification. */
-export function showErrorToast(message: ReactNode) {
+/** Correctable input feedback is not an operational failure. */
+export function showValidationToast(message: ReactNode) {
   const id = `toast-${crypto.randomUUID()}`
   toast.error(<ToastMessage id={id} message={message} />, { id })
+  return id
+}
+
+/** Shows an operational failure with a local correlation code. */
+export function showErrorToast(message: ReactNode) {
+  const id = `toast-${crypto.randomUUID()}`
+  const errorId = createErrorId()
+  void recordUiFailure(errorId)
+  toast.error(
+    <ToastMessage
+      id={id}
+      message={
+        <>
+          {message}
+          <bdi dir="ltr" className="mt-1 block font-mono text-xs">
+            {formatErrorCode(errorId)}
+          </bdi>
+        </>
+      }
+    />,
+    { id },
+  )
   return id
 }

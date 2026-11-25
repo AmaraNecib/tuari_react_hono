@@ -1,0 +1,9 @@
+# Issue 176 shell copy and route proof
+
+Base cc7f75b4. Finish parent-owned displayed shell copy extraction in breadcrumbs, section copy, external profile title, update picker/browser errors, dashboard currency and sidebar branding. Existing nav group keys replace duplicated fallback literals. Preserve Arabic error-message classification and parsing syntax rather than changing behavior to satisfy a raw grep. Test fixtures and comments are not user-facing literals. Locale support remains Arabic only.
+
+M2 proof now mounts both debts and debt-create through HomeView, verifies worker/project-manager/warehouse-manager options, selects each manager and asserts the exact create command carries that employee ID as INTERNAL_WORKER. A shared hoisted mock exposes the existing command seam without mocking the debt page or option builder. Existing unrelated feature tests remain intact.
+
+M6 proof uses the actual route tree with memory history for unknown URL and /roles, verifying404, translated heading and home destination. Only AppProviders is stubbed because this screen has no authenticated data requirement. This is routing/component proof, not backend or browser proof. M5 responsive classes retain desktop padding and reduce mobile crowding; final RTL/LTR browser comparison remains required.
+
+Focused shell/route execution found one dashboard test whose key-only translation mock hid the new currency resource. Replace that mock with real resources; all seven dashboard tests pass. Other83 tests from that affected five-file run pass. New manager tests pass for both routes. Web typecheck passes. Raw failed attempts retained. Final integrated reviews/browser/CI remain pending, mode focused-local / CI-final-pending. No schema, contract, dependency, protection, receipt, financial operation or locale change. Architecture no seam moved; test helper only exposes the existing command boundary.

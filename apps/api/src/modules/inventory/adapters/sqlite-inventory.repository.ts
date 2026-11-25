@@ -485,6 +485,11 @@ export class DrizzleInventoryRepository implements InventoryRepository {
     return row?.invoiceNumber ?? null
   }
 
+  invoiceGroupExists(id: string) {
+    return this.db.select({ id: schema.inventoryInvoiceGroup.id }).from(schema.inventoryInvoiceGroup)
+      .where(eq(schema.inventoryInvoiceGroup.id, id)).limit(1).all().length > 0
+  }
+
   /** getInvoiceGroupById. */
   getInvoiceGroupById(id: string) {
     const row = this.db.select().from(schema.inventoryInvoiceGroup)

@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next"
 import type { HomeViewPage } from "@/features/app-shell/home-view"
 import { AppProviders } from "@/providers/app-providers"
 import { AppShellSkeleton } from "@/components/skeleton"
+import { parseSalariesSearch, patchSalariesSearch } from "@/features/app-shell/salaries-route-search"
 
 const HomeView = lazy(async () => import("@/features/app-shell/home-view").then((module) => ({ default: module.HomeView })))
 
@@ -103,6 +104,14 @@ const employeeEditRoute = createRoute({
   path: "/employees/$employeeId/edit",
   component: EmployeeEditRouteComponent,
 })
+const employeeEarningCreateRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/employees/$employeeId/earnings/new",
+  validateSearch: (search: Record<string, unknown>) => ({
+    returnTo: search.returnTo === "salaries" ? "salaries" as const : "employee-finance" as const,
+  }),
+  component: EmployeeEarningCreateRouteComponent,
+})
 const externalDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/externals/$externalId",
@@ -110,7 +119,12 @@ const externalDetailsRoute = createRoute({
 })
 const projectsRoute = createWorkspaceRoute("/projects", "projects")
 const projectsCreateRoute = createWorkspaceRoute("/projects/create", "project-create")
-const salariesRoute = createWorkspaceRoute("/salaries", "salaries")
+const salariesRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/salaries",
+  validateSearch: parseSalariesSearch,
+  component: SalariesRouteComponent,
+})
 const projectDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/projects/$projectId",
@@ -182,6 +196,24 @@ function EmployeeEditRouteComponent() {
   return renderHomeView(<HomeView employeeId={employeeId} page="employee-edit" />)
 }
 
+function EmployeeEarningCreateRouteComponent() {
+  const { employeeId } = employeeEarningCreateRoute.useParams()
+  const { returnTo } = employeeEarningCreateRoute.useSearch()
+  return renderHomeView(<HomeView employeeId={employeeId} earningApproval returnTo={returnTo} page="employee-details" />)
+}
+
+function SalariesRouteComponent() {
+  const search = salariesRoute.useSearch()
+  const navigate = salariesRoute.useNavigate()
+  return renderHomeView(
+    <HomeView
+      page="salaries"
+      salariesSearch={search}
+      onSalariesSearchChange={patch => void navigate({ search: previous => patchSalariesSearch(previous, patch) })}
+    />,
+  )
+}
+
 function ExternalDetailsRouteComponent() {
   const { externalId } = externalDetailsRoute.useParams()
   return renderHomeView(<HomeView counterpartyId={externalId} page="external-details" />)
@@ -225,6 +257,7 @@ const routeTree = rootRoute.addChildren([
   externalCreateRoute,
   employeeDetailsRoute,
   employeeEditRoute,
+  employeeEarningCreateRoute,
   externalDetailsRoute,
   projectsRoute,
   projectsCreateRoute,

@@ -191,7 +191,7 @@ export function SecuritySection({
           </label>
 
           {keyError && <p className="text-xs text-destructive">{keyError}</p>}
-          {keySuccess && <p className="text-xs text-green-600">{t("shell.settingsSecurityChangeKeySuccess")}</p>}
+          {keySuccess && <p className="text-xs text-good">{t("shell.settingsSecurityChangeKeySuccess")}</p>}
 
           <Button
             disabled={isChangingKey || !currentKey.trim() || newKey.trim().length < 8}

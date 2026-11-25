@@ -1,3 +1,5 @@
+import { ExpenseAttachments } from "./expense-attachments"
+import { i18n as featureI18n } from "@/i18n"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 
@@ -195,7 +197,7 @@ function ExpenseFormView<Amount extends string | number>({
         <div className="space-y-4">
           {exact ? (
             <CurrencyAmountInput exact label={t("expenses.form.amount")} placeholder="0" value={amount} onChange={setAmount}
-              error={amount.trim() && !hasValidAmount ? "أدخل مبلغاً موجباً بدقة لا تتجاوز منزلتين عشريتين ضمن النطاق المدعوم." : undefined} />
+              error={amount.trim() && !hasValidAmount ? featureI18n.t("featureCopy.expenseFormDialog.invalidAmount") : undefined} />
           ) : (
             <label className="flex flex-col gap-2">
               <span className="text-sm font-medium">{t("expenses.form.amount")}</span>
@@ -298,6 +300,8 @@ function ExpenseFormView<Amount extends string | number>({
               placeholder={t("common.noNotes")}
             />
           </label>
+
+          {open && expense && <ExpenseAttachments key={expense.id} expenseId={expense.id} />}
 
           {isEdit ? (
             <label className="flex flex-col gap-2">

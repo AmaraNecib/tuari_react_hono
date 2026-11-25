@@ -5,6 +5,39 @@ export type RuntimeConfig = {
   apiBaseUrl: string;
 };
 
+export type DiagnosticEvent = {
+  occurredAt: string;
+  level: "error" | "warn" | "info";
+  category: string;
+  errorId: number | null;
+};
+
+export type DiagnosticLoggingStatus = {
+  enabled: boolean;
+  initialized: boolean;
+  bufferedEventCount: number;
+  droppedEventCount: number;
+};
+
+export type RecentDiagnosticEvents = {
+  events: DiagnosticEvent[];
+  status: DiagnosticLoggingStatus;
+};
+
+export type SupportBundleResult =
+  | { status: "saved"; savedPath: string }
+  | { status: "cancelled" };
+
+export async function getRecentDiagnosticEvents(): Promise<RecentDiagnosticEvents> {
+  const invoke = await getInvoke();
+  return invoke<RecentDiagnosticEvents>("get_recent_diagnostic_events");
+}
+
+export async function exportSupportBundle(): Promise<SupportBundleResult> {
+  const invoke = await getInvoke();
+  return invoke<SupportBundleResult>("export_support_bundle");
+}
+
 export type RuntimeStatus = {
   checkedAt: string;
   environment: "desktop" | "browser";

@@ -904,6 +904,8 @@ describe("createBackupService", () => {
     mkdirSync(stale, { recursive: true });
     // A crashed run leaves our partial copy behind, not just an empty folder.
     writeFileSync(join(stale, BACKUP_DB_FILE_NAME), "partial");
+    mkdirSync(join(stale, "attachments", "group"), { recursive: true });
+    writeFileSync(join(stale, "attachments", "group", "partial.pdf"), "partial");
     const service = createBackupService({
       snapshot: stubSnapshotter(),
       backupsRootPath: backupsRoot,

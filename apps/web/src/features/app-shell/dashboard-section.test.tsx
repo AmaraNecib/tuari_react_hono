@@ -3,38 +3,23 @@ import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 
 import { DashboardSection } from "./dashboard-section"
+import "@/i18n"
 
-// Mock react-i18next to return Arabic strings for the keys the component
-// uses (same pattern as roles-section.test.tsx).
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => {
-      const map: Record<string, string> = {
-        "detailPages.shell.itemsGuide": "دليل العناصر",
-        "dashboard.quickActions.addProject": "إضافة مشروع",
-        "dashboard.quickActions.addWarehouse": "إضافة مستودع",
-        "dashboard.quickActions.addInvoice": "إضافة فاتورة",
-        "dashboard.quickActions.newTransfer": "تحويل جديد",
-      }
-      return map[key] ?? key
-    },
-  }),
-}))
-
-// Mock the feature-scoped queries the section aggregates from (issue #23).
+// Mock the exact financial reads used by the production dashboard.
 const mocks = vi.hoisted(() => ({
   debtsSummary: vi.fn(),
   invoiceGroups: vi.fn(),
   itemDefinitions: vi.fn(),
+  financial: { debts: { summary: vi.fn() }, inventory: { listInvoices: vi.fn(), definitions: vi.fn() } },
 }))
 
-vi.mock("@/features/debts/debts-queries", () => ({
-  useDebtsSummaryQuery: () => mocks.debtsSummary(),
+vi.mock("@/lib/orpc-client", () => ({ financialClient: mocks.financial }))
+vi.mock("@/features/debts/debts-exact-queries", () => ({
+  useExactDebtSummary: (client: unknown) => { expect(client).toBe(mocks.financial.debts); return mocks.debtsSummary() },
 }))
-
-vi.mock("@/features/inventory/inventory-hooks", () => ({
-  useInventoryInvoiceGroupsQuery: () => mocks.invoiceGroups(),
-  useInventoryItemDefinitionsQuery: () => mocks.itemDefinitions(),
+vi.mock("@/features/inventory/inventory-exact-queries", () => ({
+  useExactInventoryInvoices: (client: unknown) => { expect(client).toBe(mocks.financial.inventory); return mocks.invoiceGroups() },
+  useExactInventoryDefinitions: (client: unknown) => { expect(client).toBe(mocks.financial.inventory); return mocks.itemDefinitions() },
 }))
 
 const LABELS = {
@@ -80,39 +65,10 @@ describe("DashboardSection (issue #23)", () => {
 
   it("renders open invoices, outstanding debts, items and counterparties from the feature queries", () => {
     mocks.debtsSummary.mockReturnValue({
-      data: {
-        parties: [],
-        debtAccounts: [
-          {
-            accountId: "debt-1",
-            partyType: "EXTERNAL_COUNTERPARTY",
-            workerId: null,
-            externalCounterpartyId: "external-1",
-            displayName: "طرف 1",
-            phoneNumber: null,
-            status: "OPEN",
-            direction: "PAYABLE",
-            currentBalance: 1500,
-            balanceLabel: "مستحق علينا",
-            createdAt: "2026-03-13T10:00:00.000Z",
-            updatedAt: "2026-03-13T10:00:00.000Z",
-          },
-          {
-            accountId: "debt-2",
-            partyType: "EXTERNAL_COUNTERPARTY",
-            workerId: null,
-            externalCounterpartyId: "external-2",
-            displayName: "طرف 2",
-            phoneNumber: null,
-            status: "SETTLED",
-            direction: "PAYABLE",
-            currentBalance: 5000,
-            balanceLabel: "مسوّى",
-            createdAt: "2026-03-13T10:00:00.000Z",
-            updatedAt: "2026-03-13T10:00:00.000Z",
-          },
-        ],
-      },
+      data: { accounts: [
+        { id: "debt-1", partyType: "EXTERNAL_COUNTERPARTY", workerId: null, externalCounterpartyId: "external-1", status: "OPEN", direction: "PAYABLE", currentBalance: "1500.00" },
+        { id: "debt-2", partyType: "EXTERNAL_COUNTERPARTY", workerId: null, externalCounterpartyId: "external-2", status: "SETTLED", direction: "PAYABLE", currentBalance: "5000.00" },
+      ] },
       isPending: false,
       isError: false,
     })
@@ -120,17 +76,15 @@ describe("DashboardSection (issue #23)", () => {
     // invoices = 1, items = 3, open-debt balance = 1,500 (settled 5,000
     // excluded).
     mocks.invoiceGroups.mockReturnValue({
-      data: {
-        items: [
-          { id: "inv-1", remainingDebtDzd: 0 },
-          { id: "inv-2", remainingDebtDzd: 800 },
-        ],
-      },
+      data: [
+        { id: "inv-1", remainingDebtDzd: "0.00" },
+        { id: "inv-2", remainingDebtDzd: "800.00" },
+      ],
       isPending: false,
       isError: false,
     })
     mocks.itemDefinitions.mockReturnValue({
-      data: { items: [{ id: "item-1" }, { id: "item-2" }, { id: "item-3" }] },
+      data: [{ id: "item-1" }, { id: "item-2" }, { id: "item-3" }],
       isPending: false,
       isError: false,
     })
@@ -150,6 +104,23 @@ describe("DashboardSection (issue #23)", () => {
     // counterparties = 5 (prop, from home-view-derived metrics)
     expect(screen.getByText("5")).toBeDefined()
     expect(screen.getByText("الجهات الخارجية")).toBeDefined()
+  })
+
+  it.each(["00", "01"])("keeps wide debt totals exact with cents %s when aggregating dashboard balances", cents => {
+    mocks.debtsSummary.mockReturnValue({
+      data: { accounts: [
+        { id: "large", status: "OPEN", currentBalance: "60000000000000000.00" },
+        { id: "cents", status: "OPEN", currentBalance: `60000000000000000.${cents}` },
+      ] },
+      isPending: false,
+      isError: false,
+    })
+    mocks.invoiceGroups.mockReturnValue({ data: [], isPending: false, isError: false })
+    mocks.itemDefinitions.mockReturnValue({ data: [], isPending: false, isError: false })
+
+    renderDashboard({ workers: 0, projects: 0, warehouses: 0, roles: 0, counterparties: 0 })
+
+    expect(screen.getByText(`120.000.000.000.000.000${cents === "00" ? "" : ".01"}`, { selector: 'bdi[dir="ltr"]' })).toBeTruthy()
   })
 
   it("shows a placeholder instead of zero while the feature queries are pending", () => {
@@ -179,17 +150,17 @@ describe("DashboardSection (issue #23)", () => {
     // A background refetch that fails AFTER data has loaded keeps the cached
     // data; isError alone must NOT replace the valid totals with "—".
     mocks.debtsSummary.mockReturnValue({
-      data: { parties: [], debtAccounts: [] },
+      data: { accounts: [] },
       isPending: false,
       isError: true,
     })
     mocks.invoiceGroups.mockReturnValue({
-      data: { items: [{ id: "inv-1", remainingDebtDzd: 0 }, { id: "inv-2", remainingDebtDzd: 800 }] },
+      data: [{ id: "inv-1", remainingDebtDzd: "0.00" }, { id: "inv-2", remainingDebtDzd: "800.00" }],
       isPending: false,
       isError: true,
     })
     mocks.itemDefinitions.mockReturnValue({
-      data: { items: [{ id: "item-1" }, { id: "item-2" }, { id: "item-3" }] },
+      data: [{ id: "item-1" }, { id: "item-2" }, { id: "item-3" }],
       isPending: false,
       isError: true,
     })

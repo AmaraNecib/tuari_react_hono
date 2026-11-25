@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import type { ExactDebtsClient, CreateExactDebtAccount, PostExactDebtEntry, PayExactDebtEntry, CorrectExactDebtEntry, VoidExactDebtEntry, SettleExactDebtAccount } from "@tuari/contracts"
 import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
 import { getCachedSessionUserId } from "@/features/app-shell/workspace-keys"
@@ -17,8 +17,11 @@ function prefix(client: ExactDebtsClient) {
   if (scope === undefined) { scope = ++next; scopes.set(client, scope) }
   return ["phase1", "workspace", "debts-exact", scope] as const
 }
-export function useExactDebtSummary(client: ExactDebtsClient) {
-  return useWorkspaceScopedQuery({ key: userId => [...prefix(client), userId, "summary"], queryFn: () => client.summary() })
+export function invalidateExactDebtQueries(queries: QueryClient, client: ExactDebtsClient, owner: string | null) {
+  return queries.invalidateQueries({ queryKey: [...prefix(client), owner] })
+}
+export function useExactDebtSummary(client: ExactDebtsClient, { enabled = true }: { enabled?: boolean } = {}) {
+  return useWorkspaceScopedQuery({ key: userId => [...prefix(client), userId, "summary"], enabled, queryFn: () => client.summary() })
 }
 export function useExactDebtDetail(client: ExactDebtsClient, id: string | null) {
   return useWorkspaceScopedQuery({ key: userId => [...prefix(client), userId, "detail", id], enabled: id !== null,
@@ -43,6 +46,11 @@ export function useExactDebtCommand(client: ExactDebtsClient) {
       })()
       return { result, owner }
     },
-    onSuccess: async ({ owner }) => { await queries.invalidateQueries({ queryKey: [...prefix(client), owner] }) },
+    onSuccess: async ({ owner }) => {
+      await Promise.all([
+        queries.invalidateQueries({ queryKey: [...prefix(client), owner] }),
+        queries.invalidateQueries({ queryKey: ["manual-settlement"] }),
+      ])
+    },
   })
 }

@@ -1,8 +1,76 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, globSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { selectCiScope } from '../scripts/ci/ci-scope.mjs';
 import { acceptanceErrors } from '../scripts/ci/ci-acceptance.mjs';
+
+test('connected failure upload maps only the dedicated artifact directory including hidden scratch paths', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const step = ci.split('      - name: Upload connected payroll failure artifacts\n')[1]?.split('\n      - name:')[0];
+  assert.ok(step, 'connected artifacts need a dedicated upload');
+  assert.match(step, /if: needs\.detect\.outputs\.e2e_mode != 'skip' && !cancelled\(\)/);
+  assert.match(step, /uses: actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  assert.match(step, /include-hidden-files: true/);
+  assert.match(step, /retention-days: 7/);
+  assert.match(step, /if-no-files-found: ignore/);
+  const pattern = step.match(/^          path: (.+)$/m)?.[1];
+  assert.equal(pattern, '.scratch/reviews/558-connected/run-*/artifacts/**');
+  const config = readFileSync(new URL('../playwright.connected-exact.config.ts', import.meta.url), 'utf8');
+  assert.match(config, /mkdtempSync\(resolve\("\.scratch\/reviews\/558-connected\/run-"\)\)/);
+  assert.match(config, /outputDir: resolve\(run, "artifacts"\)/);
+  assert.match(config, /trace: "retain-on-failure"/);
+  const fixture = mkdtempSync(join(tmpdir(), '579-upload-'));
+  for (const file of ['artifacts/case/trace.zip', 'artifacts/case/screenshot.png', 'exact.sqlite',
+    'config.json', 'attachments/invoice.png', 'backups/backup.sqlite', 'session/auth.json']) {
+    const target = join(fixture, '.scratch/reviews/558-connected/run-fixture', file);
+    mkdirSync(join(target, '..'), { recursive: true });
+    writeFileSync(target, 'synthetic');
+  }
+  const selected = [...globSync(pattern, { cwd: fixture })].filter(file => /\.(zip|png|sqlite|json)$/.test(file)).map(file => file.replaceAll('\\', '/')).sort();
+  assert.deepEqual(selected, ['.scratch/reviews/558-connected/run-fixture/artifacts/case/screenshot.png',
+    '.scratch/reviews/558-connected/run-fixture/artifacts/case/trace.zip']);
+});
+
+test('manual settlement failure upload selects only retained traces and approved page captures', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  const step = ci.split('      - name: Upload manual settlement failure artifacts\n')[1]?.split('\n      - name:')[0];
+  assert.ok(step, 'manual runs need their own upload');
+  assert.match(step, /if: failure\(\) && !cancelled\(\) && needs\.detect\.outputs\.e2e_mode != 'skip'/);
+  assert.match(step, /uses: actions\/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02/);
+  for (const setting of ['include-hidden-files: true', 'if-no-files-found: ignore', 'retention-days: 7']) assert.ok(step.includes(setting));
+  const paths = step.split('          path: |\n')[1]?.split('\n').filter(line => line.startsWith('            ')).map(line => line.trim());
+  const captures = [
+    'activity-viewport', 'settlements-idle-viewport', 'preview-element',
+    'form-element', 'preview-viewport', 'payable-activity-links',
+    'receivable-activity-links', 'payable-history', 'receivable-history',
+    'payable-viewport', 'receivable-viewport', 'mobile-drawer',
+    'manual-settlement-element', 'settlement-viewport', 'ledger-element',
+    'viewport-sidebar', 'sidebar-element',
+  ];
+  assert.deepEqual(paths, ['.scratch/evidence/613-ui/run-*/artifacts/**/trace.zip',
+    ...captures.map(name => `.scratch/evidence/613-ui/run-*/after/*/${name}.png`)]);
+  const config = readFileSync(new URL('../playwright.manual-settlement.config.ts', import.meta.url), 'utf8');
+  assert.match(config, /outputDir: resolve\(run, "artifacts"\)/);
+  assert.match(config, /trace: "retain-on-failure"/);
+  const spec = readFileSync(new URL('../tests/e2e/manual-settlement-connected.spec.ts', import.meta.url), 'utf8');
+  for (const name of captures.filter(name => !/^(payable|receivable)-/.test(name))) assert.ok(spec.includes(name + '.png'));
+  const fixture = mkdtempSync(join(tmpdir(), '613-upload-'));
+  const base = '.scratch/evidence/613-ui/run-fixture/';
+  const approved = ['artifacts/case/trace.zip', ...captures.map(name => 'after/desktop/' + name + '.png')];
+  const refused = ['exact.sqlite', 'exact.sqlite-wal', 'config.json', 'session/auth.json',
+    'attachments/invoice.png', 'backups/backup.sqlite', 'after/desktop/auth.json',
+    'after/desktop/unapproved.png', 'after/desktop/route-clip.webm',
+    'artifacts/case/config.json', 'artifacts/case/exact.sqlite', 'artifacts/case/other.zip'];
+  for (const file of [...approved, ...refused]) {
+    const target = join(fixture, base, file);
+    mkdirSync(join(target, '..'), { recursive: true });
+    writeFileSync(target, 'synthetic');
+  }
+  const selected = [...new Set(paths.flatMap(pattern => [...globSync(pattern, { cwd: fixture })]))].map(file => file.replaceAll('\\', '/')).sort();
+  assert.deepEqual(selected, approved.map(file => base + file).sort());
+});
 
 const success = (outputs = { api: 'false', web: 'false', rust: 'false', encryption: 'false', e2e_mode: 'skip', e2e_specs: '' }) => ({
   detect: { result: 'success', outputs },
@@ -36,6 +104,27 @@ test('known docs skip expensive areas; API and Rust changes remain covered', () 
   assert.equal(rust.rust, 'true');
   assert.equal(rust.encryption, 'true');
   assert.equal(selectCiScope(['README.md']).encryption, 'false');
+});
+
+test('Windows CI executes Shell identity regressions when its files change', () => {
+  for (const file of ['scripts/smoke/portable-shell-entry-names.ps1', 'scripts/smoke/portable-shell-entry-names.test.ps1', 'scripts/smoke/check-portable-zip-shell.ps1']) {
+    assert.equal(selectCiScope([file]).encryption, 'true', file);
+  }
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const job = ci.split('\n  prove-encryption:')[1].split('\n  audit:')[0];
+  assert.match(job, /windows-2022/);
+  assert.match(job, /name: Test Windows Shell ZIP file identity\s*\n\s*if: needs\.detect\.outputs\.encryption == 'true'\s*\n\s*shell: powershell\s*\n\s*run: \.\/scripts\/smoke\/portable-shell-entry-names\.test\.ps1/);
+  assert.doesNotMatch(job, /continue-on-error/);
+});
+
+test('Nightly-only edits activate the Windows ZIP workflow replay', () => {
+  assert.equal(selectCiScope(['.github/workflows/nightly.yml']).encryption, 'true');
+});
+
+test('Windows CI runs the actual portable proof publication lifecycle', () => {
+  const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+  const job = ci.split('\n  prove-encryption:')[1].split('\n  audit:')[0];
+  assert.match(job, /name: Test Windows portable proof lifecycle\s*\n\s*if: needs\.detect\.outputs\.encryption == 'true'\s*\n\s*run: node --test --test-name-pattern="closes a separate proof process before publishing" apps\/desktop\/scripts\/build-portable\.test\.mjs/);
 });
 
 test('aggregate permits only successful checks and selector-proven skips', () => {

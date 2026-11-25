@@ -1,3 +1,4 @@
+import { i18n as featureI18n } from "@/i18n"
 import { useInfiniteQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import type {
@@ -33,21 +34,31 @@ import {
 } from "@/features/app-shell/workspace-keys"
 import { desktopApiFetch } from "@/lib/desktop-api-bridge"
 import { isDesktopRuntime } from "@/lib/desktop-auth-session"
-import { createRpcHeaders, resolveRpcCredentials, rpcClient } from "@/lib/orpc-client"
-import { buildErrorMessage } from "@/lib/rpc-error-handling"
+import { createRpcHeaders, financialClient, resolveRpcCredentials, rpcClient } from "@/lib/orpc-client"
+import { extractRpcIssueMessage } from "@/lib/rpc-error-handling"
+import { exactCommercePrefix } from "@/features/shared/exact-commerce-queries"
 import { resolveApiUrl } from "@/lib/runtime-config"
-import { showErrorToast, showSuccessToast } from "@/lib/toast"
+import { showErrorToast, showSuccessToast, showValidationToast } from "@/lib/toast"
+
+function showInventoryFailure(error: unknown, fallback: string) {
+  const field = error instanceof AppMutationError && error.code === "VALIDATION"
+    ? error.fieldErrors?.find(issue => issue.message.trim())?.message
+    : undefined
+  const validation = field ?? extractRpcIssueMessage(error)
+  if (validation) showValidationToast(validation)
+  else showErrorToast(fallback)
+}
 
 function requireEntitySuccess<T>(result: { success: boolean; message?: string; item?: T; error?: { message: string; code?: AppError["code"]; fieldErrors?: Array<{ field: string; message: string }> } }) {
   if (!result.success || !result.item) {
     throw new AppMutationError({
-      message: result.error?.message ?? "تعذر تنفيذ العملية.",
+      message: result.error?.message ?? featureI18n.t("featureCopy.inventoryHooks.operationError"),
       code: result.error?.code,
       fieldErrors: result.error?.fieldErrors,
     })
   }
 
-  return { item: result.item, message: result.message ?? "تم الحفظ بنجاح." }
+  return { item: result.item, message: result.message ?? featureI18n.t("featureCopy.inventoryHooks.saved") }
 }
 
 /**
@@ -153,7 +164,10 @@ export function useItemDefinitionOptionsQuery({
  * `OUTBOUND_PICK`'s `inStockAt` rule makes the usage-scoped options read a
  * function of where stock sits, so any mutation that moves or consumes stock
  * (a receipt, a location transfer, an outbound) invalidates that answer
- * immediately rather than at the end of the 30s stale window. The options read
+ * immediately rather than at the end of the 30s stale window. Exact inventory
+ * definitions also feed mounted movement and purchase forms, so catalog creates
+ * and stock-dependent refreshes reach that client's definition family here.
+ * The options read
  * is keyed under the `inventoryItems` prefix for exactly this reason: one
  * invalidation reaches every source, search and page variant, so the mutation
  * does not need to know which source moved.
@@ -162,7 +176,13 @@ function invalidateStockDependentItemReads(
   queryClient: Pick<QueryClient, "invalidateQueries">,
   userId: string | null,
 ): Promise<void> {
-  return invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryItems)
+  return Promise.all([
+    invalidateUserScopedQuery(queryClient, userId, workspaceQueryKeys.inventoryItems),
+    queryClient.invalidateQueries({
+      queryKey: exactCommercePrefix(financialClient.inventory),
+      predicate: query => query.queryKey[5] === "definitions" && (userId === null || query.queryKey[4] === userId),
+    }),
+  ]).then(() => {})
 }
 
 /**
@@ -288,14 +308,14 @@ export function useCreateInventoryItemDefinitionMutation() {
     mutationKey: ["inventory", "item-definitions", "create"],
     mutationFn: async (input: InventoryItemDefinitionCreateInput) => requireEntitySuccess(await rpcClient.inventoryItemDefinitionsCreate(input)),
     onSuccess: async ({ message }) => {
-      await invalidateUserScopedQuery(queryClient, getCachedSessionUserId(queryClient), workspaceQueryKeys.inventoryItems)
+      await invalidateStockDependentItemReads(queryClient, getCachedSessionUserId(queryClient))
       showSuccessToast(message)
     },
     onError: (error) => {
 /**
  * useTransferInventoryAssetMutation() component.
  */
-      showErrorToast(buildErrorMessage(error, "تعذر إنشاء تعريف العنصر."))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.definitionError"))
     },
   })
 }
@@ -328,7 +348,7 @@ export function useCreateInventoryInvoiceGroupMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر إنشاء الفاتورة."))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.invoiceError"))
     },
 /**
  * useTransferInventoryConsumableMutation() component.
@@ -364,7 +384,7 @@ export function useTransferInventoryAssetMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر تحويل الأصل."))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.assetTransferError"))
     },
   })
 }
@@ -424,7 +444,7 @@ export function useUpdateAssetChargeMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر تصحيح الاحتساب."))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.chargeCorrectionError"))
     },
   })
 }
@@ -444,7 +464,7 @@ export function useVoidAssetChargeMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر إلغاء الاحتساب."))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.chargeVoidError"))
     },
   })
 }
@@ -474,7 +494,7 @@ export function useTransferInventoryConsumableMutation() {
       showSuccessToast(message)
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر تحويل الكمية."))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.quantityTransferError"))
     },
   })
 }
@@ -523,7 +543,7 @@ export async function uploadInvoiceAttachments(invoiceGroupId: string, files: Fi
     | null
 
   if (!response.ok || !body || body.success === false) {
-    throw new Error(body && "error" in body && body.error?.message ? body.error.message : "تعذر رفع ملفات الفاتورة.")
+    throw new Error(body && "error" in body && body.error?.message ? body.error.message : featureI18n.t("featureCopy.inventoryHooks.uploadError"))
   }
 
   return body.items
@@ -552,7 +572,7 @@ export function useRecordInvoicePaymentMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر تسجيل الدفع."))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.paymentError"))
     },
   })
 }
@@ -573,7 +593,7 @@ export function useCreateOutboundTransferMutation() {
       return item
     },
     onError: (error) => {
-      showErrorToast(buildErrorMessage(error, "تعذر إنشاء التحويل الخارجي."))
+      showInventoryFailure(error, featureI18n.t("featureCopy.inventoryHooks.outboundError"))
     },
   })
 }

@@ -54,6 +54,69 @@ try {
   applyKey(copy);
   const integrity = copy.pragma("integrity_check");
   const schemaVersion = copy.pragma("user_version", { simple: true });
+  let attachments;
+  if (workerData.attachmentsRootPath) {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const crypto = require("node:crypto");
+    const root = path.resolve(workerData.attachmentsRootPath);
+    const destination = path.join(path.dirname(workerData.outputPath), "attachments");
+    const within = (base, relative) => {
+      const result = path.resolve(base, relative);
+      const remainder = path.relative(base, result);
+      if (!remainder || remainder.startsWith("..") || path.isAbsolute(remainder)) {
+        throw new Error("Attachment path escaped storage root");
+      }
+      return result;
+    };
+    const hash = (bytes) => crypto.createHash("sha256").update(bytes).digest("hex");
+    attachments = { linked: 0, copied: 0, fallbackReasons: [] };
+    const rows = [];
+    for (const table of ["inventory_invoice_attachment", "expense_attachment"]) {
+      const exists = copy.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(table);
+      if (exists) rows.push(...copy.prepare("SELECT relative_path, sha256 FROM " + table).all());
+    }
+    const included = new Map();
+    for (const row of rows) {
+      const live = within(root, row.relative_path);
+      let digest = row.sha256;
+      if (digest != null && !/^[a-f0-9]{64}$/.test(digest)) throw new Error("Invalid attachment SHA-256");
+      let object = digest ? path.join(root, "attachments-store", digest, "object") : null;
+      if (!object || !fs.existsSync(object)) {
+        const bytes = fs.readFileSync(live);
+        const actual = hash(bytes);
+        if (digest && actual !== digest) throw new Error("Attachment hash mismatch: " + row.relative_path);
+        digest = actual;
+        object = path.join(root, "attachments-store", digest, "object");
+        fs.mkdirSync(path.dirname(object), { recursive: true });
+        const temporary = object + "." + crypto.randomUUID();
+        fs.writeFileSync(temporary, bytes, { flag: "wx" });
+        try {
+          if (!fs.existsSync(object)) {
+            try { fs.renameSync(temporary, object); }
+            catch (error) { if (!fs.existsSync(object)) throw error; }
+          }
+        } finally { fs.rmSync(temporary, { force: true }); }
+      }
+      if (hash(fs.readFileSync(object)) !== digest) throw new Error("Attachment object hash mismatch: " + row.relative_path);
+      const target = within(destination, row.relative_path);
+      if (included.has(target)) {
+        if (included.get(target) !== digest) throw new Error("Conflicting attachment digests: " + row.relative_path);
+        continue;
+      }
+      included.set(target, digest);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      try {
+        fs.linkSync(object, target);
+        attachments.linked++;
+      } catch (error) {
+        if (!["EXDEV", "EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP", "EMLINK", "ENOSYS"].includes(error.code)) throw error;
+        fs.copyFileSync(object, target, fs.constants.COPYFILE_EXCL);
+        attachments.copied++;
+        attachments.fallbackReasons.push(row.relative_path + ": " + error.code);
+      }
+    }
+  }
   copy.close();
 
   const checked =
@@ -67,6 +130,7 @@ try {
       ok: true,
       schemaVersion: Number(schemaVersion) || 0,
       encrypted: Boolean(workerData.databaseKey),
+      ...(attachments ? { attachments } : {}),
     });
   }
 } catch (error) {
@@ -80,6 +144,8 @@ try {
 export type SnapshotWorkerOptions = {
   /** Live database file the worker reads a consistent snapshot of. */
   databasePath: string;
+  /** Include DB-referenced attachments from this live storage root. */
+  attachmentsRootPath?: string;
   /** SQLCipher key, when the database is encrypted. */
   databaseKey?: string | null;
   /**
@@ -115,7 +181,7 @@ const resolveDriverModule = (specifier: string): string => {
 };
 
 type SnapshotWorkerMessage =
-  | { ok: true; schemaVersion: number; encrypted: boolean }
+  | ({ ok: true } & BackupSnapshotResult)
   | { ok: false; error: string };
 
 /**
@@ -139,6 +205,7 @@ export const createWorkerSnapshotter = (
         workerData: {
           modulePath,
           databasePath: options.databasePath,
+          attachmentsRootPath: options.attachmentsRootPath,
           outputPath,
           databaseKey: options.databaseKey ?? null,
           cipherConfigPragmas: SQLCIPHER_CONFIG_PRAGMAS,
@@ -167,6 +234,7 @@ export const createWorkerSnapshotter = (
             resolve({
               schemaVersion: message.schemaVersion,
               encrypted: message.encrypted,
+              ...(message.attachments ? { attachments: message.attachments } : {}),
             });
           } else {
             reject(new Error(message.error));
