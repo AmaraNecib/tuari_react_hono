@@ -66,7 +66,9 @@ The first child committed this note without completing required skills and wisdo
 
 Applicable lessons are `architecture/every-new-transaction-bearing-method-must-acquire-the-write-reservation-up-front-plain-db-transaction-re-opens.md` and `architecture/runsynctransaction-composes-nested-wraps-are-savepoint-joins-and-wrapping-every-sync-writer-makes-the-tripwire.md`. Current `ExactInvoiceService.command` uses `finance.runAggregate` and invoice allocations update producer-owned entries synchronously. Preserve that immediate/shared-transaction composition for invoice and paired settlement projections. The async recovery-key lesson was read but its async-port redesign is excluded because no async port conversion is proposed.
 
-Implementation must complete all applicable phase reading and trace source access and physical-schema composition. The owner's later approval removes the experimental split decision blocker, not the financial/schema review and proof gates. ### DDL checkpoint
+Implementation must complete all applicable phase reading and trace source access and physical-schema composition. The owner's later approval removes the experimental split decision blocker, not the financial/schema review and proof gates.
+
+### DDL checkpoint
 
 At `bcca6987f5e83bd3d1d85dce8d9c0aa1993567fb`, the owner authorized one inert experimental schema checkpoint. `apps/api/src/modules/invoice/adapters/experimental-invoice-settlement-schema.ts` derives only from the existing invoice DDL with exact marker and table anchors, failing fast if the source structure drifts. It changes the marker to `invoice_experimental_settlement` version 2, permits `SETTLED`, adds checked `settled_amount_minor`, and enforces total = paid + settled + remaining for non-voided rows. No initializer or composition selects it; `exact-invoice-schema.ts` and normal marker remain untouched.
 
@@ -75,5 +77,11 @@ At `bcca6987f5e83bd3d1d85dce8d9c0aa1993567fb`, the owner authorized one inert ex
 The first focused execution failed because the new experimental DDL had no settled column; the second exposed a missing local money-column formatter. Both were corrected. Green focused run: `pnpm --filter @tuari/api exec vitest run src/modules/invoice/adapters/experimental-invoice-settlement-schema.test.ts`, 2 tests passed. `pnpm install --frozen-lockfile` was needed because Vitest was initially unavailable; it completed without downloads. Focused ESLint and `git diff --check` passed. This is only the first small checkpoint, not complete #615 proof or review.
 
 The owner approved the experiment generally. The manager selected this bounded initializer checkpoint; that scope selection does not expand the owner's authority. The DDL remains inert and normal-mode schema is unchanged. Do not claim issue closure, M4/M10 readiness, independent review, customer release or merge readiness. Use three distinct initial sessions for the complete future experimental scope.
+
+### Initializer negative proof checkpoint
+
+The experimental initializer now derives from the current fresh exact plan and substitutes the invoice table and marker only when each source anchor appears exactly once. It reuses the plan's attachment DDL rather than appending duplicates. Native tests reject a missing invoice immutability trigger, mismatched invoice marker, missing experimental app marker, and persisted foreign-key violation, comparing snapshots taken after tampering. Exact/manual refusal tests still use in-memory graphs, so they do not establish file-byte preservation or populated sentinel preservation; add those before accepting initializer compatibility as complete.
+
+The feature-implement, domain-modeling, codebase-design, unslop and wisdom index were loaded for this checkpoint. The immediate transaction reservation lesson was loaded. The referenced runSyncTransaction wisdom path could not be opened through the read tool despite appearing in the index and scoped file list, so it is not claimed as read. Workflow, TDD and Guard were read earlier. No service or route readiness is claimed.
 
 At the initial authorization checkpoint, no production code, tests, flags, schema or dependencies had changed. The design is not independently reviewed, published or merge-ready. Use three distinct initial sessions at the complete committed experimental HEAD, then bounded corrections and current-head verification. Broader issue closure and release remain unauthorized.

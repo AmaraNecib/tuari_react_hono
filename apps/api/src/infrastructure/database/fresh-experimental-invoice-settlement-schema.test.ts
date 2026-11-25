@@ -25,6 +25,23 @@ it("creates and reattests the experimental full graph without writes", async () 
     expect(snapshot(db)).toEqual(beforeReopenAttestation);
   } finally { db.close(); }
 });
+it.each(["trigger", "invoice-marker", "app-marker", "foreign-key"] as const)("refuses tampered experimental graph (%s) without extra writes", async tamper => {
+  const db = createDatabaseConnection(":memory:", "", { journalMode: "preserve" });
+  try {
+    await ensureFreshExperimentalInvoiceSettlementSchema(db);
+    if (tamper === "trigger") db.exec("DROP TRIGGER exact_invoice_owner_immutable");
+    if (tamper === "invoice-marker") db.exec("UPDATE exact_money_schema SET version=99 WHERE slice='invoice_experimental_settlement'");
+    if (tamper === "app-marker") db.exec("DELETE FROM app_schema_state WHERE key='fresh_experimental_invoice_settlement_v2'");
+    if (tamper === "foreign-key") {
+      db.pragma("foreign_keys=OFF");
+      db.exec("INSERT INTO invoice_line_item(id,invoice_id,description,line_order,price_source) VALUES ('orphan','missing','x',0,'{}')");
+      db.pragma("foreign_keys=ON");
+    }
+    const before = snapshot(db);
+    await expect(ensureFreshExperimentalInvoiceSettlementSchema(db)).rejects.toThrow(/experimental invoice settlement schema/i);
+    expect(snapshot(db)).toEqual(before);
+  } finally { db.close(); }
+});
 it.each(["exact", "manual"] as const)("refuses %s schema without writes and leaves its initializer working", async kind => {
   const db = createDatabaseConnection(":memory:", "", { journalMode: "preserve" });
   try {

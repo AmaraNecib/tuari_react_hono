@@ -3,7 +3,6 @@ import { freshExactSchemaPlan } from "./fresh-exact-schema-plan";
 import { exactInvoiceSchemaStatements } from "../../modules/invoice/adapters/exact-invoice-schema";
 import { experimentalInvoiceSettlementSchemaStatements } from "../../modules/invoice/adapters/experimental-invoice-settlement-schema";
 import { manualSettlementSchemaStatements } from "../../modules/company/adapters/manual-settlement-schema";
-import { expenseAttachmentSchema, expenseAttachmentOwnerIndex } from "../../modules/expenses/expense-attachments";
 import { ensureFreshApplicationIdentity } from "./schema";
 import { BetterSqlite3Executor } from "./sqlite-executor";
 import type { BetterSqliteDatabase } from "../../types/sqlite";
@@ -20,14 +19,15 @@ function experimentalPlan(): string[] {
   const sourceMarker = "INSERT INTO exact_money_schema VALUES ('invoice',1)";
   const experimentalMarker = "INSERT INTO exact_money_schema VALUES ('invoice_experimental_settlement',2)";
   if (!sourceInvoice || !experimentalInvoice || !exactInvoiceSchemaStatements.includes(sourceMarker) || !experimentalInvoiceSettlementSchemaStatements.includes(experimentalMarker)) throw new Error("Experimental invoice schema anchors changed");
-  const sourceStatements = new Set(exactInvoiceSchemaStatements.filter(statement => statement !== "CREATE TABLE IF NOT EXISTS exact_money_schema(slice TEXT PRIMARY KEY, version INTEGER NOT NULL)"));
+  const count = (value: string) => freshExactSchemaPlan.filter(statement => statement === value).length;
+  if (count(sourceInvoice) !== 1 || count(sourceMarker) !== 1) throw new Error("Fresh exact plan must contain one invoice table and marker");
   const plan = freshExactSchemaPlan.map(statement => {
     if (statement === sourceInvoice) return experimentalInvoice;
     if (statement === sourceMarker) return experimentalMarker;
     return statement;
   });
-  if (!plan.includes(experimentalInvoice) || !plan.includes(experimentalMarker) || plan.some(statement => sourceStatements.has(statement) && (statement === sourceInvoice || statement === sourceMarker))) throw new Error("Experimental invoice plan substitution failed");
-  plan.push(...manualSettlementSchemaStatements, "INSERT INTO exact_money_schema(slice,version) VALUES ('manual_settlement',1)", expenseAttachmentSchema, expenseAttachmentOwnerIndex);
+  if (plan.filter(statement => statement === experimentalInvoice).length !== 1 || plan.filter(statement => statement === experimentalMarker).length !== 1 || plan.includes(sourceInvoice) || plan.includes(sourceMarker)) throw new Error("Experimental invoice plan substitution failed");
+  plan.push(...manualSettlementSchemaStatements, "INSERT INTO exact_money_schema(slice,version) VALUES ('manual_settlement',1)");
   return plan;
 }
 
