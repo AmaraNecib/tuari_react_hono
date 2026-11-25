@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Quantity, parseExactLine } from "./exact-money";
+import { Money, Quantity, parseExactLine } from "./exact-money";
 import { exactDebtAmountSchema } from "./debts-exact";
 import { invoiceDirectionSchema } from "./invoice";
 import { counterpartyTypeSchema } from "./payment";
@@ -54,6 +54,18 @@ export const exactInvoiceSchema = z.object({
   createdAt: timestampSchema, updatedAt: timestampSchema,
   lineItems: z.array(lineInput.extend({ id: entityIdSchema, invoiceId: entityIdSchema })).min(1).max(50),
 });
+/** Experimental invoice wire shape. Normal exactInvoiceSchema keeps its v1 cash-only contract. */
+export const experimentalExactInvoiceSchema = exactInvoiceSchema.extend({
+  status: z.enum(["DRAFT", "RECEIVED", "SETTLED", "PAID", "VOIDED"]),
+  settledAmount: exactInvoiceAmountSchema,
+}).superRefine((invoice, ctx) => {
+  const sum = Money.parse(invoice.paidAmount).add(Money.parse(invoice.settledAmount)).add(Money.parse(invoice.remainingAmount));
+  if (invoice.status !== "VOIDED" && sum.compare(Money.parse(invoice.totalAmount)) !== 0) ctx.addIssue({ code: "custom", path: ["remainingAmount"], message: "Invoice total must equal paid, settled and remaining amounts" });
+  if (invoice.status === "PAID" && invoice.paidAmount !== invoice.totalAmount) ctx.addIssue({ code: "custom", path: ["status"], message: "PAID requires full actual payment" });
+  if (invoice.status === "SETTLED" && (invoice.remainingAmount !== "0.00" || invoice.settledAmount === "0.00")) ctx.addIssue({ code: "custom", path: ["status"], message: "SETTLED requires zero remaining and a noncash portion" });
+});
+export type ExperimentalExactInvoice = z.infer<typeof experimentalExactInvoiceSchema>;
+
 const allocationInput = z.object({ invoiceId: entityIdSchema, amount: exactInvoicePositiveAmountSchema }).strict();
 export const exactPaymentCreateSchema = z.object({
   ...command, ...party, id: entityIdSchema.optional(), direction: invoiceDirectionSchema,

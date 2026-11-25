@@ -87,3 +87,7 @@ This was new regression coverage against existing initializer behavior, not an e
 The feature-implement, domain-modeling, codebase-design, unslop and wisdom index were loaded for this checkpoint. The immediate transaction reservation lesson was loaded. The referenced runSyncTransaction wisdom path could not be opened through the read tool despite appearing in the index and scoped file list, so it is not claimed as read. Workflow, TDD and Guard were read earlier. No service or route readiness is claimed.
 
 At the initial authorization checkpoint, no production code, tests, flags, schema or dependencies had changed. The design is not independently reviewed, published or merge-ready. Use three distinct initial sessions at the complete committed experimental HEAD, then bounded corrections and current-head verification. Broader issue closure and release remain unauthorized.
+
+### Experimental contract checkpoint
+
+A separate `experimentalExactInvoiceSchema` now requires `settledAmount`, permits `SETTLED`, checks exact paid + settled + remaining equality with `Money`, and refuses `PAID` unless actual paid equals total. The existing v1 `exactInvoiceSchema` remains unchanged. Focused contract tests cover the 100/20/80/0 example, incorrect totals and PAID distinction. This does not implement or prove experimental repository/service lifecycle, allocation or reversal behavior.
