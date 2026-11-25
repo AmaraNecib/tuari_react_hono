@@ -1,5 +1,7 @@
 # Issue #626: remove first-run tour interception
 
+- Reviewed implementation: `df9502e19f6f1d38889fac86c231d0cc05817a91`.
+- Sync: merged fresh `origin/develop` at `f779b3cdfab6b784edce7db5d200c31b46182288` into the reviewed implementation; clean ort merge, no conflicts. The upstream API/bootstrap/schema and employee-selector changes widen integration risk, so affected tests and browser proof must run at the merge commit.
 - Base: `d9510a7ec43986d825139b72d04ecf70253322d6`.
 - Verification mode: focused-local / CI-final-enforced, confirmed against effective ruleset 26837184 requiring the `CI acceptance` integration (app 15368). The classic branch-protection endpoint's 404 does not override the active ruleset.
 - Spec: owner-supplied issue body says a new profile enters the ordinary workspace without a tour, click-through, focus capture, or dismissal; preserve user-invoked help and setup/permission/safety prompts; verify fresh and existing profiles without changing user data.
