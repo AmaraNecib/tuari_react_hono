@@ -81,11 +81,11 @@ it.each(["memory", "plain", "keyed"] as const)("%s: sorts offset timestamps chro
 });
 it.each(["memory", "plain", "keyed"] as const)("%s: ignores payment cursors with mismatched fields or invalid sort-value types", kind => {
   const { invoices } = setup(kind);
-  const rows = [
+  for (const row of [
     { id: "cursor-a", date: "2026-11-10T08:00:00.000Z", amount: "0.10" },
     { id: "cursor-b", date: "2026-11-10T09:00:00.000Z", amount: "0.20" },
     { id: "cursor-c", date: "2026-11-10T10:00:00.000Z", amount: "0.30" },
-  ].map(row => invoices.createPayment({ requestId: row.id, id: row.id, counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: partyId, direction: "PURCHASE", paymentMethod: "CASH", paymentDate: row.date, totalAmount: row.amount, allocations: [] }));
+  ]) invoices.createPayment({ requestId: row.id, id: row.id, counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: partyId, direction: "PURCHASE", paymentMethod: "CASH", paymentDate: row.date, totalAmount: row.amount, allocations: [] });
   const encode = (cursor: unknown) => Buffer.from(JSON.stringify(cursor)).toString("base64url");
   for (const direction of ["asc", "desc"] as const) {
     const expected = direction === "asc" ? ["cursor-a", "cursor-b", "cursor-c"] : ["cursor-c", "cursor-b", "cursor-a"];
@@ -108,6 +108,25 @@ it.each(["memory", "plain", "keyed"] as const)("%s: ignores payment cursors with
     }
     expect(pages).toEqual(expected);
     expect(new Set(pages).size).toBe(3);
+  }
+  for (const direction of ["asc", "desc"] as const) {
+    const expected = direction === "asc" ? ["cursor-a", "cursor-b", "cursor-c"] : ["cursor-c", "cursor-b", "cursor-a"];
+    const firstTimestamp = invoices.listPayments({ sort: { field: "paymentDate", direction }, limit: 1 });
+    const validTimestamp = JSON.parse(Buffer.from(firstTimestamp.nextCursor!, "base64url").toString("utf8"));
+    const amountCursor = invoices.listPayments({ sort: { field: "totalAmount", direction }, limit: 1 }).nextCursor!;
+    const invalid = [amountCursor, ...[1, "not-a-timestamp", "0.10", null].map(sortValue => encode({ ...validTimestamp, sortValue }))];
+    for (const cursor of invalid) {
+      const first = invoices.listPayments({ sort: { field: "paymentDate", direction }, limit: 1, cursor });
+      const found = first.items.map(row => row.id);
+      let page = first;
+      for (let count = 0; page.nextCursor && count < 3; count++) {
+        page = invoices.listPayments({ sort: { field: "paymentDate", direction }, limit: 1, cursor: page.nextCursor });
+        found.push(...page.items.map(row => row.id));
+      }
+      expect(found).toEqual(expected);
+      expect(new Set(found).size).toBe(3);
+      expect(page.nextCursor).toBeNull();
+    }
   }
 });
 
