@@ -30,7 +30,7 @@ export function ExpenseAttachments({ expenseId, readOnly = false }: { expenseId:
     if (!response.ok) throw new Error("Expense attachment request failed")
     return await response.json() as { items: Receipt[] }
   }
-  const query = useWorkspaceScopedQuery({ key: user => ["expense-files", user, expenseId], queryFn: () => request("GET") })
+  const query = useWorkspaceScopedQuery({ key: user => ["expense-files", user, expenseId], queryFn: () => request("GET"), refetchOnMount: "always" })
   const validation = validateInvoiceAttachmentFiles(files, {
     tooMany: max => t("inventory.invoiceCreate.attachmentTooMany", { max }),
     tooLarge: (fileName,maxMb) => t("inventory.invoiceCreate.attachmentTooLarge", {fileName,maxMb}),

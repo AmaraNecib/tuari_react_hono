@@ -154,9 +154,7 @@ function ExpensePageView<Amount, Record extends ExpenseRecord<Amount>>({
   }, [items])
 
   const groups = data?.groupsByProject ?? []
-  const displayedGroups = renderDetail
-    ? [...groups, ...[...itemsByGroup.keys()].filter(id => !groups.some(group => group.projectId === id)).map(projectId => ({ projectId, total: zero, count: 0 }))]
-    : groups
+  const displayedGroups = [...groups, ...[...itemsByGroup.keys()].filter(id => !groups.some(group => group.projectId === id)).map(projectId => ({ projectId, total: zero, count: 0 }))]
 
   const openCreate = () => {
     setEditingExpense(null)

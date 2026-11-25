@@ -11,6 +11,7 @@ export const expenseAttachmentSchema = `CREATE TABLE IF NOT EXISTS expense_attac
   byte_size INTEGER NOT NULL CHECK(byte_size >= 0 AND byte_size <= 5242880),
   relative_path TEXT NOT NULL UNIQUE, sha256 TEXT NOT NULL, created_at TEXT NOT NULL
 )`;
+export const expenseAttachmentOwnerIndex = `CREATE INDEX IF NOT EXISTS expense_attachment_owner_order_idx ON expense_attachment(expense_id, created_at, id)`;
 export type ExpenseAttachment = { id: string; expenseId: string; originalName: string; mimeType: string; byteSize: number; relativePath: string; sha256: string; createdAt: string };
 const select = `SELECT id, expense_id AS expenseId, original_name AS originalName, mime_type AS mimeType,
  byte_size AS byteSize, relative_path AS relativePath, sha256, created_at AS createdAt FROM expense_attachment`;

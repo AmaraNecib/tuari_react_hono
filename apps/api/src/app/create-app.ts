@@ -137,6 +137,8 @@ export function createApp(
     transportSecurity.authRateLimitMaxRequests ?? 30,
     15 * 60 * 1000,
   ).startCleanup()
+  const expenseUploadLimiter = new SlidingWindowRateLimiter(10, 60_000).startCleanup();
+  const isExpenseUpload = (method: string, path: string) => method === "POST" && /^\/api\/expenses\/[^/]+\/attachments$/.test(path);
   // The implemented router's concrete type (with `Lazy`-wrapped and
   // `MergedErrorMap` variants) is not directly assignable to the fetch
   // adapter's `Router<any, RpcContext>` parameter; bridge at this boundary.
@@ -317,7 +319,11 @@ export function createApp(
   // When a Content-Length is present this rejects with 413 BEFORE the body is read,
   // so multipart uploads are never fully buffered past the cap (defense in depth
   // below the module-owned per-file + total attachment caps).
-  app.use("*", bodyLimitMiddleware);
+  app.use("*", (c, next) => {
+    // Hono buffers chunked bodies here. Expense uploads run this same size
+    // guard only after authorization and the principal request budget below.
+    return isExpenseUpload(c.req.method, c.req.path) ? next() : bodyLimitMiddleware(c, next);
+  });
 
   app.use(
     "/api/auth/*",
@@ -371,6 +377,10 @@ export function createApp(
     if (c.req.method === "POST") {
       const refusal = mutationLicenseRefusalMessage(getLicenseInfo().status);
       if (refusal) return c.json({ message: refusal }, 403);
+      if (isExpenseUpload(c.req.method, c.req.path)) {
+        if (!expenseUploadLimiter.allow(user.id)) return c.json({ message: "Too many expense uploads. Try again in one minute." }, 429);
+        return bodyLimitMiddleware(c, next);
+      }
     }
     await next();
   });

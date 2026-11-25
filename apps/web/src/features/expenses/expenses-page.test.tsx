@@ -133,6 +133,18 @@ describe("ExpensesPage", () => {
     expect(voidMutateAsync).not.toHaveBeenCalled()
   })
 
+  it("retains a legacy history-only project group with zero totals and read-only receipt access", () => {
+    useExpensesListQuery.mockReturnValue({data:{...DATA,items:[{...ITEMS[0],status:"VOIDED"}],groupsByProject:[],totals:{total:0,count:0,taggedToProject:0,notTaggedToProject:0,heldByWorkers:0,workerCount:0}},isPending:false,isError:false})
+    renderPage()
+    fireEvent.click(screen.getByRole("button",{name:"تجميع حسب المشروع"}))
+    const row=screen.getByRole("listitem")
+    expect(row.textContent).toContain("هاتف للورشة")
+    fireEvent.click(within(row).getByRole("button",{name:"المرفقات"}))
+    expect(screen.getByTestId("history-receipts").getAttribute("data-read-only")).toBe("true")
+    expect(voidMutateAsync).not.toHaveBeenCalled()
+    expect(screen.getByText("مجموع المعروض · 0 مصروفات")).toBeTruthy()
+  })
+
   it("renders the KPI totals, the total strip and the dense table", () => {
     useExpensesListQuery.mockReturnValue({
       data: DATA,

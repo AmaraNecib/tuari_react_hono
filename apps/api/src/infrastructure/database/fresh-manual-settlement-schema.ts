@@ -1,5 +1,5 @@
 import { createDatabaseConnection } from "./factory";
-import { expenseAttachmentSchema } from "../../modules/expenses/expense-attachments";
+import { expenseAttachmentSchema, expenseAttachmentOwnerIndex } from "../../modules/expenses/expense-attachments";
 import { freshExactSchemaPlan, freshExactSchemaPlanBeforeReceipts } from "./fresh-exact-schema-plan";
 import { manualSettlementSchemaStatements } from "../../modules/company/adapters/manual-settlement-schema";
 import { ensureFreshApplicationIdentity } from "./schema";
@@ -24,10 +24,13 @@ export async function ensureFreshManualSettlementApplicationSchema(db: BetterSql
   let expectedSchema: string;
   let expectedMarkers: string;
   let previousSchema: string;
+  let beforeIndex: string;
   try {
     await construct(oracle, false);
     previousSchema = JSON.stringify(physical(oracle));
     oracle.exec(expenseAttachmentSchema);
+    beforeIndex = JSON.stringify(physical(oracle));
+    oracle.exec(expenseAttachmentOwnerIndex);
     expectedSchema = JSON.stringify(physical(oracle));
     expectedMarkers = JSON.stringify(markers(oracle));
   } finally { oracle.close(); }
@@ -39,6 +42,11 @@ export async function ensureFreshManualSettlementApplicationSchema(db: BetterSql
       if (JSON.stringify(markers(db)) !== expectedMarkers) throw unsupported();
       for (const key of keys) if (!db.prepare("SELECT key FROM app_schema_state WHERE key=?").get(key)) throw unsupported();
       db.exec(expenseAttachmentSchema);
+    }
+    if (JSON.stringify(physical(db)) === beforeIndex) {
+      if (JSON.stringify(markers(db)) !== expectedMarkers) throw unsupported();
+      for (const key of keys) if (!db.prepare("SELECT key FROM app_schema_state WHERE key=?").get(key)) throw unsupported();
+      db.exec(expenseAttachmentOwnerIndex);
     }
     if (JSON.stringify(physical(db)) !== expectedSchema) throw unsupported();
     if (JSON.stringify(markers(db)) !== expectedMarkers) throw unsupported();

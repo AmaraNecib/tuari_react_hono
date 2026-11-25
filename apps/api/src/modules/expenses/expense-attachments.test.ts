@@ -25,7 +25,7 @@ describe("expense supporting files", () => {
     const root = await mkdtemp(join(tmpdir(), "expense-restore-"));
     const databasePath = join(root,"live.sqlite");
     const db = new Database(databasePath);
-    db.exec("CREATE TABLE expense(id TEXT PRIMARY KEY,status TEXT NOT NULL DEFAULT 'LIVE'); INSERT INTO expense(id) VALUES ('one'),('two'); CREATE TABLE inventory_invoice_attachment(relative_path TEXT,sha256 TEXT)");
+    db.exec("CREATE TABLE expense(id TEXT PRIMARY KEY,status TEXT NOT NULL DEFAULT 'LIVE'); INSERT INTO expense(id) VALUES ('one'),('two'); CREATE TABLE inventory_invoice_attachment(relative_path TEXT,sha256 TEXT,byte_size INTEGER)");
     db.exec(expenseAttachmentSchema);
     const storage = new InventoryAttachmentStorage(join(root,"live-files"));
     const service = new ExpenseAttachments(db,createFifoLock(),storage);
@@ -33,7 +33,7 @@ describe("expense supporting files", () => {
     await service.add("two",[file(3)]);
     const purchase = await storage.saveInvoiceAttachment({invoiceGroupId:"purchase",originalName:"purchase.pdf",bytes:Buffer.from("purchase")});
     await storage.saveInvoiceAttachment({invoiceGroupId:"unreferenced",originalName:"orphan.pdf",bytes:Buffer.from("orphan")});
-    db.prepare("INSERT INTO inventory_invoice_attachment VALUES (?,?)").run(purchase.relativePath,purchase.sha256);
+    db.prepare("INSERT INTO inventory_invoice_attachment VALUES (?,?,?)").run(purchase.relativePath,purchase.sha256,8);
     const snapshot = join(root,"snapshot"); await mkdir(snapshot);
     expect((await createWorkerSnapshotter({databasePath,attachmentsRootPath:join(root,"live-files")})(join(snapshot,"tuari.sqlite"))).attachments).toMatchObject({linked:4,copied:0});
     db.close();

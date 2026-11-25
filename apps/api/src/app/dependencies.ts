@@ -1,4 +1,4 @@
-import { ExpenseAttachments, expenseAttachmentSchema } from "../modules/expenses/expense-attachments";
+import { ExpenseAttachments, expenseAttachmentSchema, expenseAttachmentOwnerIndex } from "../modules/expenses/expense-attachments";
 import { createAuth } from "../infrastructure/auth/auth";
 import type { BetterAuthInstance } from "../infrastructure/auth/auth";
 import { createDatabaseConnection } from "../infrastructure/database/factory";
@@ -174,6 +174,7 @@ export async function createAppDependencies(
     await ensureDatabaseSchema(new BetterSqlite3Executor(sharedDatabase));
 
     sharedDatabase.exec(expenseAttachmentSchema);
+    sharedDatabase.exec(expenseAttachmentOwnerIndex);
     const db = createDrizzleFromSqlite(sharedDatabase);
     const auth = config.authInstance ?? createAuth(db, appConfig);
 

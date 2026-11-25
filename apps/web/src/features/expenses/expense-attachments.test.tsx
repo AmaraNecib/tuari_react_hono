@@ -23,11 +23,14 @@ it("shows receipt links without any upload controls in read-only history",async(
 it("loads multiple saved files again when reopening the same expense",async()=>{
   const fetcher = vi.fn(async()=>({ok:true,json:async()=>({items:[{id:"a",originalName:"first.pdf",byteSize:1},{id:"b",originalName:"second.png",byteSize:2}]})}))
   vi.stubGlobal("fetch",fetcher)
-  function open(){return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><ExpenseAttachments expenseId="expense-one" /></QueryClientProvider>)}
+  const client = new QueryClient({defaultOptions:{queries:{retry:false,staleTime:30_000}}})
+  function open(){return render(<QueryClientProvider client={client}><ExpenseAttachments expenseId="expense-one" /></QueryClientProvider>)}
   const first=open()
   await waitFor(()=>expect(screen.getByRole("link",{name:"second.png"})).toBeTruthy())
   expect(screen.getByRole("link",{name:"first.pdf"}).getAttribute("href")).toBe("http://localhost/api/expenses/expense-one/attachments/a")
-  first.unmount();open()
-  await waitFor(()=>expect(screen.getByRole("link",{name:"second.png"})).toBeTruthy())
+  first.unmount()
+  fetcher.mockResolvedValueOnce({ok:true,json:async()=>({items:[{id:"a",originalName:"first.pdf",byteSize:1},{id:"b",originalName:"second.png",byteSize:2},{id:"external",originalName:"external.pdf",byteSize:3}]})})
+  open()
+  await waitFor(()=>expect(screen.getByRole("link",{name:"external.pdf"})).toBeTruthy())
   expect(fetcher).toHaveBeenCalledTimes(2)
 })

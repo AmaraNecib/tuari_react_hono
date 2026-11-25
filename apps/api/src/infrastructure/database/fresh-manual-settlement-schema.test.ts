@@ -36,6 +36,23 @@ it("adds receipt links to an already attested settlement snapshot", async () => 
     expect(db.prepare("SELECT * FROM exact_money_schema ORDER BY slice").all()).toEqual(markers);
   } finally { db.close(); }
 });
+it("adds the owner-order index only to an attested unindexed settlement graph", async () => {
+  const db=createDatabaseConnection(":memory:","");
+  try {
+    await ensureFreshManualSettlementApplicationSchema(db);
+    db.exec("DROP INDEX expense_attachment_owner_order_idx");
+    const markers=db.prepare("SELECT * FROM app_schema_state ORDER BY key").all();
+    await ensureFreshManualSettlementApplicationSchema(db);
+    const columns=db.prepare("PRAGMA index_info(expense_attachment_owner_order_idx)").all() as {name:string}[];
+    expect(columns.map(column=>column.name)).toEqual(["expense_id","created_at","id"]);
+    expect(db.prepare("SELECT * FROM app_schema_state ORDER BY key").all()).toEqual(markers);
+    db.exec("DROP INDEX expense_attachment_owner_order_idx; CREATE INDEX expense_attachment_owner_order_idx ON expense_attachment(id)");
+    const before=snapshot(db);
+    await expect(ensureFreshManualSettlementApplicationSchema(db)).rejects.toThrow(/schema/i);
+    expect(snapshot(db)).toEqual(before);
+  } finally {db.close();}
+});
+
 it("refuses the old application graph without adding tables or upgrading data", async () => {
   const db = createDatabaseConnection(":memory:", "");
   try {

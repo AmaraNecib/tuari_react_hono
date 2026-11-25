@@ -51,6 +51,61 @@ const createDependencies = () => ({
   },
 });
 
+describe("expense upload request budget", () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+  it("limits the authorized principal before chunk buffering or multipart parsing, independently of files, GETs and other users", async () => {
+    vi.stubEnv("TUARI_LICENSE_STATUS", "trial");
+    const clock = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    const deps = { ...createDependencies(), expenseAttachments: { list: vi.fn(()=>[]), add: vi.fn(async()=>[]), download: vi.fn() } };
+    deps.sessionService.getCurrentUser.mockResolvedValue({id:"first",permissions:["expenses:read","expenses:update"]});
+    const app = createApp(deps as never, transportSecurity);
+    function upload() {
+      const form = new FormData();
+      form.append("files",new File([new Uint8Array(1)],"one.pdf",{type:"application/pdf"}));
+      form.append("files",new File([new Uint8Array(1)],"two.pdf",{type:"application/pdf"}));
+      return new Request("http://localhost/api/expenses/one/attachments",{method:"POST",headers:{origin:"http://localhost:3000","x-forwarded-for":crypto.randomUUID()},body:form});
+    }
+    for(let n=0;n<10;n++) expect((await app.request(upload())).status).toBe(200);
+    expect(deps.expenseAttachments.add).toHaveBeenCalledTimes(10);
+    expect((deps.expenseAttachments.add.mock.calls as unknown[][])[0]?.[1]).toHaveLength(2);
+    const blocked = upload();
+    expect(blocked.headers.has("content-length")).toBe(false);
+    const read = vi.spyOn(blocked.body!,"getReader");
+    const parse = vi.spyOn(Request.prototype,"formData");
+    expect((await app.request(blocked)).status).toBe(429);
+    expect(read).not.toHaveBeenCalled();
+    expect(parse).not.toHaveBeenCalled();
+    expect((await app.request("http://localhost/api/expenses/one/attachments",{headers:{origin:"http://localhost:3000"}})).status).toBe(200);
+    deps.sessionService.getCurrentUser.mockResolvedValue({id:"second",permissions:["expenses:update"]});
+    expect((await app.request(upload())).status).toBe(200);
+    deps.sessionService.getCurrentUser.mockResolvedValue({id:"first",permissions:["expenses:update"]});
+    clock.mockReturnValue(1_060_000);
+    expect((await app.request(upload())).status).toBe(200);
+  });
+  it("does not buffer denied uploads or charge their principal budget, and retains the body cap", async () => {
+    vi.stubEnv("TUARI_LICENSE_STATUS", "trial");
+    const deps = { ...createDependencies(), expenseAttachments: { list: vi.fn(()=>[]), add: vi.fn(async()=>[]), download: vi.fn() } };
+    const app = createApp(deps as never, transportSecurity);
+    const request = () => new Request("http://localhost/api/expenses/one/attachments",{method:"POST",headers:{origin:"http://localhost:3000","content-type":"multipart/form-data; boundary=test"},body:"--test--"});
+    for(const user of [null,{id:"denied",permissions:[]}]) {
+      deps.sessionService.getCurrentUser.mockResolvedValue(user);
+      const denied=request();const read=vi.spyOn(denied.body!,"getReader");
+      expect((await app.request(denied)).status).toBe(user?403:401);
+      expect(read).not.toHaveBeenCalled();
+    }
+    deps.sessionService.getCurrentUser.mockResolvedValue({id:"denied",permissions:["expenses:update"]});
+    for(let n=0;n<10;n++) {
+      const form=new FormData();form.append("files",new File(["ok"],"ok.pdf",{type:"application/pdf"}));
+      expect((await app.request("http://localhost/api/expenses/one/attachments",{method:"POST",headers:{origin:"http://localhost:3000"},body:form})).status).toBe(200);
+    }
+    deps.sessionService.getCurrentUser.mockResolvedValue({id:"large",permissions:["expenses:update"]});
+    const large=request();large.headers.set("content-length",String(30*1024*1024+1));
+    const read=vi.spyOn(large.body!,"getReader");
+    expect((await app.request(large)).status).toBe(413);
+    expect(read).not.toHaveBeenCalled();
+  });
+});
+
 describe("expense file authorization", () => {
   it("guards reads and mutations before resolving any file", async () => {
     const deps = { ...createDependencies(), expenseAttachments: { list: vi.fn(()=>[]), add: vi.fn(async()=>[]), download: vi.fn() } };
