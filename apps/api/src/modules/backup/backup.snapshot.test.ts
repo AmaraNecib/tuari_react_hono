@@ -107,7 +107,7 @@ describe("createWorkerSnapshotter", () => {
   it("restores a copied snapshot with its invoice attachment association and exact bytes", async () => {
     seedDatabase(1);
     const database = new Database(databasePath);
-    database.exec("CREATE TABLE inventory_invoice_attachment (relative_path TEXT, sha256 TEXT)");
+    database.exec("CREATE TABLE inventory_invoice_attachment (invoice_group_id TEXT, relative_path TEXT, sha256 TEXT)");
     const attachmentsRootPath = join(tempRoot, "live-attachments");
     const storage = new InventoryAttachmentStorage(attachmentsRootPath);
     const bytes = Buffer.from("synthetic invoice attachment\\n");
@@ -116,7 +116,11 @@ describe("createWorkerSnapshotter", () => {
       originalName: "invoice.txt",
       bytes,
     });
-    database.prepare("INSERT INTO inventory_invoice_attachment VALUES (?, ?)").run(saved.relativePath, saved.sha256);
+    database.prepare("INSERT INTO inventory_invoice_attachment VALUES (?, ?, ?)").run(
+      "synthetic-invoice-group",
+      saved.relativePath,
+      saved.sha256,
+    );
     database.close();
 
     const snapshotDirectory = join(tempRoot, "snapshot");
@@ -128,9 +132,13 @@ describe("createWorkerSnapshotter", () => {
     const restored = new Database(join(restoreDirectory, "tuari.sqlite"), { readonly: true });
     try {
       const [attachment] = restored.prepare(
-        "SELECT relative_path, sha256 FROM inventory_invoice_attachment",
-      ).all() as Array<{ relative_path: string; sha256: string }>;
-      expect(attachment).toEqual({ relative_path: saved.relativePath, sha256: saved.sha256 });
+        "SELECT invoice_group_id, relative_path, sha256 FROM inventory_invoice_attachment",
+      ).all() as Array<{ invoice_group_id: string; relative_path: string; sha256: string }>;
+      expect(attachment).toEqual({
+        invoice_group_id: "synthetic-invoice-group",
+        relative_path: saved.relativePath,
+        sha256: saved.sha256,
+      });
       const restoredBytes = readFileSync(join(restoreDirectory, "attachments", attachment.relative_path));
       expect(restoredBytes).toEqual(bytes);
       expect(createHash("sha256").update(restoredBytes).digest("hex")).toBe(saved.sha256);
