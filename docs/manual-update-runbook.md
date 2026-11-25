@@ -18,6 +18,26 @@ workflow run in this readiness slice. Windows binary evidence remains pending.
 Linux asset availability and runtime behavior remain unknown; do not infer
 support from Windows packaging or source.
 
+## Observed release metadata (2026-11-25)
+
+GitHub listed a beta release (ID `397299741`) with Windows setup and portable
+ZIP assets, and a nightly release (ID `457808738`) with the same platform asset
+types. Neither inspected release listed a Linux installer. These observations
+do not select either release for customers.
+
+The beta tag and release target resolve to
+`17911dc14211730bec6982707f518b4c84dafa19`. Nightly's release record points
+to that same source, and Nightly workflow run #533 succeeded at that SHA. The
+current mutable `nightly` tag instead resolves to
+`c253231d4a581a083818d891677c481c143fff23`. Treat this as a tag/source mismatch
+for provenance review. The workflow run's Actions artifact list was empty, and
+no attestation or exact setup-asset runtime proof was established. See the
+ignored evidence record `.scratch/reviews/393/evidence.md` for asset IDs,
+digests, run URL, commands and evidence limits.
+
+The beta release had no matching Beta or Release workflow run in the queried
+run records for its source SHA. Do not infer which run built its assets.
+
 ## Approved-source gate
 
 Before an installation, obtain the exact release URL, version, and intended

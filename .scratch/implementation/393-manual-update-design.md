@@ -17,9 +17,11 @@ release workflows, or close issue 393.
   shipped binary.
 - Release documentation previously instructed users to bypass SmartScreen.
   It now instructs users to stop and escalate.
-- No owner-selected artifact or workflow-run provenance was available to this
-  work at the time of writing. Windows runtime proof is pending; Linux asset
-  and runtime status remain unknown.
+- GitHub listed Windows setup and portable assets for beta and nightly, but no
+  Linux installer in either inspected release. Nightly run #533 succeeded at
+  `17911dc14211730bec6982707f518b4c84dafa19`; the current nightly tag points
+  elsewhere. No exact published setup-asset runtime proof or attestation was
+  established. See `.scratch/reviews/393/evidence.md`.
 
 ## Changes
 
@@ -30,10 +32,12 @@ release workflows, or close issue 393.
 
 ## Verification
 
-Validate links and wording against the source at the committed SHA. Run
-`git diff --check` and the repository's unslop check if available. Do not run a
-full build or repeat restore rehearsal. Record exact commands and results in
-`.scratch/reviews/393/` after commit.
+Read-only GitHub metadata queries and PR #628 metadata are recorded in
+`.scratch/reviews/393/evidence.md`; no downloads or installs occurred. The
+metadata inspection did not capture command durations or raw response files.
+Before committing this update, run `git diff --check` and `pnpm check:unslop`.
+Do not run a full build or repeat the restore rehearsal. Record exact-head
+results in `.scratch/reviews/393/`.
 
 ## Review and wisdom
 
