@@ -228,11 +228,15 @@ being downloaded, but a customer may notice them.
 ## Verifying a published installer
 
 This section describes internal artifact checks, not installation approval.
-Before downloading or executing a customer candidate, satisfy the
-[manual-update runbook](manual-update-runbook.md), including exact-artifact
-approval, provenance and a data-specific backup/recovery plan. Those gates are
-not met by this document. The commands below use beta as an internal example,
-not as a customer recommendation.
+Before downloading a candidate for internal inspection, obtain the owner's
+exact-artifact selection and approved source under the
+[manual-update runbook](manual-update-runbook.md#approved-source-gate).
+Execution additionally requires the
+[disposable rehearsal prerequisites](manual-update-runbook.md#disposable-rehearsal-prerequisites).
+Customer installation requires every customer-installation gate, including
+accepted rehearsal results. None of these approvals is supplied by this
+document. The commands below use beta as an internal example, not as a customer
+recommendation.
 
 For an approved internal inspection, download the selected release's assets:
 
@@ -249,9 +253,12 @@ certutil -hashfile ./verify/tuari-0.1.0-beta.1-beta-setup.exe SHA256
 ```
 
 Do not run the installer against customer data on the strength of these checks.
-Only after all manual-update gates pass may an authorized operator test the
-selected installer in a disposable environment. The configured installation
-mode is `currentUser`; that configuration alone is not shipped-runtime proof.
+An authorized operator may test the selected installer only after the
+[disposable rehearsal prerequisites](manual-update-runbook.md#disposable-rehearsal-prerequisites)
+pass. The rehearsal produces evidence required for later customer installation;
+its result is not a prerequisite for starting that rehearsal. The configured
+installation mode is `currentUser`; that configuration alone is not
+shipped-runtime proof.
 Record the installed version and startup result. Stop on any security warning
 or unexpected data location; do not overwrite an existing customer project.
 

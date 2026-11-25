@@ -59,3 +59,16 @@ claims or authorizes bypassing OS warnings. Excluded: restore-rehearsal
 execution, because the supplied instruction identifies merged PR #628 evidence
 and prohibits rerunning it for another report. Architecture: no code seam
 moved; this change is documentation only.
+
+## Hosted correction
+
+Hosted review of `8b2da91e4712feeea4fb035fb6f9db077c3e2f92` identified a
+circular prerequisite: the release guide required all gates, including an
+accepted rehearsal result, before starting that rehearsal. The correction
+separates approved-source inspection, authorized disposable rehearsal
+prerequisites and customer installation after accepted results. Exact-artifact
+approval, provenance, isolation, recovery planning and security-warning stops
+remain required. No rehearsal, customer installation or release decision is
+authorized by this correction. Carry forward the three initial lenses and
+prior combined-delta conclusions except for this corrected sequence; obtain
+one fresh combined-delta review at the committed correction head.

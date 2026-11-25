@@ -127,9 +127,26 @@ Reuse that historical result; no repeat was performed here. It does not prove
 customer upgrade recovery, expense attachments, every file type, encryption
 key recovery, or behavior of a selected published binary.
 
-## Installation and failure boundary
+## Disposable rehearsal prerequisites
 
-After every approval and evidence gate passes, an authorized operator follows
+Before executing the selected installer in a disposable environment, obtain
+owner approval for that exact artifact and the bounded rehearsal plan. Complete
+the approved-source and Windows provenance/digest checks above. The plan must
+identify isolated application and sidecar paths, the prior version and test
+data, expected upgrade and first-launch checks, and the data-specific recovery
+checks. Use synthetic data or a separately authorized copy with the applicable
+data-preparation steps completed. Keep live customer data and original backups
+outside the rehearsal's writable locations. Stop if isolation, recovery access
+or any required approval is missing, or if Windows shows a security warning.
+
+The first rehearsal does not require its own accepted result. It produces the
+upgrade, first-launch and recovery evidence that must be accepted before
+customer installation. This document neither approves nor executes a rehearsal.
+
+## Customer installation and failure boundary
+
+After every approval and evidence gate passes, including accepted rehearsal
+results, an authorized operator follows
 the selected release's tested installation procedure with Tuari and its sidecar
 stopped. Do not invent an in-place upgrade procedure from the fresh-install
 instructions. Record the resulting version and data location, then confirm
