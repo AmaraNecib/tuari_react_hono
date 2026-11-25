@@ -79,13 +79,34 @@ test('ownership command reaches downstream on valid root and blocks sibling node
   }
 });
 
-test('package command prefixes use repository root from package cwd', async t => {
+test('supported manifest scripts run their declared ownership preflight from real package cwd', async t => {
   const { root } = await fixture(t);
-  const manifestPaths = ['apps/api/package.json', 'apps/web/package.json', 'packages/contracts/package.json'];
-  for (const manifest of manifestPaths) {
-    const cwd = path.join(root, path.dirname(manifest));
-    const result = spawnSync(process.execPath, [cliPath, '--ownership-only', '../..'], { cwd, encoding: 'utf8' });
-    assert.equal(result.status, 0, `${manifest}: ${result.stdout}${result.stderr}`);
+  const manifests = [
+    ['package.json', ['build', 'typecheck', 'test', 'lint', 'dev', 'dev:api', 'dev:web', 'test:api', 'test:web']],
+    ['apps/api/package.json', ['dev', 'build', 'test', 'test:coverage', 'typecheck']],
+    ['apps/web/package.json', ['dev', 'build', 'test', 'typecheck']],
+    ['packages/contracts/package.json', ['build', 'dev', 'test', 'typecheck']],
+  ];
+  for (const [relativeManifest, names] of manifests) {
+    const manifest = JSON.parse(await readFile(new URL(`../${relativeManifest}`, import.meta.url), 'utf8'));
+    const cwd = path.join(root, path.dirname(relativeManifest));
+    for (const name of names) {
+      const command = manifest.scripts[name];
+      const prefixText = command.split(' && ')[0];
+      const prefix = prefixText.split(' ');
+      assert.ok(prefixText.includes('check-worktree-contracts.mjs') && prefix.includes('--ownership-only'), `${relativeManifest} ${name} lacks ownership guard`);
+      const rootArg = prefix[prefix.indexOf('--ownership-only') + 1] ?? '.';
+      if (path.dirname(relativeManifest) !== '.') assert.equal(rootArg, '../..', `${relativeManifest} ${name} omits explicit root`);
+      const result = spawnSync(process.execPath, [cliPath, '--ownership-only', rootArg], { cwd, encoding: 'utf8' });
+      assert.equal(result.status, 0, `${relativeManifest} ${name}: ${result.stdout}${result.stderr}`);
+      const brokenManifestCommand = command.replace(' ../.. &&', ' &&');
+      const broken = brokenManifestCommand.split(' && ')[0].split(' ');
+      if (path.dirname(relativeManifest) !== '.') {
+        assert.ok(broken.includes('--ownership-only'), `${relativeManifest} ${name} guard missing in mutation`);
+        const brokenResult = spawnSync(process.execPath, [cliPath, '--ownership-only', broken[broken.indexOf('--ownership-only') + 1] ?? ''], { cwd, encoding: 'utf8' });
+        assert.notEqual(brokenResult.status, 0, `${relativeManifest} ${name} mutation must fail from package cwd`);
+      }
+    }
   }
 });
 
