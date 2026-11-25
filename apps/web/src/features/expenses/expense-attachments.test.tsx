@@ -12,6 +12,14 @@ vi.mock("@/lib/desktop-auth-session",()=>({isDesktopRuntime:()=>false}))
 vi.mock("@/lib/orpc-client",()=>({createRpcHeaders:()=>({}),resolveRpcCredentials:()=>"include"}))
 vi.mock("@/lib/runtime-config",()=>({resolveApiUrl:(path:string)=>`http://localhost${path}`}))
 afterEach(()=>{cleanup();vi.unstubAllGlobals()})
+it("shows receipt links without any upload controls in read-only history",async()=>{
+  vi.stubGlobal("fetch",vi.fn(async()=>({ok:true,json:async()=>({items:[{id:"a",originalName:"history.pdf",byteSize:1}]})})))
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><ExpenseAttachments expenseId="voided" readOnly /></QueryClientProvider>)
+  await waitFor(()=>expect(screen.getByRole("link",{name:"history.pdf"})).toBeTruthy())
+  expect(document.querySelector('input[type="file"]')).toBeNull()
+  expect(screen.queryByRole("button",{name:"حفظ"})).toBeNull()
+})
+
 it("loads multiple saved files again when reopening the same expense",async()=>{
   const fetcher = vi.fn(async()=>({ok:true,json:async()=>({items:[{id:"a",originalName:"first.pdf",byteSize:1},{id:"b",originalName:"second.png",byteSize:2}]})}))
   vi.stubGlobal("fetch",fetcher)

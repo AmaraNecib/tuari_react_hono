@@ -25,7 +25,7 @@ describe("expense supporting files", () => {
     const root = await mkdtemp(join(tmpdir(), "expense-restore-"));
     const databasePath = join(root,"live.sqlite");
     const db = new Database(databasePath);
-    db.exec("CREATE TABLE expense(id TEXT PRIMARY KEY); INSERT INTO expense VALUES ('one'),('two'); CREATE TABLE inventory_invoice_attachment(relative_path TEXT,sha256 TEXT)");
+    db.exec("CREATE TABLE expense(id TEXT PRIMARY KEY,status TEXT NOT NULL DEFAULT 'LIVE'); INSERT INTO expense(id) VALUES ('one'),('two'); CREATE TABLE inventory_invoice_attachment(relative_path TEXT,sha256 TEXT)");
     db.exec(expenseAttachmentSchema);
     const storage = new InventoryAttachmentStorage(join(root,"live-files"));
     const service = new ExpenseAttachments(db,createFifoLock(),storage);
@@ -74,6 +74,34 @@ describe("expense supporting files", () => {
       expect(f.db.prepare("SELECT * FROM expense ORDER BY id").all()).toEqual([{ id: "one", status: "LIVE" }, { id: "two", status: "LIVE" }]);
     } finally { f.db.close(); }
   });
+  it("keeps voided receipt bytes readable but refuses new files without changing history", async () => {
+    const f = await fixture();
+    try {
+      const [saved] = await f.service.add("one",[file(2)]);
+      f.db.prepare("UPDATE expense SET status='VOIDED' WHERE id='one'").run();
+      const before = f.db.serialize();
+      expect(Array.from((await f.service.download("one",saved!.id)).body)).toEqual([0,0]);
+      const denied = file();
+      await expect(f.service.add("one",[denied])).rejects.toThrow(/voided/i);
+      expect(denied.bytes).not.toHaveBeenCalled();
+      expect(f.db.serialize()).toEqual(before);
+    } finally { f.db.close(); }
+  });
+
+  it("does not publish an upload when the expense is voided during byte loading", async () => {
+    const f = await fixture();
+    try {
+      const racing = file();
+      racing.bytes.mockImplementationOnce(async () => {
+        f.db.prepare("UPDATE expense SET status='VOIDED' WHERE id='one'").run();
+        return new Uint8Array(1);
+      });
+      await expect(f.service.add("one",[racing])).rejects.toThrow(/voided/i);
+      expect(f.service.list("one")).toEqual([]);
+      expect(f.db.prepare("SELECT status FROM expense WHERE id='one'").get()).toEqual({status:"VOIDED"});
+    } finally { f.db.close(); }
+  });
+
   it("enforces cumulative count before reading rejected bytes", async () => {
     const f = await fixture();
     try {

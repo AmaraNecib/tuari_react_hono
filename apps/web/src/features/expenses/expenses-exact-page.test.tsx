@@ -34,6 +34,8 @@ vi.mock("@/features/inventory/inventory-hooks", () => ({
   useInventoryItemDefinitionQuery: () => ({ data: undefined }),
 }))
 
+vi.mock("./expense-attachments", () => ({ ExpenseAttachments: ({ expenseId, readOnly }: { expenseId: string; readOnly?: boolean }) => <div data-testid="history-receipts" data-expense={expenseId} data-read-only={String(readOnly)} /> }))
+
 const exactExpense = {
   id: "expense-exact-1", amount: "90071992547409.13", currency: "DZD" as const,
   expenseDate: "2026-10-03T10:00:00.000Z", whatFor: "Exact expense", responsibleWorkerId: "worker-1",
@@ -61,6 +63,22 @@ afterEach(() => {
 })
 
 describe("ExactExpensesPage", () => {
+  it("opens read-only receipts for a voided exact expense from grouped history", () => {
+    const item = { ...exactExpense, status: "VOIDED" as const };
+    listQuery.mockReturnValue({ data: { ...exactData, items: [item] }, isPending: false, isError: false, refetch: vi.fn() })
+    detailQuery.mockReturnValue({ data: undefined, isPending: false, isError: false })
+    renderExact()
+    fireEvent.click(screen.getByRole("button", { name: "تجميع حسب المشروع" }))
+    fireEvent.click(screen.getByRole("button", { name: "المرفقات", exact: true }))
+    const dialog = screen.getByRole("dialog")
+    const receipts = within(dialog).getByTestId("history-receipts")
+    expect(receipts.getAttribute("data-expense")).toBe(item.id)
+    expect(receipts.getAttribute("data-read-only")).toBe("true")
+    expect(within(dialog).queryByRole("button", { name: "تعديل" })).toBeNull()
+    expect(within(dialog).queryByRole("button", { name: "إلغاء" })).toBeNull()
+    expect(voidMutate).not.toHaveBeenCalled()
+  })
+
   it("renders exact large fractional values in KPIs, groups, and rows without numeric coercion", () => {
     listQuery.mockReturnValue({ data: exactData, isPending: false, isError: false, isFetching: false, refetch: vi.fn() })
     detailQuery.mockReturnValue({ data: undefined, isPending: false, isError: false })

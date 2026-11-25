@@ -28,6 +28,8 @@ export class ExpenseAttachments {
 
   private validate(expenseId: string, files: InventoryUploadFile[]) {
     const existing = this.list(expenseId);
+    const expense = this.db.prepare("SELECT status FROM expense WHERE id=?").get(expenseId) as {status:string};
+    if (expense.status !== "LIVE") throw new InventoryError("CONFLICT", "Voided expense files are read-only");
     if (!files.length || files.length + existing.length > 10 ||
       files.reduce((sum, f) => sum + f.size, existing.reduce((sum, f) => sum + f.byteSize, 0)) > 15 * 1024 * 1024) {
       throw new InventoryError("VALIDATION", "Expense file limit exceeded");

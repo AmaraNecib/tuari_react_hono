@@ -33,6 +33,8 @@ vi.mock("@/features/inventory/inventory-hooks", () => ({
   useInventoryItemDefinitionQuery: () => ({ data: undefined }),
 }))
 
+vi.mock("./expense-attachments", () => ({ ExpenseAttachments: ({ expenseId, readOnly }: { expenseId: string; readOnly?: boolean }) => <div data-testid="history-receipts" data-expense={expenseId} data-read-only={String(readOnly)} /> }))
+
 const ITEMS = [
   {
     id: "e-1",
@@ -115,6 +117,20 @@ describe("ExpensesPage", () => {
     useExpensesListQuery.mockReset()
     voidMutateAsync.mockClear()
     vi.useRealTimers()
+  })
+
+  it("opens voided receipts from history without edit, upload or void actions", () => {
+    useExpensesListQuery.mockReturnValue({ data: { ...DATA, items: [{ ...ITEMS[0], status: "VOIDED" }] }, isPending: false, isError: false, refetch: vi.fn() })
+    renderPage()
+    const row = screen.getByRole("row", { name: /هاتف للورشة/ })
+    expect(within(row).queryByRole("button", { name: "تعديل" })).toBeNull()
+    expect(within(row).queryByRole("button", { name: "إلغاء" })).toBeNull()
+    fireEvent.click(within(row).getByRole("button", { name: "المرفقات" }))
+    const dialog = screen.getByRole("dialog")
+    expect(within(dialog).getByTestId("history-receipts").getAttribute("data-expense")).toBe("e-1")
+    expect(within(dialog).getByTestId("history-receipts").getAttribute("data-read-only")).toBe("true")
+    expect(within(dialog).queryByRole("button", { name: "حفظ" })).toBeNull()
+    expect(voidMutateAsync).not.toHaveBeenCalled()
   })
 
   it("renders the KPI totals, the total strip and the dense table", () => {

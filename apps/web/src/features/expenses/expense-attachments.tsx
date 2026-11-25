@@ -11,7 +11,7 @@ import { INVOICE_ATTACHMENT_ACCEPT, validateInvoiceAttachmentFiles } from "../in
 
 type Receipt = { id: string; originalName: string; byteSize: number }
 
-export function ExpenseAttachments({ expenseId }: { expenseId: string }) {
+export function ExpenseAttachments({ expenseId, readOnly = false }: { expenseId: string; readOnly?: boolean }) {
   const { t } = useTranslation()
   const [files, setFiles] = useState<File[]>([])
   const [pending, setPending] = useState(false)
@@ -38,7 +38,7 @@ export function ExpenseAttachments({ expenseId }: { expenseId: string }) {
     unsupportedType: fileName => t("inventory.invoiceCreate.attachmentUnsupportedType",{fileName}),
   })
   async function upload() {
-    if (busy.current || validation || !files.length) return
+    if (readOnly || busy.current || validation || !files.length) return
     busy.current = true; setPending(true); setError(false)
     try {
       await request("POST", files)
@@ -50,10 +50,10 @@ export function ExpenseAttachments({ expenseId }: { expenseId: string }) {
   return <section className="space-y-3 border-t border-border pt-4" aria-label={t("inventory.transfer.attachments")}>
     <h3 className="text-sm font-medium">{t("inventory.transfer.attachments")}</h3>
     {query.isPending ? <p role="status">{t("exactCommerce.loadingInvoiceDetails")}</p> : query.isError ? <Button variant="outline" onClick={()=>void query.refetch()}>{t("common.retry")}</Button> : query.data?.items.map(file => isDesktopRuntime() ? <Button key={file.id} variant="outline" onClick={()=>void downloadDesktopApiFile(resolveApiUrl(`${path}/${file.id}`),file.originalName).catch(()=>setError(true))}>{file.originalName}</Button> : <a key={file.id} className="block underline" target="_blank" rel="noreferrer" href={resolveApiUrl(`${path}/${file.id}`)}>{file.originalName}</a>)}
-    <>
+    {!readOnly && <>
       <Input key={version} aria-label={t("inventory.transfer.attachments")} type="file" multiple accept={INVOICE_ATTACHMENT_ACCEPT} disabled={pending || query.isError} onChange={event=>setFiles(Array.from(event.target.files ?? []))} />
       <Button disabled={pending || !!validation || !files.length || query.isError} onClick={()=>void upload()}>{t("common.save")}</Button>
-    </>
+    </>}
     {(validation || error) && <p role="alert">{validation ?? t("inventory.invoiceCreate.attachmentsUploadFailed")}</p>}
   </section>
 }
