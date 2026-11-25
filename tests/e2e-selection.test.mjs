@@ -202,6 +202,13 @@ test('selectSpecs: cross-cutting managed API lifecycle coverage joins affected r
   assert.ok(scope.specs.includes('managed-api-isolation.spec.ts'));
 });
 
+test('selectSpecs: employee batch row selects capture through the employees feature rule', () => {
+  const scope = selectSpecs(['apps/web/src/features/employees/employee-batch-row-card.tsx']);
+  assert.equal(scope.mode, 'affected');
+  assert.ok(scope.specs.includes('employee-select-capture.spec.ts'));
+  assert.ok(!loadMap().always_specs.includes('employee-select-capture.spec.ts'));
+});
+
 test('selectSpecs: api module maps to the owning feature specs', () => {
   const scope = selectSpecs(['apps/api/src/modules/workforce/employee.module.ts']);
   assert.equal(scope.mode, 'affected');
