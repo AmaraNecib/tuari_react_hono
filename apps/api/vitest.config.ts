@@ -5,8 +5,9 @@ import { defineConfig } from "vitest/config";
  *
  * - Uses v8 coverage provider (faster, more accurate branch tracking)
  * - Excludes test files, types, and adapters from coverage requirements
- * - All four global coverage thresholds are 99%. This floor follows the
- *   owner's policy decision recorded in .scratch/implementation/543-in-place-design.md.
+ * - Global coverage thresholds are 99% for statements, functions and lines,
+ *   and 98% for branches under the narrow owner decision recorded in the
+ *   #629 design note; the original 99% decision remains recorded in #543.
  */
 export default defineConfig({
   test: {
@@ -28,11 +29,10 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "html"],
       thresholds: {
-        // The owner selected a 99% global floor across all four measures:
-        // slightly below the recorded CI baseline, without weakening includes,
-        // exclusions, test assertions or other CI gates.
+        // Owner policy: branches 98%; statements, functions and lines remain
+        // 99%. Only the branch floor changed; scope and other gates are intact.
         statements: 99,
-        branches: 99,
+        branches: 98,
         functions: 99,
         lines: 99,
       },

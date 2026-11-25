@@ -5,6 +5,8 @@ import type { ExactExpense, ExactExpensesClient } from "@tuari/contracts"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { ExactExpenseFormDialog } from "./expense-form-dialog"
 
+vi.mock("./expense-attachments", () => ({ ExpenseAttachments: () => <div data-testid="expense-files" /> }))
+
 const { create, update } = vi.hoisted(() => ({ create: vi.fn(async () => ({})), update: vi.fn(async () => ({})) }))
 vi.mock("./expenses-exact-queries", () => ({
   useCreateExactExpenseMutation: () => ({ isPending: false, mutateAsync: create }),

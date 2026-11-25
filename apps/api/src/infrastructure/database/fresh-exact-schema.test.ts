@@ -45,6 +45,38 @@ describe("selected fresh exact application schema", () => {
     expect(reopened.prepare("SELECT COUNT(*) AS count FROM role").get()).toEqual({ count: 4 });
   });
 
+  it("adds optional receipt links to an attested older exact snapshot without changing expenses", async () => {
+    const db = database();
+    await ensureFreshExactApplicationSchema(db);
+    db.exec("DROP TABLE expense_attachment");
+    const before = db.prepare("SELECT * FROM expense").all();
+    await ensureFreshExactApplicationSchema(db);
+    expect(db.prepare("SELECT * FROM expense").all()).toEqual(before);
+    expect(db.prepare("SELECT * FROM expense_attachment").all()).toEqual([]);
+    await ensureFreshExactApplicationSchema(db);
+  });
+
+  it("indexes expense receipt ownership and ordering, and upgrades the prior unindexed receipt graph", async () => {
+    const db = database();
+    await ensureFreshExactApplicationSchema(db);
+    const index = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='expense_attachment_owner_order_idx'").get();
+    expect(index).toBeTruthy();
+    const columns = db.prepare("PRAGMA index_info(expense_attachment_owner_order_idx)").all() as {name:string}[];
+    expect(columns.map(column=>column.name)).toEqual(["expense_id","created_at","id"]);
+    const plan = db.prepare("EXPLAIN QUERY PLAN SELECT * FROM expense_attachment WHERE expense_id=? ORDER BY created_at,id").all("expense") as {detail:string}[];
+    expect(plan.some(row=>row.detail.includes("expense_attachment_owner_order_idx"))).toBe(true);
+    expect(plan.some(row=>/TEMP B-TREE|SCAN expense_attachment/.test(row.detail))).toBe(false);
+    db.exec("DROP INDEX expense_attachment_owner_order_idx");
+    const before = db.prepare("SELECT * FROM expense").all();
+    await ensureFreshExactApplicationSchema(db);
+    expect(db.prepare("SELECT * FROM expense").all()).toEqual(before);
+    expect(db.prepare("PRAGMA index_info(expense_attachment_owner_order_idx)").all()).toHaveLength(3);
+    db.exec("DROP INDEX expense_attachment_owner_order_idx; CREATE INDEX expense_attachment_owner_order_idx ON expense_attachment(id)");
+    const invalid = snapshot(db);
+    await expect(ensureFreshExactApplicationSchema(db)).rejects.toThrow(/schema/i);
+    expect(snapshot(db)).toEqual(invalid);
+  });
+
   it("refuses an existing unsupported database without modifying it", async () => {
     const db = database();
     db.exec("CREATE TABLE debt_account(id TEXT PRIMARY KEY,current_balance REAL); INSERT INTO debt_account VALUES ('preserved',1.25)");

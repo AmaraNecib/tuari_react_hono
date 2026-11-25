@@ -6,7 +6,7 @@ app bug that loses a week of entered data.
 
 ## What is backed up
 
-**The database and its referenced invoice attachments.** Each snapshot stores a full database copy and the attachment paths referenced by that database copy. Attachment bytes live in immutable SHA-256-addressed objects under `attachments-store/`; snapshot files link to those objects when the filesystem supports hard links, with verified copies as a fallback. A fallback is recorded in snapshot metadata and the backup log.
+**The database and its referenced inventory purchase and expense attachments.** Each snapshot stores a full database copy and the attachment paths referenced by that database copy. Attachment bytes live in immutable SHA-256-addressed objects under `attachments-store/`; snapshot files link to those objects when the filesystem supports hard links, with verified copies as a fallback. A fallback is recorded in snapshot metadata and the backup log.
 
 ## Where
 
@@ -78,6 +78,23 @@ key: the key in force at the moment the copy is taken.
 
 Restore the database and the matching attachment tree from one dated folder.
 Copying the folder materializes normal files; the object store is not needed.
+
+First verify a standalone restore into a new disposable directory, from the repository:
+
+```sh
+pnpm --filter @tuari/api exec tsx src/modules/backup/restore-standalone-snapshot.cli.ts <dated-backup-directory> <new-disposable-directory>
+```
+
+For encrypted snapshots, supply their original key through `APP_DB_KEY`, not a command argument.
+The command refuses an existing destination. It copies the database and attachments,
+checks database integrity and verifies every supported referenced file, including hashes
+when recorded. A missing file or mismatched hash fails the restore. Do not use a failed
+output directory. Old snapshots without expense files remain supported; an absent attachment
+directory is valid only when no supported files are referenced. Unreferenced files are not
+included in new backups. Sales and transfer forms do not currently persist their own file
+attachments.
+
+Use the verified disposable database and attachment tree for the following manual steps.
 
 1. **Close the app.** The API sidecar holds the database open; replacing it
    while the app runs can corrupt it.
