@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { mkdtemp, readFile, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, mkdir, rm, readdir, writeFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -52,6 +52,17 @@ describe("expense supporting files", () => {
       await expect(restoreStandaloneSnapshot(restored,join(root,"incomplete"))).rejects.toThrow(/ENOENT/);
     } finally { copy.close(); }
   });
+  it("rejects a zero-byte database snapshot without changing its source", async () => {
+    const root = await mkdtemp(join(tmpdir(), "empty-snapshot-"));
+    const snapshot = join(root, "snapshot");
+    await mkdir(snapshot);
+    const source = join(snapshot, "tuari.sqlite");
+    await writeFile(source, new Uint8Array());
+    await expect(restoreStandaloneSnapshot(snapshot, join(root, "restored"))).rejects.toThrow(/empty.*database|database.*empty/i);
+    expect((await stat(source)).size).toBe(0);
+    expect((await stat(join(root, "restored", "tuari.sqlite"))).size).toBe(0);
+  });
+
   it("restores old database-only snapshots only when no supported files are referenced", async () => {
     const root = await mkdtemp(join(tmpdir(),"legacy-expense-restore-"));
     const db = new Database(join(root,"tuari.sqlite"));
@@ -74,6 +85,56 @@ describe("expense supporting files", () => {
       expect(f.db.prepare("SELECT * FROM expense ORDER BY id").all()).toEqual([{ id: "one", status: "LIVE" }, { id: "two", status: "LIVE" }]);
     } finally { f.db.close(); }
   });
+  it("rejects missing expense reads and uploads before touching bytes or storage", async () => {
+    const f = await fixture();
+    const bytes = file();
+    const before = f.db.serialize();
+    try {
+      for (const operation of [
+        () => f.service.list("missing"),
+        () => f.service.add("missing", [bytes]),
+        () => f.service.download("missing", "file-id"),
+      ]) {
+        try { await operation(); throw new Error("expected missing expense rejection"); }
+        catch (error) { expect(error).toMatchObject({ appError: { code: "NOT_FOUND", message: "Expense not found" } }); }
+      }
+      expect(bytes.bytes).not.toHaveBeenCalled();
+      expect(f.db.serialize()).toEqual(before);
+      expect(await readdir(f.root)).toEqual([]);
+    } finally { f.db.close(); }
+  });
+
+  it("rejects empty batches and malformed sizes before reading upload bytes", async () => {
+    const f = await fixture();
+    try {
+      await expect(f.service.add("one", [])).rejects.toMatchObject({ appError: { code: "VALIDATION", message: "Expense file limit exceeded" } });
+      for (const size of [1.5, Number.NaN, -1]) {
+        const malformed = file(); malformed.size = size;
+        await expect(f.service.add("one", [malformed])).rejects.toMatchObject({ appError: { code: "VALIDATION", message: "File size limit exceeded" } });
+        expect(malformed.bytes).not.toHaveBeenCalled();
+      }
+      expect(f.service.list("one")).toEqual([]);
+      expect(await readdir(f.root)).toEqual([]);
+    } finally { f.db.close(); }
+  });
+
+  it("cleans staged bytes and preserves existing links when uploaded byte count mismatches", async () => {
+    const f = await fixture();
+    try {
+      const existing = await f.service.add("one", [file(2)]);
+      const beforeRows = f.db.prepare("SELECT * FROM expense_attachment ORDER BY id").all();
+      const beforeExpense = f.db.prepare("SELECT * FROM expense ORDER BY id").all();
+      const mismatch = file(2);
+      mismatch.bytes.mockResolvedValueOnce(new Uint8Array(1));
+      const failure = await f.service.add("one", [file(1), mismatch]).then(() => null, error => error);
+      expect(failure).toMatchObject({ appError: { code: "VALIDATION", message: "File size differs from uploaded bytes" } });
+      expect(await f.service.list("one")).toEqual(existing);
+      expect(f.db.prepare("SELECT * FROM expense_attachment ORDER BY id").all()).toEqual(beforeRows);
+      expect(f.db.prepare("SELECT * FROM expense ORDER BY id").all()).toEqual(beforeExpense);
+      expect(await readdir(join(f.root, "expense-one"))).toEqual([existing[0]!.relativePath.split("/")[1]]);
+    } finally { f.db.close(); }
+  });
+
   it("keeps voided receipt bytes readable but refuses new files without changing history", async () => {
     const f = await fixture();
     try {

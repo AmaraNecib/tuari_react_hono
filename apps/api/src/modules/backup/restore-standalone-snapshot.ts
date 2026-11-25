@@ -1,4 +1,4 @@
-import { cp, mkdir } from "node:fs/promises";
+import { cp, mkdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createDatabaseConnection } from "../../infrastructure/database/factory";
 import { InventoryAttachmentStorage } from "../inventory/inventory.storage";
@@ -10,6 +10,7 @@ export async function restoreStandaloneSnapshot(snapshotPath: string, destinatio
   const databasePath = join(destination, "tuari.sqlite");
   const attachmentsRootPath = join(destination, "attachments");
   await cp(join(snapshotPath, "tuari.sqlite"), databasePath, {errorOnExist:true,force:false});
+  if ((await stat(databasePath)).size === 0) throw new Error("Restored snapshot database is empty");
   // Old snapshots may omit the directory only when no attachment is referenced.
   try { await cp(join(snapshotPath,"attachments"), attachmentsRootPath,{recursive:true,errorOnExist:true,force:false}); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }

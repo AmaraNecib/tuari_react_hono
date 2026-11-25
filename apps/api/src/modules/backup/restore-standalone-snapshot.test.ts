@@ -2,10 +2,10 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { join } from "node:path";
 
 const mocks = vi.hoisted(() => ({
-  mkdir: vi.fn(), cp: vi.fn(), createDatabaseConnection: vi.fn(),
+  mkdir: vi.fn(), cp: vi.fn(), stat: vi.fn(), createDatabaseConnection: vi.fn(),
   storage: vi.fn(), verify: vi.fn(), db: { pragma: vi.fn(), close: vi.fn() },
 }));
-vi.mock("node:fs/promises", () => ({ mkdir: mocks.mkdir, cp: mocks.cp }));
+vi.mock("node:fs/promises", () => ({ mkdir: mocks.mkdir, cp: mocks.cp, stat: mocks.stat }));
 vi.mock("../../infrastructure/database/factory", () => ({ createDatabaseConnection: mocks.createDatabaseConnection }));
 vi.mock("../inventory/inventory.storage", () => ({ InventoryAttachmentStorage: mocks.storage }));
 vi.mock("./verify-restored-attachments", () => ({ verifyRestoredAttachments: mocks.verify }));
@@ -17,6 +17,7 @@ beforeEach(() => {
   mocks.createDatabaseConnection.mockReturnValue(mocks.db);
   mocks.verify.mockResolvedValue({ verified: 2 });
   mocks.cp.mockResolvedValue(undefined);
+  mocks.stat.mockResolvedValue({ size: 1 });
 });
 
 it("allows an absent attachment directory and returns verified restore paths", async () => {
@@ -27,6 +28,14 @@ it("allows an absent attachment directory and returns verified restore paths", a
   expect(mocks.cp).toHaveBeenNthCalledWith(2, join("snapshot", "attachments"), join("destination", "attachments"), { recursive: true, errorOnExist: true, force: false });
   expect(result).toMatchObject({ databasePath: join("destination", "tuari.sqlite"), attachmentsRootPath: join("destination", "attachments"), verified: 2 });
   expect(mocks.db.close).toHaveBeenCalledOnce();
+});
+
+it("rejects an empty copied database before opening SQLite", async () => {
+  mocks.stat.mockResolvedValue({ size: 0 });
+  await expect(restoreStandaloneSnapshot("s", "d")).rejects.toThrow("Restored snapshot database is empty");
+  expect(mocks.stat).toHaveBeenCalledWith(join("d", "tuari.sqlite"));
+  expect(mocks.createDatabaseConnection).not.toHaveBeenCalled();
+  expect(mocks.db.close).not.toHaveBeenCalled();
 });
 
 it("rethrows non-ENOENT attachment copy failures by identity", async () => {
