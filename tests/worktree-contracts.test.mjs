@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { inspectWorktreeContracts } from '../scripts/dev/check-worktree-contracts.mjs';
+import { inspectWorktreeContracts, inspectWorktreeOwnership } from '../scripts/dev/check-worktree-contracts.mjs';
 
 const cliPath = fileURLToPath(new URL('../scripts/dev/check-worktree-contracts.mjs', import.meta.url));
 const metadata = () => ({ name: '@tuari/contracts', exports: { '.': { types: './dist/index.d.ts', import: './dist/index.js' } } });
@@ -44,6 +44,26 @@ async function snapshot(dir) {
     return [entry.name, entry.isDirectory() ? await snapshot(name) : (await readFile(name)).toString('base64')];
   }));
 }
+
+test('independent synthetic trees pass ownership checks and remain unchanged', async t => {
+  const a = await fixture(t);
+  const b = await fixture(t);
+  assert.deepEqual(await inspectWorktreeOwnership(a.root), { ok: true, diagnostics: [] });
+  assert.deepEqual(await inspectWorktreeOwnership(b.root), { ok: true, diagnostics: [] });
+  await writeFile(path.join(a.target, 'dist/index.js'), 'export const value = 2;');
+  assert.equal(await readFile(path.join(b.target, 'dist/index.js'), 'utf8'), 'export const value = 1;');
+});
+
+test('sibling contracts links fail ownership preflight before downstream sentinel', async t => {
+  const { root, sibling } = await fixture(t);
+  const link = path.join(root, 'apps/api/node_modules/@tuari/contracts');
+  await rm(link, { recursive: true });
+  await linkDirectory(sibling, link);
+  const sentinel = path.join(root, 'downstream-ran');
+  const command = spawnSync(process.execPath, ['-e', `import { spawnSync } from 'node:child_process'; const check=spawnSync(process.execPath,['${cliPath.replaceAll('\\','\\\\')}','--ownership-only'],{cwd:'${root.replaceAll('\\','\\\\')}',stdio:'inherit'}); if(check.status!==0) process.exit(check.status); process.writeFileSync('${sentinel.replaceAll('\\','\\\\')}','ran');`], { cwd: root });
+  assert.notEqual(command.status, 0);
+  await assert.rejects(readFile(sentinel));
+});
 
 test('own-root links and files pass without modifying fixture contents', async t => {
   const { root, sandbox } = await fixture(t);

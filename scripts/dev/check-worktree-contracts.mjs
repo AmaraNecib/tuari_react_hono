@@ -7,6 +7,35 @@ const within = (parent, child) => {
   return relative === '' || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
 };
 
+export async function inspectWorktreeOwnership(repositoryRoot = process.cwd()) {
+  const diagnostics = [];
+  let root;
+  try { root = await realpath(path.resolve(repositoryRoot)); }
+  catch { return { ok: false, diagnostics: [`Repository root does not exist: ${repositoryRoot}`] }; }
+  for (const relative of ['node_modules', 'apps/api/node_modules', 'apps/web/node_modules', 'packages/contracts/node_modules']) {
+    const candidate = path.join(root, relative);
+    try {
+      const actual = await realpath(candidate);
+      if (!within(root, actual)) diagnostics.push(`${relative} resolves outside this worktree: ${actual}`);
+    } catch (error) {
+      if (error.code !== 'ENOENT') diagnostics.push(`Cannot inspect ${relative}: ${error.message}`);
+    }
+  }
+  const contracts = path.join(root, 'packages/contracts');
+  let packageRoot;
+  try { packageRoot = await realpath(contracts); }
+  catch { return { ok: false, diagnostics: [...diagnostics, `Missing contracts package: ${contracts}`] }; }
+  if (!within(root, packageRoot)) diagnostics.push(`Contracts package escapes repository root: ${packageRoot}`);
+  for (const app of ['api', 'web']) {
+    const link = path.join(root, 'apps', app, 'node_modules/@tuari/contracts');
+    try {
+      const resolved = await realpath(link);
+      if (resolved !== packageRoot) diagnostics.push(`${app} contracts link resolves outside this worktree package: ${resolved}`);
+    } catch { /* A clean tree may be checked before dependencies are installed. */ }
+  }
+  return { ok: diagnostics.length === 0, diagnostics };
+}
+
 export async function inspectWorktreeContracts(repositoryRoot = process.cwd()) {
   const diagnostics = [];
   let root;
@@ -51,12 +80,15 @@ export async function inspectWorktreeContracts(repositoryRoot = process.cwd()) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const args = process.argv.slice(2);
-  const roots = args.filter(arg => arg !== '--json');
+  const ownershipOnly = args.includes('--ownership-only');
+  const roots = args.filter(arg => arg !== '--json' && arg !== '--ownership-only');
   if (args.filter(arg => arg === '--json').length > 1 || roots.length > 1 || roots.some(arg => arg.startsWith('-'))) {
     console.error('Usage: node scripts/dev/check-worktree-contracts.mjs [repository-root] [--json]');
     process.exitCode = 2;
   } else {
-    const result = await inspectWorktreeContracts(roots[0] ?? process.cwd());
+    const result = ownershipOnly
+      ? await inspectWorktreeOwnership(roots[0] ?? process.cwd())
+      : await inspectWorktreeContracts(roots[0] ?? process.cwd());
     if (args.includes('--json')) console.log(JSON.stringify(result, null, 2));
     else console.log(result.ok ? 'Worktree contracts links and build targets are local.' : result.diagnostics.map(item => `ERROR: ${item}`).join('\n'));
     if (!result.ok) process.exitCode = 1;
