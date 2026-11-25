@@ -11,6 +11,7 @@ import { AmountDisplay } from "@/components/ui"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { ManualSettlementSummary } from "./manual-settlement-summary"
 import { invalidateExactDebtQueries } from "./debts-exact-queries"
+import { invalidateExactInventoryDebtQueries } from "@/features/inventory/inventory-exact-queries"
 import { clearPendingSettlement, isDefiniteSettlementRefusal, loadPendingSettlement, savePendingSettlement, type PendingSettlement } from "./manual-settlement-pending"
 
 export type ManualSettlementClient = AppClient["financial"]["manualSettlement"]
@@ -56,7 +57,7 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
   const canReverse = true
   function change(action: () => void) { action(); setPreview(null); setNotice("") }
   async function refresh() {
-    await Promise.all([queries.invalidateQueries({ queryKey: ["manual-settlement"] }), invalidateExactDebtQueries(queries, debtClient, owner)])
+    await Promise.all([queries.invalidateQueries({ queryKey: ["manual-settlement"] }), invalidateExactDebtQueries(queries, debtClient, owner), invalidateExactInventoryDebtQueries(queries, owner)])
   }
   async function execute(command: PendingSettlement) {
     if (busy || storageFailed) return

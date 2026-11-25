@@ -35,12 +35,12 @@ async function openAccount() {
 afterEach(() => { cleanup(); clients.splice(0).forEach(query => query.clear()); window.history.replaceState({}, "", "/"); window.dispatchEvent(new Event("popstate")); setMoneyGrouping(true) })
 describe("injected exact debt page", () => {
   it("restores selected account and settlement tab from the originating history URL", async () => {
-    window.history.replaceState({}, "", `/?debtAccount=${account.id}&tab=settlement`)
+    window.history.replaceState({}, "", `/?debtAccount=${account.id}&debtTab=settlement`)
     fixture()
     expect((await screen.findByRole("button", { name: /المورد أحمد · مستحقات علينا/ })).getAttribute("aria-pressed")).toBe("true")
     expect(screen.getByRole("tab", { name: "التسوية وسجلها" }).getAttribute("aria-selected")).toBe("true")
     expect(new URLSearchParams(window.location.search).get("debtAccount")).toBe(account.id)
-    expect(new URLSearchParams(window.location.search).get("tab")).toBe("settlement")
+    expect(new URLSearchParams(window.location.search).get("debtTab")).toBe("settlement")
   })
   it("shares balances across one tab bar and preserves settlement drafts across tabs", async () => {
     const f = fixture(); f.unmount()

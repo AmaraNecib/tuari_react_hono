@@ -7,6 +7,9 @@ import type { ExactDebtsClient } from "@tuari/contracts"
 import { ManualSettlementPanel, type ManualSettlementClient } from "./manual-settlement-panel"
 import { useExactDebtCommand } from "./debts-exact-queries"
 import { loadPendingSettlement, savePendingSettlement, type PendingSettlement } from "./manual-settlement-pending"
+import { exactCommercePrefix } from "@/features/shared/exact-commerce-queries"
+import { useExactInventoryInvoices, useExactInventoryOutbounds } from "@/features/inventory/inventory-exact-queries"
+import { sessionQueryKey } from "@/features/app-shell/workspace-keys"
 const identity = vi.hoisted(() => ({ owner: "u" }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: identity.owner } } }) }))
 const confirm: PendingSettlement = { kind: "confirm", input: { requestId: "X", externalCounterpartyId: "p", payableOriginalEntryId: "a", receivableOriginalEntryId: "b", currency: "DZD", amountDzd: "25.00", expectedPayableRemainingDzd: "100.00", expectedReceivableRemainingDzd: "60.00", note: "original note" } }
@@ -109,6 +112,48 @@ for (const switchKind of ["user", "party", "client"]) it(`isolates deferred comp
  await act(async () => { finish() })
  expect(f.client.confirm).toHaveBeenCalledTimes(1); expect(loadPendingSettlement(sessionStorage,"u","p")).toBeNull()
 })
+it.each([[confirm, "75.00", "100.00"], [reverse, "100.00", "75.00"]] as const)("refreshes fresh inventory invoice cache after recovered %s", async (command, expected, initial) => {
+ const f = fixture(); let current = initial
+ f.client[command.kind].mockImplementation(async () => { current = expected; return {} })
+ const inventory = { listInvoices: vi.fn(async () => [{ id: "invoice-1", remainingDebtDzd: current }]) }
+ const ownerKey = [...exactCommercePrefix(inventory), "u", "invoices"]
+ const otherKey = [...exactCommercePrefix(inventory), "other", "invoices"]
+ f.query.setQueryData(sessionQueryKey, { user: { id: "u", name: "Operator", phone: "0612345678", version: "0.0.0" } })
+ f.query.setQueryDefaults(ownerKey, { staleTime: 60_000 }); f.query.setQueryDefaults(otherKey, { staleTime: 60_000 })
+ f.query.setQueryData(ownerKey, [{ id: "invoice-1", remainingDebtDzd: initial }])
+ f.query.setQueryData(otherKey, [{ id: "invoice-1", remainingDebtDzd: "other-owner" }])
+ savePendingSettlement(sessionStorage, "u", "p", command)
+ function InvoiceView() { const result = useExactInventoryInvoices(inventory as never); return <output>{result.data?.[0]?.remainingDebtDzd ?? "loading"}</output> }
+ f.mount()
+ render(<QueryClientProvider client={f.query}><InvoiceView /></QueryClientProvider>)
+ expect(await screen.findByText(initial)).toBeTruthy()
+ fireEvent.click(retry())
+ expect(await screen.findByText(expected)).toBeTruthy()
+ expect(f.client[command.kind]).toHaveBeenCalledTimes(1)
+ expect(f.client[command.kind]).toHaveBeenCalledWith(command.input)
+ expect(f.query.getQueryData(otherKey)).toEqual([{ id: "invoice-1", remainingDebtDzd: "other-owner" }])
+})
+
+it.each([[confirm, "0.00", "25.00"], [reverse, "25.00", "0.00"]] as const)("refreshes fresh outbound list after recovered %s and updates payment visibility", async (command, expected, initial) => {
+ const f = fixture(); let current = initial
+ f.client[command.kind].mockImplementation(async () => { current = expected; return {} })
+ const inventory = { listOutbounds: vi.fn(async () => [{ id: "sale-1", transferType: "SALE", remainingDebtDzd: current }]) }
+ const ownerKey = [...exactCommercePrefix(inventory), "u", "outbounds"]
+ const otherKey = [...exactCommercePrefix(inventory), "other", "outbounds"]
+ f.query.setQueryData(sessionQueryKey, { user: { id: "u", name: "Operator", phone: "0612345678", version: "0.0.0" } })
+ f.query.setQueryDefaults(ownerKey, { staleTime: 60_000 }); f.query.setQueryDefaults(otherKey, { staleTime: 60_000 })
+ f.query.setQueryData(ownerKey, [{ id: "sale-1", transferType: "SALE", remainingDebtDzd: initial }])
+ f.query.setQueryData(otherKey, [{ id: "sale-1", transferType: "SALE", remainingDebtDzd: "other-owner" }])
+ function OutboundView() { const result = useExactInventoryOutbounds(inventory as never); const row = result.data?.[0]; return <output>{row?.remainingDebtDzd}:{row?.remainingDebtDzd !== "0.00" ? "payment-visible" : "payment-hidden"}</output> }
+ savePendingSettlement(sessionStorage, "u", "p", command)
+ f.mount(); render(<QueryClientProvider client={f.query}><OutboundView /></QueryClientProvider>)
+ expect(await screen.findByText(`${initial}:${initial === "0.00" ? "payment-hidden" : "payment-visible"}`)).toBeTruthy()
+ fireEvent.click(retry())
+ expect(await screen.findByText(`${expected}:${expected === "0.00" ? "payment-hidden" : "payment-visible"}`)).toBeTruthy()
+ expect(f.client[command.kind]).toHaveBeenCalledTimes(1)
+ expect(f.query.getQueryData(otherKey)).toEqual([{ id: "sale-1", transferType: "SALE", remainingDebtDzd: "other-owner" }])
+})
+
 it("opens on demand and retains a draft after closing", async () => {
  const f = fixture(); f.mount()
  await screen.findByText("لا توجد تسويات متبادلة لهذه الجهة.")

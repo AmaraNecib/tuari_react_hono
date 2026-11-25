@@ -70,12 +70,12 @@ function worker(overrides: Partial<EmployeeTableRow> = {}): EmployeeTableRow {
   }
 }
 
-function renderDetails(employee: EmployeeTableRow = worker(), onApproveEarning = vi.fn()) {
+function renderDetails(employee: EmployeeTableRow = worker(), onApproveEarning = vi.fn(), activeTab = "finance") {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   return render(
     <QueryClientProvider client={queryClient}>
       <EmployeeDetailsPage
-        activeTab="finance"
+        activeTab={activeTab}
         debtClient={{ summary: vi.fn().mockResolvedValue({ accounts: [], grossPayableDzd: "0.00", grossReceivableDzd: "0.00" }) } as unknown as ExactDebtsClient}
         employee={employee}
         managedProjects={[]}
@@ -96,7 +96,26 @@ describe("EmployeeDetailsPage earnings entry", () => {
     localStorage.clear()
   })
 
-  afterEach(cleanup)
+  afterEach(() => { cleanup(); window.history.replaceState({}, "", "/"); window.dispatchEvent(new Event("popstate")) })
+
+  it("keeps the employee debt tab selected while the composed ledger changes its inner tab", async () => {
+    window.history.replaceState({}, "", "/employees/worker-1?tab=debts")
+    const account = { id: "account-1", partyType: "INTERNAL_WORKER", workerId: "worker-1", externalCounterpartyId: null, direction: "PAYABLE", currency: "DZD", currentBalance: "25.00" }
+    const debtClient = { summary: vi.fn().mockResolvedValue({ accounts: [account], grossPayableDzd: "25.00", grossReceivableDzd: "0.00" }) } as unknown as ExactDebtsClient
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const view = render(<QueryClientProvider client={queryClient}><EmployeeDetailsPage activeTab="debts" debtClient={debtClient} employee={worker()} managedProjects={[]} managedWarehouses={[]} projects={[PROJECT]} onTabChange={vi.fn()} workHistory={[]} /></QueryClientProvider>)
+    expect((await screen.findByRole("tab", { name: "الديون" })).getAttribute("aria-selected")).toBe("true")
+    await screen.findByRole("button", { name: /25/ })
+    fireEvent.click(screen.getByRole("tab", { name: "اختيار أو إنشاء حساب" }))
+    expect(new URLSearchParams(location.search).get("tab")).toBe("debts")
+    expect(new URLSearchParams(location.search).get("debtTab")).toBe("accounts")
+    expect(screen.getByRole("tab", { name: "الديون" }).getAttribute("aria-selected")).toBe("true")
+    view.unmount()
+    render(<QueryClientProvider client={queryClient}><EmployeeDetailsPage activeTab={new URLSearchParams(location.search).get("tab")!} debtClient={debtClient} employee={worker()} managedProjects={[]} managedWarehouses={[]} projects={[PROJECT]} onTabChange={vi.fn()} workHistory={[]} /></QueryClientProvider>)
+    expect(screen.getByRole("tab", { name: "الديون" }).getAttribute("aria-selected")).toBe("true")
+    expect(new URLSearchParams(location.search).get("debtTab")).toBe("accounts")
+    cleanup()
+  })
 
   it("keeps the exact daily reference and routes both approval actions to the full page", () => {
     const onApproveEarning = vi.fn()

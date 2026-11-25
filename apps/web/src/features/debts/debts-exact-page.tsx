@@ -19,7 +19,7 @@ import { useExactDebtCommand, useExactDebtDetail, useExactDebtSummary, type Exac
 import { ManualSettlementLink } from "./manual-settlement-link"
 import { ManualSettlementPanel, type ManualSettlementClient } from "./manual-settlement-panel"
 import { EmployeePayrollDebtSection } from "./employee-payroll-debt-section"
-import { useUrlParam, useUrlTab } from "@/hooks/use-url-state"
+import { useUrlParam } from "@/hooks/use-url-state"
 
 export type ExactDebtPartyOption = { id: string; label: string; phone?: string; partyType: ExactDebtAccount["partyType"] }
 type Entry = ExactDebtDetail["entries"][number]
@@ -44,7 +44,7 @@ export function ExactDebtsPage({ client, parties, scopedParty, payrollEmployees,
   const manualSettlementClient = manualSettlementSupported ? suppliedManualClient : undefined
   const partySettlements = scopedParty?.partyType === "EXTERNAL_COUNTERPARTY" && manualSettlementClient
   const [selected, setSelected] = useUrlParam<string>("debtAccount", "")
-  const [tab, setTab] = useUrlTab(["ledger", "accounts", "settlement", "party"], "ledger")
+  const [tab, setTab] = useUrlParam("debtTab", "ledger", { deserializer: value => ["ledger", "accounts", "settlement", "party"].includes(value) ? value : "ledger" })
   const [accountPage, setAccountPage] = useState(1)
   const [entryPage, setEntryPage] = useState(1)
   const [search, setSearch] = useState("")

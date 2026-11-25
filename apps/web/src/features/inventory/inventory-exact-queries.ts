@@ -1,6 +1,7 @@
 import type { ExactInventoryClient, ExactInventoryInvoiceInput, ExactInventoryPayment, ExactInventoryOutboundPayment, ExactInventoryAssetTransfer, ExactInventoryConsumableTransfer, ExactInventoryOutboundInput, ExactInventoryChargeUpdate, ExactInventoryChargeVoid } from "@tuari/contracts"
 import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
 import { exactCommercePrefix, useExactCommerceMutation } from "@/features/shared/exact-commerce-queries"
+import type { QueryClient } from "@tanstack/react-query"
 export type ExactInventoryAction =
   | { kind: "createInvoice"; input: ExactInventoryInvoiceInput }
   | { kind: "recordPayment"; input: ExactInventoryPayment }
@@ -10,6 +11,17 @@ export type ExactInventoryAction =
   | { kind: "createOutbound"; input: ExactInventoryOutboundInput }
   | { kind: "updateCharge"; input: ExactInventoryChargeUpdate }
   | { kind: "voidCharge"; input: ExactInventoryChargeVoid }
+export async function invalidateExactInventoryDebtQueries(queries: QueryClient, owner: string) {
+  await queries.invalidateQueries({
+    predicate: query => {
+      const key = query.queryKey
+      const commerceDebtView = key[0] === "phase1" && key[1] === "workspace" && key[2] === "exact-commerce" && key[4] === owner
+        && ["invoices", "invoice", "outbounds", "outbound"].includes(String(key[5]))
+      const transferHistory = key[0] === "inventory" && key[1] === "transfer-history" && key[2] === owner
+      return commerceDebtView || transferHistory
+    },
+  })
+}
 export function useExactInventoryInvoices(client: ExactInventoryClient, { enabled = true }: { enabled?: boolean } = {}) {
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "invoices"], enabled, queryFn: () => client.listInvoices() })
 }
