@@ -69,7 +69,7 @@ describe("ExactExpensesPage", () => {
     detailQuery.mockReturnValue({ data: undefined, isPending: false, isError: false })
     renderExact()
     fireEvent.click(screen.getByRole("button", { name: "تجميع حسب المشروع" }))
-    fireEvent.click(screen.getByRole("button", { name: "المرفقات", exact: true }))
+    fireEvent.click(screen.getByRole("button", { name: "المرفقات" }))
     const dialog = screen.getByRole("dialog")
     const receipts = within(dialog).getByTestId("history-receipts")
     expect(receipts.getAttribute("data-expense")).toBe(item.id)
