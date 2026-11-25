@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { InventoryAttachmentStorage } from "../inventory/inventory.storage";
 import { tmpdir } from "node:os";
@@ -101,6 +102,41 @@ describe("createWorkerSnapshotter", () => {
     expect(statSync(join(day2, "attachments", second.relativePath)).nlink).toBeGreaterThan(1);
     unlinkSync(join(attachmentsRootPath, "attachments-store", second.sha256, "object"));
     expect(readFileSync(join(day2, "attachments", second.relativePath), "utf8")).toBe("second");
+  });
+
+  it("restores a copied snapshot with its invoice attachment association and exact bytes", async () => {
+    seedDatabase(1);
+    const database = new Database(databasePath);
+    database.exec("CREATE TABLE inventory_invoice_attachment (relative_path TEXT, sha256 TEXT)");
+    const attachmentsRootPath = join(tempRoot, "live-attachments");
+    const storage = new InventoryAttachmentStorage(attachmentsRootPath);
+    const bytes = Buffer.from("synthetic invoice attachment\\n");
+    const saved = await storage.saveInvoiceAttachment({
+      invoiceGroupId: "synthetic-invoice-group",
+      originalName: "invoice.txt",
+      bytes,
+    });
+    database.prepare("INSERT INTO inventory_invoice_attachment VALUES (?, ?)").run(saved.relativePath, saved.sha256);
+    database.close();
+
+    const snapshotDirectory = join(tempRoot, "snapshot");
+    mkdirSync(snapshotDirectory);
+    await createWorkerSnapshotter({ databasePath, attachmentsRootPath })(join(snapshotDirectory, "tuari.sqlite"));
+
+    const restoreDirectory = join(tempRoot, "fresh-restore");
+    cpSync(snapshotDirectory, restoreDirectory, { recursive: true });
+    const restored = new Database(join(restoreDirectory, "tuari.sqlite"), { readonly: true });
+    try {
+      const [attachment] = restored.prepare(
+        "SELECT relative_path, sha256 FROM inventory_invoice_attachment",
+      ).all() as Array<{ relative_path: string; sha256: string }>;
+      expect(attachment).toEqual({ relative_path: saved.relativePath, sha256: saved.sha256 });
+      const restoredBytes = readFileSync(join(restoreDirectory, "attachments", attachment.relative_path));
+      expect(restoredBytes).toEqual(bytes);
+      expect(createHash("sha256").update(restoredBytes).digest("hex")).toBe(saved.sha256);
+    } finally {
+      restored.close();
+    }
   });
 
   it.each(["missing", "mismatched", "escaped"])("rejects %s database attachment references", async (scenario) => {
