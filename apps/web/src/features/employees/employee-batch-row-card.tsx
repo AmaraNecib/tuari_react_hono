@@ -190,6 +190,7 @@ export function EmployeeBatchRowCard({
           <NativeSelect
             aria-describedby={`employee-manager-hint-${index}${errors.managerId ? ` employee-manager-error-${index}` : ""}`}
             aria-invalid={Boolean(errors.managerId)}
+            className="disabled:cursor-not-allowed disabled:opacity-70"
             disabled={!canAssignManager || managerOptions.length === 0}
             id={`employee-manager-${index}`}
             name={`employee-manager-${index}`}
@@ -217,6 +218,7 @@ export function EmployeeBatchRowCard({
             <NativeSelect
               aria-describedby={`employee-project-hint-${index}${errors.projectId ? ` employee-project-error-${index}` : ""}`}
               aria-invalid={Boolean(errors.projectId)}
+              className="disabled:cursor-not-allowed disabled:opacity-70"
               disabled={!draft.managerId || availableProjects.length === 0}
               id={`employee-project-${index}`}
               name={`employee-project-${index}`}

@@ -2,7 +2,12 @@ import { test, expect } from "@playwright/test"
 import { bootstrapOrSignIn } from "./helpers/session"
 import { installManagedApiLifecycle } from "./helpers/test"
 
-installManagedApiLifecycle()
+if (process.env.E2E_API_MANAGED === "1") installManagedApiLifecycle()
+
+if (process.env.E2E_API_MANAGED !== "1") {
+  test.skip(true, "employee-select capture requires the managed API fixture")
+}
+
 import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 

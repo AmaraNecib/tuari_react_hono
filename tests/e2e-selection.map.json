@@ -143,6 +143,7 @@
       "specs": [
         "employees.spec.ts",
         "employees-search.spec.ts",
+        "employee-select-capture.spec.ts",
         "employee-earnings.spec.ts",
         "payroll-connected-exact.spec.ts",
         "payroll-recovery.spec.ts",
