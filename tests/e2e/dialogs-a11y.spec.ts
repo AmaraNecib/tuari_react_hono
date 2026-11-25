@@ -58,22 +58,14 @@ test("keyboard shortcuts help is a labelled modal dialog and closes on Escape", 
   await expect(dialog).toBeHidden()
 })
 
-test("first-run tour is a modal dialog and Escape skips it", async ({ page }) => {
-  // Sign in WITHOUT dismissing the tour so it auto-starts on the shell.
-  await bootstrapOrSignIn(page, { dismissTour: false })
+test("signed-in workspace does not auto-open the optional tour", async ({ page }) => {
+  await bootstrapOrSignIn(page)
 
-  // First step is the sidebar tour card ("الشريط الجانبي").
-  const dialog = page.getByRole("dialog", { name: "الشريط الجانبي" })
-  await expect(dialog).toBeVisible({ timeout: 15_000 })
-
-  // Escape skips the tour (same as the Skip button) and persists the status.
-  await page.keyboard.press("Escape")
-  await expect(dialog).toBeHidden()
-
-  const status = await page.evaluate(() =>
-    localStorage.getItem("journey-home-tour-status")
-  )
-  expect(status).toBe("skipped")
+  // Observe beyond the former 500 ms auto-start delay before asserting no tour.
+  await page.waitForTimeout(600)
+  await expect(page.getByRole("link", { name: "لوحة التحكم" }).first()).toBeVisible()
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem("journey-home-tour-status"))).toBeNull()
 })
 
 test("mobile filters drawer traps focus and closes on Escape", async ({ page }) => {
