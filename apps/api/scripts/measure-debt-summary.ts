@@ -3,11 +3,11 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
-import { createDatabaseConnection } from "../../infrastructure/database/factory";
-import { createFifoLock } from "../../infrastructure/database/fifo-lock";
-import { exactDebtSchemaStatements } from "./adapters/exact-finance-schema";
-import { SqliteExactFinanceRepository } from "./adapters/sqlite-exact-finance.repository";
-import { ExactFinanceService } from "./exact-finance.service";
+import { createDatabaseConnection } from "../src/infrastructure/database/factory";
+import { createFifoLock } from "../src/infrastructure/database/fifo-lock";
+import { exactDebtSchemaStatements } from "../src/modules/company/adapters/exact-finance-schema";
+import { SqliteExactFinanceRepository } from "../src/modules/company/adapters/sqlite-exact-finance.repository";
+import { ExactFinanceService } from "../src/modules/company/exact-finance.service";
 
 const implementationBaseSha = "baaca20ef708cdf5dfa31538e609f153254a3fba";
 const dir = mkdtempSync(join(tmpdir(), "tuari-debt-summary-measure-"));

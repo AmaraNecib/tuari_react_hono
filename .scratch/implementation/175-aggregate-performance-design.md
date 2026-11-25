@@ -7,7 +7,7 @@
 
 ## Method
 
-`apps/api/src/modules/company/measure-debt-summary.ts` creates a temporary plain SQLite fixture, seeds 1,000 external parties, accounts and live entries, checks independent SQL counts and expected totals, then measures the first invocation, five warmups and 30 calls. Validation is outside timed regions. Details and limits are in `docs/PERFORMANCE.md`.
+`apps/api/scripts/measure-debt-summary.ts` creates a temporary plain SQLite fixture, seeds 1,000 external parties, accounts and live entries, checks independent SQL counts and expected totals, then measures the first invocation, five warmups and 30 calls. Validation is outside timed regions. The harness is outside the API source coverage set because it is an opt-in executable, not an imported application module. The source was relocated after the historical measurement; only import paths changed, and the measurement was not repeated. Details and limits are in `docs/PERFORMANCE.md`.
 
 ## Risks and remaining acceptance
 
