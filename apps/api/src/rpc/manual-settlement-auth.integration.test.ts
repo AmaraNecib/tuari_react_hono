@@ -172,6 +172,12 @@ it("binds manual settlement to a real authenticated session and retains original
   expect(await client.financial.manualSettlement.preview(settlementPair)).toMatchObject({ payableRemainingDzd: "80000.00", receivableRemainingDzd: "25000.00", projectedPayableRemainingDzd: "55000.00", projectedReceivableRemainingDzd: "0.00" });
   const inventoryState = () => Object.fromEntries(tables.filter(name => (name.includes("inventory") && !name.includes("invoice_group") && !name.includes("outbound_transfer")) || name.includes("project_cost") || name.includes("asset_charge")).map(name => [name, db.prepare(`SELECT * FROM "${name}" ORDER BY rowid`).all()]));
   const sourceState = inventoryState();
+  const purchaseHeader = inventory.getInvoiceGroup(purchase.group.id).group;
+  const saleHeader = inventory.getOutboundTransfer(sale.id);
+  expect(await client.financial.manualSettlement.candidates({ externalCounterpartyId: party.item.id })).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: purchaseOriginal, direction: "PAYABLE", remainingDzd: "80000.00" }),
+    expect.objectContaining({ id: saleOriginal, direction: "RECEIVABLE", remainingDzd: "25000.00" }),
+  ]));
   const actualPayments = () => [purchase.group.debtEntryId, sale.debtEntryId].map(id => finance.listEntries(id === purchase.group.debtEntryId ? purchase.group.debtAccountId! : sale.associatedDebtAccountId!).filter(entry => entry.entryType === "PAYMENT").map(entry => ({ amount: entry.signedAmountDzd, method: entry.paymentMethod, target: entry.targetEntryId })));
   const paymentsBefore = actualPayments();
   const confirm = { ...settlementPair, requestId: "settle-inventory-pair", expectedPayableRemainingDzd: "80000.00", expectedReceivableRemainingDzd: "25000.00" };
@@ -181,6 +187,9 @@ it("binds manual settlement to a real authenticated session and retains original
   expect(actualPayments()).toEqual(paymentsBefore);
   expect(finance.remaining(purchaseOriginal)).toBe("55000.00");
   expect(finance.remaining(saleOriginal)).toBe("0.00");
+  const settledPurchaseHeader = inventory.getInvoiceGroup(purchase.group.id).group;
+  expect({ ...settledPurchaseHeader, remainingDebtDzd: purchaseHeader.remainingDebtDzd, updatedAt: purchaseHeader.updatedAt }).toEqual(purchaseHeader);
+  expect({ ...inventory.getOutboundTransfer(sale.id), remainingDebtDzd: saleHeader.remainingDebtDzd }).toEqual(saleHeader);
   expect(inventory.getInvoiceGroup(purchase.group.id).group.remainingDebtDzd).toBe("55000.00");
   const inventoryReversal = await client.financial.manualSettlement.reverse({ requestId: "reverse-inventory-pair", settlementId: settled.settlement.id, reason: "Test reversal" });
   expect(inventoryReversal.settlement.id).toBe(settled.settlement.id);
@@ -188,7 +197,14 @@ it("binds manual settlement to a real authenticated session and retains original
   expect(actualPayments()).toEqual(paymentsBefore);
   expect(finance.remaining(purchaseOriginal)).toBe("80000.00");
   expect(finance.remaining(saleOriginal)).toBe("25000.00");
+  const reversedPurchaseHeader = inventory.getInvoiceGroup(purchase.group.id).group;
+  expect({ ...reversedPurchaseHeader, remainingDebtDzd: purchaseHeader.remainingDebtDzd, updatedAt: purchaseHeader.updatedAt }).toEqual(purchaseHeader);
+  expect({ ...inventory.getOutboundTransfer(sale.id), remainingDebtDzd: saleHeader.remainingDebtDzd }).toEqual(saleHeader);
   expect(inventory.getInvoiceGroup(purchase.group.id).group.remainingDebtDzd).toBe("80000.00");
+  const reverseInventoryInput = { requestId: "reverse-inventory-pair", settlementId: settled.settlement.id, reason: "Test reversal" };
+  expect(await client.financial.manualSettlement.reverse(reverseInventoryInput)).toEqual(inventoryReversal);
+  await expect(client.financial.manualSettlement.reverse({ ...reverseInventoryInput, requestId: "duplicate-inventory-reversal" })).rejects.toMatchObject({ code: "CONFLICT" });
+  expect(() => inventory.recordOutboundPayment({ requestId: "overpay-after-settlement", transferId: sale.id, amountDzd: "25000.01" })).toThrow(/exceeds/i);
   const project = await client.projectsCreate({ name: "Settlement project", status: "ACTIVE" });
   if (!project.success) throw new Error("Project setup failed");
   inventory.createInvoiceGroup({ requestId: "project-stock", projectId: project.item.id, entries: [{ kind: "CONSUMABLE", itemDefinitionId: material.item.id, quantity: 1, priceSource: { mode: "agreed-total", total: "10.00", quantity: "1" } }] });
@@ -203,5 +219,9 @@ it("binds manual settlement to a real authenticated session and retains original
   const reopenedOperator = createRouterClient(createRouter(reopened), { context: createRpcContext(new Headers({ authorization: `Bearer ${operatorSession.token}` }), reopened.sessionService) }) as AppClient;
   expect(await reopenedOperator.financial.manualSettlement.confirm(input)).toEqual(saved);
   expect(await reopenedOperator.financial.manualSettlement.reverse(reverse)).toEqual(reversed);
+  expect((await reopenedOperator.financial.manualSettlement.history({ externalCounterpartyId: party.item.id })).items).toContainEqual(expect.objectContaining({ id: settled.settlement.id, reversal: inventoryReversal.reversal }));
+  expect(reopened.financial.services.finance.remaining(purchaseOriginal)).toBe("80000.00");
+  expect(reopened.financial.services.inventory.getInvoiceGroup(purchase.group.id).group.remainingDebtDzd).toBe("80000.00");
+  expect(reopened.financial.services.inventory.getOutboundTransfer(sale.id).remainingDebtDzd).toBe("25000.00");
   expect((await retry.financial.manualSettlement.history({ externalCounterpartyId: party.item.id })).items.find(row => row.id === saved.settlement.id)?.reversal).toEqual(reversed.reversal);
 }, 60000);
