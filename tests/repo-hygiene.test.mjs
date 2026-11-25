@@ -28,12 +28,20 @@ test('no stray `nul` file at the repo root and gitignore blocks it', async () =>
 });
 
 test('runtime API backup paths are ignored without accessing backup data', () => {
-  const result = spawnSync('git', ['check-ignore', '--no-index', 'apps/api/backups/synthetic-ignore-probe.sqlite'], {
+  const backupPath = 'apps/api/backups/example/snapshot.json';
+  const result = spawnSync('git', ['check-ignore', '--no-index', backupPath], {
     cwd: rootDir,
     encoding: 'utf8',
   });
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stdout.trim(), 'apps/api/backups/synthetic-ignore-probe.sqlite');
+  assert.equal(result.stdout.trim(), backupPath);
+
+  const siblingPath = 'apps/api/backup-example/snapshot.json';
+  const sibling = spawnSync('git', ['check-ignore', '--no-index', siblingPath], {
+    cwd: rootDir,
+    encoding: 'utf8',
+  });
+  assert.equal(sibling.status, 1, sibling.stderr);
 });
 
 test('api tsconfig does not include the removed prisma.config.ts', async () => {
