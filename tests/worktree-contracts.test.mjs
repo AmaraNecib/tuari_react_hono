@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, symlink, rm, readFile, readdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, symlink, rm, readFile, readdir, lstat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -54,15 +54,39 @@ test('independent synthetic trees pass ownership checks and remain unchanged', a
   assert.equal(await readFile(path.join(b.target, 'dist/index.js'), 'utf8'), 'export const value = 1;');
 });
 
-test('sibling contracts links fail ownership preflight before downstream sentinel', async t => {
+test('ownership command reaches downstream on valid root and blocks sibling node_modules and output', async t => {
   const { root, sibling } = await fixture(t);
-  const link = path.join(root, 'apps/api/node_modules/@tuari/contracts');
-  await rm(link, { recursive: true });
-  await linkDirectory(sibling, link);
+  await mkdir(path.join(root, 'node_modules/.pnpm'), { recursive: true });
+  await mkdir(path.join(root, 'apps/api/node_modules/.pnpm'), { recursive: true });
+  await mkdir(path.join(root, 'apps/web/node_modules/.pnpm'), { recursive: true });
+  await mkdir(path.join(root, 'packages/contracts/node_modules/.pnpm'), { recursive: true });
   const sentinel = path.join(root, 'downstream-ran');
-  const command = spawnSync(process.execPath, ['-e', `import { spawnSync } from 'node:child_process'; const check=spawnSync(process.execPath,['${cliPath.replaceAll('\\','\\\\')}','--ownership-only'],{cwd:'${root.replaceAll('\\','\\\\')}',stdio:'inherit'}); if(check.status!==0) process.exit(check.status); process.writeFileSync('${sentinel.replaceAll('\\','\\\\')}','ran');`], { cwd: root });
-  assert.notEqual(command.status, 0);
-  await assert.rejects(readFile(sentinel));
+  const run = cwd => spawnSync(process.execPath, ['-e', `const {spawnSync}=require('node:child_process');const {writeFileSync}=require('node:fs');const r=spawnSync(process.execPath,['${cliPath.replaceAll('\\','\\\\')}','--ownership-only','${root.replaceAll('\\','\\\\')}'],{cwd:'${cwd.replaceAll('\\','\\\\')}',encoding:'utf8'});if(r.status!==0){process.stderr.write(r.stdout+r.stderr);process.exit(r.status)}writeFileSync('${sentinel.replaceAll('\\','\\\\')}','ran')`], { cwd, encoding: 'utf8' });
+  const positive = run(root);
+  assert.equal(positive.status, 0, positive.stderr);
+  assert.equal(await readFile(sentinel, 'utf8'), 'ran');
+  await rm(sentinel);
+  for (const relative of ['node_modules', 'apps/api/node_modules', 'apps/web/node_modules', 'packages/contracts/node_modules', 'packages/contracts/dist']) {
+    const target = path.join(root, relative);
+    await rm(target, { recursive: true, force: true });
+    await linkDirectory(sibling, target);
+    const result = run(root);
+    assert.notEqual(result.status, 0, relative);
+    assert.match(result.stderr, new RegExp(relative.replace(/[.*+?^${}()|[\\]\\]/g, '\\\\$&')));
+    await assert.rejects(lstat(sentinel));
+    await rm(target);
+    if (relative.endsWith('dist')) await mkdir(target, { recursive: true });
+  }
+});
+
+test('package command prefixes use repository root from package cwd', async t => {
+  const { root } = await fixture(t);
+  const manifestPaths = ['apps/api/package.json', 'apps/web/package.json', 'packages/contracts/package.json'];
+  for (const manifest of manifestPaths) {
+    const cwd = path.join(root, path.dirname(manifest));
+    const result = spawnSync(process.execPath, [cliPath, '--ownership-only', '../..'], { cwd, encoding: 'utf8' });
+    assert.equal(result.status, 0, `${manifest}: ${result.stdout}${result.stderr}`);
+  }
 });
 
 test('own-root links and files pass without modifying fixture contents', async t => {

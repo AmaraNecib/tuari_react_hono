@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only && tsx watch src/index.ts",
-    "build": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only && tsup",
+    "dev": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && tsx watch src/index.ts",
+    "build": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && tsup",
     "start": "node dist/index.cjs",
     "auth:generate": "pnpm dlx @better-auth/cli@latest generate --config ./src/infrastructure/auth/auth.ts --yes",
     "lint": "eslint .",
-    "test": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only && vitest run",
-    "test:coverage": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only && vitest run --coverage",
-    "typecheck": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only && tsc --noEmit"
+    "test": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && vitest run",
+    "test:coverage": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && vitest run --coverage",
+    "typecheck": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && tsc --noEmit"
   },
   "dependencies": {
     "@better-auth/drizzle-adapter": "1.7.7",

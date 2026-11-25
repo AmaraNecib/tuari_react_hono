@@ -1,4 +1,4 @@
-import { realpath, readFile, stat } from 'node:fs/promises';
+import { realpath, readFile, stat, lstat, readlink } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -12,13 +12,28 @@ export async function inspectWorktreeOwnership(repositoryRoot = process.cwd()) {
   let root;
   try { root = await realpath(path.resolve(repositoryRoot)); }
   catch { return { ok: false, diagnostics: [`Repository root does not exist: ${repositoryRoot}`] }; }
-  for (const relative of ['node_modules', 'apps/api/node_modules', 'apps/web/node_modules', 'packages/contracts/node_modules']) {
+  const ownedPaths = ['node_modules', 'apps/api/node_modules', 'apps/web/node_modules', 'packages/contracts/node_modules', 'packages/contracts/dist'];
+  for (const relative of ownedPaths) {
     const candidate = path.join(root, relative);
     try {
+      const info = await lstat(candidate);
       const actual = await realpath(candidate);
       if (!within(root, actual)) diagnostics.push(`${relative} resolves outside this worktree: ${actual}`);
+      if (info.isSymbolicLink() && !within(root, actual)) diagnostics.push(`${relative} is a sibling-owned link`);
     } catch (error) {
-      if (error.code !== 'ENOENT') diagnostics.push(`Cannot inspect ${relative}: ${error.message}`);
+      if (error.code === 'ENOENT') {
+        try {
+          const info = await lstat(candidate);
+          if (info.isSymbolicLink()) {
+            const target = await readlink(candidate);
+            const resolved = path.resolve(path.dirname(candidate), target);
+            if (!within(root, resolved)) diagnostics.push(`${relative} dangling link targets outside this worktree: ${resolved}`);
+            else diagnostics.push(`${relative} is a broken link: ${resolved}`);
+          }
+        } catch (inspectError) {
+          if (inspectError.code !== 'ENOENT') diagnostics.push(`Cannot inspect ${relative}: ${inspectError.message}`);
+        }
+      } else diagnostics.push(`Cannot inspect ${relative}: ${error.message}`);
     }
   }
   const contracts = path.join(root, 'packages/contracts');
@@ -31,7 +46,17 @@ export async function inspectWorktreeOwnership(repositoryRoot = process.cwd()) {
     try {
       const resolved = await realpath(link);
       if (resolved !== packageRoot) diagnostics.push(`${app} contracts link resolves outside this worktree package: ${resolved}`);
-    } catch { /* A clean tree may be checked before dependencies are installed. */ }
+    } catch (error) {
+      if (error.code !== 'ENOENT') diagnostics.push(`Cannot resolve ${app} contracts link: ${error.message}`);
+      else {
+        try {
+          const info = await lstat(link);
+          if (info.isSymbolicLink()) diagnostics.push(`${app} contracts link is broken or dangling`);
+        } catch (inspectError) {
+          if (inspectError.code !== 'ENOENT') diagnostics.push(`Cannot inspect ${app} contracts link: ${inspectError.message}`);
+        }
+      }
+    }
   }
   return { ok: diagnostics.length === 0, diagnostics };
 }
