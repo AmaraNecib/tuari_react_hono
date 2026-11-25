@@ -131,9 +131,11 @@ describe("createWorkerSnapshotter", () => {
     cpSync(snapshotDirectory, restoreDirectory, { recursive: true });
     const restored = new Database(join(restoreDirectory, "tuari.sqlite"), { readonly: true });
     try {
-      const [attachment] = restored.prepare(
+      const attachment = restored.prepare(
         "SELECT invoice_group_id, relative_path, sha256 FROM inventory_invoice_attachment",
-      ).all() as Array<{ invoice_group_id: string; relative_path: string; sha256: string }>;
+      ).get() as { invoice_group_id: string; relative_path: string; sha256: string } | undefined;
+      expect(attachment).toBeDefined();
+      if (!attachment) throw new Error("Expected restored invoice attachment association");
       expect(attachment).toEqual({
         invoice_group_id: "synthetic-invoice-group",
         relative_path: saved.relativePath,
