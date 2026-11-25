@@ -7,7 +7,6 @@ import {
   TEST_PASSWORD,
   TEST_PHONE,
   bootstrapOrSignIn,
-  dismissUserJourneyTour,
   signIn,
 } from "./helpers/session"
 
@@ -106,7 +105,6 @@ async function changePassword(page: Page, current: string, next: string) {
 test("first-run bootstrap creates the admin account", async ({ page }) => {
   // This spec sorts before every other spec file, so it sees a fresh DB and
   // the first-run bootstrap screen is guaranteed (see .scratch/implementation/254-design.md).
-  await dismissUserJourneyTour(page)
   await page.goto("/")
 
   await expect(page.getByRole("heading", { name: "إنشاء المستخدم الأول" })).toBeVisible()
@@ -123,12 +121,14 @@ test("first-run bootstrap creates the admin account", async ({ page }) => {
 
   // The signed-in shell reflects the bootstrapped account.
   await expect(page.getByRole("link", { name: "لوحة التحكم" }).first()).toBeVisible({ timeout: 15_000 })
+  await page.waitForTimeout(600)
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem("journey-home-tour-status"))).toBeNull()
   await expect(page.locator("aside").getByText(TEST_NAME, { exact: true })).toBeVisible()
   await expect(page.locator("aside").getByText(TEST_PHONE, { exact: true })).toBeVisible()
 })
 
 test("admin signs in with phone and password", async ({ page }) => {
-  await dismissUserJourneyTour(page)
   await page.goto("/")
 
   await expect(page.getByRole("heading", { name: "تسجيل الدخول" })).toBeVisible()

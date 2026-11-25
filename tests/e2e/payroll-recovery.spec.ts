@@ -1,6 +1,6 @@
 import { installManagedApiLifecycle } from "./helpers/test"
 import { expect, test } from "./helpers/test"
-import { bootstrapOrSignIn, dismissUserJourneyTour, uniqueSuffix } from "./helpers/session"
+import { bootstrapOrSignIn, uniqueSuffix } from "./helpers/session"
 
 installManagedApiLifecycle()
 
@@ -48,7 +48,6 @@ test("payroll fixture UI retains an uncertain advance across native tabs and rel
   await expect(panel.getByRole("group", { name: "عمليات حساب الأجور" })).toBeVisible()
   await panel.screenshot({ path: test.info().outputPath("payroll-before.png") })
   const second = await context.newPage()
-  await dismissUserJourneyTour(second)
   await second.goto(page.url())
   const secondPanel = second.getByRole("region", { name: "حساب الأجور والسلف", exact: true })
   if (!(await secondPanel.isVisible())) await second.getByRole("tab", { name: "المالية", exact: true }).click()

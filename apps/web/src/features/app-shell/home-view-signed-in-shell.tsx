@@ -354,7 +354,7 @@ export function HomeViewSignedInShell({
   ]
 
   return (
-    <UserJourneyTour steps={tourSteps} storageKey="home-tour" autoStart>
+    <UserJourneyTour steps={tourSteps} storageKey="home-tour">
     {/* Skip link must precede the shell grid so it stays the first focusable
         element and never becomes a grid item (issue #284). */}
     <SkipNavigation />

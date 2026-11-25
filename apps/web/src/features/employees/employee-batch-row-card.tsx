@@ -58,9 +58,6 @@ type EmployeeBatchRowCardProps = {
   onRemove: (index: number) => void
 }
 
-const fieldClassName =
-  "flex h-12 w-full rounded-xl border border-border/80 bg-sidebar px-4 text-sm text-foreground shadow-[0_1px_0_rgba(255,255,255,0.55)_inset] outline-none transition focus-visible:border-primary/60 focus-visible:ring-4 focus-visible:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-70 dark:bg-background dark:[color-scheme:dark] dark:shadow-none"
-
 /**
  * @description Component
  */
@@ -140,15 +137,21 @@ export function EmployeeBatchRowCard({
 
         <label className="flex flex-col gap-2.5">
           <span className="text-sm font-medium text-foreground">{copy.roleLabel}</span>
-          <select className={fieldClassName} name={`employee-role-${index}`} value={draft.roleId} onChange={(event) => onChange(index, "roleId", event.target.value)}>
+          <NativeSelect
+            aria-describedby={errors.roleId ? `employee-role-error-${index}` : undefined}
+            aria-invalid={Boolean(errors.roleId)}
+            name={`employee-role-${index}`}
+            value={draft.roleId}
+            onChange={(event) => onChange(index, "roleId", event.target.value)}
+          >
             <option value="">{copy.rolePlaceholder}</option>
             {roles.filter((role) => isEmployeeRoleSelectable(role.key)).map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
               </option>
             ))}
-          </select>
-          {errors.roleId ? <p className="text-sm text-destructive">{errors.roleId}</p> : null}
+          </NativeSelect>
+          {errors.roleId ? <p id={`employee-role-error-${index}`} className="text-sm text-destructive">{errors.roleId}</p> : null}
         </label>
 
         <label className="flex flex-col gap-2.5">
@@ -184,8 +187,10 @@ export function EmployeeBatchRowCard({
           <label className="text-sm font-medium text-foreground" htmlFor={`employee-manager-${index}`}>
             {copy.managerLabel}
           </label>
-          <select
-            className={fieldClassName}
+          <NativeSelect
+            aria-describedby={`employee-manager-hint-${index}${errors.managerId ? ` employee-manager-error-${index}` : ""}`}
+            aria-invalid={Boolean(errors.managerId)}
+            className="disabled:cursor-not-allowed disabled:opacity-70"
             disabled={!canAssignManager || managerOptions.length === 0}
             id={`employee-manager-${index}`}
             name={`employee-manager-${index}`}
@@ -198,11 +203,11 @@ export function EmployeeBatchRowCard({
                 {manager.label}
               </option>
             ))}
-          </select>
-          <p className="text-xs leading-5 text-muted-foreground">
+          </NativeSelect>
+          <p id={`employee-manager-hint-${index}`} className="text-xs leading-5 text-muted-foreground">
             {canAssignManager ? copy.managerPlaceholder : copy.managerDisabledHint}
           </p>
-          {errors.managerId ? <p className="text-sm text-destructive">{errors.managerId}</p> : null}
+          {errors.managerId ? <p id={`employee-manager-error-${index}`} className="text-sm text-destructive">{errors.managerId}</p> : null}
         </div>
 
         {canAssignManager ? (
@@ -210,8 +215,10 @@ export function EmployeeBatchRowCard({
             <label className="text-sm font-medium text-foreground" htmlFor={`employee-project-${index}`}>
               {copy.projectLabel}
             </label>
-            <select
-              className={fieldClassName}
+            <NativeSelect
+              aria-describedby={`employee-project-hint-${index}${errors.projectId ? ` employee-project-error-${index}` : ""}`}
+              aria-invalid={Boolean(errors.projectId)}
+              className="disabled:cursor-not-allowed disabled:opacity-70"
               disabled={!draft.managerId || availableProjects.length === 0}
               id={`employee-project-${index}`}
               name={`employee-project-${index}`}
@@ -224,11 +231,11 @@ export function EmployeeBatchRowCard({
                   {project.label}
                 </option>
               ))}
-            </select>
-            <p className="text-xs leading-5 text-muted-foreground">
+            </NativeSelect>
+            <p id={`employee-project-hint-${index}`} className="text-xs leading-5 text-muted-foreground">
               {draft.managerId ? copy.projectPlaceholder : copy.projectDisabledHint}
             </p>
-            {errors.projectId ? <p className="text-sm text-destructive">{errors.projectId}</p> : null}
+            {errors.projectId ? <p id={`employee-project-error-${index}`} className="text-sm text-destructive">{errors.projectId}</p> : null}
           </div>
         ) : null}
 
