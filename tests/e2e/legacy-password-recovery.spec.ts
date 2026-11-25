@@ -2,7 +2,7 @@ import { installManagedApiLifecycle } from "./helpers/test"
 import { expect, test, type Page } from "./helpers/test"
 
 import { seedLegacyPasswordUser } from "./helpers/db-seed"
-import { dismissUserJourneyTour, signIn } from "./helpers/session"
+import { signIn } from "./helpers/session"
 import { databaseFixturesAvailable } from "./helpers/db-isolation"
 
 installManagedApiLifecycle()
@@ -81,7 +81,6 @@ async function signOut(page: Page) {
 }
 
 test("a pre-#230 whitespace-password user regains access and rotates the password", async ({ page }) => {
-  await dismissUserJourneyTour(page)
   await page.goto("/")
 
   // The seeded legacy user makes hasUsers true, so the sign-in screen shows.

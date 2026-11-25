@@ -7,7 +7,6 @@ import {
   TEST_PASSWORD,
   TEST_PHONE,
   bootstrapOrSignIn,
-  dismissUserJourneyTour,
   signIn,
 } from "./helpers/session"
 
@@ -106,7 +105,6 @@ async function changePassword(page: Page, current: string, next: string) {
 test("first-run bootstrap creates the admin account", async ({ page }) => {
   // This spec sorts before every other spec file, so it sees a fresh DB and
   // the first-run bootstrap screen is guaranteed (see .scratch/implementation/254-design.md).
-  await dismissUserJourneyTour(page)
   await page.goto("/")
 
   await expect(page.getByRole("heading", { name: "إنشاء المستخدم الأول" })).toBeVisible()
@@ -128,7 +126,6 @@ test("first-run bootstrap creates the admin account", async ({ page }) => {
 })
 
 test("admin signs in with phone and password", async ({ page }) => {
-  await dismissUserJourneyTour(page)
   await page.goto("/")
 
   await expect(page.getByRole("heading", { name: "تسجيل الدخول" })).toBeVisible()

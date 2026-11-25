@@ -1,7 +1,7 @@
 import { installManagedApiLifecycle } from "./helpers/test"
 import { expect, test, type Page } from "./helpers/test"
 
-import { bootstrapOrSignIn, dismissUserJourneyTour } from "./helpers/session"
+import { bootstrapOrSignIn } from "./helpers/session"
 
 installManagedApiLifecycle()
 
@@ -36,7 +36,6 @@ test("system-log (transactions) page renders Arabic labels and structured detail
 })
 
 test("debts hub record-payment dialog renders Arabic, no raw keys", async ({ page }) => {
-  await dismissUserJourneyTour(page)
   await bootstrapOrSignIn(page)
 
   // Create an external counterparty with an opening balance so the ledger
