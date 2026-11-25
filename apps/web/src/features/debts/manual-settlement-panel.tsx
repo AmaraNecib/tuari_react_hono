@@ -11,6 +11,7 @@ import { AmountDisplay } from "@/components/ui"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { ManualSettlementSummary } from "./manual-settlement-summary"
 import { invalidateExactDebtQueries } from "./debts-exact-queries"
+import { invalidateExactInventoryDebtQueries } from "@/features/inventory/inventory-exact-queries"
 import { clearPendingSettlement, isDefiniteSettlementRefusal, loadPendingSettlement, savePendingSettlement, type PendingSettlement } from "./manual-settlement-pending"
 
 export type ManualSettlementClient = AppClient["financial"]["manualSettlement"]
@@ -47,6 +48,8 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
   const locked = busy || pending !== null || storageFailed
   const p = options.data?.find(entry => entry.id === payable)
   const r = options.data?.find(entry => entry.id === receivable)
+  const sourceHref = (entry: typeof p) => entry?.sourceKind === "PURCHASE" ? `/invoices/${encodeURIComponent(entry.sourceId)}` : entry?.sourceKind === "SALE" ? `/outbound-transfers?source=${encodeURIComponent(entry.sourceId)}&party=${encodeURIComponent(partyId)}` : null
+  const sourceLabel = (entry: typeof p) => entry?.sourceKind === "RESTRICTED" ? t("manualSettlement.restrictedSource") : entry?.sourceLabel ?? ""
   let parsed: string | null = null
   try { parsed = parseLocalizedMoneyInput(amount).toWire() } catch { /* Incomplete input has no preview. */ }
   const valid = Boolean(p && r && parsed && Money.parse(parsed).compare(Money.parse("0")) > 0 && Money.parse(parsed).compare(Money.parse(p.remainingDzd!)) <= 0 && Money.parse(parsed).compare(Money.parse(r.remainingDzd!)) <= 0)
@@ -55,7 +58,7 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
   const canReverse = true
   function change(action: () => void) { action(); setPreview(null); setNotice("") }
   async function refresh() {
-    await Promise.all([queries.invalidateQueries({ queryKey: ["manual-settlement"] }), invalidateExactDebtQueries(queries, debtClient, owner)])
+    await Promise.all([queries.invalidateQueries({ queryKey: ["manual-settlement"] }), invalidateExactDebtQueries(queries, debtClient, owner), invalidateExactInventoryDebtQueries(queries, owner)])
   }
   async function execute(command: PendingSettlement) {
     if (busy || storageFailed) return
@@ -98,7 +101,7 @@ function ManualSettlementForm({ client, debtClient, partyId, owner }: Props & { 
       <DialogContent dir="rtl" className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
       <DialogHeader><DialogTitle>{t("manualSettlement.title")}</DialogTitle><DialogDescription>{t("manualSettlement.help")}</DialogDescription></DialogHeader>
       <form aria-label={t("manualSettlement.title")} className="grid min-w-0 gap-4 md:grid-cols-2" onSubmit={event => { event.preventDefault(); void requestPreview() }}>
-        {(["PAYABLE", "RECEIVABLE"] as const).map(direction => <label key={direction} className="min-w-0 space-y-2 text-sm"><span>{t(direction === "PAYABLE" ? "manualSettlement.payable" : "manualSettlement.receivable")}</span><NativeSelect aria-label={t(direction === "PAYABLE" ? "manualSettlement.payable" : "manualSettlement.receivable")} disabled={locked} value={direction === "PAYABLE" ? payable : receivable} onChange={event => change(() => direction === "PAYABLE" ? setPayable(event.target.value) : setReceivable(event.target.value))}><option value="">{t("manualSettlement.select")}</option>{options.data?.filter(entry => entry.direction === direction).map(entry => <option key={entry.id} value={entry.id}>{t("manualSettlement.original", { sequence: entry.postingSequence, amount: entry.remainingDzd })}</option>)}</NativeSelect></label>)}
+        {(["PAYABLE", "RECEIVABLE"] as const).map(direction => <label key={direction} className="min-w-0 space-y-2 text-sm"><span>{t(direction === "PAYABLE" ? "manualSettlement.payable" : "manualSettlement.receivable")}</span><NativeSelect aria-label={t(direction === "PAYABLE" ? "manualSettlement.payable" : "manualSettlement.receivable")} disabled={locked} value={direction === "PAYABLE" ? payable : receivable} onChange={event => change(() => direction === "PAYABLE" ? setPayable(event.target.value) : setReceivable(event.target.value))}><option value="">{t("manualSettlement.select")}</option>{options.data?.filter(entry => entry.direction === direction).map(entry => <option key={entry.id} value={entry.id}>{t("manualSettlement.sourceOption", { source: sourceLabel(entry), amount: entry.remainingDzd })}</option>)}</NativeSelect>{(direction === "PAYABLE" ? p : r) && sourceHref(direction === "PAYABLE" ? p : r) && <a className="inline-block text-sm underline underline-offset-4" href={sourceHref(direction === "PAYABLE" ? p : r)!}>{t("manualSettlement.openSource", { source: sourceLabel(direction === "PAYABLE" ? p : r) })}</a>}</label>)}
         <CurrencyAmountInput exact label={t("manualSettlement.amount")} value={amount} onChange={value => change(() => setAmount(value))} disabled={locked} />
         <label className="space-y-2 text-sm"><span>{t("manualSettlement.note")}</span><Textarea aria-label={t("manualSettlement.note")} maxLength={1000} value={note} onChange={event => setNote(event.target.value)} disabled={locked} /></label>
         <div><Button type="submit" variant="outline" disabled={!valid || locked}>{t("manualSettlement.preview")}</Button></div>

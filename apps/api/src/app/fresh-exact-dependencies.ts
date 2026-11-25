@@ -52,6 +52,7 @@ import { createWorkerSnapshotter } from "../modules/backup/backup.snapshot";
 import { ExactDebtReportReader } from "../modules/reports/exact-debt-report";
 import { SqliteExactDebtReportSnapshot } from "../modules/reports/exact-debt-report-snapshot";
 import { ExactInventoryReports } from "../modules/reports/exact-inventory-reports";
+import { SqliteExactInventoryRepository } from "../modules/inventory/adapters/sqlite-exact-inventory.repository";
 import { ExactInventoryReportSource } from "../modules/reports/exact-inventory-report-source";
 import { createExactReportCapability, type ExactReportCapability } from "../rpc/exact-reports-router";
 import { createExactSystemLogReader, type ExactSystemLogReader } from "../modules/company/exact-system-log.reader";
@@ -113,9 +114,11 @@ export async function createFreshExactAppDependencies(
     const manualSettlement: ManualSettlementCapability | undefined = config.disposableManualSettlement
       ? userId => new ManualSettlementService(
         financial.finance, financial.financeRepository,
-        new SqliteManualSettlementRepository(connection, lock),
+        new SqliteManualSettlementRepository(connection, lock, new SqliteExactInventoryRepository(connection, lock)),
+
         new SqliteManualSettlementAuthorization(connection, lock, userId),
         { id: () => crypto.randomUUID(), now: () => new Date().toISOString() },
+        new SqliteExactInventoryRepository(connection, lock),
       )
       : undefined;
     return {

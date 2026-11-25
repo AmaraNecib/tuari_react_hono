@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { confirmManualSettlementSchema, previewManualSettlementSchema, reverseManualSettlementSchema } from "./manual-settlement";
+import { confirmManualSettlementSchema, manualSettlementCandidateSchema, manualSettlementSourceSchema, previewManualSettlementSchema, reverseManualSettlementSchema } from "./manual-settlement";
 import { exactDebtProducerSchema, exactFinanceAggregateOwnerSchema } from "./debts-exact";
 const party = "00000000-0000-4000-8000-000000000001";
 const payable = "00000000-0000-4000-8000-000000000002";
@@ -20,4 +20,17 @@ it("requires a complete reversal reason and keeps the owner outside producer cap
   for (const reason of ["", "   ", "x".repeat(1001)]) expect(reverseManualSettlementSchema.safeParse({ ...input, reason }).success).toBe(false);
   expect(exactFinanceAggregateOwnerSchema.safeParse({ type: "MANUAL_SETTLEMENT", id: party }).success).toBe(true);
   expect(exactDebtProducerSchema.safeParse({ type: "MANUAL_SETTLEMENT", id: party }).success).toBe(false);
+});
+const candidate = { id: "debt-entry-1", debtAccountId: "debt-account-1", direction: "PAYABLE" as const, postingSequence: 4, remainingDzd: "75.00" };
+it("accepts restricted candidate sources without inventory identity and rejects extra identity fields", () => {
+  expect(manualSettlementCandidateSchema.parse({ ...candidate, sourceKind: "RESTRICTED" })).toEqual({ ...candidate, sourceKind: "RESTRICTED" });
+  expect(manualSettlementCandidateSchema.safeParse({ ...candidate, sourceKind: "RESTRICTED", sourceId: "inventory-1" }).success).toBe(false);
+  expect(manualSettlementCandidateSchema.safeParse({ ...candidate, sourceKind: "RESTRICTED", sourceLabel: "IN-0001" }).success).toBe(false);
+});
+it("keeps owner and manual source shape while rejecting identity on restricted history sources", () => {
+  expect(manualSettlementSourceSchema.parse({ kind: "PURCHASE", id: "inventory-1", label: "IN-0001" })).toEqual({ kind: "PURCHASE", id: "inventory-1", label: "IN-0001" });
+  expect(manualSettlementSourceSchema.parse({ kind: "MANUAL", id: "debt-entry-1", label: "#4" })).toEqual({ kind: "MANUAL", id: "debt-entry-1", label: "#4" });
+  expect(manualSettlementSourceSchema.parse({ kind: "RESTRICTED" })).toEqual({ kind: "RESTRICTED" });
+  expect(manualSettlementSourceSchema.safeParse({ kind: "RESTRICTED", id: "inventory-1" }).success).toBe(false);
+  expect(manualSettlementSourceSchema.safeParse({ kind: "RESTRICTED", label: "IN-0001" }).success).toBe(false);
 });

@@ -143,7 +143,7 @@ const warehousesCreateRoute = createWorkspaceRoute("/warehouses/create", "wareho
 const inventoryRoute = createWorkspaceRoute("/inventory", "inventory")
 const invoicesRoute = createWorkspaceRoute("/invoices", "invoices")
 const invoiceCreateRoute = createWorkspaceRoute("/invoices/create", "invoice-create")
-const outboundTransfersRoute = createWorkspaceRoute("/outbound-transfers", "outbound-transfers")
+const outboundTransfersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/outbound-transfers", validateSearch: (search: Record<string, unknown>) => ({ source: typeof search.source === "string" ? search.source : undefined, party: typeof search.party === "string" ? search.party : undefined }), component: () => { const { source, party } = outboundTransfersRoute.useSearch(); return renderHomeView(<HomeView page="outbound-transfers" outboundId={source} counterpartyId={party} />) } })
 const outboundTransferCreateRoute = createWorkspaceRoute("/outbound-transfers/create", "outbound-transfer-create")
 const outboundTransferCreateV2Route = createWorkspaceRoute("/outbound-transfers/create-v2", "outbound-transfer-create-v2" as HomeViewPage)
 const transferHistoryRoute = createWorkspaceRoute("/transfer-history", "transfer-history" as HomeViewPage)

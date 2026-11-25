@@ -131,7 +131,7 @@ export class ExactInventoryService {
         items: [{ id: movement.assetUnitId ?? movement.inventoryEntryId ?? movement.id, name: movement.assetUnitId ? this.repo.getAsset(movement.assetUnitId)?.assetName ?? entry?.itemName ?? "" : definitions.get(entry?.itemDefinitionId ?? "")?.name ?? entry?.itemName ?? "", quantity: movement.quantity, type: movement.itemType, priceSource: null }],
         totalAmountDzd: null, paidAmountDzd: null, remainingDebtDzd: null, currency: null, paymentStatus: "N/A", status: "COMPLETED", note: movement.note });
     }
-    const debtEntries = new Map<string, Map<string, { signedAmountDzd: string; remainingDzd: string | null }>>();
+    const debtEntries = new Map<string, Map<string, { signedAmountDzd: string; remainingDzd: string | null; entryType: string; targetEntryId: string | null; status: string }>>();
     for (const outbound of outbounds) {
       const type = outbound.transferType;
       const source = location(outbound.fromType, outbound.fromId);
@@ -141,7 +141,7 @@ export class ExactInventoryService {
       if (outbound.debtEntryId && outbound.associatedDebtAccountId) {
         let accountEntries = debtEntries.get(outbound.associatedDebtAccountId);
         if (!accountEntries) {
-          accountEntries = new Map(this.finance.detail(outbound.associatedDebtAccountId).entries.map(row => [row.id, { signedAmountDzd: row.signedAmountDzd, remainingDzd: row.remainingDzd }]));
+          accountEntries = new Map(this.finance.detail(outbound.associatedDebtAccountId).entries.map(row => [row.id, { signedAmountDzd: row.signedAmountDzd, remainingDzd: row.remainingDzd, entryType: row.entryType, targetEntryId: row.targetEntryId, status: row.status }]));
           debtEntries.set(outbound.associatedDebtAccountId, accountEntries);
         }
         const original = accountEntries.get(outbound.debtEntryId);
@@ -149,7 +149,9 @@ export class ExactInventoryService {
         const signed = Money.parse(original.signedAmountDzd);
         totalAmountDzd = (signed.compare(zero()) < 0 ? signed.negate() : signed).toWire();
         remainingDebtDzd = original.remainingDzd;
-        paidAmountDzd = Money.parse(totalAmountDzd).subtract(Money.parse(remainingDebtDzd!)).toWire();
+        paidAmountDzd = sumMoneyHistory([...accountEntries.values()]
+          .filter(entry => entry.entryType === "PAYMENT" && entry.status === "LIVE" && entry.targetEntryId === outbound.debtEntryId)
+          .map(entry => Money.parse(entry.signedAmountDzd).negate()));
       } else totalAmountDzd = paidAmountDzd = remainingDebtDzd = null;
       rows.push({ id: outbound.id, date: outbound.transferDate, type, from: source, to: null,
         counterparty: { id: outbound.counterpartyId, name: this.repo.counterpartyLabel(outbound.counterpartyId) },

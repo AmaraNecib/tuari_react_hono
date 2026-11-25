@@ -7,6 +7,9 @@ import type { ExactDebtsClient } from "@tuari/contracts"
 import { ManualSettlementPanel, type ManualSettlementClient } from "./manual-settlement-panel"
 import { useExactDebtCommand } from "./debts-exact-queries"
 import { loadPendingSettlement, savePendingSettlement, type PendingSettlement } from "./manual-settlement-pending"
+import { exactCommercePrefix } from "@/features/shared/exact-commerce-queries"
+import { useExactInventoryInvoices, useExactInventoryOutbounds } from "@/features/inventory/inventory-exact-queries"
+import { sessionQueryKey } from "@/features/app-shell/workspace-keys"
 const identity = vi.hoisted(() => ({ owner: "u" }))
 vi.mock("@/features/session/use-session-query", () => ({ useSessionQuery: () => ({ data: { user: { id: identity.owner } } }) }))
 const confirm: PendingSettlement = { kind: "confirm", input: { requestId: "X", externalCounterpartyId: "p", payableOriginalEntryId: "a", receivableOriginalEntryId: "b", currency: "DZD", amountDzd: "25.00", expectedPayableRemainingDzd: "100.00", expectedReceivableRemainingDzd: "60.00", note: "original note" } }
@@ -14,7 +17,7 @@ const reverse: PendingSettlement = { kind: "reverse", input: { requestId: "R", s
 const queries: QueryClient[] = []
 function fixture() {
  const client = {
-  candidates: vi.fn().mockResolvedValue([{ id: "a", direction: "PAYABLE", postingSequence: 1, remainingDzd: "100.00" }, { id: "b", direction: "RECEIVABLE", postingSequence: 1, remainingDzd: "60.00" }]),
+  candidates: vi.fn().mockResolvedValue([{ id: "a", direction: "PAYABLE", postingSequence: 1, remainingDzd: "100.00", sourceKind: "PURCHASE", sourceId: "invoice-1", sourceLabel: "IN-00001" }, { id: "b", direction: "RECEIVABLE", postingSequence: 1, remainingDzd: "60.00", sourceKind: "SALE", sourceId: "sale-1", sourceLabel: "SALE · sale-1" }]),
   history: vi.fn().mockResolvedValue({ items: [], nextOffset: null }), accountHistory: vi.fn(),
   preview: vi.fn().mockResolvedValue({ payableRemainingDzd: "100.00", receivableRemainingDzd: "60.00", projectedPayableRemainingDzd: "75.00", projectedReceivableRemainingDzd: "35.00", netPositionDzd: "40.00" }),
   confirm: vi.fn().mockResolvedValue({}), reverse: vi.fn().mockResolvedValue({}),
@@ -109,6 +112,48 @@ for (const switchKind of ["user", "party", "client"]) it(`isolates deferred comp
  await act(async () => { finish() })
  expect(f.client.confirm).toHaveBeenCalledTimes(1); expect(loadPendingSettlement(sessionStorage,"u","p")).toBeNull()
 })
+it.each([[confirm, "75.00", "100.00"], [reverse, "100.00", "75.00"]] as const)("refreshes fresh inventory invoice cache after recovered %s", async (command, expected, initial) => {
+ const f = fixture(); let current = initial
+ f.client[command.kind].mockImplementation(async () => { current = expected; return {} })
+ const inventory = { listInvoices: vi.fn(async () => [{ id: "invoice-1", remainingDebtDzd: current }]) }
+ const ownerKey = [...exactCommercePrefix(inventory), "u", "invoices"]
+ const otherKey = [...exactCommercePrefix(inventory), "other", "invoices"]
+ f.query.setQueryData(sessionQueryKey, { user: { id: "u", name: "Operator", phone: "0612345678", version: "0.0.0" } })
+ f.query.setQueryDefaults(ownerKey, { staleTime: 60_000 }); f.query.setQueryDefaults(otherKey, { staleTime: 60_000 })
+ f.query.setQueryData(ownerKey, [{ id: "invoice-1", remainingDebtDzd: initial }])
+ f.query.setQueryData(otherKey, [{ id: "invoice-1", remainingDebtDzd: "other-owner" }])
+ savePendingSettlement(sessionStorage, "u", "p", command)
+ function InvoiceView() { const result = useExactInventoryInvoices(inventory as never); return <output>{result.data?.[0]?.remainingDebtDzd ?? "loading"}</output> }
+ f.mount()
+ render(<QueryClientProvider client={f.query}><InvoiceView /></QueryClientProvider>)
+ expect(await screen.findByText(initial)).toBeTruthy()
+ fireEvent.click(retry())
+ expect(await screen.findByText(expected)).toBeTruthy()
+ expect(f.client[command.kind]).toHaveBeenCalledTimes(1)
+ expect(f.client[command.kind]).toHaveBeenCalledWith(command.input)
+ expect(f.query.getQueryData(otherKey)).toEqual([{ id: "invoice-1", remainingDebtDzd: "other-owner" }])
+})
+
+it.each([[confirm, "0.00", "25.00"], [reverse, "25.00", "0.00"]] as const)("refreshes fresh outbound list after recovered %s and updates payment visibility", async (command, expected, initial) => {
+ const f = fixture(); let current = initial
+ f.client[command.kind].mockImplementation(async () => { current = expected; return {} })
+ const inventory = { listOutbounds: vi.fn(async () => [{ id: "sale-1", transferType: "SALE", remainingDebtDzd: current }]) }
+ const ownerKey = [...exactCommercePrefix(inventory), "u", "outbounds"]
+ const otherKey = [...exactCommercePrefix(inventory), "other", "outbounds"]
+ f.query.setQueryData(sessionQueryKey, { user: { id: "u", name: "Operator", phone: "0612345678", version: "0.0.0" } })
+ f.query.setQueryDefaults(ownerKey, { staleTime: 60_000 }); f.query.setQueryDefaults(otherKey, { staleTime: 60_000 })
+ f.query.setQueryData(ownerKey, [{ id: "sale-1", transferType: "SALE", remainingDebtDzd: initial }])
+ f.query.setQueryData(otherKey, [{ id: "sale-1", transferType: "SALE", remainingDebtDzd: "other-owner" }])
+ function OutboundView() { const result = useExactInventoryOutbounds(inventory as never); const row = result.data?.[0]; return <output>{row?.remainingDebtDzd}:{row?.remainingDebtDzd !== "0.00" ? "payment-visible" : "payment-hidden"}</output> }
+ savePendingSettlement(sessionStorage, "u", "p", command)
+ f.mount(); render(<QueryClientProvider client={f.query}><OutboundView /></QueryClientProvider>)
+ expect(await screen.findByText(`${initial}:${initial === "0.00" ? "payment-hidden" : "payment-visible"}`)).toBeTruthy()
+ fireEvent.click(retry())
+ expect(await screen.findByText(`${expected}:${expected === "0.00" ? "payment-hidden" : "payment-visible"}`)).toBeTruthy()
+ expect(f.client[command.kind]).toHaveBeenCalledTimes(1)
+ expect(f.query.getQueryData(otherKey)).toEqual([{ id: "sale-1", transferType: "SALE", remainingDebtDzd: "other-owner" }])
+})
+
 it("opens on demand and retains a draft after closing", async () => {
  const f = fixture(); f.mount()
  await screen.findByText("لا توجد تسويات متبادلة لهذه الجهة.")
@@ -126,7 +171,26 @@ it("opens on demand and retains a draft after closing", async () => {
  expect(screen.getByRole("button", {name:"تأكيد التسوية المتبادلة"})).toBeTruthy()
  expect(f.client.confirm).not.toHaveBeenCalled()
 })
+it("shows restricted candidates neutrally while keeping debt entries selectable and unlinked", async () => {
+ const f = fixture();
+ f.client.candidates.mockResolvedValue([
+  { id: "debt-p", debtAccountId: "account-p", direction: "PAYABLE", postingSequence: 2, remainingDzd: "100.00", sourceKind: "RESTRICTED" },
+  { id: "debt-r", debtAccountId: "account-r", direction: "RECEIVABLE", postingSequence: 3, remainingDzd: "60.00", sourceKind: "RESTRICTED" },
+ ]);
+ f.mount();
+ fireEvent.click(await screen.findByRole("button", { name: "تسوية متبادلة جديدة" }));
+ const payable = await screen.findByRole("combobox", { name: "الدين المستحق علينا" });
+ const receivable = screen.getByRole("combobox", { name: "الدين المستحق لنا" });
+ expect(payable.querySelector('option[value="debt-p"]')?.textContent).toContain("مصدر مقيّد العرض");
+ expect(receivable.querySelector('option[value="debt-r"]')?.textContent).toContain("مصدر مقيّد العرض");
+ fireEvent.change(payable, { target: { value: "debt-p" } });
+ fireEvent.change(receivable, { target: { value: "debt-r" } });
+ expect(screen.queryByRole("link", { name: /فتح المصدر/ })).toBeNull();
+ expect(document.body.textContent).not.toContain("قيد يدوي أصلي");
+ expect(document.body.textContent).toContain("100.00");
+ expect(document.body.textContent).toContain("60.00");
+});
 it("history and reversal remain available when candidate read fails", async () => {
- const f=fixture(); f.client.candidates.mockRejectedValue({code:"FORBIDDEN"}); f.client.history.mockResolvedValue({items:[{id:"s",amountDzd:"25.00",recordedAt:"2026-11-10T10:00:00.000Z",actorLabel:"Operator",payableOriginalEntryId:"a",receivableOriginalEntryId:"b",reversal:null}],nextOffset:null})
+ const f=fixture(); f.client.candidates.mockRejectedValue({code:"FORBIDDEN"}); f.client.history.mockResolvedValue({items:[{id:"s",externalCounterpartyId:"p",amountDzd:"25.00",recordedAt:"2026-11-10T10:00:00.000Z",actorLabel:"Operator",payableOriginalEntryId:"a",receivableOriginalEntryId:"b",payableSource:{kind:"MANUAL",id:"a",label:"#1"},receivableSource:{kind:"MANUAL",id:"b",label:"#2"},reversal:null}],nextOffset:null})
  f.mount(); expect(await screen.findByRole("button",{name:"عكس التسوية كاملة"})).toBeTruthy()
 })

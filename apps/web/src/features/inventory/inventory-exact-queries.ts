@@ -1,6 +1,7 @@
 import type { ExactInventoryClient, ExactInventoryInvoiceInput, ExactInventoryPayment, ExactInventoryOutboundPayment, ExactInventoryAssetTransfer, ExactInventoryConsumableTransfer, ExactInventoryOutboundInput, ExactInventoryChargeUpdate, ExactInventoryChargeVoid } from "@tuari/contracts"
 import { useWorkspaceScopedQuery } from "@/features/app-shell/workspace-queries"
 import { exactCommercePrefix, useExactCommerceMutation } from "@/features/shared/exact-commerce-queries"
+import type { QueryClient } from "@tanstack/react-query"
 export type ExactInventoryAction =
   | { kind: "createInvoice"; input: ExactInventoryInvoiceInput }
   | { kind: "recordPayment"; input: ExactInventoryPayment }
@@ -10,6 +11,17 @@ export type ExactInventoryAction =
   | { kind: "createOutbound"; input: ExactInventoryOutboundInput }
   | { kind: "updateCharge"; input: ExactInventoryChargeUpdate }
   | { kind: "voidCharge"; input: ExactInventoryChargeVoid }
+export async function invalidateExactInventoryDebtQueries(queries: QueryClient, owner: string) {
+  await queries.invalidateQueries({
+    predicate: query => {
+      const key = query.queryKey
+      const commerceDebtView = key[0] === "phase1" && key[1] === "workspace" && key[2] === "exact-commerce" && key[4] === owner
+        && ["invoices", "invoice", "outbounds", "outbound"].includes(String(key[5]))
+      const transferHistory = key[0] === "inventory" && key[1] === "transfer-history" && key[2] === owner
+      return commerceDebtView || transferHistory
+    },
+  })
+}
 export function useExactInventoryInvoices(client: ExactInventoryClient, { enabled = true }: { enabled?: boolean } = {}) {
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "invoices"], enabled, queryFn: () => client.listInvoices() })
 }
@@ -23,6 +35,10 @@ export function useExactInventoryDetail(client: ExactInventoryClient, id: string
 export function useExactInventoryLocation(client: ExactInventoryClient, location: { warehouseId?: string; projectId?: string } | null) {
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "location", location], enabled: location !== null,
     queryFn: () => { if (!location) throw new Error("Select an inventory location"); return client.locationContents(location) } })
+}
+export function useExactInventoryOutbound(client: ExactInventoryClient, id: string | null) {
+  return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "outbound", id], enabled: id !== null,
+    queryFn: () => { if (!id) throw new Error("Select an outbound transfer"); return client.getOutbound({ id }) } })
 }
 export function useExactInventoryOutbounds(client: ExactInventoryClient) {
   return useWorkspaceScopedQuery({ key: owner => [...exactCommercePrefix(client), owner, "outbounds"], queryFn: () => client.listOutbounds() })
