@@ -93,7 +93,7 @@ async function inspectContractsExportOwnership(root) {
   if (!entry || typeof entry !== 'object') return { diagnostics: ['Malformed contracts exports: missing . entry'] };
   for (const kind of ['import', 'types']) {
     const target = entry[kind];
-    if (typeof target !== 'string' || !target.startsWith('./') || target.includes('\\\\') || path.isAbsolute(target)) {
+    if (typeof target !== 'string' || !target.startsWith('./') || target.includes('\\') || path.isAbsolute(target)) {
       diagnostics.push(`Invalid ${kind} export target`); continue;
     }
     const resolved = path.resolve(packageRoot, target);

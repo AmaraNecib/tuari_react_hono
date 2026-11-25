@@ -123,6 +123,70 @@ for (const kind of ['import', 'types']) {
   });
 }
 
+for (const kind of ['import', 'types']) {
+  test(`ownership checks nested ${kind} export components before downstream`, async t => {
+    for (const state of ['foreign', 'foreign-missing', 'internal-dangling', 'external-dangling', 'loop', 'local', 'missing']) {
+      const { root, target, sibling } = await fixture(t);
+      const component = path.join(target, 'nested');
+      const local = path.join(target, 'local-output');
+      await mkdir(local);
+      await writeFile(path.join(local, 'entry'), 'local');
+      await writeFile(path.join(sibling, 'entry'), 'foreign');
+      const destination = state.startsWith('foreign') ? sibling : state === 'internal-dangling' ? path.join(target, 'absent') : state === 'external-dangling' ? path.join(sibling, 'absent') : state === 'loop' ? component : local;
+      if (state !== 'missing') await linkDirectory(destination, component);
+      const manifest = metadata();
+      manifest.exports['.'][kind] = `./nested/${state === 'foreign-missing' ? 'absent' : 'entry'}`;
+      await writeFile(path.join(target, 'package.json'), JSON.stringify(manifest));
+      const sentinel = path.join(root, 'downstream-ran');
+      const command = runOwnershipDownstream(root, sentinel);
+      const valid = state === 'local' || state === 'missing';
+      assert.equal(command.error, undefined, String(command.error));
+      assert.equal(command.status, valid ? 0 : 1, `${kind} ${state}: ${command.stderr}`);
+      if (valid) assert.equal(await readFile(sentinel, 'utf8'), 'ran');
+      else await assert.rejects(lstat(sentinel), { code: 'ENOENT' });
+    }
+  });
+
+  test(`ownership checks direct ${kind} export file links before downstream`, async t => {
+    for (const state of ['foreign', 'internal-dangling', 'external-dangling', 'loop', 'local']) {
+      const { root, target, sibling } = await fixture(t);
+      const link = path.join(target, 'export-file');
+      const local = path.join(target, 'local-file');
+      const foreign = path.join(sibling, 'foreign-file');
+      await writeFile(local, 'local');
+      await writeFile(foreign, 'foreign');
+      const destination = state === 'foreign' ? foreign : state === 'internal-dangling' ? path.join(target, 'absent') : state === 'external-dangling' ? path.join(sibling, 'absent') : state === 'loop' ? link : local;
+      try { await symlink(destination, link, 'file'); }
+      catch (error) {
+        if (process.platform === 'win32' && error.code === 'EPERM') {
+          t.skip('File symlinks require Windows privilege; direct file-link cases execute in Linux CI. Junction cases run locally.');
+          return;
+        }
+        throw error;
+      }
+      const manifest = metadata();
+      manifest.exports['.'][kind] = './export-file';
+      await writeFile(path.join(target, 'package.json'), JSON.stringify(manifest));
+      const sentinel = path.join(root, 'downstream-ran');
+      const command = runOwnershipDownstream(root, sentinel);
+      assert.equal(command.error, undefined, String(command.error));
+      assert.equal(command.status, state === 'local' ? 0 : 1, `${kind} ${state}: ${command.stderr}`);
+      if (state === 'local') assert.equal(await readFile(sentinel, 'utf8'), 'ran');
+      else await assert.rejects(lstat(sentinel), { code: 'ENOENT' });
+    }
+  });
+}
+
+test('ownership rejects malformed export paths before a build', async t => {
+  for (const invalid of ['./dist\\entry.js', '../outside.js', 'dist/entry.js', '']) {
+    const { root, target } = await fixture(t);
+    const manifest = metadata();
+    manifest.exports['.'].import = invalid;
+    await writeFile(path.join(target, 'package.json'), JSON.stringify(manifest));
+    assert.equal((await inspectWorktreeOwnership(root)).ok, false, invalid);
+  }
+});
+
 test('ownership rejects dangling export links but allows missing ordinary build output', async t => {
   const { root, target } = await fixture(t);
   await rm(path.join(target, 'dist'), { recursive: true });
