@@ -59,10 +59,16 @@ export const experimentalExactInvoiceSchema = exactInvoiceSchema.extend({
   status: z.enum(["DRAFT", "RECEIVED", "SETTLED", "PAID", "VOIDED"]),
   settledAmount: exactInvoiceAmountSchema,
 }).superRefine((invoice, ctx) => {
-  const sum = Money.parse(invoice.paidAmount).add(Money.parse(invoice.settledAmount)).add(Money.parse(invoice.remainingAmount));
-  if (invoice.status !== "VOIDED" && sum.compare(Money.parse(invoice.totalAmount)) !== 0) ctx.addIssue({ code: "custom", path: ["remainingAmount"], message: "Invoice total must equal paid, settled and remaining amounts" });
+  if (invoice.status === "VOIDED") return;
+  try {
+    const sum = Money.parse(invoice.paidAmount).add(Money.parse(invoice.settledAmount)).add(Money.parse(invoice.remainingAmount));
+    if (sum.compare(Money.parse(invoice.totalAmount)) !== 0) ctx.addIssue({ code: "custom", path: ["remainingAmount"], message: "Invoice total must equal paid, settled and remaining amounts" });
+  } catch {
+    ctx.addIssue({ code: "custom", path: ["remainingAmount"], message: "Invoice portions exceed the supported amount range" });
+  }
   if (invoice.status === "PAID" && invoice.paidAmount !== invoice.totalAmount) ctx.addIssue({ code: "custom", path: ["status"], message: "PAID requires full actual payment" });
   if (invoice.status === "SETTLED" && (invoice.remainingAmount !== "0.00" || invoice.settledAmount === "0.00")) ctx.addIssue({ code: "custom", path: ["status"], message: "SETTLED requires zero remaining and a noncash portion" });
+  if (invoice.status === "RECEIVED" && invoice.remainingAmount === "0.00") ctx.addIssue({ code: "custom", path: ["status"], message: "Fully discharged invoices cannot remain RECEIVED" });
 });
 export type ExperimentalExactInvoice = z.infer<typeof experimentalExactInvoiceSchema>;
 

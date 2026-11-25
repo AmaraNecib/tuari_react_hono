@@ -88,6 +88,10 @@ The feature-implement, domain-modeling, codebase-design, unslop and wisdom index
 
 At the initial authorization checkpoint, no production code, tests, flags, schema or dependencies had changed. The design is not independently reviewed, published or merge-ready. Use three distinct initial sessions at the complete committed experimental HEAD, then bounded corrections and current-head verification. Broader issue closure and release remain unauthorized.
 
-### Experimental contract checkpoint
+### Experimental contract and repository checkpoint
 
-A separate `experimentalExactInvoiceSchema` now requires `settledAmount`, permits `SETTLED`, checks exact paid + settled + remaining equality with `Money`, and refuses `PAID` unless actual paid equals total. The existing v1 `exactInvoiceSchema` remains unchanged. Focused contract tests cover the 100/20/80/0 example, incorrect totals and PAID distinction. This does not implement or prove experimental repository/service lifecycle, allocation or reversal behavior.
+A separate `experimentalExactInvoiceSchema` requires `settledAmount`, permits `SETTLED`, checks paid + settled + remaining equality with total using checked `Money` arithmetic, refuses `PAID` unless paid equals total, and refuses fully discharged `RECEIVED`. The existing v1 `exactInvoiceSchema` remains unchanged.
+
+`ExactInvoiceRepository<TInvoice>` now expresses the persisted invoice row type, defaulting to the v1 row. `SqliteExactInvoiceRepository` shares one storage implementation and preserves its default constructor behavior. Its explicit `SqliteExperimentalInvoiceRepository` adapter requires the experimental marker and settled column, stores/reads `settled_amount_minor`, and parses through the experimental schema. Both retain the same connection/FIFO transaction identity and synchronous immediate transaction path. The normal adapter still requires the v1 marker and rejects the experimental graph.
+
+Native repository tests use the actual experimental full graph, persist received, settled and reversal-shaped invoice projections with line source, and reopen the file. An invalid PAID projection is refused without changing the invoice or a stored unallocated bank-transfer payment. Tests also verify mode mismatch refusal. This only proves typed repository persistence and contract checks. It does not implement a service lifecycle or authorize standalone settlement mutations; settlement, allocation lifecycle integration, root wiring and public routes remain next.

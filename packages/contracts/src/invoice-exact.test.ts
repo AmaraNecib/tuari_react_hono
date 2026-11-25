@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { exactInvoiceCreateSchema, exactPaymentCreateSchema, experimentalExactInvoiceSchema } from "./invoice-exact";
+import { exactInvoiceCreateSchema, exactInvoiceSchema, exactPaymentCreateSchema, experimentalExactInvoiceSchema } from "./invoice-exact";
 const party = { counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: "00000000-0000-4000-8000-000000000999" };
 it("accepts exact source operands and rejects rounded client totals or numeric money", () => {
   const input = { requestId: "draft", ...party, supplierName: "Synthetic supplier", lineItems: [{ description: "Fractional line", source: { mode: "unit-price", price: "1.5000", quantity: "0.25" } }] };
@@ -14,6 +14,11 @@ it("validates experimental cash, noncash and remaining totals without changing v
   expect(experimentalExactInvoiceSchema.safeParse({ ...invoice, settledAmount: "79.00" }).success).toBe(false);
   expect(experimentalExactInvoiceSchema.safeParse({ ...invoice, status: "PAID", paidAmount: "100.00", settledAmount: "0.00", remainingAmount: "0.00" }).success).toBe(true);
   expect(experimentalExactInvoiceSchema.safeParse({ ...invoice, status: "PAID" }).success).toBe(false);
+  expect(experimentalExactInvoiceSchema.safeParse({ ...invoice, paidAmount: "92233720368547758.07", settledAmount: "0.01", remainingAmount: "0.00" }).success).toBe(false);
+  expect(experimentalExactInvoiceSchema.safeParse({ ...invoice, status: "VOIDED", paidAmount: "92233720368547758.07", settledAmount: "92233720368547758.07" }).success).toBe(true);
+  expect(experimentalExactInvoiceSchema.safeParse({ ...invoice, status: "RECEIVED", paidAmount: "100.00", settledAmount: "0.00", remainingAmount: "0.00" }).success).toBe(false);
+  const { settledAmount: _settled, ...normalInvoice } = invoice;
+  expect(exactInvoiceSchema.safeParse({ ...normalInvoice, status: "RECEIVED", paidAmount: "20.00", remainingAmount: "80.00" }).success).toBe(true);
   expect(exactInvoiceCreateSchema.safeParse({ requestId: "draft", ...party, supplierName: "Vendor", lineItems: [{ description: "Item", source: { mode: "agreed-total", total: "100.00", quantity: "1" } }] }).success).toBe(true);
 });
 it("keeps unallocated cash explicit and rejects precision loss at the payment gate", () => {

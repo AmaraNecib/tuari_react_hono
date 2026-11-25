@@ -1,4 +1,4 @@
-import { Money, UnitPrice, exactInvoiceSchema, exactPaymentSchema, parseExactLine, sumMoney, type ExactInvoice, type ExactPayment } from "@tuari/contracts";
+import { Money, UnitPrice, exactInvoiceSchema, experimentalExactInvoiceSchema, exactPaymentSchema, parseExactLine, sumMoney, type ExactInvoice, type ExperimentalExactInvoice, type ExactPayment } from "@tuari/contracts";
 import { bindMoney, bindUnitPrice, prepareMoneyRead, prepareUnitPriceRead } from "../../../infrastructure/database/exact-money-storage";
 import { requireExactMoneySchema } from "../../../infrastructure/database/money-schema-gate";
 import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
@@ -11,11 +11,14 @@ const allocationFields = { id: "id", paymentId: "payment_id", invoiceId: "invoic
 const projection = (fields: Record<string, string>) => Object.entries(fields).map(([key, column]) => `"${column}" AS "${key}"`).join(",");
 
 /** Never selected by the active numeric dependency composition. */
-export class SqliteExactInvoiceRepository implements ExactInvoiceRepository {
-  constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock) {
-    requireExactMoneySchema(db, "invoice");
+class SqliteInvoiceRepositoryCore<TInvoice extends ExactInvoice | ExperimentalExactInvoice> implements ExactInvoiceRepository<TInvoice> {
+  constructor(private readonly db: BetterSqliteDatabase, private readonly lock: FifoLock, private readonly experimental: boolean) {
+    if (this.experimental) {
+      const marker = db.prepare("SELECT version FROM exact_money_schema WHERE slice='invoice_experimental_settlement'").get() as { version: unknown } | undefined;
+      if (marker?.version !== 2) throw new TypeError("Experimental invoice settlement schema marker is required");
+    } else requireExactMoneySchema(db, "invoice");
     for (const [table, required, forbidden] of [
-      ["invoice", { ...Object.fromEntries(Object.values(invoiceFields).map(name => [name, "TEXT"])), total_amount_minor: "INTEGER", paid_amount_minor: "INTEGER", remaining_amount_minor: "INTEGER" }, ["total_amount", "paid_amount", "remaining_amount"]],
+      ["invoice", { ...Object.fromEntries(Object.values(invoiceFields).map(name => [name, "TEXT"])), total_amount_minor: "INTEGER", paid_amount_minor: "INTEGER", ...(this.experimental ? { settled_amount_minor: "INTEGER" } : {}), remaining_amount_minor: "INTEGER" }, ["total_amount", "paid_amount", "remaining_amount", ...(this.experimental ? [] : ["settled_amount_minor"])]],
       ["invoice_line_item", { id: "TEXT", invoice_id: "TEXT", description: "TEXT", line_order: "INTEGER", price_source: "TEXT", unit_price_units: "INTEGER" }, ["quantity", "unit_price", "total"]],
       ["payment", { ...Object.fromEntries(Object.values(paymentFields).map(name => [name, "TEXT"])), total_amount_minor: "INTEGER" }, ["total_amount", "amount_dzd"]],
       ["payment_allocation", { ...Object.fromEntries(Object.values(allocationFields).map(name => [name, "TEXT"])), amount_minor: "INTEGER", allocation_order: "INTEGER" }, ["amount", "amount_dzd"]],
@@ -32,7 +35,7 @@ export class SqliteExactInvoiceRepository implements ExactInvoiceRepository {
     if (!value) throw new Error("Missing exact invoice amount");
     return value.toWire();
   }
-  getInvoice(id: string): ExactInvoice | null {
+  getInvoice(id: string): TInvoice | null {
     return this.withTransaction(() => {
       const metadata = this.db.prepare(`SELECT ${projection(invoiceFields)} FROM invoice WHERE id=?`).get(id) as Record<string, unknown> | undefined;
       if (!metadata) return null;
@@ -42,7 +45,8 @@ export class SqliteExactInvoiceRepository implements ExactInvoiceRepository {
         if ((source.mode === "unit-price" ? source.price : null) !== (storedPrice?.toWire() ?? null)) throw new Error("Invoice line source and entered price disagree");
         return { ...row, source };
       });
-      return exactInvoiceSchema.parse({ ...metadata, totalAmount: this.amount("invoice", "total_amount_minor", id), paidAmount: this.amount("invoice", "paid_amount_minor", id), remainingAmount: this.amount("invoice", "remaining_amount_minor", id), lineItems });
+      const invoice = { ...metadata, totalAmount: this.amount("invoice", "total_amount_minor", id), paidAmount: this.amount("invoice", "paid_amount_minor", id), ...(this.experimental ? { settledAmount: this.amount("invoice", "settled_amount_minor", id) } : {}), remainingAmount: this.amount("invoice", "remaining_amount_minor", id), lineItems };
+      return (this.experimental ? experimentalExactInvoiceSchema : exactInvoiceSchema).parse(invoice) as TInvoice;
     });
   }
   private ids(table: "invoice" | "payment"): string[] {
@@ -50,13 +54,13 @@ export class SqliteExactInvoiceRepository implements ExactInvoiceRepository {
     if (rows.length > 100000) throw new RangeError("Exact financial read resource limit exceeded");
     return rows.map(row => row.id);
   }
-  listInvoices(): ExactInvoice[] {
+  listInvoices(): TInvoice[] {
     return this.withTransaction(() => this.ids("invoice").map(id => this.getInvoice(id)!));
   }
-  saveInvoice(raw: ExactInvoice): void {
-    const invoice = exactInvoiceSchema.parse(raw);
+  saveInvoice(raw: TInvoice): void {
+    const invoice = (this.experimental ? experimentalExactInvoiceSchema : exactInvoiceSchema).parse(raw) as TInvoice;
     this.withTransaction(() => {
-      this.upsert("invoice", { ...this.metadata(invoice, invoiceFields), total_amount_minor: bindMoney(Money.parse(invoice.totalAmount)), paid_amount_minor: bindMoney(Money.parse(invoice.paidAmount)), remaining_amount_minor: bindMoney(Money.parse(invoice.remainingAmount)) });
+      this.upsert("invoice", { ...this.metadata(invoice, invoiceFields), total_amount_minor: bindMoney(Money.parse(invoice.totalAmount)), paid_amount_minor: bindMoney(Money.parse(invoice.paidAmount)), ...(this.experimental ? { settled_amount_minor: bindMoney(Money.parse((invoice as unknown as ExperimentalExactInvoice).settledAmount)) } : {}), remaining_amount_minor: bindMoney(Money.parse(invoice.remainingAmount)) });
       this.db.prepare("DELETE FROM invoice_line_item WHERE invoice_id=?").run(invoice.id);
       for (const [index, line] of invoice.lineItems.entries()) this.upsert("invoice_line_item", { id: line.id, invoice_id: invoice.id, description: line.description, line_order: index, price_source: JSON.stringify(line.source), unit_price_units: line.source.mode === "unit-price" ? bindUnitPrice(UnitPrice.parse(line.source.price)) : null });
     });
@@ -85,11 +89,21 @@ export class SqliteExactInvoiceRepository implements ExactInvoiceRepository {
     });
   }
   deletePayment(id: string): void { this.withTransaction(() => { this.db.prepare("DELETE FROM payment WHERE id=?").run(id); }); }
-  private metadata<T extends object>(row: T, fields: Partial<Record<keyof T, string>>): Record<string, unknown> {
+  private metadata<T extends object>(row: T, fields: Record<string, string>): Record<string, unknown> {
     return Object.fromEntries(Object.entries(fields).map(([key, column]) => [column, row[key as keyof T]]));
   }
   private upsert(table: string, values: Record<string, unknown>): void {
     const columns = Object.keys(values);
     this.db.prepare(`INSERT INTO "${table}" (${columns.map(name => `"${name}"`).join(",")}) VALUES (${columns.map(() => "?").join(",")}) ON CONFLICT(id) DO UPDATE SET ${columns.filter(name => name !== "id").map(name => `"${name}"=excluded."${name}"`).join(",")}`).run(...Object.values(values));
   }
+}
+
+/** Explicit adapter for the disposable invoice settlement graph only. */
+export class SqliteExactInvoiceRepository extends SqliteInvoiceRepositoryCore<ExactInvoice> {
+  constructor(db: BetterSqliteDatabase, lock: FifoLock) { super(db, lock, false); }
+}
+
+/** Explicit adapter for the disposable invoice settlement graph only. */
+export class SqliteExperimentalInvoiceRepository extends SqliteInvoiceRepositoryCore<ExperimentalExactInvoice> {
+  constructor(db: BetterSqliteDatabase, lock: FifoLock) { super(db, lock, true); }
 }
