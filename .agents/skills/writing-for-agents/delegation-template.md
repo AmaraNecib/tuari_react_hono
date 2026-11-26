@@ -11,16 +11,14 @@ with `cd` to that path. Verify it exists before assigning the task.
 Name the lifecycle/phase skill, workflow, design and matching wisdom lessons.
 
 ## Scope and authority
-Name the declared role, writable paths and excluded work. Role comes from the
-brief, not model, thread position or parentage. Follow the CEO / issue manager /
-worker authority table in `docs/engineering-workflow.md`. Reviewers write no
-source. Validators write ignored evidence only. Workers and delegated children
-do not publish, merge or write wisdom. No dependencies or children unless
-explicitly authorized. State per-run stops, owner-only gates and any permitted
-alternative action. A manager must inspect terminal evidence and remaining
-acceptance, then take a materially different authorized step, wait for a named
-live gate or record a concrete blocker. A terminal child status is not its CEO
-or manager handoff.
+Declare the role and responsible manager or CEO. For role assignment, terminal
+results or publication, use the workflow's
+[role contract](../../../docs/engineering-workflow.md#authority-and-state).
+Name writable paths, exclusions, publication authority and explicit per-run
+stops. Separate worker experiment bounds from manager outcome authority;
+identify any already permitted alternative. Reviewers write no source.
+Validators write ignored evidence only. No dependencies or children unless
+explicitly authorized.
 
 ## Verification
 Pass the parent's explicit mode: `focused-local / CI-final-pending` or
@@ -28,15 +26,15 @@ Pass the parent's explicit mode: `focused-local / CI-final-pending` or
 Name affected tests, direct callers, commands, timeouts and unique log paths.
 Require exact SHA, native exit codes, counts, duration and before/after source
 identity. Full local work needs a named uncertainty or CI coverage gap.
-Use `heavy_run` for justified heavy commands. For each heavy run, set an
-external wall-clock bound and record queued, start and end times, phase,
-identified process/PID, native exit and log path. Missing exit evidence is not
-success. On mismatch, compare the slot, identified process tree and logs before
-intervention. Never broadly kill processes or retry blindly.
+For justified heavy work, supply the workflow's independent observer setup,
+unique attempt ID, admission-inclusive budget, external timeout, owned cleanup
+boundary and durable log path. Require separate native-exit and tool-return
+records under [background verification](../../../docs/engineering-workflow.md#background-verification-and-records).
 
 ## Completion
 Return exact base/head, changed files, proof and local evidence path, findings,
 applied lessons and blockers. Distinguish expected-red, failed, retried and
-passed commands. Keep the report concise. End the async task. Its completion
-wakes the parent of a delegated child; a top-level CEO or issue-manager thread
-needs an explicit terminal or blocker handoff. Do not poll or invent a verdict.
+passed commands. Name who owns the next action, the remaining acceptance and
+what evidence ends that step or wait. Apply the role contract's terminal handoff
+rule. Keep the report concise, then end the async task. Do not poll or invent
+a verdict.

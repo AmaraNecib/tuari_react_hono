@@ -15,7 +15,7 @@ children cannot gain publication authority by calling themselves managers.
 
 | Role | Owns | Required action |
 | --- | --- | --- |
-| CEO / queue owner | Queue order, cross-lane priorities and decisions spanning issues | Assign the issue manager and bounded worker tasks. Resolve conflicts between lanes. A top-level issue-manager thread is not a `delegate_task` child, so do not assume its completion wakes the CEO. Use an explicit terminal or blocker handoff to the CEO. |
+| CEO / queue owner | Queue order, cross-lane priorities and decisions spanning issues | Assign an issue outcome and authority to its manager. Resolve cross-lane conflicts and route owner-only decisions to the owner. |
 | Issue manager | One issue's outcome, scope, evidence, remaining acceptance criteria and next safe path | Bind each worker to the correct tree and bounded task. Inspect worker evidence and source, verify remaining acceptance, then take a materially different authorized next step, wait only for a named live gate, or record a concrete external or owner blocker. Publication requires explicit authority and the correct bound tree. |
 | Luna worker | The assigned implementation or review, within the named tree and scope | Implement and commit, or review and report. Hand back exact SHA, evidence, findings and blockers. Do not publish, open a PR, merge or write wisdom. |
 
@@ -31,6 +31,15 @@ Use remote issue data and fresh `origin/develop` normally. In owner-requested
 local-only mode, use the supplied spec and cached refs, record that boundary,
 and do not claim hosted acceptance or issue closure.
 
+Here, `parent` means the worker's responsible manager for issue-local decisions,
+not automatically the queue CEO. It names responsibility, not additional tool
+or publication authority. A delegated worker's terminal completion wakes its
+calling thread. A top-level manager is not a delegated child of the CEO and
+must send its own terminal proposal, material blocker or unavoidable publication
+handoff. A named live gate records who acts next, its expected result and the
+evidence that ends the wait. These are procedural duties, not a runtime wake
+guarantee.
+
 ### Manager handoff checks
 
 Before choosing the next action, the manager reads the committed worker result,
@@ -42,13 +51,13 @@ for a named live gate; otherwise record the specific blocker and required
 owner/CEO action. Do not start a duplicate writer or repeat a failed attempt
 without a new diagnosis and a safe alternative.
 
-| Scenario | Actor | Next action |
-| --- | --- | --- |
-| Worker fails, and the task permits a safe alternative | Issue manager | Read the failure and source, verify the alternative stays in scope, then assign that distinct step or perform it. Preserve the failed evidence. |
-| Worker hits a hard scope stop with no authorized alternative | Issue manager | Stop the lane and report the exact owner/CEO decision needed. Do not extend the brief. |
-| Worker delivers a successful partial PR | Issue manager | Check shipped and remaining acceptance, keep the issue open, and identify the next authorized deliverable. |
-| Tool or thread is bound to the wrong tree | Issue manager | Stop edits and publication, identify the actual tree and SHA, then rebind only with authorized scope. Do not copy edits blindly. |
-| Heavy process disappears before exit evidence is recorded | Issue manager | Treat the run as unverified. Compare queue slot, identified process tree and logs before intervention; do not broadly kill or blindly retry. Record the missing native exit and obtain a bounded rerun only after diagnosis and authorization. |
+| Scenario | Next actor | Next action | Evidence ending that step |
+| --- | --- | --- | --- |
+| Worker fails with an authorized alternative | Issue manager | Inspect the failure and remaining acceptance; assign or perform the materially different in-scope step. | Preserved failure, named alternative, scope authority and its bounded expected result. |
+| Hard scope stop, no authorized alternative | Issue manager, then CEO or owner for the named decision | Stop affected work and report the concrete blocker; do not extend the brief. | Exact restriction and requested decision, or the external prerequisite needed to resume. |
+| Successful partial PR | Issue manager | Verify the published SHA and shipped acceptance; retain the remaining work and keep the issue open. Workers supply commits, not PRs. | Shipped-versus-remaining acceptance with one authorized next deliverable or a named live gate/blocker. |
+| Publication tool bound to the wrong tree | Issue manager, then authorized publisher if rebinding is unavailable | Stop publication, compare actual tool binding, branch and SHA with the reviewed tree; route a handoff if necessary. | Confirmed correct publication binding and reviewed SHA, or an exact-tree publication handoff. Never push coordinator changes to compensate. |
+| Heavy process vanishes or exits while worker still awaits the tool | Issue manager or independent observer alerting that manager | Compare slot, owned process tree and durable logs; distinguish native exit from tool return before scoped intervention. | Separate native-exit and tool-return states, missing evidence and diagnosed next safe action. PID disappearance alone proves neither success nor tool return. |
 
 ## Lifecycle
 
@@ -119,14 +128,32 @@ Delegate verification only when authorized, through a visible T3 child.
 Give it an absolute worktree, committed SHA, explicit verification mode,
 bounded test files and direct callers, commands and unique log directory.
 It reads source and writes ignored evidence only. One writer owns each tree;
-serialize build/test generators within that tree. Completion wakes the parent
-of a delegated child, not an unrelated top-level CEO or issue-manager thread.
-Those threads need an explicit terminal or blocker handoff. Heavy commands use
-the shared slot queue with an external wall-clock bound. Record queued, started
-and ended times, phase, identified process/PID and native exit code with the
-log path. Missing exit evidence is not success. On a mismatch, compare the slot,
-identified process tree and logs before intervention. Do not broadly kill
-processes or blindly retry.
+serialize build/test generators within that tree. Use the role contract above
+for completion ownership; do not poll a live child.
+
+Before calling `heavy_run`, record a unique attempt ID, admission-inclusive
+wall-clock budget, queued time and durable log location. Use an independent
+observer that can alert the responsible manager even when the worker is blocked
+inside the tool. Keep an external command timeout and cleanup limited to the
+owned process tree under existing safety rules.
+
+Inside the owned command wrapper, record `started` with time, phase and PID,
+then `ended` with time and the native exit code under that same attempt ID.
+Only after `heavy_run` actually returns to the worker record `returned` with
+time and the tool result. For failed admission, preserve the actual returned
+result without inventing a process start or native exit. Never reuse attempt
+IDs or overwrite failure evidence.
+
+Native child exit and tool return are separate events. A missing native exit
+is unverified execution; a recorded native exit without `returned` means tool
+return remains unconfirmed. PID disappearance alone establishes neither. When
+a deadline or state mismatch occurs, compare queue-slot ownership, the identified
+process tree and logs before scoped intervention. Do not broadly kill processes,
+duplicate a live writer or blindly retry. Record the last durable phase, missing
+result and next safe action. These instructions describe procedural mitigation;
+they neither install an observer nor enforce a timeout or repair tool behavior.
+Use the current run's supplied observer setup, not a machine-local path in this
+policy.
 
 The parent checks the actual result, not just the child's success label. Save
 `.scratch/reviews/<scope>/<HEAD>-verification.md` with:
@@ -277,9 +304,9 @@ Stage explicit paths only, never `git add .` or `git add -A`. Generated builds,
 native binaries, databases, dependencies and scratch logs stay out of source
 commits. Preserve unrelated files and partial work.
 
-A worker or lane never merges. The role table above distinguishes that worker
-restriction from an issue manager's outcome ownership; it does not expand
-publication or merge authority. Merge still requires owner authority,
+A worker never merges. The role contract above gives an issue manager outcome
+ownership, not merge permission. A lane assignment alone grants no merge
+authority. Merge still requires owner authority,
 current-head local and hosted verdicts without actionable findings, successful
 `CI acceptance`, effective protection and all issue acceptance criteria. A CI,
 schema, published-contract, crypto/recovery or other expensive decision goes

@@ -14,9 +14,10 @@ repository's CI-final activation applies here.
 ## Worktree and authority
 
 Use one writer per isolated worktree. Preserve unrelated changes. Follow the
-role and handoff contract in [the engineering workflow](docs/engineering-workflow.md).
-Workers commit and report. A child does not publish, open a PR or merge. A local-only
-instruction means no publication even if GitHub is reachable. Higher-priority
+[role contract](docs/engineering-workflow.md#authority-and-state) when assigning
+roles, handling terminal results or choosing a publisher. Workers commit and
+report. A child does not publish, open a PR or merge. A local-only instruction
+means no publication even if GitHub is reachable. Higher-priority
 instructions and explicit owner-only gates remain binding.
 
 Inside T3, use visible `delegate_task` children. Resolve exact model IDs with
@@ -100,5 +101,6 @@ or CLOSED before removing a terminal watch.
 Request Greptile once per published head; missing verdicts block merge.
 Use `Part of #N` for partial scope and `Closes #N` in the body only when all
 acceptance criteria ship. Never close an issue based on its PR title.
-No lane merges, and owner-only policy, CI, schema, contract or crypto decisions
-remain owner-only.
+A lane assignment grants no merge authority. Follow the role contract for
+publication and merge; policy, CI, schema, contract or crypto decisions remain
+owner-only.
