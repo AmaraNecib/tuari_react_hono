@@ -284,9 +284,9 @@ function Invoke-ControlledApiStop {
 function Invoke-TaskkillOwned([int]$ProcessId, [string]$Reason) {
   $output = & "$env:SystemRoot\System32\taskkill.exe" /PID $ProcessId /T /F 2>&1
   $code = [int]$LASTEXITCODE
-  $output | Out-File -FilePath (Join-Path $AttemptDirectory 'taskkill.log') -Append -Encoding utf8
+  try { $output | Out-File -FilePath (Join-Path $AttemptDirectory 'taskkill.log') -Append -Encoding utf8 } catch { [Console]::Error.WriteLine("Cleanup log unavailable: $($_.Exception.Message)") }
   $Meta.cleanupCommands += [ordered]@{ processId = $ProcessId; reason = $Reason; nativeExitCode = $code; timestampUtc = [DateTimeOffset]::UtcNow.ToString('o') }
-  Save-Meta
+  try { Save-Meta } catch { [Console]::Error.WriteLine("Cleanup metadata unavailable: $($_.Exception.Message)") }
 }
 function Stop-OwnedTree([int[]]$RootPids) {
   foreach ($root in $RootPids) {
@@ -295,7 +295,7 @@ function Stop-OwnedTree([int[]]$RootPids) {
       if ($ownedRoot) {
         $ownedRoot.Refresh()
         if (-not $ownedRoot.HasExited) {
-          Write-Log "forced cleanup limited to owned root pid=$root"
+          try { Write-Log "forced cleanup limited to owned root pid=$root" } catch { [Console]::Error.WriteLine("Cleanup log unavailable") }
           Invoke-TaskkillOwned $root 'owned-root-process-tree'
         }
       }
@@ -306,7 +306,7 @@ function Stop-OwnedTree([int[]]$RootPids) {
   foreach ($child in $knownDescendants) {
     $current = Get-CimInstance Win32_Process -Filter "ProcessId=$($child.pid)" -OperationTimeoutSec 5 -ErrorAction SilentlyContinue
     if ($current -and [string]$current.CreationDate -eq [string]$child.creationDate) {
-      Write-Log "forced cleanup limited to observed owned descendant pid=$($child.pid)"
+      try { Write-Log "forced cleanup limited to observed owned descendant pid=$($child.pid)" } catch { [Console]::Error.WriteLine("Cleanup log unavailable") }
       Invoke-TaskkillOwned ([int]$child.pid) 'observed-owned-descendant'
     }
   }
@@ -485,8 +485,8 @@ try {
   foreach ($process in $ChildProcesses) {
     try { $process.Refresh(); if ($process.HasExited) { foreach ($entry in $Meta.processes) { if ($entry.pid -eq $process.Id -and $null -eq $entry.nativeExitCode) { $entry.nativeExitCode = [int]$process.ExitCode } } } } catch { }
   }
-  if ($MetaPath -and $Meta) { $Meta.periodicSamples = @($PeriodicSamples); $Meta.requiredSnapshots = $RequiredSnapshots; $Meta.controllerPlannedExitCode = $ExitCode; $Meta.controllerFinalizingUtc = [DateTimeOffset]::UtcNow.ToString('o'); Save-Meta }
-  if ($LogPath -and (Test-Path -LiteralPath $LogPath)) { Write-Log "controller ended nativeExitCode=$ExitCode phase=$CurrentPhase" }
+  if ($MetaPath -and $Meta) { $Meta.periodicSamples = @($PeriodicSamples); $Meta.requiredSnapshots = $RequiredSnapshots; $Meta.controllerPlannedExitCode = $ExitCode; $Meta.controllerFinalizingUtc = [DateTimeOffset]::UtcNow.ToString('o'); try { Save-Meta } catch { [Console]::Error.WriteLine("Final metadata unavailable") } }
+  if ($LogPath -and (Test-Path -LiteralPath $LogPath)) { try { Write-Log "controller ended nativeExitCode=$ExitCode phase=$CurrentPhase" } catch { [Console]::Error.WriteLine("Final log unavailable") } }
   foreach ($process in $ChildProcesses) { $process.Dispose() }
 }
 exit $ExitCode

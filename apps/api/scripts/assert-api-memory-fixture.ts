@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { assertStockLinks } from "./api-memory-stock-links";
 import { readFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 
@@ -147,8 +148,7 @@ function main(): void {
     assertEqual("stock entries", stock.entries, expected.stockEntries);
     assertEqual("stock gross minor units", BigInt(stock.grossMinor), BigInt(expected.stockValueDzd.replace(".", "")));
     assertEqual("stock quantity", stock.quantity, expected.stockQuantity);
-    assertEqual("stock-linked warehouses", stock.warehouses, expected.stockPurchaseGroups);
-    assertEqual("stock-linked catalog definitions", stock.definitions, expected.stockPurchaseGroups);
+    const globalLinks = assertStockLinks(db, expected.stockPurchaseGroups);
 
     const tableNames = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as { name: string }[];
     const userTableRows = tableNames.reduce((sum, { name }) => sum + count(db, name), 0);
@@ -179,8 +179,8 @@ function main(): void {
         entries: stock.entries,
         quantity: stock.quantity,
         valueDzd: expected.stockValueDzd,
-        linkedWarehouses: stock.warehouses,
-        linkedCatalogDefinitions: stock.definitions,
+        linkedWarehouses: globalLinks.warehouses,
+        linkedCatalogDefinitions: globalLinks.definitions,
       },
       userTableRows,
       userTables: tableNames.length,
