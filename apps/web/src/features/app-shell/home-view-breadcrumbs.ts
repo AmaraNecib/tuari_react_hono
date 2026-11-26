@@ -15,6 +15,7 @@ import type { HomeViewPage } from "./home-view-types"
 export function buildHomeViewBreadcrumbItems({
   copy,
   page,
+  experimentalInvoiceIntent = false,
   selectedCounterparty,
   selectedEmployee,
   selectedProject,
@@ -23,6 +24,7 @@ export function buildHomeViewBreadcrumbItems({
 }: {
   copy: HomeViewCopy
   page: HomeViewPage
+  experimentalInvoiceIntent?: boolean
   selectedCounterparty: { id: string; fullName: string } | null
   selectedEmployee: { id: string; name: string } | null
   selectedProject: { id: string; name: string } | null
@@ -50,7 +52,9 @@ export function buildHomeViewBreadcrumbItems({
               : page === "inventory"
                 ? [{ label: t("shellCopy.catalog"), to: workspaceRoutes.inventory() }]
                 : page === "invoices" || page === "invoice-create" || page === "invoice-details"
-                  ? [{ label: t("shellCopy.invoices"), to: workspaceRoutes.invoices() }]
+                  ? experimentalInvoiceIntent
+                    ? [{ label: t("exactCommerce.experimentalInvoices"), to: workspaceRoutes.experimentalInvoices() }]
+                    : [{ label: t("shellCopy.invoices"), to: workspaceRoutes.invoices() }]
                   : page === "outbound-transfers" || page === "outbound-transfer-create"
                     ? [{ label: t("shellCopy.outbound"), to: workspaceRoutes.outboundTransfers() }]
                     : page === "settings"
@@ -89,7 +93,7 @@ export function buildHomeViewBreadcrumbItems({
                    : page === "inventory"
                      ? [{ label: t("shellCopy.catalog") }]
                      : page === "invoices"
-                       ? [{ label: t("shellCopy.allInvoices") }]
+                       ? [{ label: t(experimentalInvoiceIntent ? "exactCommerce.experimentalInvoices" : "shellCopy.allInvoices") }]
                        : page === "invoice-create"
                          ? [{ label: t("shellCopy.createInvoice") }]
                          : page === "invoice-details"

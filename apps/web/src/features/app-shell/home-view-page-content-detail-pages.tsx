@@ -13,6 +13,7 @@ import type { HomeViewPageContentProps } from "./home-view-page-content-shared"
 import { MissingRecordState } from "./home-view-page-content-shared"
 
 const ExactInventoryPage = lazy(async () => import("@/features/inventory/inventory-exact-page").then(module => ({ default: module.ExactInventoryPage })))
+const ExperimentalInvoicesPage = lazy(async () => import("@/features/invoices/experimental-invoices-page").then(module => ({ default: module.ExperimentalInvoicesPage })))
 const TransferHistoryPage = lazy(async () => import("@/features/inventory/transfer-history-page").then((module) => ({ default: module.TransferHistoryPage })))
 const ExactFinancialRoutePage = lazy(async () => import("@/features/shared/exact-financial-route").then((module) => ({ default: module.ExactFinancialRoutePage })))
 const ExternalCounterpartyCreatePage = lazy(async () => import("@/features/externals/external-create-page").then((module) => ({ default: module.ExternalCounterpartyCreatePage })))
@@ -58,6 +59,8 @@ export function HomeViewPageDetailContent({
   page,
   selectedInvoiceId,
   selectedOutboundId,
+  experimentalInvoiceIntent = false,
+  experimentalInvoiceSettlementAvailable = false,
   selectedCounterparty,
   selectedEmployeeManagerOptions,
   selectedEmployee,
@@ -75,6 +78,8 @@ export function HomeViewPageDetailContent({
   | "returnTo"
   | "navigation"
   | "page"
+  | "experimentalInvoiceIntent"
+  | "experimentalInvoiceSettlementAvailable"
   | "selectedCounterparty"
   | "selectedEmployee"
   | "selectedProject"
@@ -356,6 +361,24 @@ export function HomeViewPageDetailContent({
       />)
 
     case "invoices":
+      if (experimentalInvoiceIntent) return renderLazy(<ExperimentalInvoicesPage
+        client={financialClient.experimentalInvoices}
+        onBackToList={() => void navigation.goToExperimentalInvoices()}
+        onOpenInvoice={id => void navigation.goToExperimentalInvoiceDetails(id)}
+      />)
+      return renderLazy(<ExactInventoryPage
+        experimentalInvoiceSettlementAvailable={experimentalInvoiceSettlementAvailable}
+        onOpenExperimentalInvoices={() => void navigation.goToExperimentalInvoices()}
+        initialOutboundId={selectedOutboundId}
+        initialOutboundPartyId={selectedCounterparty?.id}
+        client={financialClient.inventory}
+        locations={[
+          ...derived.warehouses.map(row => ({ id: row.id, label: row.name, type: "WAREHOUSE" as const })),
+          ...derived.projects.map(row => ({ id: row.id, label: row.name, type: "PROJECT" as const })),
+        ]}
+        parties={derived.externalCounterparties.map(party => ({ id: party.id, label: party.fullName }))}
+      />)
+
     case "outbound-transfers":
       return renderLazy(<ExactInventoryPage initialOutboundId={selectedOutboundId} initialOutboundPartyId={selectedCounterparty?.id} client={financialClient.inventory} locations={[
         ...derived.warehouses.map(row => ({ id: row.id, label: row.name, type: "WAREHOUSE" as const })),
@@ -364,6 +387,12 @@ export function HomeViewPageDetailContent({
 
     case "invoice-create":
     case "invoice-details":
+      if (page === "invoice-details" && experimentalInvoiceIntent) return renderLazy(<ExperimentalInvoicesPage
+        client={financialClient.experimentalInvoices}
+        initialInvoiceId={selectedInvoiceId}
+        onBackToList={() => void navigation.goToExperimentalInvoices()}
+        onOpenInvoice={id => void navigation.goToExperimentalInvoiceDetails(id)}
+      />)
       if (page === "invoice-details" && !selectedInvoiceId) return <MissingRecordState backLabel={t("exactCommerce.backToInvoices")} description={detailCopy.shared.missingRecordDescription} navigation={navigation} target={workspaceRoutes.invoices()} title={t("inventoryPage.invoices.title")} />
       return renderLazy(<ExactInventoryPage key={page === "invoice-create" ? "create" : selectedInvoiceId} client={financialClient.inventory} initialCreate={page === "invoice-create"} onReturnToInvoices={() => void navigation.goToInvoices()} initialInvoiceId={page === "invoice-details" ? selectedInvoiceId : undefined} locations={[
         ...derived.warehouses.map(row => ({ id: row.id, label: row.name, type: "WAREHOUSE" as const })),

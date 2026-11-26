@@ -19,6 +19,8 @@ export function HomeViewPageContent({
   returnTo,
   invoiceId,
   outboundId,
+  experimentalInvoiceIntent,
+  experimentalInvoiceSettlementAvailable,
   navigation,
   page,
   selectedCounterparty,
@@ -49,6 +51,8 @@ export function HomeViewPageContent({
         returnTo={returnTo}
         selectedInvoiceId={invoiceId}
         selectedOutboundId={outboundId}
+        experimentalInvoiceIntent={experimentalInvoiceIntent}
+        experimentalInvoiceSettlementAvailable={experimentalInvoiceSettlementAvailable}
         navigation={navigation}
         page={page}
         selectedCounterparty={selectedCounterparty}
