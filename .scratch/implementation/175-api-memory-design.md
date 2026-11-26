@@ -1,0 +1,47 @@
+# #175 API-only memory fixture design
+
+## Scope and authority
+
+This is new partial #175 fixture preparation, not a rerun of the delivered debt-summary latency, restore, or rollback evidence. CEO execution approval covers the named fixture entities. The issue manager owns acceptance and publication routing. The worker prepares source only. The issue manager inspected and corrected the safety controller, then executed the approved bounded API-only proof. Publication remains with the correctly bound publication controller.
+
+Worktree: `D:/worktrees/tuari_react_hono/t3-51878482-502a4628cb7b8399`
+Base: `origin/develop` at `dd4413845f1a95fa0606d469c1f6705af08cbfd5`
+Branch: `perf/175-api-memory`
+Verification mode: focused-local / CI-final-enforced
+Review tier: High-assurance. Fixture correctness crosses employee, project, counterparty, catalog, warehouse, exact-debt, and inventory service contracts.
+
+## Fixture shape
+
+`apps/api/scripts/seed-api-memory-fixture.ts` uses the production `createFreshExactAppDependencies` root and supported services. It creates exactly 1,000 employees, projects, external counterparties, catalog definitions, and warehouses. Employees are inactive so the fixture does not depend on paid-license seat limits. It creates 1,000 nonzero exact payable debt accounts, one per synthetic counterparty, for an expected 10,010.00 DZD balance and live-entry total. It creates 10 exact inventory purchases, each linked to a distinct fixture warehouse and catalog definition. Each purchase adds quantity 2 at 12.3400 DZD per unit, for 20 total units and 246.80 DZD of stock value. This is deliberately bounded transaction density, not a claim that every root participates in 1,000 stock operations or that the fixture represents a customer workload.
+
+The independent read-only oracle in `apps/api/scripts/assert-api-memory-fixture.ts` checks all five root counts, 1,000 debt accounts and live entries, distinct counterparty links, exact payable and entry totals, 10 purchase groups and inventory entries, linked warehouse/catalog counts, quantity and value, `PRAGMA foreign_key_check`, and the aggregate row count across every non-internal SQLite table. It rejects totals above 20,000 rows. It opens SQLite with `readonly: true` and `query_only = ON`; it contains no SQL writes.
+
+The seeder requires Windows Node 22, `TEMP` and `TMP` on D:, an absolute new directory on D:, the wrapper sentinel, a wrapper-selected loopback port, and a disposable auth secret. It refuses an existing fixture directory. It disables config-file loading, forces test mode, SQLite, a blank database key, local host/origin, and attachment/backup roots under the fixture directory. The seed result stores the disposable bootstrap owner's sign-in credentials beside the database, for later authenticated API reads; it is not a repository artifact and must remain on D:.
+
+`apps/api/scripts/read-api-memory-fixture.ts` signs in through the supported phone/password HTTP route. It checks `/health`, `financial/metadata`, `financial/debts/summary`, `financial/inventory/definitions`, `financial/inventory/listInvoices`, and exact `financial/reports/generate` reads for inventory and debt. It validates counts, inactive employee status, exact monetary totals, and response envelopes. It does not time queries or print credentials or the bearer token.
+
+`apps/api/scripts/launch-api-memory-watchdog.ps1` is the external deadline supervisor for the later single execution. It validates the receipt's exact manager ID and wrapper-log path, runs `measure-api-memory.ps1` as its child, waits only until the receipt's queue-inclusive deadline, and uses `taskkill /PID <controllerPid> /T /F` if the controller has not exited. It records its own start, end, native exit, timeout, child PID/exit and taskkill exit in a separate D-drive JSONL log. It does not write the worker's `returned` receipt; that happens only after `heavy_run` responds.
+
+`apps/api/scripts/measure-api-memory.ps1` is the safety controller inside that watchdog. It revalidates manager, log path, receipt freshness and the exact ten-minute budget. It puts temp, fixture, database, attachment, backup and controller logs on D:, then launches Node version/native probes, seed, oracle, the direct API entrypoint, signal helper and HTTP reader as separately identified children. CIM reads have a five-second operation timeout. It caps the full fixture family and total attempt directory at 256 MiB, logs at 40 MiB, API working set at 1 GiB, and checks actual user-table rows during seed in read-only service-boundary checkpoints. It records separate startup, after-health and post-read API WorkingSet64/PrivateMemorySize64 snapshots, with independent required slots and a three-second post-read settle window. API teardown records the actual native exit and distinguishes graceful exit from expected Windows controlled termination. No unexpected API exit, timeout or cap violation can complete successfully. The manager's successful continuation reused the verified fixture without reseeding. Resume mode checks the manifest and includes the separate fixture plus fresh output in the byte cap. Recursive byte scans retry only missing-path races, at most three complete scans; other errors still fail closed.
+
+## Boundaries
+
+Only the opt-in harness, this design and performance documentation change. Product source, authentication behavior, dependencies, schemas, CI and coverage remain untouched. The result is API-only OS-memory evidence; full desktop memory and cold start remain outside this scope.
+
+Before any measured execution, the manager must inspect both wrapper scripts and recheck all admission caps, including C: free space of at least 1.5 GiB, D: free space of at least 2 GiB, available RAM of at least 1 GiB, and an execution budget of 10 minutes inclusive of queue admission. The later report may describe only the actual API PID's OS WorkingSet64 and PrivateMemorySize64 snapshots and sampled maximum. It must not call them Node heap, full desktop memory, cold-start latency, or an absolute lifetime peak.
+
+## Evidence status before manager execution
+
+Scripts remain uncommitted for manager inspection. On the corrected safety code, ESLint and targeted strict TypeScript passed with native exit 0 for the changed seeder/oracle; parser-only `-ValidateOnly` passed with native exit 0 for both PowerShell wrappers. Exact commands and exits are in `D:\temp\tuari-175-api-memory-correction-final\results.txt`; raw logs are `eslint.log`, `typescript.log`, `controller-parser.log`, and `watchdog-parser.log` there. An earlier ESLint attempt failed on an empty cleanup catch (native exit 1); its log remains at `D:\temp\tuari-175-api-memory-correction-static\eslint-changed-typescript.log`, and the catch now records close errors. The read client was not rechecked because it was unchanged. No seed, oracle, API server, HTTP workload, or memory measurement was run. Runtime behavior still needed manager inspection at that handoff.
+
+## Manager execution and architecture disposition
+
+The manager corrected Windows argument handling, native process-handle retention, DateTimeOffset conversion, empty descendant arrays and byte-scan races. Inert function checks exercised actual native exit 7, fast-process metadata and missing-path retry/fail-closed behavior. Failures are preserved under ignored `.scratch/reviews/175-api-memory/` dispositions and D-drive logs. The byte-scan test's three assertions passed, but its later source-hash step failed because the injected mock remained installed; a separate parser/hash follow-up exited 0. This is not reported as an overall passing test command.
+
+Run4 seeded once through supported services and passed its independent oracle at 9,097 rows. It reached health but failed before the reader. The exact original getter is unproved because that log lacked a stack; the controller now records full exceptions/stacks. The successful `175-api-memory-resume1` continuation ran a new read-only oracle because startup had touched the preserved database, then validated authenticated reads and sampled direct API PID 1876. Ten samples recorded a maximum working set of 247.918 MiB and private bytes of 264.8125 MiB. Controller and outer exited 0; the API's actual Windows controlled-termination exit was 1, not a graceful exit.
+
+Source blobs and exact observation limits are in `docs/PERFORMANCE.md`. The final source is frozen for the three initial High-assurance reviews. Review reports and operational receipts stay local.
+
+Domain-modeling disposition: existing employee, project, counterparty, warehouse, catalog, exact-debt and inventory terms retain their meanings. Inactive employees and sparse stock transactions are explicit fixture limits, not new domain definitions. No glossary or schema change is needed.
+
+Codebase-design disposition: the fixture calls the existing application/service interfaces, the oracle reads SQL independently, and the workload uses real authenticated HTTP. The external watchdog owns the deadline while the controller owns safety and measurements. No runtime instrumentation, generic repository adapter or speculative product abstraction was added. The operator harness is machine-pinned and documented as such, not advertised as a portable module.
