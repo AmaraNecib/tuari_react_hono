@@ -22,6 +22,7 @@ import { PaymentRepositoryImpl } from "./adapters/payment.repository";
 import { createPaymentModule } from "./payment.module";
 import type { PaymentModule } from "./payment-module.interface";
 import {
+  PaymentDuplicateIdConflictError,
   PaymentInvoiceNotReceivedError,
   PaymentInvoiceOverAllocationError,
   PaymentHasAllocationsError,
@@ -38,6 +39,14 @@ function createTestEnv() {
   const debtPort = createInMemoryInvoiceDebtPort();
   const paymentModule = createPaymentModule(paymentRepo, invoiceRepo, debtPort);
   return { rawDb, paymentRepo, invoiceRepo, debtPort, paymentModule };
+}
+
+function countPayments(rawDb: Database.Database): number {
+  return (rawDb.prepare(`SELECT COUNT(*) AS c FROM "payment"`).get() as { c: number }).c;
+}
+
+function countAllocations(rawDb: Database.Database): number {
+  return (rawDb.prepare(`SELECT COUNT(*) AS c FROM "payment_allocation"`).get() as { c: number }).c;
 }
 
 /** Create + receive an invoice with `capacity` remaining, returning its id. */
@@ -154,6 +163,138 @@ describe("PaymentModule with sqlite payment adapter", () => {
     const allocCount = env.rawDb.prepare(`SELECT COUNT(*) AS c FROM "payment_allocation"`).get() as { c: number };
     expect(paymentCount.c).toBe(1);
     expect(allocCount.c).toBe(1);
+  });
+
+  it("rejects a reused payment ID before changing payment, invoice, or debt state", async () => {
+    await seedReceivedInvoice(env, "inv-duplicate", 900);
+    await paymentModule.create(paymentInput({
+      id: "dup",
+      totalAmount: 100,
+      allocations: [{ invoiceId: "inv-duplicate", amount: 100 }],
+    }));
+
+    const duplicate = paymentModule.create(paymentInput({
+      id: "dup",
+      totalAmount: 200,
+      allocations: [{ invoiceId: "inv-duplicate", amount: 200 }],
+    }));
+    await expect(duplicate).rejects.toBeInstanceOf(PaymentDuplicateIdConflictError);
+    await expect(duplicate).rejects.toMatchObject({
+      code: "PAYMENT_ID_CONFLICT",
+      paymentId: "dup",
+    });
+
+    expect(await paymentModule.findById("dup")).toMatchObject({
+      totalAmount: 100,
+      allocations: [{ amount: 100 }],
+    });
+    expect(await env.invoiceRepo.findById("inv-duplicate")).toMatchObject({
+      paidAmount: 100,
+      remainingAmount: 800,
+    });
+    expect(env.debtPort.state.entries.filter((entry) => entry.entryType === "PAYMENT")).toHaveLength(1);
+    expect(countPayments(env.rawDb)).toBe(1);
+    expect(countAllocations(env.rawDb)).toBe(1);
+  });
+
+  it("allows only one concurrent create for a payment ID", async () => {
+    await seedReceivedInvoice(env, "inv-duplicate-race", 900);
+
+    const results = await Promise.allSettled([
+      paymentModule.create(paymentInput({
+        id: "dup-race",
+        totalAmount: 100,
+        allocations: [{ invoiceId: "inv-duplicate-race", amount: 100 }],
+      })),
+      paymentModule.create(paymentInput({
+        id: "dup-race",
+        totalAmount: 200,
+        allocations: [{ invoiceId: "inv-duplicate-race", amount: 200 }],
+      })),
+    ]);
+    const successes = results.filter((result) => result.status === "fulfilled");
+    const failures = results.filter((result) => result.status === "rejected");
+
+    expect(successes).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    const conflict = (failures[0] as PromiseRejectedResult).reason;
+    expect(conflict).toBeInstanceOf(PaymentDuplicateIdConflictError);
+    expect(conflict).toMatchObject({
+      code: "PAYMENT_ID_CONFLICT",
+      paymentId: "dup-race",
+    });
+    const saved = await paymentModule.findById("dup-race");
+    expect(saved).not.toBeNull();
+    const winnerAmount = (successes[0] as PromiseFulfilledResult<{ totalAmount: number }>).value.totalAmount;
+    expect(saved!.totalAmount).toBe(winnerAmount);
+    expect(saved!.allocations.reduce((sum, allocation) => sum + allocation.amount, 0)).toBe(winnerAmount);
+    expect(await env.invoiceRepo.findById("inv-duplicate-race")).toMatchObject({
+      paidAmount: winnerAmount,
+      remainingAmount: 900 - winnerAmount,
+    });
+    expect(env.debtPort.state.entries.filter((entry) => entry.entryType === "PAYMENT")).toHaveLength(1);
+    expect(countPayments(env.rawDb)).toBe(1);
+    expect(countAllocations(env.rawDb)).toBe(1);
+  });
+
+  it("falls back when cursor value type does not match the requested sort", async () => {
+    for (const [id, totalAmount, date] of [
+      ["a", 10, "2026-01-01T00:00:00.000Z"],
+      ["b", 30, "2026-01-02T00:00:00.000Z"],
+      ["c", 20, "2026-01-03T00:00:00.000Z"],
+    ] as const) {
+      await env.paymentRepo.createPayment({
+        id,
+        counterpartyType: "EXTERNAL_COUNTERPARTY",
+        counterpartyId: "cp-1",
+        paymentDate: date,
+        paymentMethod: "CASH",
+        totalAmount,
+        notes: null,
+        actorUserId: null,
+        actorLabel: null,
+        transactionId: null,
+        createdAt: date,
+        updatedAt: date,
+      });
+    }
+
+    const encodeCursor = (sortValue: unknown, id: string) =>
+      Buffer.from(JSON.stringify({ sortValue, id })).toString("base64url");
+    const cases = [
+      { sort: { field: "paymentDate", direction: "asc" }, cursor: encodeCursor(10, "a"), expected: ["a", "b", "c"] },
+      { sort: { field: "paymentDate", direction: "desc" }, cursor: encodeCursor(10, "a"), expected: ["c", "b", "a"] },
+      { sort: { field: "totalAmount", direction: "asc" }, cursor: encodeCursor("2026-01-01T00:00:00.000Z", "a"), expected: ["a", "c", "b"] },
+      { sort: { field: "totalAmount", direction: "desc" }, cursor: encodeCursor("2026-01-01T00:00:00.000Z", "a"), expected: ["b", "c", "a"] },
+      { sort: { field: "totalAmount", direction: "asc" }, cursor: Buffer.from('{"sortValue":1e400,"id":"a"}').toString("base64url"), expected: ["a", "c", "b"] },
+      { sort: { field: "createdAt", direction: "asc" }, cursor: encodeCursor(10, "a"), expected: ["a", "b", "c"] },
+      { sort: { field: "createdAt", direction: "desc" }, cursor: encodeCursor(10, "a"), expected: ["c", "b", "a"] },
+      { sort: undefined, cursor: encodeCursor(10, "a"), expected: ["c", "b", "a"] },
+    ] as const;
+
+    for (const testCase of cases) {
+      const seen: string[] = [];
+      let page = await paymentModule.listPaged({
+        limit: 1,
+        ...(testCase.sort ? { sort: testCase.sort } : {}),
+        cursor: testCase.cursor,
+      });
+      expect(page.totalCount).toBe(3);
+      expect(page.items.map((payment) => payment.id)).toEqual([testCase.expected[0]]);
+      seen.push(...page.items.map((payment) => payment.id));
+
+      while (page.nextCursor) {
+        page = await paymentModule.listPaged({
+          limit: 1,
+          ...(testCase.sort ? { sort: testCase.sort } : {}),
+          cursor: page.nextCursor,
+        });
+        seen.push(...page.items.map((payment) => payment.id));
+      }
+
+      expect(seen).toEqual(testCase.expected);
+      expect(new Set(seen).size).toBe(3);
+    }
   });
 
   it("lets equal-capacity payments both succeed exactly at the boundary", async () => {

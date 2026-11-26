@@ -66,6 +66,15 @@ export type PaymentDeleteResult =
 
 // --- Typed errors ---
 
+export class PaymentDuplicateIdConflictError extends Error {
+  readonly code = "PAYMENT_ID_CONFLICT";
+
+  constructor(public readonly paymentId: string) {
+    super(`Payment ID ${paymentId} already exists`);
+    this.name = "PaymentDuplicateIdConflictError";
+  }
+}
+
 export class PaymentEmptyAllocationsError extends Error {
   constructor() {
     super("Payment must allocate at least one invoice");

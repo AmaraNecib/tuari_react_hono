@@ -8,6 +8,7 @@ import type { PaymentModule } from "./payment-module.interface";
 import type { CreatePaymentInput } from "./payment.types";
 import {
   PaymentAllocationSumMismatchError,
+  PaymentDuplicateIdConflictError,
   PaymentInvoiceNotFoundError,
   PaymentInvoiceNotReceivedError,
   PaymentInvoiceOverAllocationError,
@@ -31,6 +32,48 @@ function makePaymentInput(overrides: Partial<CreatePaymentInput> = {}): CreatePa
     ],
     ...overrides,
   };
+}
+
+async function prepareReceivedInvoice(
+  invoiceRepo: ReturnType<typeof createInMemoryInvoiceRepository>,
+  debtPort: ReturnType<typeof createInMemoryInvoiceDebtPort>,
+  id: string,
+  amount: number,
+): Promise<void> {
+  await invoiceRepo.create({
+    id,
+    invoiceNumber: null,
+    supplierName: "Acme Corp",
+    supplierPhone: null,
+    warehouseId: null,
+    projectId: null,
+    status: "DRAFT",
+    direction: "PURCHASE",
+    invoiceDate: null,
+    dueDate: null,
+    currency: "DZD",
+    totalAmount: amount,
+    paidAmount: 0,
+    remainingAmount: amount,
+    notes: null,
+    debtAccountId: null,
+    createdAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: "2026-06-01T00:00:00.000Z",
+    lineItems: [],
+  });
+  await debtPort.createInvoiceDebt({
+    invoiceId: id,
+    supplierName: "Acme Corp",
+    supplierPhone: null,
+    amount,
+    currency: "DZD",
+    direction: "PURCHASE",
+    actorUserId: "user-1",
+    actorLabel: "Test User",
+    transactionId: "tx-1",
+  });
+  const debtAccountId = debtPort.state.debtAccounts.values().next().value!.id;
+  await invoiceRepo.markReceivedWithDebtAccount(id, debtAccountId);
 }
 
 describe("PaymentModule", () => {
@@ -116,6 +159,77 @@ describe("PaymentModule", () => {
       const debtEntries = debtPort.state.entries.filter((e) => e.entryType === "PAYMENT");
       expect(debtEntries).toHaveLength(1);
       expect(debtEntries[0]!.signedAmount).toBe(-5000);
+    });
+
+    it("rejects a reused payment ID before changing the payment, invoice, or debt", async () => {
+      await prepareReceivedInvoice(invoiceRepo, debtPort, "inv-duplicate", 900);
+
+      await paymentModule.create(makePaymentInput({
+        id: "dup",
+        totalAmount: 100,
+        allocations: [{ invoiceId: "inv-duplicate", amount: 100 }],
+      }));
+
+      const duplicate = paymentModule.create(makePaymentInput({
+        id: "dup",
+        totalAmount: 200,
+        allocations: [{ invoiceId: "inv-duplicate", amount: 200 }],
+      }));
+      await expect(duplicate).rejects.toBeInstanceOf(PaymentDuplicateIdConflictError);
+      await expect(duplicate).rejects.toMatchObject({
+        code: "PAYMENT_ID_CONFLICT",
+        paymentId: "dup",
+      });
+
+      expect(await paymentModule.findById("dup")).toMatchObject({
+        totalAmount: 100,
+        allocations: [{ amount: 100 }],
+      });
+      expect(await invoiceRepo.findById("inv-duplicate")).toMatchObject({
+        paidAmount: 100,
+        remainingAmount: 800,
+      });
+      const paymentEntries = debtPort.state.entries.filter((entry) => entry.entryType === "PAYMENT");
+      expect(paymentEntries).toHaveLength(1);
+      expect(paymentEntries[0]!.signedAmount).toBe(-100);
+    });
+
+    it("allows only one concurrent create for a payment ID", async () => {
+      await prepareReceivedInvoice(invoiceRepo, debtPort, "inv-duplicate-race", 900);
+
+      const results = await Promise.allSettled([
+        paymentModule.create(makePaymentInput({
+          id: "dup-race",
+          totalAmount: 100,
+          allocations: [{ invoiceId: "inv-duplicate-race", amount: 100 }],
+        })),
+        paymentModule.create(makePaymentInput({
+          id: "dup-race",
+          totalAmount: 200,
+          allocations: [{ invoiceId: "inv-duplicate-race", amount: 200 }],
+        })),
+      ]);
+      const successes = results.filter((result) => result.status === "fulfilled");
+      const failures = results.filter((result) => result.status === "rejected");
+
+      expect(successes).toHaveLength(1);
+      expect(failures).toHaveLength(1);
+      const conflict = (failures[0] as PromiseRejectedResult).reason;
+      expect(conflict).toBeInstanceOf(PaymentDuplicateIdConflictError);
+      expect(conflict).toMatchObject({
+        code: "PAYMENT_ID_CONFLICT",
+        paymentId: "dup-race",
+      });
+      const saved = await paymentModule.findById("dup-race");
+      expect(saved).not.toBeNull();
+      const winnerAmount = (successes[0] as PromiseFulfilledResult<Awaited<ReturnType<typeof paymentModule.create>>>).value.totalAmount;
+      expect(saved!.totalAmount).toBe(winnerAmount);
+      expect(saved!.allocations.reduce((sum, allocation) => sum + allocation.amount, 0)).toBe(winnerAmount);
+      expect(await invoiceRepo.findById("inv-duplicate-race")).toMatchObject({
+        paidAmount: winnerAmount,
+        remainingAmount: 900 - winnerAmount,
+      });
+      expect(debtPort.state.entries.filter((entry) => entry.entryType === "PAYMENT")).toHaveLength(1);
     });
 
     it("groups multiple allocations to the same invoice and pays it once", async () => {
@@ -344,6 +458,7 @@ describe("PaymentModule", () => {
       paymentDate: string;
       paymentMethod: string;
       totalAmount: number;
+      createdAt: string;
     }> = {}) {
       return {
         id,
@@ -356,7 +471,7 @@ describe("PaymentModule", () => {
         actorUserId: null as string | null,
         actorLabel: null as string | null,
         transactionId: null as string | null,
-        createdAt: "2026-06-20T00:00:00.000Z",
+        createdAt: overrides.createdAt ?? "2026-06-20T00:00:00.000Z",
         updatedAt: "2026-06-20T00:00:00.000Z",
       };
     }
@@ -421,6 +536,51 @@ describe("PaymentModule", () => {
         cursor: first.nextCursor ?? undefined,
       });
       expect(second.items.map((p) => p.id)).toEqual(["pmt-3"]);
+    });
+
+    it("falls back when cursor value type does not match the requested sort", async () => {
+      for (const payment of [
+        makePayment("a", { totalAmount: 10, paymentDate: "2026-01-01T00:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" }),
+        makePayment("b", { totalAmount: 30, paymentDate: "2026-01-02T00:00:00.000Z", createdAt: "2026-01-02T00:00:00.000Z" }),
+        makePayment("c", { totalAmount: 20, paymentDate: "2026-01-03T00:00:00.000Z", createdAt: "2026-01-03T00:00:00.000Z" }),
+      ]) {
+        await paymentRepo.createPayment(payment);
+      }
+
+      const cases = [
+        { sort: { field: "paymentDate", direction: "asc" }, cursor: encodeCursor(10, "a"), expected: ["a", "b", "c"] },
+        { sort: { field: "paymentDate", direction: "desc" }, cursor: encodeCursor(10, "a"), expected: ["c", "b", "a"] },
+        { sort: { field: "totalAmount", direction: "asc" }, cursor: encodeCursor("2026-01-01T00:00:00.000Z", "a"), expected: ["a", "c", "b"] },
+        { sort: { field: "totalAmount", direction: "desc" }, cursor: encodeCursor("2026-01-01T00:00:00.000Z", "a"), expected: ["b", "c", "a"] },
+        { sort: { field: "totalAmount", direction: "asc" }, cursor: Buffer.from('{"sortValue":1e400,"id":"a"}').toString("base64url"), expected: ["a", "c", "b"] },
+        { sort: { field: "createdAt", direction: "asc" }, cursor: encodeCursor(10, "a"), expected: ["a", "b", "c"] },
+        { sort: { field: "createdAt", direction: "desc" }, cursor: encodeCursor(10, "a"), expected: ["c", "b", "a"] },
+        { sort: undefined, cursor: encodeCursor(10, "a"), expected: ["c", "b", "a"] },
+      ] as const;
+
+      for (const testCase of cases) {
+        const seen: string[] = [];
+        let page = await paymentModule.listPaged({
+          limit: 1,
+          ...(testCase.sort ? { sort: testCase.sort } : {}),
+          cursor: testCase.cursor,
+        });
+        expect(page.totalCount).toBe(3);
+        expect(page.items.map((payment) => payment.id)).toEqual([testCase.expected[0]]);
+        seen.push(...page.items.map((payment) => payment.id));
+
+        while (page.nextCursor) {
+          page = await paymentModule.listPaged({
+            limit: 1,
+            ...(testCase.sort ? { sort: testCase.sort } : {}),
+            cursor: page.nextCursor,
+          });
+          seen.push(...page.items.map((payment) => payment.id));
+        }
+
+        expect(seen).toEqual(testCase.expected);
+        expect(new Set(seen).size).toBe(3);
+      }
     });
 
     it("accepts a cursor with a string sortValue and skips the cursor row", async () => {

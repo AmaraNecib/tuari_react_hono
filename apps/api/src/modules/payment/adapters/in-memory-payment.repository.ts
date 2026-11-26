@@ -1,4 +1,5 @@
 import type { PaymentRepository } from "../payment.repository";
+import { PaymentDuplicateIdConflictError } from "../payment.types";
 import type {
   Payment,
   PaymentAllocation,
@@ -110,6 +111,10 @@ export function createInMemoryPaymentRepository(): PaymentRepository {
       createdAt: string;
       updatedAt: string;
     }): Promise<Payment> {
+      if (payments.has(data.id)) {
+        throw new PaymentDuplicateIdConflictError(data.id);
+      }
+
       const payment: Payment = {
         id: data.id,
         counterpartyType: data.counterpartyType as Payment["counterpartyType"],

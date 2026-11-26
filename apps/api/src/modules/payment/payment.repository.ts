@@ -22,6 +22,7 @@ export interface PaymentRepository {
     totalCount: number;
   }>;
 
+  /** Insert atomically; an existing ID rejects with PaymentDuplicateIdConflictError. */
   createPayment(data: {
     id: string;
     counterpartyType: string;
