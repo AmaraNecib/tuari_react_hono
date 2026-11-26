@@ -24,11 +24,12 @@ resource pressure. Serialize generators in one tree. Heavy jobs use the shared
 queue after scope is justified. Assign shared-file landing order explicitly.
 
 Use async mode for minute-scale work and a stable request ID per lane.
-Completion wakes the parent. Do not poll live children or silently replace
-their work. Cancel a task that is no longer needed, preserving its worktree.
+Do not poll live children or silently replace their work. Cancel a task that
+is no longer needed, preserving its worktree.
 
-A worker commits and hands off verified SHA, proof, applied wisdom and blockers.
-It never pushes, opens a PR, merges or writes wisdom. The parent owns those
-decisions and preserves existing watches. No custom Herdr launch is required
-inside T3. Native invisible children are a fallback only if T3 delegation is
-unavailable and the owner is told they will not appear in lineage.
+For role assignment, terminal results or publication, follow the
+[role contract and manager handoff checks](../../../docs/engineering-workflow.md#authority-and-state).
+For heavy work, pass the workflow's observer, timeout and separate native-exit /
+tool-return evidence requirements in the brief. No custom Herdr launch is
+required inside T3. Native invisible children are a fallback only if T3
+delegation is unavailable and the owner is told they will not appear in lineage.

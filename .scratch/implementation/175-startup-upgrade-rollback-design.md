@@ -21,16 +21,20 @@ The test runs against both the plain and keyed fixtures. It uses synthetic emplo
 
 Final-source local checks use Node 22.14.0 because the installed SQLite native module targets Node ABI 127. Node 26.13.1 requires ABI 147 and cannot load it.
 
-- Final focused test: `vitest run src/infrastructure/database/opening-schema-upgrade.test.ts -t 'rolls back a failed on-disk startup upgrade' --pool=threads --maxWorkers=1`; 1 file, 2 passed, 10 skipped, native exit 0, 3.3 seconds. Raw output is `.scratch/reviews/175-startup-upgrade-rollback/focused-test-node22-5.stdout.log` and `.stderr.log`.
-- Final changed-file ESLint: exit 0, 1.3 seconds. Raw output is `.scratch/reviews/175-startup-upgrade-rollback/eslint-final.stdout.log` and `.stderr.log`.
-- Final API typecheck: `tsc --noEmit -p apps/api/tsconfig.json`; exit 0, 25.6 seconds. Raw output is `.scratch/reviews/175-startup-upgrade-rollback/api-typecheck-final.stdout.log` and `.stderr.log`.
+- Final focused test: `vitest run src/infrastructure/database/opening-schema-upgrade.test.ts -t 'rolls back a failed on-disk startup upgrade' --pool=threads --maxWorkers=1`; 1 file, 2 passed, 10 skipped, native exit 0. Wrapper elapsed 3,324 ms; Vitest reports 1.75 s. Raw output is `.scratch/reviews/175-startup-upgrade-rollback/focused-test-node22-5.stdout.log` and `.stderr.log`; wrapper metadata is in `.meta.txt`.
+- Final changed-file ESLint: run from `apps/api` to load its `eslint.config.mjs`; native exit 0, wrapper elapsed 2,935 ms. Output is `.scratch/reviews/175-startup-upgrade-rollback/eslint-api-cwd.stdout.log`; wrapper metadata is in `.meta.txt`. An earlier root-directory invocation failed to find the API config. Its wrapper incorrectly reported exit 0. Preserve that failed output at `.scratch/reviews/175-startup-upgrade-rollback/eslint-final.stderr.log`; it is not a pass.
+- Final API typecheck: `tsc --noEmit -p apps/api/tsconfig.json`; native exit 0, wrapper elapsed 25,631 ms. Raw output is `.scratch/reviews/175-startup-upgrade-rollback/api-typecheck-final.stdout.log` and `.stderr.log`; wrapper metadata is in `.meta.txt`.
 - `git diff --check`: exit 0.
 - Targeted design-note scan for unslop patterns: no matches.
 - The focused review directory uses 296 KB. The `tuari-545-upgrade-*` fixtures created since 12:20 total 6,258,688 bytes across eight directories. D: had 9.03 GB free at measurement.
 
 The first test invocation used Node 26 and malformed `pnpm exec` arguments. It unexpectedly ran all 156 API test files for 75.16 seconds and failed because the SQLite addon was built for ABI 127; 59 tests failed and 43 passed. This was an accidental broad run, not evidence about the change. No retry of the broad suite was made. A later invocation with an unsupported Vitest option ran no tests. The next focused invocation skipped all 12 cases because its anchored name pattern did not match the parent suite name. The first correctly selected run executed both new cases and found an assertion comparing four selected catalog fields with `SELECT *`; the test now compares the full catalog consistently. These attempts and their raw logs remain under `.scratch/reviews/175-startup-upgrade-rollback/`.
 
-The task forbids child work, so no independent review sessions were started. The source must remain frozen after commit; the parent owns any required review routing, CI acceptance and publication decisions. No full suite, benchmark, build, browser test, dependency install or package rebuild is in scope.
+The assignment prohibited child work, so no independent review sessions were started. The issue manager owns the three required initial reviews at the integrated frozen head, plus CI acceptance and publication decisions. No full suite, benchmark, build, browser test, dependency install or package rebuild is in scope.
+
+## Governance integration
+
+Integrated governance commit `d871504050683c3a859e1f453fc9d0d90f41cecb` by a normal non-rewriting merge after the startup proof was committed and the tree was clean. Read `AGENTS.md`, `docs/engineering-workflow.md`, `.agents/skills/crew-dispatch/SKILL.md` and `.agents/skills/writing-for-agents/delegation-template.md` from that revision. Applied its role contract: this lane is the Luna worker; the calling issue-manager thread owns issue acceptance and the CEO/queue owner owns cross-lane decisions. The worker hands off the commit and proof, without publication. No review or source file changed during this governance integration except this note's evidence correction; the regression-test blob remains `c1b312140ac94401d71c444eb7e36633528f2635`.
 
 ## Wisdom
 
