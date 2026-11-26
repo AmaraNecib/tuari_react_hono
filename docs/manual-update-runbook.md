@@ -26,12 +26,18 @@ types. Neither inspected release listed a Linux installer. These observations
 do not select either release for customers.
 
 The beta tag and release target resolve to
-`17911dc14211730bec6982707f518b4c84dafa19`. Nightly's release record points
-to that same source, and Nightly workflow run #533 succeeded at that SHA. The
-current mutable `nightly` tag instead resolves to
-`c253231d4a581a083818d891677c481c143fff23`. Treat this as a tag/source mismatch
-for provenance review. The workflow run's Actions artifact list was empty, and
-no attestation or exact setup-asset runtime proof was established.
+`17911dc14211730bec6982707f518b4c84dafa19`. Nightly's release target and
+successful run #533 metadata also report that event SHA. It is not the logged
+build checkout: the run explicitly checks out `develop`, and its checkout log
+records `9401180a21ef990fe7f9d5c8e0a43d39db440747` at
+`2026-11-25T07:59:06Z`. Keep the event/release target separate from the source
+actually checked out for the build. Neither record alone proves the published
+asset bytes came from that checkout.
+
+At the metadata inspection, the mutable `nightly` tag instead resolved to
+`c253231d4a581a083818d891677c481c143fff23`. Treat the event, checkout and tag
+mismatches as provenance gaps. The workflow run's Actions artifact list was
+empty, and no attestation or exact setup-asset runtime proof was established.
 
 The observed Nightly run is
 [45572361803](https://github.com/AmaraNecib/tuari_react_hono/actions/runs/45572361803).
