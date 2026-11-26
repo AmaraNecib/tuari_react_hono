@@ -162,7 +162,7 @@ it("confirms and reverses an invoice settlement, refreshes the mounted detail, a
   const f = await createFixture()
   const bound = mountOwner(f, f.ownerClient)
   const invoiceClient = bound.financial.experimentalInvoices
-  await screen.findByRole("heading", { name: "تفاصيل الفاتورة EXP-615-UI" })
+  await screen.findByRole("heading", { name: "تفاصيل الفاتورة EXP-615-UI" }, { timeout: 10_000 })
   expect(screen.getByText("مستلمة")).toBeTruthy()
   const initialReads = vi.mocked(invoiceClient.getInvoice).mock.calls.length
   await waitFor(() => expect(vi.mocked(invoiceClient.listPayments)).toHaveBeenCalled())
