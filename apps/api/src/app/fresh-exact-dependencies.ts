@@ -1,6 +1,6 @@
 import type { WorkspaceMetadata } from "@tuari/contracts";
 import type { AppDependencies, CreateAppDependenciesConfig } from "./dependencies";
-import { createFinancialDependencies, type FinancialDependencies } from "./financial-dependencies";
+import { createExperimentalFinancialDependencies, createFinancialDependencies, type ExperimentalFinancialDependencies, type FinancialDependencies } from "./financial-dependencies";
 import { createAppConfig, type AppConfig } from "../config";
 import { createCompanyRepository } from "../config/database";
 import { createAuth } from "../infrastructure/auth/auth";
@@ -8,6 +8,8 @@ import { createDatabaseConnection } from "../infrastructure/database/factory";
 import { createFifoLock } from "../infrastructure/database/fifo-lock";
 import { createDrizzleFromSqlite } from "../infrastructure/database/drizzle";
 import { ensureFreshManualSettlementApplicationSchema } from "../infrastructure/database/fresh-manual-settlement-schema";
+import { ensureFreshExperimentalInvoiceSettlementSchema } from "../infrastructure/database/fresh-experimental-invoice-settlement-schema";
+import type { ExperimentalInvoiceSettlementParticipant } from "../modules/invoice/experimental-invoice-settlement-participant";
 import { ManualSettlementService } from "../modules/company/manual-settlement.service";
 import { SqliteManualSettlementRepository } from "../modules/company/adapters/sqlite-manual-settlement.repository";
 import { SqliteManualSettlementAuthorization } from "../modules/company/adapters/sqlite-manual-settlement.authorization";
@@ -69,14 +71,24 @@ export type FreshExactAppDependencies = Omit<AppDependencies,
   payroll: { service: FinancialDependencies["payroll"]; opening: FinancialDependencies["opening"]; getEmployeePayroll: FinancialDependencies["lifecycle"]["getEmployeePayroll"] };
 };
 
-/** Exact application root used by normal startup; incompatible files are refused. */
-export async function createFreshExactAppDependencies(
-  config: CreateAppDependenciesConfig & {
-    /** Explicit opt-in for disposable data only; never migrates an existing exact graph. */
-    disposableManualSettlement?: boolean;
-  } = {},
-  appConfig: AppConfig = createAppConfig(),
-): Promise<FreshExactAppDependencies> {
+type SelectedFinancialServices = FinancialDependencies | ExperimentalFinancialDependencies;
+type SelectedAppDependencies<TMode extends string, TServices extends SelectedFinancialServices> = Omit<FreshExactAppDependencies, "mode" | "financial"> & {
+  mode: TMode;
+  financial: { services: TServices; getMetadata(): Promise<WorkspaceMetadata>; reports: ExactReportCapability; manualSettlement?: ManualSettlementCapability };
+};
+type SelectedComposition<TMode extends string, TServices extends SelectedFinancialServices> = {
+  mode: TMode;
+  ensureSchema(connection: ReturnType<typeof createDatabaseConnection>, config: CreateAppDependenciesConfig & { disposableManualSettlement?: boolean }): Promise<void>;
+  createFinancial(connection: ReturnType<typeof createDatabaseConnection>, lock: ReturnType<typeof createFifoLock>, dependencies: { id(): string; now(): string }): TServices;
+  invoiceParticipant(financial: TServices): ExperimentalInvoiceSettlementParticipant | undefined;
+  manualSettlementEnabled(config: CreateAppDependenciesConfig & { disposableManualSettlement?: boolean }): boolean;
+};
+
+async function createSelectedAppDependencies<TMode extends string, TServices extends SelectedFinancialServices>(
+  config: CreateAppDependenciesConfig & { disposableManualSettlement?: boolean },
+  appConfig: AppConfig,
+  composition: SelectedComposition<TMode, TServices>,
+): Promise<SelectedAppDependencies<TMode, TServices>> {
   if (appConfig.dbAdapter !== "sqlite") throw new Error("Selected exact root requires sqlite metadata on the shared connection");
   const databasePath = config.databasePath?.trim() ? config.databasePath : appConfig.databasePath;
   const databaseKey = config.databaseKey ?? appConfig.databaseKey;
@@ -84,14 +96,14 @@ export async function createFreshExactAppDependencies(
   let closed = false;
   const close = () => { if (!closed) { closed = true; connection.close(); } };
   try {
-    await (config.disposableManualSettlement ? ensureFreshManualSettlementApplicationSchema : ensureFreshExactApplicationSchema)(connection);
-    // WAL persists header changes. Enable it only after the attestation
-    // transaction commits, so refusing an incompatible file leaves it intact.
+    await composition.ensureSchema(connection, config);
     connection.pragma("journal_mode = WAL");
     const db = createDrizzleFromSqlite(connection);
     const lock = createFifoLock({ timeoutMs: 30_000 });
     const auth = config.authInstance ?? createAuth(db, appConfig);
-    const financial = createFinancialDependencies(connection, lock, { id: () => crypto.randomUUID(), now: () => new Date().toISOString() });
+    const dependencies = { id: () => crypto.randomUUID(), now: () => new Date().toISOString() };
+    const financial = composition.createFinancial(connection, lock, dependencies);
+    const invoiceParticipant = composition.invoiceParticipant(financial);
     const reports = createExactReportCapability(
       new ExactDebtReportReader(new SqliteExactDebtReportSnapshot(connection, lock, financial.financeRepository)),
       new ExactInventoryReports(new ExactInventoryReportSource(connection, lock)),
@@ -100,8 +112,6 @@ export async function createFreshExactAppDependencies(
     const company = createCompanyRepository(connection, appConfig, lock);
     const mutation = new WorkspaceMutationContext(company, company);
     const workforceService = new WorkforceService(company, company, mutation, new SqliteEmployeeEarningRepository(connection, lock), {
-      // Account existence, not nonzero balance: settled producer history also
-      // prevents deleting its employee. The earning repository guards earnings.
       hasForEmployee: employeeId => financial.financeRepository.listAccounts().some(account => account.workerId === employeeId),
     });
     const operationsService = new OperationsService(company, company, mutation);
@@ -111,18 +121,17 @@ export async function createFreshExactAppDependencies(
     const inventoryRepository = createInventoryRepository(connection, lock);
     const catalog = new CatalogService(inventoryRepository, company);
     const attachments = new AttachmentService(new SqliteAttachmentRepository(connection, lock), new InventoryAttachmentStorage(appConfig.attachmentsRootPath), company);
-    const manualSettlement: ManualSettlementCapability | undefined = config.disposableManualSettlement
+    const exactInventoryRepository = new SqliteExactInventoryRepository(connection, lock);
+    const manualSettlement: ManualSettlementCapability | undefined = composition.manualSettlementEnabled(config)
       ? userId => new ManualSettlementService(
         financial.finance, financial.financeRepository,
-        new SqliteManualSettlementRepository(connection, lock, new SqliteExactInventoryRepository(connection, lock)),
-
-        new SqliteManualSettlementAuthorization(connection, lock, userId),
-        { id: () => crypto.randomUUID(), now: () => new Date().toISOString() },
-        new SqliteExactInventoryRepository(connection, lock),
+        new SqliteManualSettlementRepository(connection, lock, exactInventoryRepository, invoiceParticipant),
+        new SqliteManualSettlementAuthorization(connection, lock, userId), dependencies,
+        exactInventoryRepository, invoiceParticipant,
       )
       : undefined;
     return {
-      mode: "fresh-exact-selected",
+      mode: composition.mode,
       financial: { manualSettlement, services: financial, getMetadata: async () => ({ ...companyService.getWorkspaceMetadata(), roles: await roleModule.list() }), reports },
       listSystemLog: systemLog.listSystemLog,
       payroll: { service: financial.payroll, opening: financial.opening, getEmployeePayroll: id => financial.lifecycle.getEmployeePayroll(id) },
@@ -149,4 +158,34 @@ export async function createFreshExactAppDependencies(
       close,
     };
   } catch (error) { close(); throw error; }
+}
+
+/** Exact root for supported normal databases. Its defaults are unchanged. */
+export function createFreshExactAppDependencies(
+  config: CreateAppDependenciesConfig & { disposableManualSettlement?: boolean } = {},
+  appConfig: AppConfig = createAppConfig(),
+): Promise<FreshExactAppDependencies> {
+  return createSelectedAppDependencies(config, appConfig, {
+    mode: "fresh-exact-selected",
+    ensureSchema: (connection, options) => (options.disposableManualSettlement ? ensureFreshManualSettlementApplicationSchema : ensureFreshExactApplicationSchema)(connection),
+    createFinancial: createFinancialDependencies,
+    invoiceParticipant: () => undefined,
+    manualSettlementEnabled: options => options.disposableManualSettlement === true,
+  });
+}
+
+export type FreshExperimentalInvoiceSettlementAppDependencies = SelectedAppDependencies<"fresh-experimental-invoice-settlement", ExperimentalFinancialDependencies>;
+
+/** Explicit, disposable-only application root. It never selects the cash-only invoice adapter. */
+export function createExperimentalInvoiceSettlementAppDependencies(
+  config: CreateAppDependenciesConfig = {},
+  appConfig: AppConfig = createAppConfig(),
+): Promise<FreshExperimentalInvoiceSettlementAppDependencies> {
+  return createSelectedAppDependencies(config, appConfig, {
+    mode: "fresh-experimental-invoice-settlement",
+    ensureSchema: connection => ensureFreshExperimentalInvoiceSettlementSchema(connection),
+    createFinancial: createExperimentalFinancialDependencies,
+    invoiceParticipant: financial => financial.invoiceParticipant,
+    manualSettlementEnabled: () => true,
+  });
 }

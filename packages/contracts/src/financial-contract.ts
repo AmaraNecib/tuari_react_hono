@@ -3,6 +3,7 @@ export { isContractProcedure as isFinancialContractProcedure } from "@orpc/contr
 import { workspaceMetadataSchema } from "./workspace";
 import { exactDebtsContract } from "./debts-exact-contract";
 import { exactInvoicesContract } from "./invoice-exact-contract";
+import { experimentalExactInvoicesContract } from "./experimental-invoice-exact-contract";
 import { exactInventoryContract } from "./inventory-exact-contract";
 import { exactExpensesContract } from "./expenses-exact-contract";
 import { manualSettlementContract } from "./manual-settlement";
@@ -14,6 +15,7 @@ export const financialContract = {
   metadata: oc.output(workspaceMetadataSchema),
   debts: exactDebtsContract,
   invoices: exactInvoicesContract,
+  experimentalInvoices: experimentalExactInvoicesContract,
   inventory: exactInventoryContract,
   expenses: exactExpensesContract,
   reports: exactReportsContract,

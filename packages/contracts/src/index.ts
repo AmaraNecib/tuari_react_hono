@@ -1,6 +1,7 @@
 export * from "./exact-money";
 export * from "./invoice-exact";
 export * from "./invoice-exact-contract";
+export * from "./experimental-invoice-exact-contract";
 export * from "./financial-contract";
 export * from "./inventory-exact";
 export * from "./inventory-exact-contract";
