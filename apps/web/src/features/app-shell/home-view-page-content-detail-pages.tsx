@@ -193,6 +193,8 @@ export function HomeViewPageDetailContent({
               counterparty={selectedCounterparty}
               debtClient={financialClient.debts}
               manualSettlementClient={financialClient.manualSettlement}
+              experimentalSettlementClient={financialClient.experimentalSettlement}
+              experimentalInvoicesClient={financialClient.experimentalInvoices}
             />,
           )
         : (

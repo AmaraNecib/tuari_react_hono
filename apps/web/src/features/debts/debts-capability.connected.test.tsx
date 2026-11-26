@@ -35,10 +35,22 @@ async function setup(enabled: boolean) {
   const session = await (await root.auth.$context).internalAdapter.createSession(owner.item.id)
   const client = createRouterClient(createRouter(root), { context: createRpcContext(new Headers({ authorization: `Bearer ${session.token}` }), root.sessionService) }) as AppClient
   const manual = client.financial.manualSettlement
+  const experimental = client.financial.experimentalSettlement
+  const experimentalInvoices = client.financial.experimentalInvoices
   const history = vi.fn(manual.accountHistory)
   const partyHistory = vi.fn(manual.history)
   const metadata = vi.fn(client.financial.metadata)
-  const financial = { debts: client.financial.debts, invoices: client.financial.invoices, experimentalInvoices: client.financial.experimentalInvoices, experimentalSettlement: client.financial.experimentalSettlement, inventory: client.financial.inventory, expenses: client.financial.expenses, reports: client.financial.reports, metadata, manualSettlement: { candidates: manual.candidates, preview: manual.preview, confirm: manual.confirm, reverse: manual.reverse, accountHistory: history, history: partyHistory } } as AppClient["financial"]
+  const experimentalReads = {
+    candidates: vi.fn(experimental.candidates), history: vi.fn(experimental.history), accountHistory: vi.fn(experimental.accountHistory),
+    listInvoices: vi.fn(experimentalInvoices.listInvoices), getInvoice: vi.fn(experimentalInvoices.getInvoice), listPayments: vi.fn(experimentalInvoices.listPayments),
+  }
+  const financial = {
+    debts: client.financial.debts, invoices: client.financial.invoices, inventory: client.financial.inventory,
+    expenses: client.financial.expenses, reports: client.financial.reports, metadata,
+    manualSettlement: { candidates: manual.candidates, preview: manual.preview, confirm: manual.confirm, reverse: manual.reverse, accountHistory: history, history: partyHistory },
+    experimentalSettlement: { candidates: experimentalReads.candidates, history: experimentalReads.history, accountHistory: experimentalReads.accountHistory, preview: experimental.preview, confirm: experimental.confirm, reverse: experimental.reverse },
+    experimentalInvoices: { listInvoices: experimentalReads.listInvoices, getInvoice: experimentalReads.getInvoice, listPayments: experimentalReads.listPayments, getPayment: experimentalInvoices.getPayment, createInvoice: experimentalInvoices.createInvoice, updateInvoice: experimentalInvoices.updateInvoice, receiveInvoice: experimentalInvoices.receiveInvoice, voidInvoice: experimentalInvoices.voidInvoice, createPayment: experimentalInvoices.createPayment, voidPayment: experimentalInvoices.voidPayment },
+  } as unknown as AppClient["financial"]
   const bound = { financial } as AppClient
   state.client = bound
   const party = await client.externalCounterpartiesCreate({ fullName: "Connected supplier", phoneNumber: "0555123999" })
@@ -49,7 +61,10 @@ async function setup(enabled: boolean) {
   const query = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   query.setQueryData(sessionQueryKey, { user: state.user })
   disposers.push(() => query.clear())
-  return { client: bound, party: party.item, account, history, partyHistory, metadata, query }
+  return { client: bound, party: party.item, account, history, partyHistory, metadata, experimentalReads, query }
+}
+function expectNoExperimentalReads(f: Awaited<ReturnType<typeof setup>>) {
+  for (const request of Object.values(f.experimentalReads)) expect(request).not.toHaveBeenCalled()
 }
 
 it.each(["external", "debts"])("default-off %s route retains original tabs, zeroing and history without manual queries", async route => {
@@ -66,6 +81,7 @@ it.each(["external", "debts"])("default-off %s route retains original tabs, zero
   await waitFor(() => expect(f.metadata).toHaveBeenCalledTimes(1))
   expect(f.history).not.toHaveBeenCalled()
   expect(f.partyHistory).not.toHaveBeenCalled()
+  expectNoExperimentalReads(f)
   expect(screen.queryByRole("alert")).toBeNull()
 })
 
@@ -96,6 +112,7 @@ it("default-off route still posts, pays and zeroes through the real ordinary com
   expect(detail.entries.filter(row => row.entryType === "SETTLEMENT")).toHaveLength(2)
   expect(f.history).not.toHaveBeenCalled()
   expect(f.partyHistory).not.toHaveBeenCalled()
+  expectNoExperimentalReads(f)
   expect(f.metadata.mock.calls.length).toBeLessThanOrEqual(2)
 })
 
@@ -109,6 +126,7 @@ it("older metadata without a support field keeps the legacy layout despite a com
   expect(screen.getByRole("tab", { name: "التسوية وسجلها" })).toBeTruthy()
   expect(f.partyHistory).not.toHaveBeenCalled()
   expect(f.history).not.toHaveBeenCalled()
+  expectNoExperimentalReads(f)
 })
 
 it("metadata transport errors do not activate manual history or replace legacy tabs", async () => {
@@ -119,6 +137,7 @@ it("metadata transport errors do not activate manual history or replace legacy t
   expect(screen.getByRole("tab", { name: "التسوية وسجلها" })).toBeTruthy()
   expect(f.partyHistory).not.toHaveBeenCalled()
   expect(f.history).not.toHaveBeenCalled()
+  expectNoExperimentalReads(f)
 })
 
 it("explicit server opt-in uses the approved scoped tabs and real history", async () => {
@@ -129,4 +148,5 @@ it("explicit server opt-in uses the approved scoped tabs and real history", asyn
   expect(screen.getAllByRole("tab")).toHaveLength(3)
   expect(f.partyHistory).toHaveBeenCalledTimes(1)
   expect(f.metadata).toHaveBeenCalledTimes(1)
+  expectNoExperimentalReads(f)
 })

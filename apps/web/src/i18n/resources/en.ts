@@ -2,6 +2,13 @@ export const en = {
   translation: {
     auth: { errors: { profileNameLength: "Enter a name between 1 and 120 characters." } },
     common: { yes: "Yes", no: "No", loading: "Loading..." },
+    experimentalSettlement: {
+      title: "Settle between accounts",
+      newSettlement: "Record account settlement",
+      help: "This operation reduces what each side owes by the same amount without a cash or inventory movement. Reverse the settlement before cancelling a linked invoice.",
+      dialogDescription: "Choose one payable and one receivable debt, then review both balances before confirming.",
+      cancelGuard: "Reverse this settlement before cancelling its linked invoice.",
+    },
     settings: {
       tabs: { diagnostics: "Diagnostics" },
       diagnostics: {
