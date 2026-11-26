@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import { test } from "vitest";
 import { assertDistinctFixtureInvoices } from "./api-memory-invoice-check";
 
 const rows = Array.from({ length: 10 }, (_, i) => ({ id: `invoice-${i}`, warehouseId: `warehouse-${i}`, grossTotalDzd: "24.68" }));
