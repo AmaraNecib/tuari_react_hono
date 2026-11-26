@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -58,6 +58,78 @@ describe.each(["", "545-upgrade-public-key"])("opening schema upgrade (%s)", key
     expect(reopened.prepare("SELECT * FROM employee WHERE id='preserved-worker'").get()).toEqual(employee);
     expect(reopened.pragma("foreign_key_check")).toEqual([]);
   });
+  it("rolls back a failed on-disk startup upgrade and retries after reopening the same file", async () => {
+    const db = await oldDatabase(key);
+    db.exec(`INSERT INTO employee(id,first_name,last_name,phone,role_id,status,salary_reference_period,salary_reference_amount,created_at,updated_at)
+      SELECT 'rollback-worker','Worker','Rollback','0612345678',id,'ACTIVE','MONTHLY','30000.00','2026-11-01T00:00:00.000Z','2026-11-01T00:00:00.000Z' FROM role WHERE key='worker'`);
+    const financial = createExactCommerceServices(db, createFifoLock(), { id: () => crypto.randomUUID(), now: () => "2026-11-01T00:00:00.000Z" });
+    const account = financial.finance.createAccount({ requestId: "rollback-account", partyType: "INTERNAL_WORKER", workerId: "rollback-worker", direction: "PAYABLE", currency: "DZD" });
+    financial.finance.postEntry({ requestId: "rollback-obligation", debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: "5000.00", currency: "DZD" });
+
+    const snapshot = (connection: BetterSqliteDatabase) => ({
+      schema: connection.prepare("SELECT * FROM sqlite_master ORDER BY type,name").all(),
+      markers: connection.prepare("SELECT * FROM app_schema_state ORDER BY key").all(),
+      employee: connection.prepare("SELECT * FROM employee WHERE id='rollback-worker'").get(),
+      accounts: connection.prepare("SELECT * FROM debt_account ORDER BY id").all(),
+      entries: connection.prepare("SELECT * FROM debt_entry ORDER BY id").all(),
+    });
+    const before = snapshot(db);
+    const path = db.name;
+    const originalPrepare = db.prepare.bind(db);
+    const injectedFailure = new Error("injected opening marker persistence failure");
+    let failureReachedAfterDdl = false;
+    const prepareSpy = vi.spyOn(db, "prepare").mockImplementation((sql: string) => {
+      if (/^\s*INSERT INTO app_schema_state\s*\(/i.test(sql) && !failureReachedAfterDdl) {
+        expect(db.inTransaction).toBe(true);
+        expect(originalPrepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='employee_opening_source'").get()).toBeDefined();
+        failureReachedAfterDdl = true;
+        throw injectedFailure;
+      }
+      return originalPrepare(sql);
+    });
+
+    try {
+      await expect(ensureFreshExactApplicationSchema(db)).rejects.toBe(injectedFailure);
+    } finally {
+      prepareSpy.mockRestore();
+    }
+
+    expect(failureReachedAfterDdl).toBe(true);
+    expect(db.inTransaction).toBe(false);
+    expect(snapshot(db)).toEqual(before);
+    expect(db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'employee_opening_%' OR name IN ('expense_attachment','expense_attachment_owner_order_idx')").all()).toEqual([]);
+
+    db.close();
+    const reopened = createDatabaseConnection(path, key);
+    connections.push(reopened);
+    expect(snapshot(reopened)).toEqual(before);
+    await ensureFreshExactApplicationSchema(reopened);
+
+    const upgradedSchema = reopened.prepare("SELECT * FROM sqlite_master ORDER BY type,name").all();
+    expect(reopened.prepare("SELECT * FROM app_schema_state WHERE key='payroll_opening_v1'").all()).toHaveLength(1);
+    expect(reopened.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'employee_opening_%' ORDER BY name").all()).toEqual([
+      { name: "employee_opening_correction" },
+      { name: "employee_opening_proposal" },
+      { name: "employee_opening_refund" },
+      { name: "employee_opening_resolution" },
+      { name: "employee_opening_review" },
+      { name: "employee_opening_source" },
+    ]);
+    expect(reopened.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='expense_attachment'").all()).toEqual([{ name: "expense_attachment" }]);
+    expect(reopened.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='expense_attachment_owner_order_idx'").all()).toEqual([{ name: "expense_attachment_owner_order_idx" }]);
+    expect(reopened.prepare("SELECT * FROM app_schema_state WHERE key!='payroll_opening_v1' ORDER BY key").all()).toEqual(before.markers);
+    expect(reopened.prepare("SELECT * FROM employee WHERE id='rollback-worker'").get()).toEqual(before.employee);
+    expect(reopened.prepare("SELECT * FROM debt_account ORDER BY id").all()).toEqual(before.accounts);
+    expect(reopened.prepare("SELECT * FROM debt_entry ORDER BY id").all()).toEqual(before.entries);
+    expect(reopened.pragma("foreign_key_check")).toEqual([]);
+
+    const afterRetry = snapshot(reopened);
+    await ensureFreshExactApplicationSchema(reopened);
+    expect(snapshot(reopened)).toEqual(afterRetry);
+    expect(reopened.prepare("SELECT * FROM sqlite_master ORDER BY type,name").all()).toEqual(upgradedSchema);
+    expect(reopened.prepare("SELECT * FROM app_schema_state WHERE key='payroll_opening_v1'").all()).toHaveLength(1);
+  });
+
   it.each(["partial", "marker", "receipt-without-opening"])("refuses %s opening state rather than trusting or repairing it", async state => {
     const db = await oldDatabase(key);
     if (state === "partial") db.exec("CREATE TABLE employee_opening_review(employee_id TEXT PRIMARY KEY)");
