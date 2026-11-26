@@ -23,6 +23,7 @@ import { createFifoLock, type FifoLock } from "../../../infrastructure/database/
 import { DrizzleAccountRepository } from "../../account/account.repository";
 import { PaymentRepositoryImpl } from "./payment.repository";
 import type { PaymentRepository } from "../payment.repository";
+import { PaymentDuplicateIdConflictError } from "../payment.types";
 
 function createTestEnv() {
   const rawDb = new Database(":memory:");
@@ -120,6 +121,19 @@ describe("PaymentRepositoryImpl (sqlite)", () => {
     expect(saved).not.toBeNull();
     expect(saved!.allocations).toHaveLength(1);
     expect(saved!.allocations[0]!.amount).toBe(1000);
+  });
+
+  it("maps only a duplicate payment primary key to the domain conflict", async () => {
+    await repo.createPayment(paymentInput("pmt-duplicate"));
+    await expect(repo.createPayment(paymentInput("pmt-duplicate"))).rejects.toBeInstanceOf(
+      PaymentDuplicateIdConflictError,
+    );
+
+    const invalidMethod = await repo
+      .createPayment({ ...paymentInput("pmt-invalid-method"), paymentMethod: "INVALID" })
+      .then(() => null, (error: unknown) => error);
+    expect(invalidMethod).toMatchObject({ code: "SQLITE_CONSTRAINT_CHECK" });
+    expect(invalidMethod).not.toBeInstanceOf(PaymentDuplicateIdConflictError);
   });
 
   it("rolls back all writes when the transaction callback throws", async () => {
