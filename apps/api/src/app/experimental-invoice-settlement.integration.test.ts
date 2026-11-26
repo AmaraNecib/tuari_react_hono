@@ -79,6 +79,25 @@ it("serves invoice settlement only through the explicit authenticated root and r
   let operator = clientFor(root, operatorSession.token);
   await expect(operator.financial.experimentalInvoices.getInvoice({ id: received.id })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   await expect(operator.financial.experimentalInvoices.listInvoices({})).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  const deniedInvoiceWriteSnapshot = {
+    invoice: await ownerClient.financial.experimentalInvoices.getInvoice({ id: received.id }),
+    payment: await ownerClient.financial.experimentalInvoices.getPayment({ id: payment.id }),
+    payable: await ownerClient.financial.debts.detail({ id: received.debtAccountId! }),
+  };
+  await expect(operator.financial.experimentalInvoices.voidInvoice({ requestId: "operator-void-invoice", id: received.id, reason: "Unauthorized route proof" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  expect({
+    invoice: await ownerClient.financial.experimentalInvoices.getInvoice({ id: received.id }),
+    payment: await ownerClient.financial.experimentalInvoices.getPayment({ id: payment.id }),
+    payable: await ownerClient.financial.debts.detail({ id: received.debtAccountId! }),
+  }).toEqual(deniedInvoiceWriteSnapshot);
+  const candidates = await operator.financial.manualSettlement.candidates({ externalCounterpartyId: party.item.id });
+  const invoiceCandidate = candidates.find(candidate => candidate.id === received.debtEntryId);
+  expect(invoiceCandidate).toMatchObject({ id: received.debtEntryId, debtAccountId: received.debtAccountId, direction: "PAYABLE", remainingDzd: "80.00", sourceKind: "RESTRICTED" });
+  expect(invoiceCandidate).not.toHaveProperty("sourceId");
+  expect(invoiceCandidate).not.toHaveProperty("sourceLabel");
+  const candidatesWire = JSON.stringify(candidates);
+  for (const privateValue of [received.id, received.invoiceNumber!, "EXP-615-001", "Purchase invoice", "Experimental supplier"]) expect(candidatesWire).not.toContain(privateValue);
+  expect(candidatesWire).not.toMatch(/\/invoices\//i);
   await expect(anonymous.financial.manualSettlement.confirm(confirmInput)).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   await expect(anonymous.financial.manualSettlement.history({ externalCounterpartyId: party.item.id })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   const spoofed = { ...confirmInput };
