@@ -223,6 +223,24 @@ function Complete-Process([System.Diagnostics.Process]$Process, [string]$Name, [
   Write-Log "$Name nativeExitCode=$code phase=$Phase"
   return $code
 }
+function Assert-ContractsOutput([string]$Directory = (Join-Path $RepoRoot 'packages\contracts\dist')) {
+  $expected = @{
+    'index.js' = '5570aeef7dad48223cddee8984451ea285214cb5465bffefeb0d8258ff165ff2'
+    'index.d.ts' = '8737f3c540b7264eac6e04687b59af02c3aae884fa5003e8292adc1b68732741'
+  }
+  $files = @(Get-ChildItem -LiteralPath $Directory -File -Recurse -Force -ErrorAction Stop)
+  if ($files.Count -ne $expected.Count) { throw 'Contracts output contains missing or extra files' }
+  $actual = [ordered]@{}
+  foreach ($file in $files) {
+    $name = $file.FullName.Substring($Directory.TrimEnd('\').Length + 1).Replace('\', '/')
+    if (-not $expected.ContainsKey($name)) { throw "Unexpected contracts output file $name" }
+    $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+    if ($hash -cne $expected[$name]) { throw "Contracts output differs from approved isolated build: $name" }
+    $actual[$name] = [ordered]@{ sha256 = $hash; bytes = $file.Length }
+  }
+  $Meta.contractsOutputVerification = [ordered]@{ inputRevision = 'dd4413845f1a95fa0606d469c1f6705af08cbfd5'; node = 'v22.14.0'; tsup = '8.5.1'; typescript = '5.9.3'; proofAttempt = '175-contracts-output1'; files = $actual; historicalEquivalenceClaim = $false }
+  Save-Meta
+}
 function Assert-ProductSource([string]$ExpectedRevision = 'dd4413845f1a95fa0606d469c1f6705af08cbfd5') {
   $paths = @('apps/api/src', 'packages', 'apps/api/package.json', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml')
   $head = & git -C $RepoRoot rev-parse HEAD
@@ -233,6 +251,7 @@ function Assert-ProductSource([string]$ExpectedRevision = 'dd4413845f1a95fa0606d
   if ($LASTEXITCODE -ne 0 -or $untracked.Count -ne 0) { throw 'Untracked measured product sources or failed source inventory' }
   $Meta.sourceVerification = [ordered]@{ expectedRevision = $ExpectedRevision; actualHead = [string]$head; productPaths = $paths; trackedDiffExit = 0; untrackedCount = 0 }
   Save-Meta
+  Assert-ContractsOutput
 }
 function Get-FreePort {
   $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse('127.0.0.1'), 0)
