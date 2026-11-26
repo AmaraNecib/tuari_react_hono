@@ -27,8 +27,14 @@ Use async mode for minute-scale work and a stable request ID per lane.
 Completion wakes the parent. Do not poll live children or silently replace
 their work. Cancel a task that is no longer needed, preserving its worktree.
 
-A worker commits and hands off verified SHA, proof, applied wisdom and blockers.
-It never pushes, opens a PR, merges or writes wisdom. The parent owns those
-decisions and preserves existing watches. No custom Herdr launch is required
-inside T3. Native invisible children are a fallback only if T3 delegation is
-unavailable and the owner is told they will not appear in lineage.
+Use the CEO / issue manager / worker authority table and manager handoff
+checks in `docs/engineering-workflow.md`. A worker commits and hands off its
+verified SHA, proof, applied wisdom and blockers. It never publishes, merges
+or writes wisdom. Delegated children cannot gain manager authority by role
+label. The issue manager owns issue outcome and next-step decisions; the CEO
+owns queue and cross-lane decisions. A top-level manager thread is not a
+`delegate_task` child, so use an explicit terminal or blocker handoff instead
+of assuming its completion wakes the CEO. Publication and merge require the
+authority and gates recorded in the workflow. No custom Herdr launch is
+required inside T3. Native invisible children are a fallback only if T3
+delegation is unavailable and the owner is told they will not appear in lineage.

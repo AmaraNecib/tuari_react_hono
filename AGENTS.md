@@ -13,10 +13,11 @@ repository's CI-final activation applies here.
 
 ## Worktree and authority
 
-Use one writer per isolated worktree. Preserve unrelated changes. Workers
-commit and report; the parent owns publication, PR watches and merge.
-A child does not push, open a PR or merge. A local-only instruction means
-no publication even if GitHub is reachable.
+Use one writer per isolated worktree. Preserve unrelated changes. Follow the
+role and handoff contract in [the engineering workflow](docs/engineering-workflow.md).
+Workers commit and report. A child does not publish, open a PR or merge. A local-only
+instruction means no publication even if GitHub is reachable. Higher-priority
+instructions and explicit owner-only gates remain binding.
 
 Inside T3, use visible `delegate_task` children. Resolve exact model IDs with
 `orchestrator_capabilities`; choose `openai-codex/gpt-6-luna` explicitly for
