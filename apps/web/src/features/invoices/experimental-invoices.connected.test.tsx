@@ -53,7 +53,7 @@ function queryClient(user: NonNullable<typeof state.user>) {
   disposers.push(() => query.clear())
   return query
 }
-it("renders server-confirmed SETTLED and PAID balances, then loads the selected invoice and payment allocation by route ID", async () => {
+it("renders exact settlement balances, isolates list cache by client, and loads routed allocations", async () => {
   vi.stubEnv("TUARI_LICENSE_STATUS", "trial")
   const root = await createExperimentalInvoiceSettlementAppDependencies({ databasePath: tempDatabasePath(), databaseKey: "" }, appConfig())
   disposers.push(() => root.close())
@@ -109,7 +109,15 @@ it("renders server-confirmed SETTLED and PAID balances, then loads the selected 
   expect(paidRow.textContent).toContain("مدفوعة بالكامل فعليًا")
   expect(paidRow.textContent).toContain("50.25")
 
-  fireEvent.click(within(settledRow).getByRole("button", { name: "تفاصيل EXP-615-UI-SETTLED" }))
+  const secondClientList = vi.fn((input: Parameters<typeof client.listInvoices>[0]) => client.listInvoices(input))
+  const secondClient = { ...client, listInvoices: secondClientList }
+  view.rerender(<QueryClientProvider client={query}><ExperimentalInvoicesPage client={secondClient} onBackToList={vi.fn()} onOpenInvoice={onOpenInvoice} /></QueryClientProvider>)
+  expect(await screen.findByText("EXP-615-UI-SETTLED")).toBeTruthy()
+  expect(secondClientList).toHaveBeenCalled()
+  const clientScopedTable = screen.getByRole("region", { name: "جدول الفواتير العادية التجريبية" })
+  const clientScopedRow = within(clientScopedTable).getByText("EXP-615-UI-SETTLED").closest("tr")!
+
+  fireEvent.click(within(clientScopedRow).getByRole("button", { name: "تفاصيل EXP-615-UI-SETTLED" }))
   expect(onOpenInvoice).toHaveBeenCalledWith(received.id)
   view.rerender(<QueryClientProvider client={query}><ExperimentalInvoicesPage client={client} initialInvoiceId={received.id} onBackToList={vi.fn()} onOpenInvoice={onOpenInvoice} /></QueryClientProvider>)
   expect(await screen.findByRole("heading", { name: "تفاصيل الفاتورة EXP-615-UI-SETTLED" })).toBeTruthy()
