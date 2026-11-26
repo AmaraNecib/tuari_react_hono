@@ -34,7 +34,7 @@ it("serves invoice settlement only through the explicit authenticated root and r
   let ownerClient = clientFor(root, ownerSession.token);
   const anonymous = anonymousFor(root);
 
-  expect(await ownerClient.financial.metadata()).toMatchObject({ capabilities: { manualSettlement: true, experimentalInvoiceSettlement: true } });
+  expect(await ownerClient.financial.metadata()).toMatchObject({ capabilities: { manualSettlement: true, experimentalInvoiceSettlement: true, experimentalSettlement: true } });
   await expect(anonymous.financial.experimentalInvoices.listInvoices({})).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   await expect(ownerClient.financial.invoices.listInvoices({})).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   await expect(ownerClient.financial.experimentalInvoices.getInvoice({ id: randomUUID() })).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -158,6 +158,148 @@ it("serves invoice settlement only through the explicit authenticated root and r
   expect(accountHistoryWire).not.toMatch(/\/invoices\//i);
 }, 60000);
 
+it("reveals validated invoice labels only to the bootstrap owner through the experimental settlement namespace", async () => {
+  const databasePath = rootPath("tuari-615-source-visibility-");
+  const appConfig = config();
+  const root = await createExperimentalInvoiceSettlementAppDependencies({ databasePath, databaseKey: "" }, appConfig);
+  roots.push(root);
+  const bootstrapped = await root.authBootstrapService.bootstrapFirstUser({ name: "Source owner", phone: "0612345615", password: "password123" });
+  if (!bootstrapped.success) throw new Error("Owner bootstrap failed");
+  const authAdapter = await sessionAdapter(root);
+  const ownerSession = await authAdapter.createSession(bootstrapped.item.id);
+  const owner = clientFor(root, ownerSession.token);
+  const party = await owner.externalCounterpartiesCreate({ fullName: "Source visibility party", phoneNumber: "0555123615" });
+  if (!party.success) throw new Error("Counterparty creation failed");
+  const purchaseDraft = await owner.financial.experimentalInvoices.createInvoice({
+    requestId: "source-purchase-draft", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: party.item.id,
+    supplierName: "Private purchase supplier", invoiceNumber: "SRC-615-PUR-001", direction: "PURCHASE",
+    lineItems: [{ description: "Purchase source", source: { mode: "agreed-total", total: "100.00", quantity: "1" } }],
+  });
+  const purchase = await owner.financial.experimentalInvoices.receiveInvoice({ requestId: "source-purchase-receive", id: purchaseDraft.id });
+  const saleDraft = await owner.financial.experimentalInvoices.createInvoice({
+    requestId: "source-sale-draft", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: party.item.id,
+    supplierName: "Private sale customer", direction: "SALE",
+    lineItems: [{ description: "Sale source", source: { mode: "agreed-total", total: "40.00", quantity: "1" } }],
+  });
+  const sale = await owner.financial.experimentalInvoices.receiveInvoice({ requestId: "source-sale-receive", id: saleDraft.id });
+  const purchaseLabel = `فاتورة شراء ${purchase.invoiceNumber}`;
+  const saleLabel = `فاتورة بيع ${sale.id}`;
+
+  const db = createDatabaseConnection(databasePath, "");
+  roots.push(db);
+  const now = new Date().toISOString();
+  const addActor = async (name: string, key: string, suffix: string, permissions: string[]) => {
+    const userId = randomUUID();
+    const phone = `+213555615${suffix}`;
+    const roleId = randomUUID();
+    db.prepare('INSERT INTO user(id,name,"phoneNumber",created_at,updated_at) VALUES (?,?,?,?,?)').run(userId, name, phone, now, now);
+    db.prepare("INSERT INTO role(id,key,name,description,is_system,created_at,updated_at) VALUES (?,?,?,?,0,?,?)").run(roleId, key, name, null, now, now);
+    db.prepare("INSERT INTO employee(id,first_name,last_name,phone,role_id,status,created_at,updated_at) VALUES (?,?,?,?,?,'ACTIVE',?,?)").run(randomUUID(), name, "Test", phone, roleId, now, now);
+    for (const permission of permissions) db.prepare("INSERT INTO role_permission(id,role_id,permission,created_at,updated_at) VALUES (?,?,?,?,?)").run(randomUUID(), roleId, permission, now, now);
+    const session = await authAdapter.createSession(userId);
+    return clientFor(root, session.token);
+  };
+  const operator = await addActor("Debt operator", "source-debt-operator", "001", ["debts:read", "debts:settle", "debts:update"]);
+  const reader = await addActor("Invoice reader", "source-invoice-reader", "002", ["debts:read", "invoices:read"]);
+  const operatorRole = db.prepare("SELECT id FROM role WHERE key='source-debt-operator'").get() as { id: string };
+  const purchaseCandidate = (rows: Awaited<ReturnType<typeof owner.financial.experimentalSettlement.candidates>>, id: string) => rows.find(row => row.id === id);
+
+  const ownerCandidates = await owner.financial.experimentalSettlement.candidates({ externalCounterpartyId: party.item.id });
+  expect(purchaseCandidate(ownerCandidates, purchase.debtEntryId!)).toMatchObject({ sourceKind: "INVOICE_PURCHASE", sourceId: purchase.id, sourceLabel: purchaseLabel });
+  expect(purchaseCandidate(ownerCandidates, sale.debtEntryId!)).toMatchObject({ sourceKind: "INVOICE_SALE", sourceId: sale.id, sourceLabel: saleLabel });
+  const legacyOwnerCandidates = await owner.financial.manualSettlement.candidates({ externalCounterpartyId: party.item.id });
+  for (const invoiceEntryId of [purchase.debtEntryId!, sale.debtEntryId!]) {
+    expect(legacyOwnerCandidates.find(row => row.id === invoiceEntryId)).toMatchObject({ sourceKind: "RESTRICTED" });
+  }
+  const legacyWire = JSON.stringify(legacyOwnerCandidates);
+  for (const privateValue of [purchase.id, purchase.invoiceNumber!, sale.id, "Private purchase supplier", "Private sale customer"]) expect(legacyWire).not.toContain(privateValue);
+
+  const readerCandidates = await reader.financial.experimentalSettlement.candidates({ externalCounterpartyId: party.item.id });
+  for (const invoiceEntryId of [purchase.debtEntryId!, sale.debtEntryId!]) {
+    expect(readerCandidates.find(row => row.id === invoiceEntryId)).toMatchObject({ sourceKind: "RESTRICTED" });
+  }
+  const readerCandidateWire = JSON.stringify(readerCandidates);
+  for (const privateValue of [purchase.id, purchase.invoiceNumber!, sale.id, purchaseLabel, saleLabel]) expect(readerCandidateWire).not.toContain(privateValue);
+  expect(readerCandidateWire).not.toMatch(/\/invoices\//i);
+  await expect(reader.financial.experimentalInvoices.getInvoice({ id: purchase.id })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  await expect(reader.financial.experimentalInvoices.listInvoices({})).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  const beforeDeniedWrite = {
+    purchase: await owner.financial.experimentalInvoices.getInvoice({ id: purchase.id }),
+    sale: await owner.financial.experimentalInvoices.getInvoice({ id: sale.id }),
+  };
+  await expect(reader.financial.experimentalInvoices.voidInvoice({ requestId: "reader-void-source", id: purchase.id, reason: "Reader write refusal" })).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+  expect({
+    purchase: await owner.financial.experimentalInvoices.getInvoice({ id: purchase.id }),
+    sale: await owner.financial.experimentalInvoices.getInvoice({ id: sale.id }),
+  }).toEqual(beforeDeniedWrite);
+
+  const pair = {
+    externalCounterpartyId: party.item.id,
+    payableOriginalEntryId: purchase.debtEntryId!,
+    receivableOriginalEntryId: sale.debtEntryId!,
+    currency: "DZD" as const,
+    amountDzd: "10.00",
+  };
+  const preview = await operator.financial.experimentalSettlement.preview(pair);
+  expect(preview).toMatchObject({ payableRemainingDzd: "100.00", receivableRemainingDzd: "40.00" });
+  const confirmInput = { ...pair, requestId: "source-visibility-confirm", expectedPayableRemainingDzd: "100.00", expectedReceivableRemainingDzd: "40.00" };
+  const beforePermissionRefusal = {
+    purchase: await owner.financial.experimentalInvoices.getInvoice({ id: purchase.id }),
+    sale: await owner.financial.experimentalInvoices.getInvoice({ id: sale.id }),
+    payable: await owner.financial.debts.detail({ id: purchase.debtAccountId! }),
+    receivable: await owner.financial.debts.detail({ id: sale.debtAccountId! }),
+    history: await owner.financial.experimentalSettlement.history({ externalCounterpartyId: party.item.id }),
+  };
+  db.prepare("DELETE FROM role_permission WHERE role_id=? AND permission='debts:settle'").run(operatorRole.id);
+  await expect(operator.financial.experimentalSettlement.confirm(confirmInput)).rejects.toMatchObject({ code: "FORBIDDEN" });
+  expect({
+    purchase: await owner.financial.experimentalInvoices.getInvoice({ id: purchase.id }),
+    sale: await owner.financial.experimentalInvoices.getInvoice({ id: sale.id }),
+    payable: await owner.financial.debts.detail({ id: purchase.debtAccountId! }),
+    receivable: await owner.financial.debts.detail({ id: sale.debtAccountId! }),
+    history: await owner.financial.experimentalSettlement.history({ externalCounterpartyId: party.item.id }),
+  }).toEqual(beforePermissionRefusal);
+  db.prepare("INSERT INTO role_permission(id,role_id,permission,created_at,updated_at) VALUES (?,?,?,?,?)").run(randomUUID(), operatorRole.id, "debts:settle", now, now);
+  const confirmed = await operator.financial.experimentalSettlement.confirm(confirmInput);
+  const ownerHistory = await owner.financial.experimentalSettlement.history({ externalCounterpartyId: party.item.id });
+  expect(ownerHistory.items[0]).toMatchObject({
+    id: confirmed.settlement.id,
+    amountDzd: "10.00",
+    actorUserId: confirmed.settlement.actorUserId,
+    actorLabel: confirmed.settlement.actorLabel,
+    recordedAt: confirmed.settlement.recordedAt,
+    note: null,
+    reversal: null,
+    payableSource: { kind: "INVOICE_PURCHASE", id: purchase.id, label: purchaseLabel },
+    receivableSource: { kind: "INVOICE_SALE", id: sale.id, label: saleLabel },
+  });
+  const legacyHistory = await owner.financial.manualSettlement.history({ externalCounterpartyId: party.item.id });
+  expect(legacyHistory.items[0]).toMatchObject({ payableSource: { kind: "RESTRICTED" }, receivableSource: { kind: "RESTRICTED" } });
+  const ownerPurchaseHistory = await owner.financial.experimentalSettlement.accountHistory({ debtAccountId: purchase.debtAccountId! });
+  const ownerSaleHistory = await owner.financial.experimentalSettlement.accountHistory({ debtAccountId: sale.debtAccountId! });
+  expect(ownerPurchaseHistory.items[0]?.payableSource).toEqual({ kind: "INVOICE_PURCHASE", id: purchase.id, label: purchaseLabel });
+  expect(ownerSaleHistory.items[0]?.receivableSource).toEqual({ kind: "INVOICE_SALE", id: sale.id, label: saleLabel });
+
+  for (const client of [operator, reader]) {
+    const restrictedHistory = await client.financial.experimentalSettlement.history({ externalCounterpartyId: party.item.id });
+    expect(restrictedHistory.items[0]).toMatchObject({ payableSource: { kind: "RESTRICTED" }, receivableSource: { kind: "RESTRICTED" } });
+    const restrictedPurchaseHistory = await client.financial.experimentalSettlement.accountHistory({ debtAccountId: purchase.debtAccountId! });
+    const restrictedSaleHistory = await client.financial.experimentalSettlement.accountHistory({ debtAccountId: sale.debtAccountId! });
+    expect(restrictedPurchaseHistory.items[0]?.payableSource).toEqual({ kind: "RESTRICTED" });
+    expect(restrictedSaleHistory.items[0]?.receivableSource).toEqual({ kind: "RESTRICTED" });
+    const historyWire = JSON.stringify([restrictedHistory, restrictedPurchaseHistory, restrictedSaleHistory]);
+    for (const privateValue of [purchase.id, purchase.invoiceNumber!, sale.id, purchaseLabel, saleLabel, "Private purchase supplier", "Private sale customer"]) expect(historyWire).not.toContain(privateValue);
+    expect(historyWire).not.toMatch(/\/invoices\//i);
+  }
+
+  const reversed = await operator.financial.experimentalSettlement.reverse({ requestId: "source-visibility-reverse", settlementId: confirmed.settlement.id, reason: "Source visibility reversal" });
+  expect(reversed.settlement.id).toBe(confirmed.settlement.id);
+  expect((await owner.financial.experimentalSettlement.accountHistory({ debtAccountId: purchase.debtAccountId! })).items[0]).toMatchObject({
+    reversal: reversed.reversal,
+    payableSource: { kind: "INVOICE_PURCHASE", id: purchase.id, label: purchaseLabel },
+  });
+}, 60000);
+
 it("leaves the existing exact root usable and refuses the experimental root without changing its file", async () => {
   const databasePath = rootPath("tuari-615-root-selection-");
   const appConfig = config();
@@ -167,8 +309,9 @@ it("leaves the existing exact root usable and refuses the experimental root with
   if (!owner.success) throw new Error("Owner bootstrap failed");
   const token = await (await sessionAdapter(root)).createSession(owner.item.id);
   const client = clientFor(root, token.token);
-  expect(await client.financial.metadata()).toMatchObject({ capabilities: { manualSettlement: false, experimentalInvoiceSettlement: false } });
+  expect(await client.financial.metadata()).toMatchObject({ capabilities: { manualSettlement: false, experimentalInvoiceSettlement: false, experimentalSettlement: false } });
   await expect(client.financial.experimentalInvoices.listInvoices({})).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
+  await expect(client.financial.experimentalSettlement.candidates({ externalCounterpartyId: randomUUID() })).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   const party = await client.externalCounterpartiesCreate({ fullName: "Normal invoice party", phoneNumber: "0555123602" });
   if (!party.success) throw new Error("Counterparty creation failed");
   const invoice = await client.financial.invoices.createInvoice({ requestId: "normal-invoice", counterpartyType: "EXTERNAL_COUNTERPARTY", counterpartyId: party.item.id, supplierName: "Normal supplier", direction: "PURCHASE", lineItems: [{ description: "Normal source", source: { mode: "agreed-total", total: "12.00", quantity: "1" } }] });

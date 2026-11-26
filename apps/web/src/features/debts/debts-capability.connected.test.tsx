@@ -38,7 +38,7 @@ async function setup(enabled: boolean) {
   const history = vi.fn(manual.accountHistory)
   const partyHistory = vi.fn(manual.history)
   const metadata = vi.fn(client.financial.metadata)
-  const financial = { debts: client.financial.debts, invoices: client.financial.invoices, inventory: client.financial.inventory, expenses: client.financial.expenses, reports: client.financial.reports, metadata, manualSettlement: { candidates: manual.candidates, preview: manual.preview, confirm: manual.confirm, reverse: manual.reverse, accountHistory: history, history: partyHistory } } as AppClient["financial"]
+  const financial = { debts: client.financial.debts, invoices: client.financial.invoices, experimentalInvoices: client.financial.experimentalInvoices, experimentalSettlement: client.financial.experimentalSettlement, inventory: client.financial.inventory, expenses: client.financial.expenses, reports: client.financial.reports, metadata, manualSettlement: { candidates: manual.candidates, preview: manual.preview, confirm: manual.confirm, reverse: manual.reverse, accountHistory: history, history: partyHistory } } as AppClient["financial"]
   const bound = { financial } as AppClient
   state.client = bound
   const party = await client.externalCounterpartiesCreate({ fullName: "Connected supplier", phoneNumber: "0555123999" })

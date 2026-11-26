@@ -33,4 +33,5 @@ it("keeps owner and manual source shape while rejecting identity on restricted h
   expect(manualSettlementSourceSchema.parse({ kind: "RESTRICTED" })).toEqual({ kind: "RESTRICTED" });
   expect(manualSettlementSourceSchema.safeParse({ kind: "RESTRICTED", id: "inventory-1" }).success).toBe(false);
   expect(manualSettlementSourceSchema.safeParse({ kind: "RESTRICTED", label: "IN-0001" }).success).toBe(false);
+  expect(manualSettlementSourceSchema.safeParse({ kind: "INVOICE_PURCHASE", id: "invoice-1", label: "فاتورة شراء INV-1" }).success).toBe(false);
 });

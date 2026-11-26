@@ -18,6 +18,7 @@ export * from "./warehouses";
 export * from "./debts";
 export * from "./debts-exact";
 export * from "./manual-settlement";
+export * from "./experimental-settlement";
 export * from "./debts-exact-contract";
 export * from "./debt-helpers";
 export * from "./inventory";

@@ -8,7 +8,7 @@ import type { ExperimentalExactInvoice } from "@tuari/contracts";
 
 export type ExperimentalInvoiceOriginal = { invoice: ExperimentalExactInvoice; entry: ExactDebtEntry; direction: "PAYABLE" | "RECEIVABLE" };
 
-/** Internal source authority for a future paired-settlement composition. Not registered in a root or RPC. */
+/** Internal invoice-source authority. RPCs receive only the settlement service's typed projections. */
 export class ExperimentalInvoiceSettlementParticipant {
   constructor(private readonly invoices: ExperimentalInvoiceRepository, private readonly finance: ExactFinanceService, private readonly ledger: ExactFinanceRepository, private readonly dependencies: { now(): string } = { now: () => new Date().toISOString() }) {
     const identity = finance.transactionIdentity;
@@ -26,6 +26,14 @@ export class ExperimentalInvoiceSettlementParticipant {
     const direction = invoice.direction === "PURCHASE" ? "PAYABLE" : "RECEIVABLE";
     if (account.partyType !== "EXTERNAL_COUNTERPARTY" || account.externalCounterpartyId !== invoice.counterpartyId || account.direction !== direction || account.currency !== "DZD" || invoice.counterpartyType !== "EXTERNAL_COUNTERPARTY" || invoice.currency !== "DZD") return null;
     return { invoice, entry, direction };
+  }
+
+  describeSource(originalEntryId: string): { kind: "INVOICE_PURCHASE" | "INVOICE_SALE"; id: string; label: string } | null {
+    const source = this.lookupOriginal(originalEntryId);
+    if (!source) return null;
+    const kind = source.invoice.direction === "PURCHASE" ? "INVOICE_PURCHASE" : "INVOICE_SALE";
+    const label = source.invoice.direction === "PURCHASE" ? "فاتورة شراء" : "فاتورة بيع";
+    return { kind, id: source.invoice.id, label: `${label} ${source.invoice.invoiceNumber || source.invoice.id}` };
   }
 
   validateEligible(originalEntryId: string): ExperimentalInvoiceOriginal {

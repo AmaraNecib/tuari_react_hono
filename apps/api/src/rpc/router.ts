@@ -173,7 +173,7 @@ export function createRouter(
       expensesVoid: os.expensesVoid.handler(refuse),
     };
     const financialRouter = dependencies.mode === "fresh-experimental-invoice-settlement"
-      ? createFinancialRouter({ ...dependencies.financial.services, invoices: undefined }, dependencies.financial.getMetadata, m, dependencies.financial.reports, dependencies.financial.manualSettlement, dependencies.financial.services.experimentalInvoices)
+      ? createFinancialRouter({ ...dependencies.financial.services, invoices: undefined }, dependencies.financial.getMetadata, m, dependencies.financial.reports, dependencies.financial.manualSettlement, dependencies.financial.services.experimentalInvoices, dependencies.financial.manualSettlement)
       : createFinancialRouter(dependencies.financial.services, dependencies.financial.getMetadata, m, dependencies.financial.reports, dependencies.financial.manualSettlement);
     return os.router({
       ...retired,

@@ -22,7 +22,10 @@ it("binds current grants and actor to a server-selected user inside the reserved
     const run = <T>(work: () => T) => lock.runSync(() => db.transaction(work).immediate());
     expect(auth.transactionIdentity).toEqual({ connection: db, lock });
     expect(() => auth.authorize(["debts:read"])).toThrow(/transaction/);
+    expect(() => auth.canReadInvoiceSources()).toThrow(/transaction/);
     run(() => {
+      expect(owner.canReadInvoiceSources()).toBe(true);
+      expect(auth.canReadInvoiceSources()).toBe(false);
       expect(owner.authorize(["debts:read", "debts:settle", "debts:update"])).toEqual({ actorUserId: "owner", actorLabel: "Owner" });
       expect(() => missing.authorize(["debts:read"])).toThrow(/permission/i);
       expect(() => auth.authorize(["debts:read"])).toThrow(/permission/i);
@@ -34,17 +37,25 @@ it("binds current grants and actor to a server-selected user inside the reserved
       expect(() => auth.authorize(["debts:read", "debts:settle"])).toThrow(/permission/i);
     });
     grant.run("settle", role.id, "debts:settle", now, now);
-    run(() => expect(auth.authorize(["debts:read", "debts:settle"])).toEqual({ actorUserId: "operator", actorLabel: "Operator" }));
+    grant.run("invoice-read", role.id, "invoices:read", now, now);
+    run(() => {
+      expect(auth.authorize(["debts:read", "debts:settle"])).toEqual({ actorUserId: "operator", actorLabel: "Operator" });
+      expect(auth.canReadInvoiceSources()).toBe(false);
+    });
     db.prepare("DELETE FROM role_permission WHERE id='read'").run();
     run(() => expect(() => auth.authorize(["debts:read", "debts:settle"])).toThrow(/permission/i));
     db.prepare("INSERT INTO app_bootstrap_state(singleton,created_at,user_id) VALUES (1,?,?)").run(now, "operator");
     run(() => {
       expect(auth.authorize(["debts:read", "debts:settle", "debts:update"])).toEqual({ actorUserId: "operator", actorLabel: "Operator" });
+      expect(auth.canReadInvoiceSources()).toBe(true);
+      expect(owner.canReadInvoiceSources()).toBe(false);
       expect(() => owner.authorize(["debts:read"])).toThrow(/permission/i);
     });
     db.prepare("UPDATE app_bootstrap_state SET user_id=NULL WHERE singleton=1").run();
     run(() => {
       expect(owner.authorize(["debts:read", "debts:settle", "debts:update"])).toEqual({ actorUserId: "owner", actorLabel: "Owner" });
+      expect(owner.canReadInvoiceSources()).toBe(true);
+      expect(auth.canReadInvoiceSources()).toBe(false);
       expect(() => auth.authorize(["debts:read"])).toThrow(/permission/i);
     });
   } finally { db.close(); }

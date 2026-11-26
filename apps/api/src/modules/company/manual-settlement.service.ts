@@ -1,4 +1,5 @@
-import { sumMoneyHistory, manualSettlementHistoryInputSchema, Money, confirmManualSettlementSchema, previewManualSettlementSchema, reverseManualSettlementSchema, type ConfirmManualSettlement, type PreviewManualSettlement, type ReverseManualSettlement } from "@tuari/contracts";
+import { sumMoneyHistory, experimentalSettlementCandidateSchema, experimentalSettlementHistoryOutputSchema, manualSettlementCandidateSchema, manualSettlementHistoryInputSchema, manualSettlementHistoryOutputSchema, Money, confirmManualSettlementSchema, previewManualSettlementSchema, reverseManualSettlementSchema, type ConfirmManualSettlement, type PreviewManualSettlement, type ReverseManualSettlement } from "@tuari/contracts";
+import { z } from "zod";
 import { ExactDebtError, type ExactFinanceService } from "./exact-finance.service";
 import type { ExactFinanceRepository, ExactTransactionIdentity } from "./exact-finance.repository";
 import type { ManualSettlementRecord, ManualSettlementRepository, ManualSettlementReversalRecord } from "./manual-settlement.repository";
@@ -14,11 +15,16 @@ export class ManualSettlementUncommittedError extends ExactDebtError {
   constructor(cause: ExactDebtError) { super(cause.message, cause.code); }
 }
 const rolledBack = (cause: unknown) => cause instanceof ExactDebtError ? new ManualSettlementUncommittedError(cause) : cause;
+type ManualSettlementCandidate = z.infer<typeof manualSettlementCandidateSchema>;
+type ExperimentalSettlementCandidate = z.infer<typeof experimentalSettlementCandidateSchema>;
+type ManualSettlementHistoryOutput = z.infer<typeof manualSettlementHistoryOutputSchema>;
+type ExperimentalSettlementHistoryOutput = z.infer<typeof experimentalSettlementHistoryOutputSchema>;
 
 export type ManualSettlementAuthorization = {
   readonly transactionIdentity?: ExactTransactionIdentity;
   authorize(permissions: readonly string[]): { actorUserId: string; actorLabel: string };
   canReadInventorySources?(): boolean;
+  canReadInvoiceSources?(): boolean;
 };
 /** Paired ledger commands and history; selected only by the explicit disposable root. */
 export class ManualSettlementService {
@@ -28,9 +34,18 @@ export class ManualSettlementService {
     for (const participant of [ledger, repository, ...(inventory ? [inventory] : []), ...(invoice ? [invoice] : [])]) if (identity.connection !== participant.transactionIdentity.connection || identity.lock !== participant.transactionIdentity.lock) throw new ExactDebtError("Manual settlement requires the same connection and shared FIFO");
   }
   candidates(input: { externalCounterpartyId: string }) {
+    return this.listCandidates(input, false);
+  }
+  experimentalCandidates(input: { externalCounterpartyId: string }) {
+    return this.listCandidates(input, true);
+  }
+  private listCandidates(input: { externalCounterpartyId: string }, exposeInvoiceSources: false): ManualSettlementCandidate[];
+  private listCandidates(input: { externalCounterpartyId: string }, exposeInvoiceSources: true): ExperimentalSettlementCandidate[];
+  private listCandidates(input: { externalCounterpartyId: string }, exposeInvoiceSources: boolean): (ManualSettlementCandidate | ExperimentalSettlementCandidate)[] {
     return this.repository.withTransaction(() => {
       this.authorization.authorize(["debts:read"]);
       const canReadInventorySources = this.authorization.canReadInventorySources?.() === true;
+      const canReadInvoiceSources = exposeInvoiceSources && this.authorization.canReadInvoiceSources?.() === true;
       return this.finance.listAccounts().filter(account => account.partyType === "EXTERNAL_COUNTERPARTY" && account.externalCounterpartyId === input.externalCounterpartyId && account.currency === "DZD").flatMap(account => {
         const remainingByEntry = new Map(this.finance.detail(account.id).entries.map(entry => [entry.id, entry.remainingDzd]));
         return this.finance.listEntries(account.id).filter(entry => entry.status === "LIVE" && !entry.targetEntryId && !entry.correctionOfEntryId && (!entry.invoiceId || Boolean(this.invoice?.lookupOriginal(entry.id)))
@@ -40,7 +55,11 @@ export class ManualSettlementService {
             const group = entry.producerType === "INVENTORY_PURCHASE" && entry.producerId ? this.inventory?.getGroup(entry.producerId) : null;
             const outbound = entry.producerType === "INVENTORY_OUTBOUND" && entry.producerId ? this.inventory?.getOutbound(entry.producerId) : null;
             if ((group || outbound) && !canReadInventorySources) return { id: entry.id, debtAccountId: account.id, direction: account.direction, postingSequence: entry.postingSequence, remainingDzd: remainingByEntry.get(entry.id)!, sourceKind: "RESTRICTED" as const };
-            if (entry.invoiceId) return { id: entry.id, debtAccountId: account.id, direction: account.direction, postingSequence: entry.postingSequence, remainingDzd: remainingByEntry.get(entry.id)!, sourceKind: "RESTRICTED" as const };
+            if (entry.invoiceId || entry.producerType === "INVOICE") {
+              const source = canReadInvoiceSources ? this.invoice?.describeSource(entry.id) : null;
+              if (!source) return { id: entry.id, debtAccountId: account.id, direction: account.direction, postingSequence: entry.postingSequence, remainingDzd: remainingByEntry.get(entry.id)!, sourceKind: "RESTRICTED" as const };
+              return { id: entry.id, debtAccountId: account.id, direction: account.direction, postingSequence: entry.postingSequence, remainingDzd: remainingByEntry.get(entry.id)!, sourceKind: source.kind, sourceId: source.id, sourceLabel: source.label };
+            }
             const sourceKind = group ? "PURCHASE" as const : outbound ? "SALE" as const : "MANUAL" as const;
             const sourceId = group?.id ?? outbound?.id ?? entry.id;
             const sourceLabel = group ? (group.invoiceNumber || group.id) : outbound ? `${outbound.transferType} · ${outbound.id}` : `#${entry.postingSequence}`;
@@ -50,7 +69,7 @@ export class ManualSettlementService {
       });
     });
   }
-  private sourceForOriginal(id: string, direction: "PAYABLE" | "RECEIVABLE", canReadInventorySources: boolean) {
+  private sourceForOriginal(id: string, direction: "PAYABLE" | "RECEIVABLE", canReadInventorySources: boolean, canReadInvoiceSources = false) {
     const entry = this.ledger.getEntry(id);
     if (entry && this.trustedInventoryOriginal(entry, this.finance.getAccount(entry.debtAccountId).externalCounterpartyId ?? "", direction)) {
       if (!canReadInventorySources) return { kind: "RESTRICTED" as const };
@@ -59,18 +78,30 @@ export class ManualSettlementService {
       return group ? { kind: "PURCHASE" as const, id: group.id, label: group.invoiceNumber || group.id }
         : { kind: "SALE" as const, id: outbound!.id, label: `SALE · ${outbound!.id}` };
     }
-    if (entry?.invoiceId && this.invoice?.lookupOriginal(id)) return { kind: "RESTRICTED" as const };
+    if (entry?.invoiceId || entry?.producerType === "INVOICE") {
+      const source = canReadInvoiceSources ? this.invoice?.describeSource(id) : null;
+      return source ? { kind: source.kind, id: source.id, label: source.label } : { kind: "RESTRICTED" as const };
+    }
     return { kind: "MANUAL" as const, id, label: `#${entry?.postingSequence ?? "?"}` };
   }
-  private withSources(row: ManualSettlementRecord, canReadInventorySources: boolean) {
-    return { ...row, payableSource: this.sourceForOriginal(row.payableOriginalEntryId, "PAYABLE", canReadInventorySources), receivableSource: this.sourceForOriginal(row.receivableOriginalEntryId, "RECEIVABLE", canReadInventorySources) };
+  private withSources(row: ManualSettlementRecord, canReadInventorySources: boolean, canReadInvoiceSources = false) {
+    return { ...row, payableSource: this.sourceForOriginal(row.payableOriginalEntryId, "PAYABLE", canReadInventorySources, canReadInvoiceSources), receivableSource: this.sourceForOriginal(row.receivableOriginalEntryId, "RECEIVABLE", canReadInventorySources, canReadInvoiceSources) };
   }
   accountHistory(input: { debtAccountId: string }) {
+    return this.listAccountHistory(input, false);
+  }
+  experimentalAccountHistory(input: { debtAccountId: string }) {
+    return this.listAccountHistory(input, true);
+  }
+  private listAccountHistory(input: { debtAccountId: string }, exposeInvoiceSources: false): ManualSettlementHistoryOutput;
+  private listAccountHistory(input: { debtAccountId: string }, exposeInvoiceSources: true): ExperimentalSettlementHistoryOutput;
+  private listAccountHistory(input: { debtAccountId: string }, exposeInvoiceSources: boolean): ManualSettlementHistoryOutput | ExperimentalSettlementHistoryOutput {
     return this.repository.withTransaction(() => {
       this.authorization.authorize(["debts:read"]);
       const canReadInventorySources = this.authorization.canReadInventorySources?.() === true;
+      const canReadInvoiceSources = exposeInvoiceSources && this.authorization.canReadInvoiceSources?.() === true;
       this.finance.getAccount(input.debtAccountId);
-      return { items: this.repository.listAccountSettlements(input.debtAccountId).map(row => ({ ...this.withSources(row, canReadInventorySources), reversal: this.repository.getReversal(row.id) })), nextOffset: null };
+      return { items: this.repository.listAccountSettlements(input.debtAccountId).map(row => ({ ...this.withSources(row, canReadInventorySources, canReadInvoiceSources), reversal: this.repository.getReversal(row.id) })), nextOffset: null };
     });
   }
   private trustedInventoryOriginal(entry: NonNullable<ReturnType<ExactFinanceRepository["getEntry"]>>, externalCounterpartyId: string, direction: "PAYABLE" | "RECEIVABLE") {
@@ -163,12 +194,21 @@ export class ManualSettlementService {
     });
   }
   history(raw: { externalCounterpartyId: string; limit?: number; offset?: number }) {
+    return this.listHistory(raw, false);
+  }
+  experimentalHistory(raw: { externalCounterpartyId: string; limit?: number; offset?: number }) {
+    return this.listHistory(raw, true);
+  }
+  private listHistory(raw: { externalCounterpartyId: string; limit?: number; offset?: number }, exposeInvoiceSources: false): ManualSettlementHistoryOutput;
+  private listHistory(raw: { externalCounterpartyId: string; limit?: number; offset?: number }, exposeInvoiceSources: true): ExperimentalSettlementHistoryOutput;
+  private listHistory(raw: { externalCounterpartyId: string; limit?: number; offset?: number }, exposeInvoiceSources: boolean): ManualSettlementHistoryOutput | ExperimentalSettlementHistoryOutput {
     const input = manualSettlementHistoryInputSchema.parse(raw);
     return this.repository.withTransaction(() => {
       this.authorization.authorize(["debts:read"]);
       const canReadInventorySources = this.authorization.canReadInventorySources?.() === true;
+      const canReadInvoiceSources = exposeInvoiceSources && this.authorization.canReadInvoiceSources?.() === true;
       const rows = this.repository.listSettlements(input.externalCounterpartyId, input.limit + 1, input.offset);
-      return { items: rows.slice(0, input.limit).map(row => ({ ...this.withSources(row, canReadInventorySources), reversal: this.repository.getReversal(row.id) })), nextOffset: rows.length > input.limit ? input.offset + input.limit : null };
+      return { items: rows.slice(0, input.limit).map(row => ({ ...this.withSources(row, canReadInventorySources, canReadInvoiceSources), reversal: this.repository.getReversal(row.id) })), nextOffset: rows.length > input.limit ? input.offset + input.limit : null };
     });
   }
   reverse(raw: ReverseManualSettlement) {
