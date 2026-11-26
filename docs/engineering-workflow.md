@@ -7,14 +7,60 @@ and Tauri. The reference revision and deliberate differences are recorded in
 
 ## Authority and state
 
-A worker commits and reports. The parent owns publication, current-head hosted
-checks, finding resolution and merge. Publication and merge require owner
-authority; a worker never pushes or opens a PR. The current workflow-adoption
-task is local-only by owner instruction, not because GitHub is unavailable.
+This table defines the repository's CEO / issue manager / Luna worker terms.
+Role comes from the task brief, never from model, thread position or parentage.
+It clarifies lane ownership; it does not override higher-priority instructions,
+owner-only gates or an explicit per-run restriction. Workers and delegated
+children cannot gain publication authority by calling themselves managers.
+
+| Role | Owns | Required action |
+| --- | --- | --- |
+| CEO / queue owner | Queue order, cross-lane priorities and decisions spanning issues | Assign an issue outcome and authority to its manager. Resolve cross-lane conflicts and route owner-only decisions to the owner. |
+| Issue manager | One issue's outcome, scope, evidence, remaining acceptance criteria and next safe path | Bind each worker to the correct tree and bounded task. Inspect worker evidence and source, verify remaining acceptance, then take a materially different authorized next step, wait only for a named live gate, or record a concrete external or owner blocker. Publication requires explicit authority and the correct bound tree. |
+| Luna worker | The assigned implementation or review, within the named tree and scope | Implement and commit, or review and report. Hand back exact SHA, evidence, findings and blockers. Do not publish, open a PR, merge or write wisdom. |
+
+Managers do not duplicate a worker's write, retry blindly, or authorize their
+own risky scope. A worker stops at its explicit per-run boundary. A successful
+partial PR remains partial and does not close the issue. The CEO owns queue
+coordination, not each issue's acceptance outcome. Publication and merge remain
+subject to owner authority, higher-priority rules and the existing CI/review
+gates. This proposal changes no general merge authority and cannot authorize
+its own publication or merge.
 
 Use remote issue data and fresh `origin/develop` normally. In owner-requested
 local-only mode, use the supplied spec and cached refs, record that boundary,
 and do not claim hosted acceptance or issue closure.
+
+Here, `parent` means the worker's responsible manager for issue-local decisions,
+not automatically the queue CEO. It names responsibility, not additional tool
+or publication authority. A delegated worker's terminal completion wakes its
+calling thread. A top-level manager is not a delegated child of the CEO.
+It sends its terminal proposal, material blocker or unavoidable publication
+handoff to the assigning CEO's thread. In T3, use the visible `t3_thread_send`
+route with that thread's supplied ID. Name the CEO as next actor when a CEO
+decision is required. If delivery is unavailable, preserve the exact handoff
+and surface the delivery blocker in the current thread; do not claim delivery.
+A named live gate records who acts next, its expected result and the evidence
+that ends the wait. These are procedural duties, not a runtime wake guarantee.
+
+### Manager handoff checks
+
+Before choosing the next action, the manager reads the committed worker result,
+checks the actual source and evidence, and compares remaining acceptance with
+the task's explicit stops. The manager must not infer success from a child
+status or completion notification. If the worker's terminal result leaves work:
+continue only with a materially different, already authorized action; wait only
+for a named live gate; otherwise record the specific blocker and required
+owner/CEO action. Do not start a duplicate writer or repeat a failed attempt
+without a new diagnosis and a safe alternative.
+
+| Scenario | Next actor | Next action | Evidence ending that step |
+| --- | --- | --- | --- |
+| Worker fails with an authorized alternative | Issue manager | Inspect the failure and remaining acceptance; assign or perform the materially different in-scope step. | Preserved failure, named alternative, scope authority and its bounded expected result. |
+| Hard scope stop, no authorized alternative | Issue manager, then CEO or owner for the named decision | Stop affected work and report the concrete blocker; do not extend the brief. | Exact restriction and requested decision, or the external prerequisite needed to resume. |
+| Successful partial PR | Issue manager | Verify the published SHA and shipped acceptance; retain the remaining work and keep the issue open. Workers supply commits, not PRs. | Shipped-versus-remaining acceptance with one authorized next deliverable or a named live gate/blocker. |
+| Publication tool bound to the wrong tree | Issue manager, then authorized publisher if rebinding is unavailable | Stop publication, compare actual tool binding, branch and SHA with the reviewed tree; route a handoff if necessary. | Confirmed correct publication binding and reviewed SHA, or an exact-tree publication handoff. Never push coordinator changes to compensate. |
+| Heavy process vanishes or exits while worker still awaits the tool | Issue manager or independent observer alerting that manager | Compare slot, owned process tree and durable logs; distinguish native exit from tool return before scoped intervention. | Separate native-exit and tool-return states, missing evidence and diagnosed next safe action. PID disappearance alone proves neither success nor tool return. |
 
 ## Lifecycle
 
@@ -26,10 +72,13 @@ and do not claim hosted acceptance or issue closure.
    source. Commit bounded corrections, refresh affected proof and obtain one
    fresh combined-delta review that explicitly carries unchanged conclusions.
 4. Run Guard Phase 2 on the committed HEAD. Return the verified SHA and local
-   evidence path. The worker stops here.
-5. When authorized, the parent publishes, links and watches the PR, requests
-   hosted review once per head, verifies current-head CI and effective
-   protection, and applies Guard Phase 3 before an authorized merge.
+   evidence path. The worker stops at the task's explicit boundary.
+5. The issue manager checks source, evidence and remaining acceptance, then
+   follows the manager handoff checks above. When explicitly authorized and
+   allowed by higher-priority instructions, the authorized publisher uses the
+   correct bound tree to publish, link and watch the PR, requests hosted review
+   once per head, verifies current-head CI and effective protection, and applies
+   Guard Phase 3 before an authorized merge.
 
 Do not restart all initial reviews just because a bounded correction produced
 a new head. Rerun another lens only for a concrete risk introduced by that fix.
@@ -82,8 +131,32 @@ Delegate verification only when authorized, through a visible T3 child.
 Give it an absolute worktree, committed SHA, explicit verification mode,
 bounded test files and direct callers, commands and unique log directory.
 It reads source and writes ignored evidence only. One writer owns each tree;
-serialize build/test generators within that tree. Completion wakes the parent;
-do not poll a live child. Heavy commands use the shared slot queue.
+serialize build/test generators within that tree. Use the role contract above
+for completion ownership; do not poll a live child.
+
+Before calling `heavy_run`, record a unique attempt ID, admission-inclusive
+wall-clock budget, queued time and durable log location. Use an independent
+observer that can alert the responsible manager even when the worker is blocked
+inside the tool. Keep an external command timeout and cleanup limited to the
+owned process tree under existing safety rules.
+
+Inside the owned command wrapper, record `started` with time, phase and PID,
+then `ended` with time and the native exit code under that same attempt ID.
+Only after `heavy_run` actually returns to the worker record `returned` with
+time and the tool result. For failed admission, preserve the actual returned
+result without inventing a process start or native exit. Never reuse attempt
+IDs or overwrite failure evidence.
+
+Native child exit and tool return are separate events. A missing native exit
+is unverified execution; a recorded native exit without `returned` means tool
+return remains unconfirmed. PID disappearance alone establishes neither. When
+a deadline or state mismatch occurs, compare queue-slot ownership, the identified
+process tree and logs before scoped intervention. Do not broadly kill processes,
+duplicate a live writer or blindly retry. Record the last durable phase, missing
+result and next safe action. These instructions describe procedural mitigation;
+they neither install an observer nor enforce a timeout or repair tool behavior.
+Use the current run's supplied observer setup, not a machine-local path in this
+policy.
 
 The parent checks the actual result, not just the child's success label. Save
 `.scratch/reviews/<scope>/<HEAD>-verification.md` with:
@@ -234,11 +307,13 @@ Stage explicit paths only, never `git add .` or `git add -A`. Generated builds,
 native binaries, databases, dependencies and scratch logs stay out of source
 commits. Preserve unrelated files and partial work.
 
-A lane never merges. The parent needs owner authority, current-head local
-and hosted verdicts without actionable findings, successful `CI acceptance`,
-effective protection and all issue acceptance criteria. A CI, schema,
-published-contract, crypto/recovery or other expensive decision goes to the
-owner. A green check never overrides an owner-only decision.
+A worker never merges. The role contract above gives an issue manager outcome
+ownership, not merge permission. A lane assignment alone grants no merge
+authority. Merge still requires owner authority,
+current-head local and hosted verdicts without actionable findings, successful
+`CI acceptance`, effective protection and all issue acceptance criteria. A CI,
+schema, published-contract, crypto/recovery or other expensive decision goes
+to the owner. A green check never overrides an owner-only decision.
 
 Put `Part of #N` in the PR body for partial delivery and `Closes #N` only for
 complete scope. Never infer closure from a PR title. Verify issue state after
