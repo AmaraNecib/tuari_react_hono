@@ -34,11 +34,14 @@ and do not claim hosted acceptance or issue closure.
 Here, `parent` means the worker's responsible manager for issue-local decisions,
 not automatically the queue CEO. It names responsibility, not additional tool
 or publication authority. A delegated worker's terminal completion wakes its
-calling thread. A top-level manager is not a delegated child of the CEO and
-must send its own terminal proposal, material blocker or unavoidable publication
-handoff. A named live gate records who acts next, its expected result and the
-evidence that ends the wait. These are procedural duties, not a runtime wake
-guarantee.
+calling thread. A top-level manager is not a delegated child of the CEO.
+It sends its terminal proposal, material blocker or unavoidable publication
+handoff to the assigning CEO's thread. In T3, use the visible `t3_thread_send`
+route with that thread's supplied ID. Name the CEO as next actor when a CEO
+decision is required. If delivery is unavailable, preserve the exact handoff
+and surface the delivery blocker in the current thread; do not claim delivery.
+A named live gate records who acts next, its expected result and the evidence
+that ends the wait. These are procedural duties, not a runtime wake guarantee.
 
 ### Manager handoff checks
 
