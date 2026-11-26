@@ -24,6 +24,36 @@ import type {
   SortDirection,
 } from "./payment.types";
 
+type PaymentCursor = { sortValue: number | string | null; id: string };
+
+function decodePaymentCursor(
+  cursor: string,
+  field: PaymentListSortField,
+): PaymentCursor | undefined {
+  try {
+    const decoded: unknown = JSON.parse(
+      Buffer.from(cursor, "base64url").toString("utf8"),
+    );
+    if (decoded === null || typeof decoded !== "object" || Array.isArray(decoded)) {
+      return undefined;
+    }
+
+    const payload = decoded as { id?: unknown; sortValue?: unknown };
+    if (typeof payload.id !== "string") return undefined;
+
+    const sortValue = payload.sortValue;
+    const compatible =
+      field === "totalAmount"
+        ? typeof sortValue === "number" && Number.isFinite(sortValue)
+        : sortValue === null || typeof sortValue === "string";
+    if (!compatible) return undefined;
+
+    return { sortValue: sortValue as number | string | null, id: payload.id };
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * PaymentModule — records payments against supplier invoices and
  * allocates the payment amount across one or more invoices.
@@ -112,6 +142,8 @@ export function createPaymentModule(
         }
       }
 
+      // The adapter's atomic ID check must run before debt, invoice, or
+      // allocation writes so a duplicate exits without financial side effects.
       const payment = await paymentRepo.createPayment({
         id: input.id,
         counterpartyType: input.counterpartyType,
@@ -185,30 +217,9 @@ export function createPaymentModule(
         throw new PaymentInvalidLimitError(query.limit);
       }
 
+      const effectiveSortField = query.sort?.field ?? "createdAt";
       const after = query.cursor
-        ? (() => {
-            try {
-              const decoded = JSON.parse(
-                Buffer.from(query.cursor!, "base64url").toString("utf8"),
-              );
-              if (
-                !decoded ||
-                typeof decoded !== "object" ||
-                typeof decoded.id !== "string" ||
-                (decoded.sortValue !== null &&
-                  typeof decoded.sortValue !== "string" &&
-                  typeof decoded.sortValue !== "number")
-              ) {
-                return undefined;
-              }
-              return {
-                sortValue: decoded.sortValue,
-                id: decoded.id,
-              };
-            } catch {
-              return undefined;
-            }
-          })()
+        ? decodePaymentCursor(query.cursor, effectiveSortField)
         : undefined;
 
       return paymentRepo.findPaged({

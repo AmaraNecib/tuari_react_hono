@@ -1,6 +1,7 @@
 import type { BetterSqliteDatabase } from "../../../types/sqlite";
 import type { FifoLock } from "../../../infrastructure/database/fifo-lock";
 import type { PaymentRepository } from "../payment.repository";
+import { PaymentDuplicateIdConflictError } from "../payment.types";
 import type {
   Payment,
   PaymentAllocation,
@@ -10,6 +11,15 @@ import type {
   SortDirection,
   PaymentDeleteResult,
 } from "../payment.types";
+
+function isPaymentIdPrimaryKeyConflict(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const sqliteError = error as { code?: unknown; message?: unknown };
+  return (
+    sqliteError.code === "SQLITE_CONSTRAINT_PRIMARYKEY" &&
+    sqliteError.message === "UNIQUE constraint failed: payment.id"
+  );
+}
 
 const SORT_COLUMN_MAP: Record<PaymentListSortField, string> = {
   paymentDate: "payment_date",
@@ -147,24 +157,31 @@ export class PaymentRepositoryImpl implements PaymentRepository {
     createdAt: string;
     updatedAt: string;
   }): Promise<Payment> {
-    this.db
-      .prepare(
-        `INSERT INTO "payment" (id, counterparty_type, counterparty_id, payment_date, payment_method, total_amount, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        data.id,
-        data.counterpartyType,
-        data.counterpartyId,
-        data.paymentDate,
-        data.paymentMethod,
-        data.totalAmount,
-        data.notes,
-        data.actorUserId,
-        data.actorLabel,
-        data.transactionId,
-        data.createdAt,
-        data.updatedAt,
-      );
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO "payment" (id, counterparty_type, counterparty_id, payment_date, payment_method, total_amount, notes, actor_user_id, actor_label, transaction_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          data.id,
+          data.counterpartyType,
+          data.counterpartyId,
+          data.paymentDate,
+          data.paymentMethod,
+          data.totalAmount,
+          data.notes,
+          data.actorUserId,
+          data.actorLabel,
+          data.transactionId,
+          data.createdAt,
+          data.updatedAt,
+        );
+    } catch (error) {
+      if (isPaymentIdPrimaryKeyConflict(error)) {
+        throw new PaymentDuplicateIdConflictError(data.id);
+      }
+      throw error;
+    }
 
     const result = await this.findById(data.id);
     return result!;
