@@ -569,7 +569,7 @@ describe("PaymentModule", () => {
         expect(page.items.map((payment) => payment.id)).toEqual([testCase.expected[0]]);
         seen.push(...page.items.map((payment) => payment.id));
 
-        while (page.nextCursor) {
+        for (let pages = 1; page.nextCursor && pages < testCase.expected.length; pages++) {
           page = await paymentModule.listPaged({
             limit: 1,
             ...(testCase.sort ? { sort: testCase.sort } : {}),
@@ -578,6 +578,7 @@ describe("PaymentModule", () => {
           seen.push(...page.items.map((payment) => payment.id));
         }
 
+        expect(page.nextCursor).toBeNull();
         expect(seen).toEqual(testCase.expected);
         expect(new Set(seen).size).toBe(3);
       }
