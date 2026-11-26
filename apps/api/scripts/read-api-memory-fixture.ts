@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { assertDistinctFixtureInvoices } from "./api-memory-invoice-check";
 
 type FixtureManifest = {
   databasePath: string;
@@ -111,12 +112,7 @@ async function main(): Promise<void> {
 
   const invoices = await rpc(origin, token, "financial/inventory/listInvoices");
   if (!Array.isArray(invoices)) fail("exact inventory invoice response was not an array");
-  assertEqual("exact inventory invoices", invoices.length, manifest.expected.stockPurchaseGroups);
-  for (const [index, invoice] of invoices.entries()) {
-    const row = requireObject(invoice, `inventory invoice ${index}`);
-    assertEqual(`inventory invoice ${index} gross`, row.grossTotalDzd, "24.68");
-    assertEqual(`inventory invoice ${index} warehouse`, typeof row.warehouseId, "string");
-  }
+  assertDistinctFixtureInvoices(invoices, manifest.expected.stockPurchaseGroups);
 
   const reportValue = requireObject(await rpc(origin, token, "financial/reports/generate", { type: "INVENTORY" }), "inventory report");
   const inventorySummary = requireObject(reportValue.summary, "inventory report summary");

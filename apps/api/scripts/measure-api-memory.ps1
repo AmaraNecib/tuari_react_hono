@@ -223,6 +223,17 @@ function Complete-Process([System.Diagnostics.Process]$Process, [string]$Name, [
   Write-Log "$Name nativeExitCode=$code phase=$Phase"
   return $code
 }
+function Assert-ProductSource([string]$ExpectedRevision = 'dd4413845f1a95fa0606d469c1f6705af08cbfd5') {
+  $paths = @('apps/api/src', 'packages', 'apps/api/package.json', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml')
+  $head = & git -C $RepoRoot rev-parse HEAD
+  if ($LASTEXITCODE -ne 0) { throw 'Cannot identify checkout HEAD' }
+  & git -C $RepoRoot diff --quiet $ExpectedRevision -- @paths
+  if ($LASTEXITCODE -ne 0) { throw 'Measured product source differs from approved revision, or revision is unavailable' }
+  $untracked = @(& git -C $RepoRoot ls-files --others --exclude-standard -- @paths)
+  if ($LASTEXITCODE -ne 0 -or $untracked.Count -ne 0) { throw 'Untracked measured product sources or failed source inventory' }
+  $Meta.sourceVerification = [ordered]@{ expectedRevision = $ExpectedRevision; actualHead = [string]$head; productPaths = $paths; trackedDiffExit = 0; untrackedCount = 0 }
+  Save-Meta
+}
 function Get-FreePort {
   $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse('127.0.0.1'), 0)
   $listener.Start()
@@ -343,6 +354,7 @@ try {
   foreach ($path in @($NodeExe, $TsxLoader, $NativeBinding, $Seeder, $Oracle, $ReadClient, $EntryPoint)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required installed runtime or script is absent: $path" }
   }
+  Assert-ProductSource
   $versionProcess = Start-Node 'node-version' @('--version')
   $nodeVersionExit = Complete-Process $versionProcess 'node-version' 'node-version'
   if ($nodeVersionExit -ne 0) { throw "Node version command exited with native code $nodeVersionExit" }
@@ -408,6 +420,7 @@ try {
 
   $CurrentPhase = 'api-startup'; $Meta.currentPhase = $CurrentPhase; Save-Meta; Write-Log 'starting real apps/api/src/index.ts in an owned Node 22 process'
   Check-Caps 'pre-api'
+  Assert-ProductSource
   $api = Start-Node 'api' @('--import', $TsxSpecifier, 'src/index.ts')
   $ApiProcess = $api; $ApiPid = [int]$api.Id
   $apiEntry = $Meta.processes | Where-Object { $_.name -eq 'api' } | Select-Object -First 1
