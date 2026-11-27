@@ -35,14 +35,15 @@ async function openPurchase(number: string) {
   await screen.findByRole("heading", { name: `تفاصيل ${number}` })
 }
 afterEach(() => { cleanup(); clients.splice(0).forEach(query => query.clear()); vi.clearAllMocks(); mocks.desktop = false })
-function mount(page: "invoice-details" | "invoice-create" | "invoices" = "invoice-details", invoiceId: string | null = group.id) {
+function mount(page: "invoice-details" | "invoice-create" | "invoices" = "invoice-details", invoiceId: string | null = group.id, experimentalInvoiceSettlementAvailable = false) {
   const query = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } }); clients.push(query)
   query.setQueryData(sessionQueryKey, { user: { id: "operator", name: "Operator", phone: "0612345678", version: "0.0.0" } })
   const goToInvoices = vi.fn(() => view.rerender(<QueryClientProvider client={query}><HomeViewPageDetailContent {...props} page="invoices" /></QueryClientProvider>))
+  const goToExperimentalInvoices = vi.fn()
   const goToRoute = vi.fn(() => goToInvoices())
-  const props = { page, selectedInvoiceId: invoiceId ?? undefined, copy: buildHomeViewCopy(i18n.t.bind(i18n)), derived: { roles: [], warehouses: [{ id: "warehouse", name: "Warehouse" }], projects: [], employeeRows: [], externalCounterparties: [{ id: "party", fullName: "Supplier" }] }, navigation: { goToInvoices, goToRoute }, t: i18n.t.bind(i18n) } as unknown as Parameters<typeof HomeViewPageDetailContent>[0]
+  const props = { page, selectedInvoiceId: invoiceId ?? undefined, experimentalInvoiceSettlementAvailable, copy: buildHomeViewCopy(i18n.t.bind(i18n)), derived: { roles: [], warehouses: [{ id: "warehouse", name: "Warehouse" }], projects: [], employeeRows: [], externalCounterparties: [{ id: "party", fullName: "Supplier" }] }, navigation: { goToInvoices, goToExperimentalInvoices, goToRoute }, t: i18n.t.bind(i18n) } as unknown as Parameters<typeof HomeViewPageDetailContent>[0]
   const view = render(<QueryClientProvider client={query}><HomeViewPageDetailContent {...props} /></QueryClientProvider>)
-  return { ...view, goToInvoices, goToRoute }
+  return { ...view, goToInvoices, goToExperimentalInvoices, goToRoute }
 }
 function setup() {
   Object.assign(mocks.inventory, { listInvoices: vi.fn().mockResolvedValue([group]), getInvoice: vi.fn().mockResolvedValue(detail()), definitions: vi.fn().mockResolvedValue([material]), listOutbounds: vi.fn().mockResolvedValue([]), locationContents: vi.fn().mockResolvedValue({ assets: [], consumables: [] }), createInvoice: vi.fn().mockResolvedValue(detail()) } satisfies Partial<Record<keyof ExactInventoryClient, unknown>>)
@@ -50,6 +51,23 @@ function setup() {
 function movementDetail(id = group.id, name = "Owned material", quantity = 0.000003) {
   return exactInventoryDetailSchema.parse({ ...detail(), group: { ...group, id, invoiceNumber: id === group.id ? "PUR-7" : "PUR-B" }, entries: [{ id: `${id}-entry`, invoiceGroupId: id, itemDefinitionId: "material", warehouseId: "warehouse", projectId: null, itemType: "CONSUMABLE", itemName: name, unit: "m", quantity: 100, unitPriceDzd: "1.0000", priceSource: { mode: "unit-price", price: "1.0000", quantity: "100" }, note: null, createdAt: date, updatedAt: date, assets: [] }], movements: [{ id: `${id}-movement`, movementType: "PURCHASE", itemType: "CONSUMABLE", inventoryEntryId: `${id}-entry`, assetUnitId: null, quantity, fromWarehouseId: null, fromProjectId: null, toWarehouseId: "warehouse", toProjectId: null, note: "receipt note", occurredAt: date, createdAt: date }] })
 }
+it("keeps stock invoices unchanged and exposes a separate experiment entry only when its capability is passed", async () => {
+  setup()
+  const view = mount("invoices", null, true)
+  expect(await screen.findByRole("region", { name: "جدول فواتير المخزون" })).toBeTruthy()
+  expect(screen.getByRole("heading", { name: "المخزون والمشتريات" })).toBeTruthy()
+  fireEvent.click(screen.getByRole("button", { name: "فتح فواتير التسوية التجريبية" }))
+  expect(view.goToExperimentalInvoices).toHaveBeenCalledTimes(1)
+  expect(mocks.generic).not.toHaveBeenCalled()
+  view.unmount()
+
+  setup()
+  mount("invoices")
+  expect(await screen.findByRole("region", { name: "جدول فواتير المخزون" })).toBeTruthy()
+  expect(screen.queryByRole("button", { name: "فتح فواتير التسوية التجريبية" })).toBeNull()
+  expect(mocks.generic).not.toHaveBeenCalled()
+})
+
 it("returns a missing direct ID to the inventory invoice list without requesting a generic invoice", () => {
   setup()
   const view = mount("invoice-details", null)

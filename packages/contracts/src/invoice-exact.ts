@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { Quantity, parseExactLine } from "./exact-money";
+import { Money, Quantity, parseExactLine } from "./exact-money";
 import { exactDebtAmountSchema } from "./debts-exact";
 import { invoiceDirectionSchema } from "./invoice";
 import { counterpartyTypeSchema } from "./payment";
@@ -54,6 +54,24 @@ export const exactInvoiceSchema = z.object({
   createdAt: timestampSchema, updatedAt: timestampSchema,
   lineItems: z.array(lineInput.extend({ id: entityIdSchema, invoiceId: entityIdSchema })).min(1).max(50),
 });
+/** Experimental invoice wire shape. Normal exactInvoiceSchema keeps its v1 cash-only contract. */
+export const experimentalExactInvoiceSchema = exactInvoiceSchema.extend({
+  status: z.enum(["DRAFT", "RECEIVED", "SETTLED", "PAID", "VOIDED"]),
+  settledAmount: exactInvoiceAmountSchema,
+}).superRefine((invoice, ctx) => {
+  if (invoice.status === "VOIDED") return;
+  try {
+    const sum = Money.parse(invoice.paidAmount).add(Money.parse(invoice.settledAmount)).add(Money.parse(invoice.remainingAmount));
+    if (sum.compare(Money.parse(invoice.totalAmount)) !== 0) ctx.addIssue({ code: "custom", path: ["remainingAmount"], message: "Invoice total must equal paid, settled and remaining amounts" });
+  } catch {
+    ctx.addIssue({ code: "custom", path: ["remainingAmount"], message: "Invoice portions exceed the supported amount range" });
+  }
+  if (invoice.status === "PAID" && invoice.paidAmount !== invoice.totalAmount) ctx.addIssue({ code: "custom", path: ["status"], message: "PAID requires full actual payment" });
+  if (invoice.status === "SETTLED" && (invoice.remainingAmount !== "0.00" || invoice.settledAmount === "0.00")) ctx.addIssue({ code: "custom", path: ["status"], message: "SETTLED requires zero remaining and a noncash portion" });
+  if (invoice.status === "RECEIVED" && invoice.remainingAmount === "0.00") ctx.addIssue({ code: "custom", path: ["status"], message: "Fully discharged invoices cannot remain RECEIVED" });
+});
+export type ExperimentalExactInvoice = z.infer<typeof experimentalExactInvoiceSchema>;
+
 const allocationInput = z.object({ invoiceId: entityIdSchema, amount: exactInvoicePositiveAmountSchema }).strict();
 export const exactPaymentCreateSchema = z.object({
   ...command, ...party, id: entityIdSchema.optional(), direction: invoiceDirectionSchema,
@@ -75,6 +93,11 @@ export const exactInvoiceListSchema = z.object({
   cursor: z.string().max(2048).optional(), limit: z.number().int().min(1).max(100).default(50),
   filters: z.object({ status: exactInvoiceSchema.shape.status.optional(), counterpartyId: entityIdSchema.optional() }).optional(),
 });
+export const experimentalExactInvoiceListSchema = z.object({
+  sort: z.object({ field: z.enum(["createdAt", "invoiceDate", "totalAmount"]), direction: z.enum(["asc", "desc"]) }).optional(),
+  cursor: z.string().max(2048).optional(), limit: z.number().int().min(1).max(100).default(50),
+  filters: z.object({ status: experimentalExactInvoiceSchema.shape.status.optional(), counterpartyId: entityIdSchema.optional() }).optional(),
+});
 export const exactPaymentListSchema = z.object({
   sort: z.object({ field: z.enum(["createdAt", "paymentDate", "totalAmount"]), direction: z.enum(["asc", "desc"]) }).optional(),
   cursor: z.string().max(2048).optional(), limit: z.number().int().min(1).max(100).default(50),
@@ -90,4 +113,5 @@ export type ExactInvoiceVoid = z.input<typeof exactInvoiceVoidSchema>;
 export type ExactPaymentCreate = z.input<typeof exactPaymentCreateSchema>;
 export type ExactPaymentAllocate = z.input<typeof exactPaymentAllocateSchema>;
 export type ExactInvoiceList = z.input<typeof exactInvoiceListSchema>;
+export type ExperimentalExactInvoiceList = z.input<typeof experimentalExactInvoiceListSchema>;
 export type ExactPaymentList = z.input<typeof exactPaymentListSchema>;

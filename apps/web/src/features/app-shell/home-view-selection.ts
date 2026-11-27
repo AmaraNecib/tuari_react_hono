@@ -18,6 +18,7 @@ export function buildHomeViewSelection({
   derived,
   employeeId,
   invoiceId,
+  experimentalInvoiceIntent = false,
   page,
   projectId,
   t,
@@ -28,6 +29,7 @@ export function buildHomeViewSelection({
   derived: HomeViewDerived | null
   employeeId?: string
   invoiceId?: string
+  experimentalInvoiceIntent?: boolean
   page: HomeViewPage
   projectId?: string
   t: TFunction
@@ -53,6 +55,7 @@ export function buildHomeViewSelection({
       ? buildHomeViewBreadcrumbItems({
           copy,
           page,
+          experimentalInvoiceIntent,
           selectedCounterparty,
           selectedEmployee,
           selectedProject,

@@ -19,7 +19,7 @@ import { createRpcMiddleware } from "./rpc-middleware";
 import { createPayrollRouter } from "./payroll-router";
 import { createFinancialRouter, createUnavailableFinancialRouter } from "./financial-router";
 import { createRetiredFinancialAction } from "./retired-financial-handlers";
-import type { FreshExactAppDependencies } from "../app/fresh-exact-dependencies";
+import type { FreshExactAppDependencies, FreshExperimentalInvoiceSettlementAppDependencies } from "../app/fresh-exact-dependencies";
 import type { PayrollService } from "../modules/workforce/payroll.service";
 import type { PayrollLifecycle } from "../modules/workforce/payroll-lifecycle";
 import type { PayrollOpeningService } from "../modules/workforce/payroll-opening.service";
@@ -78,7 +78,7 @@ type RouterDependencies = {
 };
 
 export function createRouter(
-  dependencies: RouterDependencies | FreshExactAppDependencies,
+  dependencies: RouterDependencies | FreshExactAppDependencies | FreshExperimentalInvoiceSettlementAppDependencies,
   options: { trustProxyHeaders?: boolean } = {},
 ) {
   const os = implement(appContract).$context<RpcContext>();
@@ -172,11 +172,14 @@ export function createRouter(
       expensesUpdate: os.expensesUpdate.handler(refuse),
       expensesVoid: os.expensesVoid.handler(refuse),
     };
+    const financialRouter = dependencies.mode === "fresh-experimental-invoice-settlement"
+      ? createFinancialRouter({ ...dependencies.financial.services, invoices: undefined }, dependencies.financial.getMetadata, m, dependencies.financial.reports, dependencies.financial.manualSettlement, dependencies.financial.services.experimentalInvoices, dependencies.financial.manualSettlement)
+      : createFinancialRouter(dependencies.financial.services, dependencies.financial.getMetadata, m, dependencies.financial.reports, dependencies.financial.manualSettlement);
     return os.router({
       ...retired,
       ...baseHandlers,
       ...payrollHandlers,
-      financial: createFinancialRouter(dependencies.financial.services, dependencies.financial.getMetadata, m, dependencies.financial.reports, dependencies.financial.manualSettlement),
+      financial: financialRouter,
       ...createWorkforceHandlers(os, m, dependencies.workforceService, dependencies.employeeModule),
       salaryPaymentsList: os.salaryPaymentsList.handler(refuse),
       salaryPaymentsCreate: os.salaryPaymentsCreate.handler(refuse),

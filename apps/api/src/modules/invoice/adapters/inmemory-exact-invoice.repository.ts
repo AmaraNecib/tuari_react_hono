@@ -20,6 +20,9 @@ export class InMemoryExactInvoiceRepository implements ExactInvoiceRepository {
   deleteInvoice(id: string) { this.invoices.delete(id); }
   getPayment(id: string) { return structuredClone(this.payments.get(id) ?? null); }
   listPayments() { return structuredClone([...this.payments.values()]); }
+  listLiveAllocationAmountsByInvoice(invoiceId: string) {
+    return [...this.payments.values()].filter(payment => payment.status === "LIVE").flatMap(payment => payment.allocations).filter(row => row.invoiceId === invoiceId && row.status === "LIVE").map(row => row.amount);
+  }
   savePayment(payment: ExactPayment) { this.payments.set(payment.id, structuredClone(payment)); }
   deletePayment(id: string) { this.payments.delete(id); }
 }

@@ -44,6 +44,8 @@ const financialProxy = createORPCClient<{ financial: FinancialClient }>(rpcLink)
 // exact-commerce cache scopes and pending requests use client object identity.
 export const financialClient: FinancialClient = {
   manualSettlement: financialProxy.manualSettlement,
+  experimentalSettlement: financialProxy.experimentalSettlement,
+  experimentalInvoices: financialProxy.experimentalInvoices,
   metadata: financialProxy.metadata,
   debts: financialProxy.debts,
   invoices: financialProxy.invoices,

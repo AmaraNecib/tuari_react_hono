@@ -11,6 +11,18 @@ it("retains the complete uncertain intent across reload and isolates owner and p
   clearPendingSettlement(port, "owner", "party", { kind: "confirm", input })
   expect(loadPendingSettlement(port, "owner", "party")).toBeNull()
 })
+it("keeps experimental retry identity separate from manual-settlement storage", () => {
+  const values = new Map<string, string>()
+  const port = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value) }, removeItem: (key: string) => { values.delete(key) } }
+  const intent = { kind: "confirm" as const, input }
+  savePendingSettlement(port, "owner", "party", intent)
+  expect(loadPendingSettlement(port, "owner", "party", "experimental")).toBeNull()
+  savePendingSettlement(port, "owner", "party", intent, "experimental")
+  expect(loadPendingSettlement(port, "owner", "party")).toEqual(intent)
+  expect(loadPendingSettlement(port, "owner", "party", "experimental")).toEqual(intent)
+  clearPendingSettlement(port, "owner", "party", intent, "experimental")
+  expect(loadPendingSettlement(port, "owner", "party")).toEqual(intent)
+})
 it("keeps transport and server uncertainty distinct from definite refusals", () => {
   expect(isDefiniteSettlementRefusal(new TypeError("Failed to fetch"))).toBe(false)
   expect(isDefiniteSettlementRefusal({ code: "INTERNAL_SERVER_ERROR" })).toBe(false)
