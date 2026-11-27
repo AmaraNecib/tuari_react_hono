@@ -79,6 +79,12 @@ class SqliteInvoiceRepositoryCore<TInvoice extends ExactInvoice | ExperimentalEx
   listPayments(): ExactPayment[] {
     return this.withTransaction(() => this.ids("payment").map(id => this.getPayment(id)!));
   }
+  listLiveAllocationAmountsByInvoice(invoiceId: string): string[] {
+    return this.withTransaction(() => prepareMoneyRead(this.db, "SELECT a.amount_minor AS minor_units FROM payment_allocation a JOIN payment p ON p.id=a.payment_id WHERE a.invoice_id=? AND a.status='LIVE' AND p.status='LIVE' ORDER BY a.id").all(invoiceId).map(amount => {
+      if (!amount) throw new TypeError("Live invoice allocation amount is required");
+      return amount.toWire();
+    }));
+  }
   savePayment(raw: ExactPayment): void {
     const payment = exactPaymentSchema.parse(raw);
     this.withTransaction(() => {

@@ -18,10 +18,14 @@ export class ExperimentalInvoiceSettlementParticipant {
   get transactionIdentity() { return this.invoices.transactionIdentity; }
 
   lookupOriginal(originalEntryId: string): ExperimentalInvoiceOriginal | null {
+    return this.lookupLinkedOriginal(originalEntryId, false);
+  }
+
+  private lookupLinkedOriginal(originalEntryId: string, historical: boolean): ExperimentalInvoiceOriginal | null {
     const entry = this.ledger.getEntry(originalEntryId);
-    if (!entry || entry.status !== "LIVE" || entry.targetEntryId || entry.correctionOfEntryId || entry.producerType !== "INVOICE" || !entry.producerId || entry.invoiceId !== entry.producerId || Money.parse(entry.signedAmountDzd).compare(Money.parse("0")) <= 0) return null;
+    if (!entry || !(entry.status === "LIVE" || historical && entry.status === "VOIDED") || entry.targetEntryId || entry.correctionOfEntryId || entry.producerType !== "INVOICE" || !entry.producerId || entry.invoiceId !== entry.producerId || Money.parse(entry.signedAmountDzd).compare(Money.parse("0")) <= 0) return null;
     const invoice = this.invoices.getInvoice(entry.producerId);
-    if (!invoice || invoice.id !== entry.invoiceId || invoice.debtEntryId !== entry.id || invoice.debtAccountId !== entry.debtAccountId || !["RECEIVED", "PAID", "SETTLED"].includes(invoice.status) || Money.parse(entry.signedAmountDzd).compare(Money.parse(invoice.totalAmount)) !== 0 || entry.currency !== "DZD") return null;
+    if (!invoice || invoice.id !== entry.invoiceId || invoice.debtEntryId !== entry.id || invoice.debtAccountId !== entry.debtAccountId || !(["RECEIVED", "PAID", "SETTLED"].includes(invoice.status) || historical && invoice.status === "VOIDED") || Money.parse(entry.signedAmountDzd).compare(Money.parse(invoice.totalAmount)) !== 0 || entry.currency !== "DZD") return null;
     const account = this.finance.getAccount(entry.debtAccountId);
     const direction = invoice.direction === "PURCHASE" ? "PAYABLE" : "RECEIVABLE";
     if (account.partyType !== "EXTERNAL_COUNTERPARTY" || account.externalCounterpartyId !== invoice.counterpartyId || account.direction !== direction || account.currency !== "DZD" || invoice.counterpartyType !== "EXTERNAL_COUNTERPARTY" || invoice.currency !== "DZD") return null;
@@ -29,7 +33,7 @@ export class ExperimentalInvoiceSettlementParticipant {
   }
 
   describeSource(originalEntryId: string): { kind: "INVOICE_PURCHASE" | "INVOICE_SALE"; id: string; label: string } | null {
-    const source = this.lookupOriginal(originalEntryId);
+    const source = this.lookupLinkedOriginal(originalEntryId, true);
     if (!source) return null;
     const kind = source.invoice.direction === "PURCHASE" ? "INVOICE_PURCHASE" : "INVOICE_SALE";
     const label = source.invoice.direction === "PURCHASE" ? "فاتورة شراء" : "فاتورة بيع";
@@ -41,7 +45,7 @@ export class ExperimentalInvoiceSettlementParticipant {
     if (!source) throw new ExactDebtError("Invoice original is not owned by an eligible received external invoice", "CONFLICT");
     const remaining = Money.parse(this.finance.remaining(source.entry.id));
     if (remaining.compare(Money.parse("0")) <= 0 || remaining.toWire() !== source.invoice.remainingAmount) throw new ExactDebtError("Invoice remaining amount is stale or exhausted", "CONFLICT");
-    const actualPaid = Money.parse(this.invoices.listPayments().filter(payment => payment.status === "LIVE").flatMap(payment => payment.allocations).filter(row => row.invoiceId === source.invoice.id && row.status === "LIVE").reduce((sum, row) => sum.add(Money.parse(row.amount)), Money.parse("0")).toWire());
+    const actualPaid = this.invoices.listLiveAllocationAmountsByInvoice(source.invoice.id).reduce((sum, amount) => sum.add(Money.parse(amount)), Money.parse("0"));
     if (actualPaid.toWire() !== source.invoice.paidAmount) throw new ExactDebtError("Invoice paid amount disagrees with live actual allocations", "CONFLICT");
     const portions = actualPaid.add(Money.parse(source.invoice.settledAmount)).add(remaining);
     if (portions.compare(Money.parse(source.invoice.totalAmount)) !== 0) throw new ExactDebtError("Invoice portions do not reconcile", "CONFLICT");
@@ -65,7 +69,7 @@ export class ExperimentalInvoiceSettlementParticipant {
     if (!source) throw new ExactDebtError("Invoice original linkage is invalid", "CONFLICT");
     const linked = settlements.listAccountSettlements(source.invoice.debtAccountId!);
     const liveSettled = linked.filter(row => (row.payableOriginalEntryId === originalEntryId || row.receivableOriginalEntryId === originalEntryId) && !settlements.getReversal(row.id)).reduce((sum, row) => sum.add(Money.parse(row.amountDzd)), Money.parse("0"));
-    const actualPaid = this.invoices.listPayments().filter(payment => payment.status === "LIVE").flatMap(payment => payment.allocations).filter(row => row.invoiceId === source.invoice.id && row.status === "LIVE").reduce((sum, row) => sum.add(Money.parse(row.amount)), Money.parse("0"));
+    const actualPaid = this.invoices.listLiveAllocationAmountsByInvoice(source.invoice.id).reduce((sum, amount) => sum.add(Money.parse(amount)), Money.parse("0"));
     const remaining = Money.parse(this.finance.remaining(originalEntryId));
     if (actualPaid.toWire() !== source.invoice.paidAmount || actualPaid.add(liveSettled).add(remaining).compare(Money.parse(source.invoice.totalAmount)) !== 0) throw new ExactDebtError("Invoice settlement projection does not reconcile", "CONFLICT");
     const status = remaining.compare(Money.parse("0")) > 0 ? "RECEIVED" : liveSettled.compare(Money.parse("0")) > 0 ? "SETTLED" : "PAID";

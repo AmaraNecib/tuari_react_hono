@@ -298,6 +298,19 @@ it("reveals validated invoice labels only to the bootstrap owner through the exp
     reversal: reversed.reversal,
     payableSource: { kind: "INVOICE_PURCHASE", id: purchase.id, label: purchaseLabel },
   });
+  await owner.financial.experimentalInvoices.voidInvoice({ requestId: "source-history-cancel", id: purchase.id, reason: "Cancel after reversal" });
+  expect((await owner.financial.experimentalSettlement.history({ externalCounterpartyId: party.item.id })).items[0]?.payableSource).toEqual({ kind: "INVOICE_PURCHASE", id: purchase.id, label: purchaseLabel });
+  expect((await owner.financial.experimentalSettlement.accountHistory({ debtAccountId: purchase.debtAccountId! })).items[0]?.payableSource).toEqual({ kind: "INVOICE_PURCHASE", id: purchase.id, label: purchaseLabel });
+  for (const client of [operator, reader]) {
+    const hidden = await client.financial.experimentalSettlement.history({ externalCounterpartyId: party.item.id });
+    expect(hidden.items[0]?.payableSource).toEqual({ kind: "RESTRICTED" });
+    for (const value of [purchase.id, purchase.invoiceNumber!, purchaseLabel]) expect(JSON.stringify(hidden)).not.toContain(value);
+  }
+  expect((await owner.financial.experimentalSettlement.candidates({ externalCounterpartyId: party.item.id })).some(row => row.id === purchase.debtEntryId)).toBe(false);
+  const canceledBefore = await owner.financial.experimentalSettlement.history({ externalCounterpartyId: party.item.id });
+  await expect(owner.financial.experimentalSettlement.preview(pair)).rejects.toMatchObject({ code: "CONFLICT" });
+  await expect(owner.financial.experimentalSettlement.confirm({ ...confirmInput, requestId: "canceled-source-refused" })).rejects.toMatchObject({ code: "CONFLICT" });
+  expect(await owner.financial.experimentalSettlement.history({ externalCounterpartyId: party.item.id })).toEqual(canceledBefore);
 }, 60000);
 
 it("leaves the existing exact root usable and refuses the experimental root without changing its file", async () => {

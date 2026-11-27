@@ -10,6 +10,7 @@ export interface ExactInvoiceRepository<TInvoice extends InvoiceRepositoryRow = 
   deleteInvoice(id: string): void;
   getPayment(id: string): ExactPayment | null;
   listPayments(): ExactPayment[];
+  listLiveAllocationAmountsByInvoice(invoiceId: string): string[];
   savePayment(payment: ExactPayment): void;
   deletePayment(id: string): void;
 }

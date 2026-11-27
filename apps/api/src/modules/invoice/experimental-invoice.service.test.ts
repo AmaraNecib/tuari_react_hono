@@ -86,7 +86,10 @@ it("receives an experimental invoice and records actual bank cash against its ow
     expect(service.listPayments()).toEqual(beforePayment);
     expect(manualRepository.listAccountSettlements(manualAccount.id)).toEqual([]);
     expect(db.prepare("SELECT COUNT(*) AS count FROM exact_finance_command").get()).toEqual(aggregateReceiptsBefore);
+    const globalPayments = repository.listPayments.bind(repository);
+    repository.listPayments = () => { throw new Error("Settlement must not load unrelated payment history"); };
     const confirmed = manual.confirm(confirmInput);
+    repository.listPayments = globalPayments;
     expect(confirmed.settlement.amountDzd).toBe("80.00");
     expect(finance.remaining(payableOriginalId)).toBe("0.00");
     expect(finance.remaining(manualOriginalId)).toBe("0.00");
@@ -124,6 +127,15 @@ it("receives an experimental invoice and records actual bank cash against its ow
     const voidInvoiceInput = { requestId: "void-after-reverse", id: invoiceId, reason: "Cancellation after paired reversal" };
     const voidedInvoice = service.voidInvoice(voidInvoiceInput);
     expect(voidedInvoice).toMatchObject({ status: "VOIDED" });
+    expect(participant.describeSource(payableOriginalId)).toEqual({ kind: "INVOICE_PURCHASE", id: invoiceId, label: `فاتورة شراء ${invoiceId}` });
+    expect(participant.lookupOriginal(payableOriginalId)).toBeNull();
+    const readEntry = ledger.getEntry.bind(ledger);
+    const original = readEntry(payableOriginalId)!;
+    for (const patch of [{ producerId: randomUUID() }, { invoiceId: randomUUID() }, { debtAccountId: manualAccount.id }, { targetEntryId: randomUUID() }, { correctionOfEntryId: randomUUID() }]) {
+      ledger.getEntry = id => id === payableOriginalId ? { ...original, ...patch } : readEntry(id);
+      expect(participant.describeSource(payableOriginalId)).toBeNull();
+    }
+    ledger.getEntry = readEntry;
     expect(service.createPayment(paymentInput)).toEqual(payment);
     expect(service.receiveInvoice(receiveInput)).toEqual(received);
     expect(service.listPayments().items.find(row => row.id === payment.id)).toMatchObject({ totalAmount: "20.00", unallocatedAmount: "20.00", status: "LIVE" });
