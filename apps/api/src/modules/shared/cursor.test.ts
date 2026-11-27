@@ -70,6 +70,11 @@ describe("cursor module", () => {
       expect(() => decodeCursor("abc")).toThrow()
     })
 
+    it.each([null, 42, "cursor"])("rejects decoded non-object cursor %j", (value) => {
+      const token = Buffer.from(JSON.stringify(value)).toString("base64url")
+      expect(() => decodeCursor(token)).toThrow("Invalid cursor: unexpected shape")
+    })
+
     it("throws on cursor with missing required fields", () => {
       // base64 of {"sortKey":"2024-01-15T10:00:00.000Z"} — missing id
       const incomplete = Buffer.from(
@@ -138,6 +143,15 @@ describe("cursor module", () => {
       expect(isCursorPaginationInput({ cursor: "abc" })).toBe(true)
       expect(isCursorPaginationInput({ limit: 25 })).toBe(true)
       expect(isCursorPaginationInput({ cursor: "abc", limit: 25 })).toBe(true)
+    })
+
+    it.each([null, 0, "cursor"])("returns false for non-object pagination input %j", (input) => {
+      expect(isCursorPaginationInput(input)).toBe(false)
+    })
+
+    it("rejects callable values with pagination-like properties", () => {
+      const callable = Object.assign(() => undefined, { limit: 25 })
+      expect(isCursorPaginationInput(callable)).toBe(false)
     })
 
     it("returns false when both are absent", () => {
