@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
 import type { FinancialClient } from "@tuari/contracts"
+import { selectSettlementClient } from "@/features/debts/settlement-client"
 import { Button } from "@/components/ui/button"
 import { ExactDebtsPage } from "@/features/debts/debts-exact-page"
 import { ExactExpensesPage, type ExpensesPageProps } from "@/features/expenses/expenses-page"
@@ -23,11 +24,17 @@ export function ExactFinancialRoutePage({ route, parties, locations, expenses, i
   initialInventoryMovement?: boolean
 }) {
   const metadata = useCompositeWorkspaceQuery({ enabled: route === "debts" })
-  const manualSettlementSupported = !metadata.isError && metadata.data?.capabilities?.manualSettlement === true
   const clients: FinancialClient = financialClient
+  const settlementClient = selectSettlementClient({
+    resolved: metadata.isSuccess && !metadata.isFetching && !metadata.isError,
+    capabilities: metadata.data?.capabilities,
+    manualClient: clients.manualSettlement,
+    experimentalClient: clients.experimentalSettlement,
+    experimentalInvoicesClient: clients.experimentalInvoices,
+  })
   switch (route) {
     case "debts":
-      return <ExactDebtsPage manualSettlementSupported={manualSettlementSupported} manualSettlementClient={clients.manualSettlement} client={clients.debts} payrollEmployees={payrollEmployees?.map(employee => ({ ...employee, partyType: "INTERNAL_WORKER" as const }))} parties={parties.map(party => ({
+      return <ExactDebtsPage settlementClient={settlementClient} client={clients.debts} payrollEmployees={payrollEmployees?.map(employee => ({ ...employee, partyType: "INTERNAL_WORKER" as const }))} parties={parties.map(party => ({
         id: party.id,
         label: party.label,
         ...(party.phone ? { phone: party.phone } : {}),

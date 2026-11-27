@@ -60,7 +60,7 @@ it.each(["MANUAL", "PURCHASE", "SALE", "RESTRICTED"] as const)("uses truthful pr
  const item = { ...operation, payableSource: source, receivableSource: source };
  const entries: NonNullable<Parameters<typeof ManualSettlementLink>[0]["entries"]> = ["pay-original", "receive-original"].map((id, index) => ({
   id, debtAccountId: index === 0 ? "pay-account" : "receive-account", entryType: "ADJUSTMENT", signedAmountDzd: "100.00", balanceAfterDzd: "100.00", remainingDzd: "90.00", postingSequence: 1, currency: "DZD",
-  producerType: null, producerId: null, invoiceId: null, targetEntryId: null, correctionOfEntryId: null, note: null, reasonCategory: "INVOICE_DRIVEN", reasonDetail: null, paymentMethod: null,
+  producerType: null, producerId: null, invoiceId: null, targetEntryId: null, correctionOfEntryId: null, note: kind === "RESTRICTED" ? "EXP-615-SECRET-NUMBER" : null, reasonCategory: "INVOICE_DRIVEN", reasonDetail: null, paymentMethod: null,
   status: "LIVE", voidedAt: null, voidedBy: null, voidReason: null, actorUserId: "u", actorLabel: "Owner", transactionId: "tx", entryDate: operation.recordedAt, createdAt: operation.recordedAt, updatedAt: operation.recordedAt,
  }));
  const accountHistory = vi.fn().mockResolvedValue({ items: [item], nextOffset: null });
@@ -73,6 +73,7 @@ it.each(["MANUAL", "PURCHASE", "SALE", "RESTRICTED"] as const)("uses truthful pr
  else {
   expect(text).not.toContain("قيد يدوي");
   expect(text?.match(kind === "RESTRICTED" ? /مصدر مقيّد العرض/g : /قيد أصلي/g)).toHaveLength(2);
+  if (kind === "RESTRICTED") expect(text).not.toContain("EXP-615-SECRET-NUMBER");
  }
 });
 it("does not relabel a generic account-zeroing posting as bilateral",async()=>{

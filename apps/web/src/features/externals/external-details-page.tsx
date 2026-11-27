@@ -9,6 +9,7 @@ import { RecordInfoCard, RecordInfoGrid, RecordPageFrame } from "@/features/shar
 import { useCompositeWorkspaceQuery } from "@/features/app-shell/workspace-queries"
 import { ExactDebtsPage } from "@/features/debts/debts-exact-page"
 import { type ManualSettlementClient } from "@/features/debts/manual-settlement-panel"
+import { selectSettlementClient, type ExperimentalInvoicesClient, type ExperimentalSettlementClient } from "@/features/debts/settlement-client"
 
 /**
  * @description Component
@@ -17,14 +18,24 @@ export function ExternalCounterpartyDetailsPage({
   counterparty,
   debtClient,
   manualSettlementClient,
+  experimentalSettlementClient,
+  experimentalInvoicesClient,
 }: {
   counterparty: ExternalCounterparty & { phone?: string }
   debtClient: ExactDebtsClient
   manualSettlementClient?: ManualSettlementClient
+  experimentalSettlementClient?: ExperimentalSettlementClient
+  experimentalInvoicesClient?: ExperimentalInvoicesClient
 }) {
   const { t } = useTranslation()
-  const metadata = useCompositeWorkspaceQuery({ enabled: Boolean(manualSettlementClient) })
-  const manualSettlementSupported = !metadata.isError && metadata.data?.capabilities?.manualSettlement === true
+  const metadata = useCompositeWorkspaceQuery({ enabled: Boolean(manualSettlementClient || experimentalSettlementClient || experimentalInvoicesClient) })
+  const settlementClient = selectSettlementClient({
+    resolved: metadata.isSuccess && !metadata.isFetching && !metadata.isError,
+    capabilities: metadata.data?.capabilities,
+    manualClient: manualSettlementClient,
+    experimentalClient: experimentalSettlementClient,
+    experimentalInvoicesClient,
+  })
   return (
     <RecordPageFrame
       backHref="/externals"
@@ -38,7 +49,7 @@ export function ExternalCounterpartyDetailsPage({
         <RecordInfoCard label={t("externals.details.notes")} value={counterparty.note?.trim() || t("common.noNotes")} />
       </RecordInfoGrid>
 
-      <ExactDebtsPage manualSettlementSupported={manualSettlementSupported} manualSettlementClient={manualSettlementClient} client={debtClient} scopedParty={{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }} parties={[{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }]} />
+      <ExactDebtsPage settlementClient={settlementClient} client={debtClient} scopedParty={{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }} parties={[{ id: counterparty.id, label: counterparty.fullName, partyType: "EXTERNAL_COUNTERPARTY" }]} />
     </RecordPageFrame>
   )
 }

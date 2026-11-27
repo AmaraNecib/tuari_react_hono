@@ -33,6 +33,8 @@ export type HomeViewPageContentProps = {
   onSalariesSearchChange?: (patch: Partial<Pick<SalariesRouteSearch, "tab" | "page" | "pageSize">>) => void
   invoiceId?: string
   outboundId?: string
+  experimentalInvoiceIntent?: boolean
+  experimentalInvoiceSettlementAvailable?: boolean
   page: HomeViewPage
   selectedCounterparty: HomeViewDerived["externalCounterparties"][number] | null
   selectedEmployee: HomeViewDerived["employeeRows"][number] | null

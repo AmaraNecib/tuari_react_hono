@@ -264,6 +264,18 @@ export class ExactFinanceService {
     });
   }
 
+  /** Internal paired-invoice reversal only; callers must supply the durable targeted posting, never an arbitrary amount. */
+  appendInvoiceSettlementReversal(originalId: string, settlementPostingId: string, audit: ExactDebtAudit): ExactDebtEntry {
+    return this.repository.withTransaction(() => {
+      const target = this.liveEntry(originalId);
+      const posting = this.liveEntry(settlementPostingId);
+      const account = this.getAccount(target.debtAccountId);
+      const producerOwns = this.producer?.type === "INVOICE" && this.producer.id === target.producerId && target.producerType === "INVOICE" && target.invoiceId === this.producer.id;
+      if (!producerOwns || target.status !== "LIVE" || target.targetEntryId || target.correctionOfEntryId || Money.parse(target.signedAmountDzd).compare(zero()) <= 0 || posting.debtAccountId !== target.debtAccountId || posting.producerType !== "INVOICE" || posting.producerId !== this.producer.id || posting.invoiceId !== this.producer.id || posting.entryType !== "SETTLEMENT" || posting.targetEntryId !== target.id || posting.correctionOfEntryId || posting.paymentMethod !== null || Money.parse(posting.signedAmountDzd).compare(zero()) >= 0 || account.partyType !== "EXTERNAL_COUNTERPARTY" || account.currency !== "DZD") throw new ExactDebtError("Invoice settlement reversal requires its live targeted settlement posting", "CONFLICT");
+      return this.append(account, { entryType: "ADJUSTMENT", signedAmountDzd: Money.parse(posting.signedAmountDzd).negate().toWire(), targetEntryId: target.id, entryDate: this.dependencies.now(), note: posting.note }, audit);
+    });
+  }
+
   /** Trusted producers may settle part of one original without recording cash. */
   recordSettlement(raw: Omit<PayExactDebtEntry, "paymentMethod"> & ExactDebtAudit): ExactDebtEntry {
     if (!this.producer) throw new ExactDebtError("Original settlement requires a producer", "CONFLICT");

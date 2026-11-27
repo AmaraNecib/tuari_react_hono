@@ -37,7 +37,7 @@ export const workspaceMetadataSchema = workspaceSnapshotSchema.omit({
   salaryPayments: true,
 }).extend({
   // Composition support, not a permission grant or a persisted setting.
-  capabilities: z.object({ manualSettlement: z.boolean() }).strict().optional(),
+  capabilities: z.object({ manualSettlement: z.boolean(), experimentalInvoiceSettlement: z.boolean().optional(), experimentalSettlement: z.boolean().optional() }).strict().optional(),
 }).strict();
 
 export type WorkspaceMetadata = z.infer<typeof workspaceMetadataSchema>;

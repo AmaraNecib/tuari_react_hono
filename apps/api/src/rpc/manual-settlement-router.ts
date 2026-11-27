@@ -1,6 +1,6 @@
 import { implement, ORPCError } from "@orpc/server";
 import { ZodError } from "zod";
-import { manualSettlementContract, manualSettlementConfirmOutputSchema, manualSettlementReverseOutputSchema } from "@tuari/contracts";
+import { experimentalSettlementContract, manualSettlementContract, manualSettlementConfirmOutputSchema, manualSettlementReverseOutputSchema } from "@tuari/contracts";
 import { FifoLockBusyError } from "../infrastructure/database/fifo-lock";
 import { ExactDebtError } from "../modules/company/exact-finance.service";
 import { ManualSettlementAuthorizationError, ManualSettlementUncommittedError, type ManualSettlementService } from "../modules/company/manual-settlement.service";
@@ -35,6 +35,32 @@ export function createManualSettlementRouter(capability: ManualSettlementCapabil
     })),
     history: os.history.handler(middleware.withAuth(async ({ context, input }) => {
       try { return (await service(context)).history(input); } catch (error) { throw resolveError(error); }
+    })),
+    confirm: os.confirm.handler(async params => manualSettlementConfirmOutputSchema.parse(await middleware.withAudit(async ({ context, input }: { context: RpcContext; input: Parameters<ManualSettlementService["confirm"]>[0] }) => (await service(context)).confirm(input), resolveError)(params))),
+    reverse: os.reverse.handler(async params => manualSettlementReverseOutputSchema.parse(await middleware.withAudit(async ({ context, input }: { context: RpcContext; input: Parameters<ManualSettlementService["reverse"]>[0] }) => (await service(context)).reverse(input), resolveError)(params))),
+  });
+}
+
+/** Invoice labels are available only through the explicit experimental root. */
+export function createExperimentalSettlementRouter(capability: ManualSettlementCapability | undefined, middleware: RpcMiddleware) {
+  const os = implement(experimentalSettlementContract).$context<RpcContext>();
+  async function service(context: RpcContext) {
+    const user = await requireCurrentUser(context);
+    if (!capability) throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Experimental settlement capability is not enabled" });
+    return capability(user.id);
+  }
+  return os.router({
+    candidates: os.candidates.handler(middleware.withAuth(async ({ context, input }) => {
+      try { return (await service(context)).experimentalCandidates(input); } catch (error) { throw resolveError(error); }
+    })),
+    accountHistory: os.accountHistory.handler(middleware.withAuth(async ({ context, input }) => {
+      try { return (await service(context)).experimentalAccountHistory(input); } catch (error) { throw resolveError(error); }
+    })),
+    preview: os.preview.handler(middleware.withAuth(async ({ context, input }) => {
+      try { return (await service(context)).preview(input); } catch (error) { throw resolveError(error); }
+    })),
+    history: os.history.handler(middleware.withAuth(async ({ context, input }) => {
+      try { return (await service(context)).experimentalHistory(input); } catch (error) { throw resolveError(error); }
     })),
     confirm: os.confirm.handler(async params => manualSettlementConfirmOutputSchema.parse(await middleware.withAudit(async ({ context, input }: { context: RpcContext; input: Parameters<ManualSettlementService["confirm"]>[0] }) => (await service(context)).confirm(input), resolveError)(params))),
     reverse: os.reverse.handler(async params => manualSettlementReverseOutputSchema.parse(await middleware.withAudit(async ({ context, input }: { context: RpcContext; input: Parameters<ManualSettlementService["reverse"]>[0] }) => (await service(context)).reverse(input), resolveError)(params))),

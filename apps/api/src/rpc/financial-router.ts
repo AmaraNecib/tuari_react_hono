@@ -3,9 +3,11 @@ import { financialContract, isFinancialContractProcedure, type WorkspaceMetadata
 import type { FinancialDependencies } from "../app/financial-dependencies";
 import type { RpcContext } from "./context";
 import type { RpcMiddleware } from "./rpc-middleware";
-import { createManualSettlementRouter, type ManualSettlementCapability } from "./manual-settlement-router";
+import { createExperimentalSettlementRouter, createManualSettlementRouter, type ManualSettlementCapability } from "./manual-settlement-router";
 import { createExactDebtsRouter } from "./debts-exact-router";
 import { createExactInvoicesRouter } from "./invoice-exact-router";
+import { createExperimentalExactInvoicesRouter } from "./experimental-invoice-exact-router";
+import type { ExperimentalExactInvoiceService } from "../modules/invoice/experimental-invoice.service";
 import { createExactInventoryRouter } from "./inventory-exact-router";
 import { createExactExpensesRouter } from "./expenses-exact-router";
 import { createExactReportsRouter, type ExactReportCapability } from "./exact-reports-router";
@@ -32,23 +34,29 @@ export function createUnavailableFinancialRouter(middleware: RpcMiddleware): Ret
   return bind(financialContract, os as unknown as Record<string, unknown>) as ReturnType<typeof createFinancialRouter>;
 }
 
+type FinancialRouterServices = Pick<FinancialDependencies, "financeRepository" | "finance" | "inventory" | "payroll" | "opening" | "lifecycle" | "expenses"> & { invoices?: FinancialDependencies["invoices"] };
+
 /** Bind one root-owned graph; every branch uses the application's auth middleware. */
 export function createFinancialRouter(
-  services: FinancialDependencies,
+  services: FinancialRouterServices,
   getMetadata: () => Promise<WorkspaceMetadata>,
   middleware: RpcMiddleware,
   reports?: ExactReportCapability,
   manualSettlement?: ManualSettlementCapability,
+  experimentalInvoices?: ExperimentalExactInvoiceService,
+  experimentalSettlement?: ManualSettlementCapability,
 ) {
   const os = implement(financialContract).$context<RpcContext>();
   return os.router({
     manualSettlement: createManualSettlementRouter(manualSettlement, middleware),
+    experimentalSettlement: createExperimentalSettlementRouter(experimentalSettlement, middleware),
     metadata: os.metadata.handler(middleware.queryAuth(async () => ({
       ...await getMetadata(),
-      capabilities: { manualSettlement: manualSettlement !== undefined },
+      capabilities: { manualSettlement: manualSettlement !== undefined, experimentalInvoiceSettlement: experimentalInvoices !== undefined, experimentalSettlement: experimentalSettlement !== undefined },
     }))),
     debts: createExactDebtsRouter(services.finance, middleware),
     invoices: createExactInvoicesRouter(services.invoices, middleware),
+    experimentalInvoices: createExperimentalExactInvoicesRouter(experimentalInvoices, middleware),
     inventory: createExactInventoryRouter(services.inventory, middleware),
     expenses: createExactExpensesRouter(services.expenses, middleware),
     reports: createExactReportsRouter(reports, middleware),

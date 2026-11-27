@@ -19,7 +19,9 @@ function resolveError(error: unknown): unknown {
 }
 
 /** Inject into a separate exact application only. The active router never imports this module. */
-export function createExactInvoicesRouter(service: ExactInvoiceService, middleware: RpcMiddleware) {
+const unavailable = (): never => { throw new ORPCError("SERVICE_UNAVAILABLE", { message: "Cash-only invoice composition is not configured for this application mode" }); };
+
+export function createExactInvoicesRouter(service: ExactInvoiceService | undefined, middleware: RpcMiddleware) {
   const os = implement(exactInvoicesContract).$context<RpcContext>();
   function audited<Input, Output>(schema: z.ZodType<Output>, action: (input: Input, audit: MutationAuditContext) => Output) {
     const handler = middleware.mutationAudit(({ input, auditContext }: { context: RpcContext; input: Input; auditContext: MutationAuditContext }) => action(input, auditContext), resolveError);
@@ -27,19 +29,19 @@ export function createExactInvoicesRouter(service: ExactInvoiceService, middlewa
   }
   const removed = z.object({ id: z.string() });
   return os.router({
-    getInvoice: os.getInvoice.handler(middleware.queryAuth(async ({ input }) => service.getInvoice(input.id), resolveError)),
-    listInvoices: os.listInvoices.handler(middleware.queryAuth(async ({ input }) => service.listInvoices(input), resolveError)),
-    getPayment: os.getPayment.handler(middleware.queryAuth(async ({ input }) => service.getPayment(input.id), resolveError)),
-    listPayments: os.listPayments.handler(middleware.queryAuth(async ({ input }) => service.listPayments(input), resolveError)),
-    splitPayment: os.splitPayment.handler(middleware.queryAuth(async ({ input }) => service.splitPayment(input.amount, input.invoiceIds), resolveError)),
-    createInvoice: os.createInvoice.handler(audited(exactInvoiceSchema, (input: ExactInvoiceCreate, audit) => service.createInvoice({ ...input, ...audit }))),
-    updateInvoice: os.updateInvoice.handler(audited(exactInvoiceSchema, (input: ExactInvoiceUpdate, audit) => service.updateInvoice({ ...input, ...audit }))),
-    receiveInvoice: os.receiveInvoice.handler(audited(exactInvoiceSchema, (input: ExactInvoiceCommand, audit) => service.receiveInvoice({ ...input, ...audit }))),
-    voidInvoice: os.voidInvoice.handler(audited(exactInvoiceSchema, (input: ExactInvoiceVoid, audit) => service.voidInvoice({ ...input, ...audit }))),
-    deleteDraft: os.deleteDraft.handler(audited(removed, (input: ExactInvoiceCommand, audit) => service.deleteDraft({ ...input, ...audit }))),
-    createPayment: os.createPayment.handler(audited(exactPaymentSchema, (input: ExactPaymentCreate, audit) => service.createPayment({ ...input, ...audit }))),
-    allocatePayment: os.allocatePayment.handler(audited(exactPaymentSchema, (input: ExactPaymentAllocate, audit) => service.allocatePayment({ ...input, ...audit }))),
-    voidPayment: os.voidPayment.handler(audited(exactPaymentSchema, (input: ExactInvoiceVoid, audit) => service.voidPayment({ ...input, ...audit }))),
-    deleteUnallocatedPayment: os.deleteUnallocatedPayment.handler(audited(removed, (input: ExactInvoiceCommand, audit) => service.deleteUnallocatedPayment({ ...input, ...audit }))),
+    getInvoice: os.getInvoice.handler(middleware.queryAuth(async ({ input }) => service ? service.getInvoice(input.id) : unavailable(), resolveError)),
+    listInvoices: os.listInvoices.handler(middleware.queryAuth(async ({ input }) => service ? service.listInvoices(input) : unavailable(), resolveError)),
+    getPayment: os.getPayment.handler(middleware.queryAuth(async ({ input }) => service ? service.getPayment(input.id) : unavailable(), resolveError)),
+    listPayments: os.listPayments.handler(middleware.queryAuth(async ({ input }) => service ? service.listPayments(input) : unavailable(), resolveError)),
+    splitPayment: os.splitPayment.handler(middleware.queryAuth(async ({ input }) => service ? service.splitPayment(input.amount, input.invoiceIds) : unavailable(), resolveError)),
+    createInvoice: os.createInvoice.handler(audited(exactInvoiceSchema, (input: ExactInvoiceCreate, audit) => service ? service.createInvoice({ ...input, ...audit }) : unavailable())),
+    updateInvoice: os.updateInvoice.handler(audited(exactInvoiceSchema, (input: ExactInvoiceUpdate, audit) => service ? service.updateInvoice({ ...input, ...audit }) : unavailable())),
+    receiveInvoice: os.receiveInvoice.handler(audited(exactInvoiceSchema, (input: ExactInvoiceCommand, audit) => service ? service.receiveInvoice({ ...input, ...audit }) : unavailable())),
+    voidInvoice: os.voidInvoice.handler(audited(exactInvoiceSchema, (input: ExactInvoiceVoid, audit) => service ? service.voidInvoice({ ...input, ...audit }) : unavailable())),
+    deleteDraft: os.deleteDraft.handler(audited(removed, (input: ExactInvoiceCommand, audit) => service ? service.deleteDraft({ ...input, ...audit }) : unavailable())),
+    createPayment: os.createPayment.handler(audited(exactPaymentSchema, (input: ExactPaymentCreate, audit) => service ? service.createPayment({ ...input, ...audit }) : unavailable())),
+    allocatePayment: os.allocatePayment.handler(audited(exactPaymentSchema, (input: ExactPaymentAllocate, audit) => service ? service.allocatePayment({ ...input, ...audit }) : unavailable())),
+    voidPayment: os.voidPayment.handler(audited(exactPaymentSchema, (input: ExactInvoiceVoid, audit) => service ? service.voidPayment({ ...input, ...audit }) : unavailable())),
+    deleteUnallocatedPayment: os.deleteUnallocatedPayment.handler(audited(removed, (input: ExactInvoiceCommand, audit) => service ? service.deleteUnallocatedPayment({ ...input, ...audit }) : unavailable())),
   });
 }

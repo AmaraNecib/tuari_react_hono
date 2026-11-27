@@ -142,6 +142,7 @@ const warehousesRoute = createWorkspaceRoute("/warehouses", "warehouses")
 const warehousesCreateRoute = createWorkspaceRoute("/warehouses/create", "warehouse-create")
 const inventoryRoute = createWorkspaceRoute("/inventory", "inventory")
 const invoicesRoute = createWorkspaceRoute("/invoices", "invoices")
+const experimentalInvoicesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/experimental/invoices", component: ExperimentalInvoicesRouteComponent })
 const invoiceCreateRoute = createWorkspaceRoute("/invoices/create", "invoice-create")
 const outboundTransfersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/outbound-transfers", validateSearch: (search: Record<string, unknown>) => ({ source: typeof search.source === "string" ? search.source : undefined, party: typeof search.party === "string" ? search.party : undefined }), component: () => { const { source, party } = outboundTransfersRoute.useSearch(); return renderHomeView(<HomeView page="outbound-transfers" outboundId={source} counterpartyId={party} />) } })
 const outboundTransferCreateRoute = createWorkspaceRoute("/outbound-transfers/create", "outbound-transfer-create")
@@ -165,6 +166,11 @@ const invoiceDetailsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/invoices/$invoiceId",
   component: InvoiceDetailsRouteComponent,
+})
+const experimentalInvoiceDetailsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/experimental/invoices/$invoiceId",
+  component: ExperimentalInvoiceDetailsRouteComponent,
 })
 const rolesRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -246,6 +252,15 @@ function InvoiceDetailsRouteComponent() {
   return renderHomeView(<HomeView invoiceId={invoiceId} page="invoice-details" />)
 }
 
+function ExperimentalInvoicesRouteComponent() {
+  return renderHomeView(<HomeView experimentalInvoiceIntent page="invoices" />)
+}
+
+function ExperimentalInvoiceDetailsRouteComponent() {
+  const { invoiceId } = experimentalInvoiceDetailsRoute.useParams()
+  return renderHomeView(<HomeView experimentalInvoiceIntent invoiceId={invoiceId} page="invoice-details" />)
+}
+
 const routeTree = rootRoute.addChildren([
   dashboardRoute,
   employeesRoute,
@@ -268,6 +283,7 @@ const routeTree = rootRoute.addChildren([
   warehousesCreateRoute,
   inventoryRoute,
   invoicesRoute,
+  experimentalInvoicesRoute,
   invoiceCreateRoute,
   outboundTransfersRoute,
   outboundTransferCreateRoute,
@@ -277,6 +293,7 @@ const routeTree = rootRoute.addChildren([
   warehouseDetailsRoute,
   warehouseEditRoute,
   invoiceDetailsRoute,
+  experimentalInvoiceDetailsRoute,
   rolesRoute,
   settingsRoute,
 ])

@@ -1,15 +1,15 @@
 import { createHash } from "node:crypto";
 import {
   Money, allocateMoney, finalizeLines, parseExactLine, sumMoney,
-  exactInvoiceCreateSchema, exactInvoiceUpdateSchema, exactInvoiceCommandSchema, exactInvoiceVoidSchema,
-  exactPaymentCreateSchema, exactPaymentAllocateSchema, exactInvoiceListSchema, exactPaymentListSchema,
+  exactInvoiceCreateSchema, exactInvoiceUpdateSchema, exactInvoiceCommandSchema, exactInvoiceVoidSchema, exactInvoiceSchema,
+  exactPaymentCreateSchema, exactPaymentAllocateSchema, exactInvoiceListSchema, experimentalExactInvoiceListSchema, experimentalExactInvoiceSchema, exactPaymentListSchema,
   exactInvoiceAmountSchema, timestampSchema,
   type ExactInvoice, type ExactPayment, type ExactInvoiceCreate, type ExactInvoiceUpdate,
   type ExactInvoiceCommand, type ExactInvoiceVoid, type ExactPaymentCreate, type ExactPaymentAllocate,
-  type ExactInvoiceList, type ExactPaymentList, type ExactFinanceAggregateOwner,
+  type ExperimentalExactInvoice, type ExactInvoiceList, type ExactPaymentList, type ExactFinanceAggregateOwner,
 } from "@tuari/contracts";
 import { ExactFinanceService, ExactDebtError, type ExactDebtAudit } from "../company/exact-finance.service";
-import type { ExactInvoiceRepository } from "./invoice-exact.repository";
+import type { ExactInvoiceRepository, InvoiceRepositoryRow } from "./invoice-exact.repository";
 
 type AuditInput<T> = T & ExactDebtAudit;
 const domainInput = <T extends ExactDebtAudit>(raw: T) => {
@@ -23,23 +23,27 @@ const request = (root: string, kind: string, id: string) => `invoice:${createHas
 const auditOf = (input: ExactDebtAudit) => ({ actorUserId: input.actorUserId ?? null, actorLabel: input.actorLabel ?? null, transactionId: input.transactionId ?? null });
 const compareText = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 
-/** Opt-in invoice/cash aggregate. No active numeric repository is used. */
-export class ExactInvoiceService {
-  constructor(private readonly repo: ExactInvoiceRepository, private readonly finance: ExactFinanceService, private readonly dependencies: { id(): string; now(): string }) {}
+type InvoiceListInput = { sort?: { field: string; direction: "asc" | "desc" }; cursor?: string; limit: number; filters?: { status?: string; counterpartyId?: string } };
+type InvoicePolicy<TInvoice extends InvoiceRepositoryRow> = { parseInvoice(value: unknown): TInvoice; parseList(value: unknown): InvoiceListInput; initialFields: Record<string, unknown>; voidFields(invoice: TInvoice): Record<string, unknown>; paidStatus(invoice: TInvoice): string };
+
+/** Shared private implementation; public wrappers select a fixed parser and status policy. */
+class InvoiceServiceCore<TInvoice extends InvoiceRepositoryRow> {
+  constructor(private readonly repo: ExactInvoiceRepository<TInvoice>, private readonly finance: ExactFinanceService, private readonly dependencies: { id(): string; now(): string }, private readonly policy: InvoicePolicy<TInvoice>) {}
+  private parseInvoice(value: unknown): TInvoice { return this.policy.parseInvoice(value); }
   private command<T>(kind: string, owner: ExactFinanceAggregateOwner, input: { requestId: string } & ExactDebtAudit, intent: unknown, work: () => T): T {
     return this.finance.runAggregate({ requestId: input.requestId, producer: owner, intent: { kind, input: intent }, ...auditOf(input) }, this.repo, work);
   }
-  getInvoice(id: string): ExactInvoice {
+  getInvoice(id: string): TInvoice {
     const row = this.repo.getInvoice(id);
     if (!row) throw new ExactDebtError("Invoice not found", "NOT_FOUND");
-    return row;
+    return this.parseInvoice(row);
   }
   getPayment(id: string): ExactPayment {
     const row = this.repo.getPayment(id);
     if (!row) throw new ExactDebtError("Payment not found", "NOT_FOUND");
     return row;
   }
-  createInvoice(raw: AuditInput<ExactInvoiceCreate>): ExactInvoice {
+  createInvoice(raw: AuditInput<ExactInvoiceCreate>): TInvoice {
     const input = exactInvoiceCreateSchema.parse(domainInput(raw));
     return this.command("create-invoice", { type: "INVOICE", id: input.id ?? request(input.requestId, "create-invoice", "") }, raw, input, () => {
       const id = input.id ?? this.dependencies.id();
@@ -47,19 +51,21 @@ export class ExactInvoiceService {
       this.finance.requireParty(input.counterpartyType === "WORKER" ? "INTERNAL_WORKER" : "EXTERNAL_COUNTERPARTY", input.counterpartyId);
       const now = this.dependencies.now();
       const total = finalizeLines(input.lineItems.map(line => parseExactLine(line.source))).toWire();
-      const invoice: ExactInvoice = {
+      const invoice = {
         id, counterpartyType: input.counterpartyType, counterpartyId: input.counterpartyId,
         supplierName: input.supplierName, supplierPhone: input.supplierPhone ?? null, invoiceNumber: input.invoiceNumber ?? null,
         warehouseId: input.warehouseId ?? null, projectId: input.projectId ?? null, invoiceDate: input.invoiceDate ?? null, dueDate: input.dueDate ?? null,
         notes: input.notes ?? null, currency: input.currency, direction: input.direction, status: "DRAFT", totalAmount: total,
         paidAmount: "0.00", remainingAmount: total, debtAccountId: null, debtEntryId: null, createdAt: now, updatedAt: now,
         lineItems: input.lineItems.map(line => ({ ...line, id: this.dependencies.id(), invoiceId: id })),
+        ...this.policy.initialFields,
       };
-      this.repo.saveInvoice(invoice);
-      return invoice;
+      const parsed = this.parseInvoice(invoice);
+      this.repo.saveInvoice(parsed);
+      return parsed;
     });
   }
-  updateInvoice(raw: AuditInput<ExactInvoiceUpdate>): ExactInvoice {
+  updateInvoice(raw: AuditInput<ExactInvoiceUpdate>): TInvoice {
     const input = exactInvoiceUpdateSchema.parse(domainInput(raw));
     return this.command("update-invoice", { type: "INVOICE", id: input.id }, raw, input, () => {
       const invoice = this.getInvoice(input.id);
@@ -74,8 +80,9 @@ export class ExactInvoiceService {
         next.remainingAmount = next.totalAmount;
       }
       next.updatedAt = this.dependencies.now();
-      this.repo.saveInvoice(next);
-      return next;
+      const parsed = this.parseInvoice(next);
+      this.repo.saveInvoice(parsed);
+      return parsed;
     });
   }
   deleteDraft(raw: AuditInput<ExactInvoiceCommand>): { id: string } {
@@ -86,7 +93,7 @@ export class ExactInvoiceService {
       return { id: input.id };
     });
   }
-  receiveInvoice(raw: AuditInput<ExactInvoiceCommand>): ExactInvoice {
+  receiveInvoice(raw: AuditInput<ExactInvoiceCommand>): TInvoice {
     const input = exactInvoiceCommandSchema.parse(domainInput(raw));
     return this.command("receive-invoice", { type: "INVOICE", id: input.id }, raw, input, () => {
       const invoice = this.getInvoice(input.id);
@@ -99,7 +106,7 @@ export class ExactInvoiceService {
         direction: invoice.direction === "SALE" ? "RECEIVABLE" : "PAYABLE", currency: invoice.currency, ...auditOf(raw) });
       const entry = invoice.totalAmount === "0.00" ? null : port.postEntry({ requestId: request(input.requestId, "original", invoice.id),
         invoiceId: invoice.id, debtAccountId: account.id, entryType: "ADJUSTMENT", signedAmountDzd: invoice.totalAmount, currency: invoice.currency, ...auditOf(raw) });
-      const next: ExactInvoice = { ...invoice, status: entry ? "RECEIVED" : "PAID", debtAccountId: account.id, debtEntryId: entry?.id ?? null, updatedAt: this.dependencies.now() };
+      const next = this.parseInvoice({ ...invoice, status: entry ? "RECEIVED" : this.policy.paidStatus(invoice), debtAccountId: account.id, debtEntryId: entry?.id ?? null, updatedAt: this.dependencies.now() });
       this.repo.saveInvoice(next);
       return next;
     });
@@ -146,7 +153,7 @@ export class ExactInvoiceService {
         debtEntryId: invoice.debtEntryId, amountDzd: amount.toWire(), currency: payment.currency, paymentMethod: payment.paymentMethod, ...auditOf(audit) });
       const paid = Money.parse(invoice.paidAmount).add(amount);
       const nextRemaining = remaining.subtract(amount);
-      this.repo.saveInvoice({ ...invoice, paidAmount: paid.toWire(), remainingAmount: nextRemaining.toWire(), status: nextRemaining.compare(zero()) === 0 ? "PAID" : "RECEIVED", updatedAt: this.dependencies.now() });
+      this.repo.saveInvoice(this.parseInvoice({ ...invoice, paidAmount: paid.toWire(), remainingAmount: nextRemaining.toWire(), status: nextRemaining.compare(zero()) === 0 ? this.policy.paidStatus(invoice) : "RECEIVED", updatedAt: this.dependencies.now() }));
       payment.allocations.push({ id: this.dependencies.id(), paymentId: payment.id, invoiceId: invoice.id, amount: amount.toWire(), debtEntryId: entry.id, status: "LIVE", createdAt: this.dependencies.now() });
     }
     payment.unallocatedAmount = Money.parse(payment.unallocatedAmount).subtract(allocated).toWire();
@@ -160,7 +167,8 @@ export class ExactInvoiceService {
         const invoice = this.getInvoice(allocation.invoiceId);
         this.finance.forProducer({ type: "INVOICE", id: invoice.id }).voidEntry({ requestId: request(input.requestId, "void-allocation", allocation.id), entryId: allocation.debtEntryId, voidReason: input.reason, ...auditOf(raw) });
         const amount = Money.parse(allocation.amount);
-        this.repo.saveInvoice({ ...invoice, paidAmount: Money.parse(invoice.paidAmount).subtract(amount).toWire(), remainingAmount: Money.parse(invoice.remainingAmount).add(amount).toWire(), status: "RECEIVED", updatedAt: this.dependencies.now() });
+        const remaining = Money.parse(invoice.remainingAmount).add(amount);
+        this.repo.saveInvoice(this.parseInvoice({ ...invoice, paidAmount: Money.parse(invoice.paidAmount).subtract(amount).toWire(), remainingAmount: remaining.toWire(), status: remaining.compare(zero()) === 0 ? this.policy.paidStatus(invoice) : "RECEIVED", updatedAt: this.dependencies.now() }));
         allocation.status = "VOIDED";
       }
       payment.status = "VOIDED";
@@ -170,7 +178,7 @@ export class ExactInvoiceService {
       return payment;
     });
   }
-  voidInvoice(raw: AuditInput<ExactInvoiceVoid>): ExactInvoice {
+  voidInvoice(raw: AuditInput<ExactInvoiceVoid>): TInvoice {
     const input = exactInvoiceVoidSchema.parse(domainInput(raw));
     return this.command("void-invoice", { type: "INVOICE", id: input.id }, raw, input, () => {
       const invoice = this.getInvoice(input.id);
@@ -184,7 +192,7 @@ export class ExactInvoiceService {
         payment.updatedAt = this.dependencies.now();
         this.repo.savePayment(payment);
       }
-      const next: ExactInvoice = { ...invoice, status: "VOIDED", paidAmount: "0.00", remainingAmount: "0.00", updatedAt: this.dependencies.now() };
+      const next = this.parseInvoice({ ...invoice, status: "VOIDED", paidAmount: "0.00", remainingAmount: "0.00", ...this.policy.voidFields(invoice), updatedAt: this.dependencies.now() });
       this.repo.saveInvoice(next);
       return next;
     });
@@ -203,8 +211,8 @@ export class ExactInvoiceService {
     return allocateMoney(Money.parse(amount), invoiceIds.map(id => ({ id, weight: "1" })))
       .filter(row => row.amount.compare(zero()) > 0).map(row => ({ invoiceId: row.id, amount: row.amount.toWire() }));
   }
-  listInvoices(raw: ExactInvoiceList = {}) {
-    const input = exactInvoiceListSchema.parse(raw);
+  listInvoices(raw: unknown = {}) {
+    const input = this.policy.parseList(raw);
     const rows = this.repo.listInvoices().filter(row => (!input.filters?.status || row.status === input.filters.status) && (!input.filters?.counterpartyId || row.counterpartyId === input.filters.counterpartyId));
     return page(rows, "invoice", input.sort ?? { field: "createdAt", direction: "desc" }, input.cursor, input.limit);
   }
@@ -212,6 +220,32 @@ export class ExactInvoiceService {
     const input = exactPaymentListSchema.parse(raw);
     const rows = this.repo.listPayments().filter(row => (!input.filters?.counterpartyId || row.counterpartyId === input.filters.counterpartyId) && (!input.filters?.direction || row.direction === input.filters.direction));
     return page(rows, "payment", input.sort ?? { field: "createdAt", direction: "desc" }, input.cursor, input.limit);
+  }
+}
+
+const exactInvoicePolicy: InvoicePolicy<ExactInvoice> = {
+  parseInvoice: value => exactInvoiceSchema.parse(value),
+  parseList: value => exactInvoiceListSchema.parse(value),
+  initialFields: {},
+  voidFields: () => ({}),
+  paidStatus: () => "PAID",
+};
+
+/** Public normal exact-invoice service retains its original constructor and contracts. */
+export class ExactInvoiceService extends InvoiceServiceCore<ExactInvoice> {
+  constructor(repo: ExactInvoiceRepository, finance: ExactFinanceService, dependencies: { id(): string; now(): string }) { super(repo, finance, dependencies, exactInvoicePolicy); }
+  listInvoices(input: ExactInvoiceList = {}) { return super.listInvoices(input); }
+}
+
+export class ExperimentalInvoiceServiceCore extends InvoiceServiceCore<ExperimentalExactInvoice> {
+  constructor(repo: ExactInvoiceRepository<ExperimentalExactInvoice>, finance: ExactFinanceService, dependencies: { id(): string; now(): string }) {
+    super(repo, finance, dependencies, {
+      parseInvoice: value => experimentalExactInvoiceSchema.parse(value),
+      parseList: value => experimentalExactInvoiceListSchema.parse(value),
+      initialFields: { settledAmount: "0.00" },
+      voidFields: invoice => ({ settledAmount: invoice.settledAmount }),
+      paidStatus: invoice => invoice.settledAmount !== "0.00" ? "SETTLED" : "PAID",
+    });
   }
 }
 

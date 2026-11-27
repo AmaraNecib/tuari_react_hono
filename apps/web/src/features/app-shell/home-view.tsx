@@ -75,6 +75,7 @@ export function HomeView({
   employeeId,
   invoiceId,
   outboundId,
+  experimentalInvoiceIntent = false,
   projectId,
   warehouseId,
   paginationCursor,
@@ -91,6 +92,7 @@ export function HomeView({
   employeeId?: string
   invoiceId?: string
   outboundId?: string
+  experimentalInvoiceIntent?: boolean
   projectId?: string
   warehouseId?: string
   paginationCursor?: string
@@ -147,6 +149,7 @@ export function HomeView({
     derived,
     employeeId,
     invoiceId,
+    experimentalInvoiceIntent,
     page,
     projectId,
     t,
@@ -199,7 +202,7 @@ export function HomeView({
   // workspace is guaranteed to exist when derived is non-null.
   const ws = workspace!
 
-  const contentBoundaryKey = [page, detailTab, counterpartyId, employeeId, invoiceId, projectId, warehouseId, earningApproval, returnTo]
+  const contentBoundaryKey = [page, detailTab, counterpartyId, employeeId, invoiceId, projectId, warehouseId, earningApproval, returnTo, experimentalInvoiceIntent]
     .filter(Boolean)
     .join(":")
 
@@ -237,6 +240,8 @@ export function HomeView({
             onSalariesSearchChange={onSalariesSearchChange}
             invoiceId={invoiceId}
             outboundId={outboundId}
+            experimentalInvoiceIntent={experimentalInvoiceIntent}
+            experimentalInvoiceSettlementAvailable={workspaceQuery.isSuccess && !workspaceQuery.isFetching && ws.capabilities?.experimentalInvoiceSettlement === true}
             page={page}
             paginationCursor={paginationCursor}
             paginationLimit={paginationLimit}
