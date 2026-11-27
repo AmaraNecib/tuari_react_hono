@@ -13,7 +13,7 @@
 
 `escapeLikePattern(value)` returns a string suitable for embedding in a SQL `LIKE` pattern when the caller pairs it with `ESCAPE '\'`. The public helper is used by the SQLite company and inventory adapters before parameterized `LIKE` queries. The seam is the exported helper; this batch tests the exact returned string, not HTTP reachability or SQLite matching.
 
-Independent literal expectations cover `%`, `_`, an existing backslash, all three characters in one input, and ordinary Unicode preservation. The expected strings do not reuse the helper's replacement rule. Existing company and inventory integration assertions remain unchanged and continue to cover their adapter behavior.
+Independent literal expectations cover `%`, `_`, an existing backslash, all three characters in one input, repeated occurrences of every special character, and ordinary Unicode preservation. The expected strings do not reuse the helper's replacement rule. Existing company and inventory integration assertions remain unchanged and continue to cover their adapter behavior.
 
 ## Design
 
@@ -23,6 +23,6 @@ The matching wisdom lesson, `testing/in-memory-test-doubles-must-mirror-sqlite-s
 
 ## Proof boundary
 
-A temporary identity mutation made the new suite fail on the four escaping rows while the Unicode assertion passed. The mutation was restored in `finally`; `sql-search.ts` has no final diff and its SHA-256 is unchanged from before the probe. The restored implementation passes all five tests.
+A temporary identity mutation made the new suite fail on the four escaping rows while the Unicode assertion passed. The mutation was restored in `finally`; `sql-search.ts` has no final diff and its SHA-256 is unchanged from before the probe. The initial restored implementation passed all five tests. Test-audit found that escaping only the first occurrence of each character could survive those inputs. The bounded correction adds one repeated-character row and checks it against a temporary non-global-regex mutation. Prior proof remains retained; corrected-head proof is recorded separately.
 
 Focused lint and strict TypeScript checking cover the new test file. No native SQLite load, full suite, coverage run, build, or whole-module coverage claim is included. Hosted verdict and CI acceptance remain pending for the parent.
