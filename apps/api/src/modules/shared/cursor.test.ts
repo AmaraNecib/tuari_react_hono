@@ -110,6 +110,13 @@ describe("cursor module", () => {
       expect(normalizePageSize(undefined)).toBe(50)
     })
 
+    it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
+      "defaults non-finite page sizes to 50 (%s)",
+      (limit) => {
+        expect(normalizePageSize(limit)).toBe(50)
+      },
+    )
+
     it("clamps to minimum of 1", () => {
       expect(normalizePageSize(0)).toBe(1)
       expect(normalizePageSize(-5)).toBe(1)
