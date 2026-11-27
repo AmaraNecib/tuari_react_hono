@@ -316,6 +316,7 @@ describe("item-offer rule: SQL path equals JS path", () => {
 
     const service = new CatalogService(env.repository)
     const audit = { actorUserId: "u1", actorLabel: "T", transactionId: crypto.randomUUID() }
+    const referencedItemBefore = service.getItemDefinition("c-active").item
 
     expect(() =>
       service.updateItemDefinition({ id: "c-active", itemType: "ASSET" }, audit),
@@ -326,12 +327,17 @@ describe("item-offer rule: SQL path equals JS path", () => {
     } catch (error) {
       expect((error as InventoryError).appError.code).toBe("CONFLICT")
     }
+    expect(service.getItemDefinition("c-active").item).toEqual(referencedItemBefore)
 
     // A definition no entry references may still change type (a-archived has
     // never been stocked, so no inventory_entry points at it).
-    expect(
-      service.updateItemDefinition({ id: "a-archived", itemType: "CONSUMABLE", unit: "قطعة" }, audit).success,
-    ).toBe(true)
+    const acceptedChange = service.updateItemDefinition(
+      { id: "a-archived", itemType: "CONSUMABLE", unit: "قطعة" },
+      audit,
+    )
+    expect(acceptedChange.success).toBe(true)
+    expect(acceptedChange.item).toMatchObject({ itemType: "CONSUMABLE", unit: "قطعة" })
+    expect(service.getItemDefinition("a-archived").item).toMatchObject({ itemType: "CONSUMABLE", unit: "قطعة" })
   })
 
   it("matches a non-prefix substring, proving the pattern is %term%", () => {
