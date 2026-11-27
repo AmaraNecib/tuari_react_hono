@@ -15,7 +15,7 @@
     "build": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && tsup src/index.ts --format esm --dts --clean --external zod",
     "dev": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && tsup src/index.ts --format esm --dts --watch",
     "test": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && vitest run",
-    "typecheck": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && tsc --noEmit"
+    "typecheck": "node ../../scripts/dev/check-worktree-contracts.mjs --ownership-only ../.. && tsrs --noEmit"
   },
   "dependencies": {
     "@orpc/contract": "^1.13.6",
